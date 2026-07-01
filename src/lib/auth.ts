@@ -2,8 +2,12 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { db } from "./db";
 
+if (!process.env.AUTH_SECRET && process.env.NODE_ENV === "production") {
+  throw new Error("AUTH_SECRET must be set in production");
+}
+
 const secret = new TextEncoder().encode(
-  process.env.AUTH_SECRET ?? "sh_dev_secret"
+  process.env.AUTH_SECRET ?? "dev-only-secret"
 );
 
 const COOKIE_NAME = "sh_session";

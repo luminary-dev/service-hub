@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import crypto from "crypto";
+import { put } from "@vercel/blob";
 import { db } from "@/lib/db";
 import { getCurrentProvider } from "@/lib/provider-auth";
 
@@ -12,6 +13,21 @@ const EXT: Record<string, string> = {
   "image/png": "png",
   "image/webp": "webp",
 };
+
+async function storeFile(file: File): Promise<string> {
+  const filename = `${crypto.randomUUID()}.${EXT[file.type]}`;
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    const blob = await put(`uploads/${filename}`, file, { access: "public" });
+    return blob.url;
+  }
+  const dir = path.join(process.cwd(), "public", "uploads");
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    path.join(dir, filename),
+    Buffer.from(await file.arrayBuffer())
+  );
+  return `/uploads/${filename}`;
+}
 
 export async function POST(req: NextRequest) {
   const provider = await getCurrentProvider();
@@ -40,14 +56,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const dir = path.join(process.cwd(), "public", "uploads");
-  await mkdir(dir, { recursive: true });
-  const filename = `${crypto.randomUUID()}.${EXT[file.type]}`;
-  await writeFile(
-    path.join(dir, filename),
-    Buffer.from(await file.arrayBuffer())
-  );
-  const url = `/uploads/${filename}`;
+  const url = await storeFile(file);
 
   if (kind === "avatar") {
     await db.provider.update({

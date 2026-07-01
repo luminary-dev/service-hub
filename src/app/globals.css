@@ -1,5 +1,18 @@
 @import "tailwindcss";
 
+/* Optional Sinhala font: drop FMBindumathi.woff2 (or .ttf) into public/fonts/
+   and it takes over Sinhala text. Must be a Unicode-encoded version — the
+   legacy FM-Bindumathi has no Sinhala Unicode glyphs and will not render.
+   Falls back to Noto Sans Sinhala automatically if the file is missing. */
+@font-face {
+  font-family: "FM Bindumathi";
+  src:
+    url("/fonts/FMBindumathi.woff2") format("woff2"),
+    url("/fonts/FMBindumathi.ttf") format("truetype");
+  font-display: swap;
+  unicode-range: U+0D80-0DFF, U+200C, U+200D;
+}
+
 @theme {
   --color-brand-50: oklch(0.97 0.013 40);
   --color-brand-100: oklch(0.94 0.028 40);
@@ -21,8 +34,8 @@
   --color-ink-700: oklch(0.38 0.012 55);
   --color-ink-800: oklch(0.28 0.01 50);
   --color-ink-900: oklch(0.2 0.01 45);
-  --font-sans: var(--font-poppins), var(--font-sinhala), ui-sans-serif,
-    system-ui, sans-serif;
+  --font-sans: var(--font-poppins), "FM Bindumathi", var(--font-sinhala),
+    ui-sans-serif, system-ui, sans-serif;
   --ease-snap: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-flow: cubic-bezier(0.77, 0, 0.175, 1);
 }
