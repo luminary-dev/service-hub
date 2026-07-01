@@ -9,14 +9,15 @@ function xmlEscape(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function placeholderSvg(rawLabel, from, to, emoji) {
+function placeholderSvg(rawLabel, from, to) {
   const label = xmlEscape(rawLabel);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600">
   <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
     <stop offset="0" stop-color="${from}"/><stop offset="1" stop-color="${to}"/>
   </linearGradient></defs>
   <rect width="800" height="600" fill="url(#g)"/>
-  <text x="400" y="290" font-size="120" text-anchor="middle">${emoji}</text>
+  <circle cx="400" cy="255" r="72" fill="rgba(255,255,255,.12)"/>
+  <circle cx="400" cy="255" r="46" fill="rgba(255,255,255,.18)"/>
   <text x="400" y="400" font-family="sans-serif" font-size="34" font-weight="600" fill="rgba(255,255,255,.92)" text-anchor="middle">${label}</text>
 </svg>`;
 }
@@ -40,8 +41,8 @@ const PROVIDERS = [
       { title: "Engine diagnostics", price: 3000, priceType: "VISIT" },
     ],
     photos: [
-      ["Engine bay after full service", "#0f766e", "#134e4a", "🔧"],
-      ["Brake overhaul on a Prius", "#155e75", "#164e63", "🚗"],
+      ["Engine bay after full service", "#0f766e", "#134e4a"],
+      ["Brake overhaul on a Prius", "#155e75", "#164e63"],
     ],
   },
   {
@@ -62,8 +63,8 @@ const PROVIDERS = [
       { title: "DB board upgrade", price: 18000, priceType: "FIXED" },
     ],
     photos: [
-      ["New distribution board install", "#b45309", "#92400e", "⚡"],
-      ["Rewiring a two-storey house", "#a16207", "#854d0e", "🏠"],
+      ["New distribution board install", "#b45309", "#92400e"],
+      ["Rewiring a two-storey house", "#a16207", "#854d0e"],
     ],
   },
   {
@@ -85,9 +86,9 @@ const PROVIDERS = [
       { title: "Monthly garden maintenance", price: 12000, priceType: "FIXED" },
     ],
     photos: [
-      ["Courtyard garden in Kandy", "#15803d", "#166534", "🌿"],
-      ["Water feature & rockery", "#0d9488", "#115e59", "⛲"],
-      ["Rooftop herb garden", "#4d7c0f", "#3f6212", "🌱"],
+      ["Courtyard garden in Kandy", "#15803d", "#166534"],
+      ["Water feature & rockery", "#0d9488", "#115e59"],
+      ["Rooftop herb garden", "#4d7c0f", "#3f6212"],
     ],
   },
   {
@@ -106,7 +107,7 @@ const PROVIDERS = [
       { title: "Water pump installation", price: 8000, priceType: "FIXED" },
       { title: "Bathroom fit-out (labour)", price: 45000, priceType: "FIXED" },
     ],
-    photos: [["Pump house installation", "#1d4ed8", "#1e40af", "🚿"]],
+    photos: [["Pump house installation", "#1d4ed8", "#1e40af"]],
   },
   {
     name: "Mohamed Rizwan",
@@ -125,7 +126,7 @@ const PROVIDERS = [
       { title: "AC chemical wash", price: 6500, priceType: "FIXED" },
       { title: "Gas refill (R32)", price: 9000, priceType: "FIXED" },
     ],
-    photos: [["Split unit install in Dehiwala", "#0369a1", "#075985", "❄️"]],
+    photos: [["Split unit install in Dehiwala", "#0369a1", "#075985"]],
   },
   {
     name: "Chaminda Silva",
@@ -145,8 +146,8 @@ const PROVIDERS = [
       { title: "Carpentry day rate", price: 6000, priceType: "DAILY" },
     ],
     photos: [
-      ["Teak pantry in Galle Fort home", "#92400e", "#78350f", "🪚"],
-      ["Mahogany dining set", "#7c2d12", "#601b06", "🪑"],
+      ["Teak pantry in Galle Fort home", "#92400e", "#78350f"],
+      ["Mahogany dining set", "#7c2d12", "#601b06"],
     ],
   },
 ];
@@ -182,11 +183,11 @@ async function main() {
 
   const providerRecords = [];
   for (const [pi, p] of PROVIDERS.entries()) {
-    const photoData = p.photos.map(([caption, from, to, emoji], i) => {
+    const photoData = p.photos.map(([caption, from, to], i) => {
       const filename = `seed/p${pi}-${i}.svg`;
       fs.writeFileSync(
         path.join(process.cwd(), "public", "uploads", filename),
-        placeholderSvg(caption, from, to, emoji)
+        placeholderSvg(caption, from, to)
       );
       return { url: `/uploads/${filename}`, caption };
     });

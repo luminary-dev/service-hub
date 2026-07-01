@@ -1,4 +1,11 @@
 import Link from "next/link";
+import {
+  FaArrowRight,
+  FaCheck,
+  FaPhone,
+  FaStar,
+  FaWhatsapp,
+} from "react-icons/fa6";
 import { db } from "@/lib/db";
 import { CATEGORIES } from "@/lib/constants";
 import ProviderCard, { ProviderSummary } from "@/components/ProviderCard";
@@ -43,43 +50,123 @@ export default async function HomePage() {
 
   return (
     <div>
-      <section className="relative overflow-hidden bg-white">
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background:
-              "radial-gradient(60% 80% at 70% 20%, #ecfdf5 0%, transparent 60%), radial-gradient(40% 60% at 20% 80%, #f0fdf4 0%, transparent 60%)",
-          }}
-        />
-        <div className="relative mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
-          <div className="max-w-2xl">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700">
-              🇱🇰 Built for Sri Lanka
-            </span>
-            <h1 className="mt-5 text-4xl font-bold tracking-tight text-ink-900 sm:text-5xl lg:text-6xl">
-              Skilled hands for{" "}
-              <span className="text-brand-600">every job</span> at home
+      <section className="border-b border-ink-200 bg-white">
+        <div className="mx-auto grid max-w-6xl gap-12 px-4 py-16 sm:px-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-center lg:py-24">
+          <div>
+            <h1 className="rise text-4xl font-semibold leading-[1.1] tracking-tight text-ink-900 sm:text-5xl">
+              The tradespeople Sri Lanka
+              <span className="text-brand-600"> calls back.</span>
             </h1>
-            <p className="mt-5 max-w-xl text-lg leading-relaxed text-ink-500">
-              From a leaking tap in Colombo to a garden makeover in Kandy —
-              find trusted mechanics, electricians, designers and more. Browse
-              real work photos, compare rates and contact them directly.
+            <p
+              className="rise mt-5 max-w-[58ch] text-base leading-relaxed text-ink-600 sm:text-lg"
+              style={{ "--rise-index": 1 } as React.CSSProperties}
+            >
+              Mechanics, electricians, garden designers and more — with real
+              work photos, upfront rates in rupees, and direct phone numbers.
+              No middlemen, no booking fees.
             </p>
-            <div className="mt-8 max-w-xl">
+            <div
+              className="rise mt-8 max-w-xl"
+              style={{ "--rise-index": 2 } as React.CSSProperties}
+            >
               <SearchBar />
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-ink-500">Popular:</span>
+                {[
+                  ["House wiring", "wiring"],
+                  ["AC service", "AC"],
+                  ["Garden makeover", "garden"],
+                  ["Leak repair", "leak"],
+                ].map(([label, q]) => (
+                  <Link
+                    key={q}
+                    href={`/providers?q=${encodeURIComponent(q)}`}
+                    className="rounded-full border border-ink-200 bg-white px-3 py-1 font-medium text-ink-600 transition-[border-color,color] duration-200 ease-snap hover:border-brand-400 hover:text-brand-700"
+                  >
+                    {label}
+                  </Link>
+                ))}
+              </div>
             </div>
-            <div className="mt-8 flex flex-wrap gap-x-8 gap-y-3 text-sm text-ink-500">
-              <span>
-                <strong className="text-ink-900">{providerCount}</strong>{" "}
-                professionals
+            <p
+              className="rise mt-8 text-sm text-ink-500"
+              style={{ "--rise-index": 3 } as React.CSSProperties}
+            >
+              <strong className="font-semibold text-ink-800">
+                {providerCount} professionals
+              </strong>{" "}
+              across {CATEGORIES.length} trades ·{" "}
+              <strong className="font-semibold text-ink-800">
+                {reviewCount}
+              </strong>{" "}
+              customer reviews
+            </p>
+          </div>
+
+          <div className="relative hidden lg:block" aria-hidden>
+            <div
+              className="rise card mx-auto w-72 p-5"
+              style={{ "--rise-index": 2 } as React.CSSProperties}
+            >
+              <div className="flex items-center gap-3">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-800">
+                  KW
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-ink-900">
+                    Kumari W.
+                  </p>
+                  <p className="text-xs text-ink-500">
+                    Garden Designer · Kandy
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 flex items-center gap-1 text-amber-400">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <FaStar key={i} className="h-3.5 w-3.5" />
+                ))}
+                <span className="ml-1 text-xs font-medium text-ink-600">
+                  5.0 · 2 reviews
+                </span>
+              </div>
+              <div className="mt-4 flex items-center justify-between border-t border-ink-100 pt-3">
+                <span className="text-xs text-ink-500">Consultation</span>
+                <span className="text-sm font-semibold text-brand-700">
+                  Rs. 5,000
+                </span>
+              </div>
+              <div className="mt-3 flex gap-2">
+                <span className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-brand-700 py-1.5 text-xs font-semibold text-white">
+                  <FaPhone className="h-3 w-3" /> Call
+                </span>
+                <span className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-[#25D366] py-1.5 text-xs font-semibold text-white">
+                  <FaWhatsapp className="h-3.5 w-3.5" /> WhatsApp
+                </span>
+              </div>
+            </div>
+
+            <div
+              className="rise card absolute -bottom-24 -left-3 w-52 -rotate-3 p-4"
+              style={{ "--rise-index": 4 } as React.CSSProperties}
+            >
+              <p className="text-xs leading-relaxed text-ink-600">
+                &ldquo;Transformed our bare backyard into a beautiful tropical
+                garden. Worth every rupee.&rdquo;
+              </p>
+              <p className="mt-2 text-xs font-medium text-ink-800">
+                — Tharindu, Kandy
+              </p>
+            </div>
+
+            <div
+              className="rise absolute -top-6 right-4 flex rotate-2 items-center gap-2 rounded-full border border-ink-200 bg-white py-2 pl-3 pr-4"
+              style={{ "--rise-index": 5 } as React.CSSProperties}
+            >
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                <FaCheck className="h-3 w-3" />
               </span>
-              <span>
-                <strong className="text-ink-900">{CATEGORIES.length}</strong>{" "}
-                service categories
-              </span>
-              <span>
-                <strong className="text-ink-900">{reviewCount}</strong> customer
-                reviews
+              <span className="text-xs font-medium text-ink-700">
+                Inquiry answered in 2 hours
               </span>
             </div>
           </div>
@@ -87,117 +174,135 @@ export default async function HomePage() {
       </section>
 
       <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
-        <div className="flex items-end justify-between">
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight text-ink-900">
-              Browse by category
-            </h2>
-            <p className="mt-1 text-ink-500">
-              What do you need help with today?
-            </p>
-          </div>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <h2 className="text-2xl font-semibold tracking-tight text-ink-900">
+            What do you need done?
+          </h2>
+          <Link
+            href="/providers"
+            className="group inline-flex items-center gap-1.5 text-sm font-semibold text-brand-700 hover:text-brand-800"
+          >
+            All professionals
+            <FaArrowRight className="h-3 w-3 transition-transform duration-200 ease-snap group-hover:translate-x-0.5" />
+          </Link>
         </div>
-        <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="mt-7 flex flex-wrap gap-2.5">
           {CATEGORIES.map((c) => (
             <Link
               key={c.slug}
               href={`/providers?category=${c.slug}`}
-              className="card group flex items-center gap-3 p-4 transition hover:border-brand-300 hover:bg-brand-50/50"
+              className="inline-flex items-center gap-2 rounded-full border border-ink-200 bg-white px-4 py-2.5 text-sm font-medium text-ink-700 transition-[border-color,background-color,color,transform] duration-200 ease-snap hover:border-brand-400 hover:bg-brand-50 hover:text-brand-800 active:scale-[0.97]"
             >
-              <span className="text-2xl">{c.icon}</span>
-              <span className="text-sm font-medium text-ink-700 group-hover:text-brand-700">
-                {c.label}
-              </span>
+              <c.icon className="h-4 w-4 text-brand-600" />
+              {c.label}
             </Link>
           ))}
         </div>
       </section>
 
       {featured.length > 0 && (
-        <section className="bg-white py-16">
-          <div className="mx-auto max-w-6xl px-4 sm:px-6">
-            <div className="flex items-end justify-between">
+        <section className="border-y border-ink-200 bg-white">
+          <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+            <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
-                <h2 className="text-2xl font-bold tracking-tight text-ink-900">
-                  Recently joined professionals
+                <h2 className="text-2xl font-semibold tracking-tight text-ink-900">
+                  Recently joined
                 </h2>
-                <p className="mt-1 text-ink-500">
-                  Fresh talent ready to take on your project
+                <p className="mt-1 text-ink-600">
+                  Fresh talent ready to take on your project.
                 </p>
               </div>
-              <Link
-                href="/providers"
-                className="hidden text-sm font-semibold text-brand-600 hover:text-brand-700 sm:block"
-              >
-                View all →
-              </Link>
             </div>
             <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {featured.map((p) => (
-                <ProviderCard key={p.id} p={p} />
+              {featured.map((p, i) => (
+                <div
+                  key={p.id}
+                  className="rise"
+                  style={{ "--rise-index": i } as React.CSSProperties}
+                >
+                  <ProviderCard p={p} />
+                </div>
               ))}
             </div>
           </div>
         </section>
       )}
 
-      <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
-        <h2 className="text-center text-2xl font-bold tracking-tight text-ink-900">
-          How it works
-        </h2>
-        <div className="mt-10 grid gap-6 sm:grid-cols-3">
+      <section className="mx-auto grid max-w-6xl gap-12 px-4 py-20 sm:px-6 lg:grid-cols-[0.8fr_1.2fr]">
+        <div>
+          <h2 className="text-2xl font-semibold tracking-tight text-ink-900 sm:text-3xl">
+            Hiring a stranger shouldn&apos;t feel like a gamble
+          </h2>
+          <p className="mt-4 max-w-[52ch] leading-relaxed text-ink-600">
+            Every professional on ServiceHub registers with their real
+            details — experience, location, rates and photos of past work. You
+            see the full picture before you dial, and reviews come only from
+            registered customers.
+          </p>
+          <Link href="/providers" className="btn-primary mt-7">
+            Browse professionals
+          </Link>
+        </div>
+        <ol className="divide-y divide-ink-200 border-t border-ink-200">
           {[
             {
-              step: "1",
-              title: "Search & browse",
-              body: "Filter by service and district. View profiles, work photos, rates and genuine customer reviews.",
+              title: "Search by trade and district",
+              body: "Filter to your area, compare rates in rupees, and study real work photos — not stock images.",
             },
             {
-              step: "2",
-              title: "Contact directly",
-              body: "Call, WhatsApp or send an inquiry straight from the profile. No middlemen, no booking fees.",
+              title: "Contact them directly",
+              body: "Call, WhatsApp or send an inquiry from the profile. ServiceHub takes no commission and adds no fees.",
             },
             {
-              step: "3",
-              title: "Get it done",
-              body: "Agree on the price directly with the professional. Leave a review to help the next customer.",
+              title: "Agree the price face to face",
+              body: "You and the professional settle the details between yourselves, the way it's always worked here.",
             },
-          ].map((s) => (
-            <div key={s.step} className="card p-6">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 font-bold text-white">
-                {s.step}
+            {
+              title: "Leave a review",
+              body: "Your rating helps the next customer choose well — and helps good tradespeople stand out.",
+            },
+          ].map((s, i) => (
+            <li key={s.title} className="flex gap-5 py-6">
+              <span className="mt-0.5 text-sm font-semibold tabular-nums text-brand-600">
+                {String(i + 1).padStart(2, "0")}
               </span>
-              <h3 className="mt-4 font-semibold text-ink-900">{s.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-ink-500">
-                {s.body}
-              </p>
-            </div>
+              <div>
+                <h3 className="font-semibold text-ink-900">{s.title}</h3>
+                <p className="mt-1.5 max-w-[60ch] text-sm leading-relaxed text-ink-600">
+                  {s.body}
+                </p>
+              </div>
+            </li>
           ))}
-        </div>
+        </ol>
       </section>
 
-      <section className="mx-auto max-w-6xl px-4 pb-20 sm:px-6">
-        <div className="relative overflow-hidden rounded-3xl bg-brand-900 px-6 py-14 text-center sm:px-12">
-          <div
-            className="pointer-events-none absolute inset-0"
-            style={{
-              background:
-                "radial-gradient(50% 100% at 50% 0%, rgba(16,185,129,.35) 0%, transparent 70%)",
-            }}
-          />
-          <h2 className="relative text-3xl font-bold tracking-tight text-white">
-            Are you a skilled professional?
-          </h2>
-          <p className="relative mx-auto mt-3 max-w-xl text-brand-100">
-            Create your free profile, showcase your work photos, set your rates
-            and let customers across Sri Lanka find you.
-          </p>
-          <Link
-            href="/register/provider"
-            className="relative mt-8 inline-flex items-center justify-center rounded-xl bg-white px-6 py-3 text-sm font-semibold text-brand-800 transition hover:bg-brand-50"
-          >
-            Join as a Professional — Free
-          </Link>
+      <section className="bg-brand-700">
+        <div className="mx-auto grid max-w-6xl items-center gap-8 px-4 py-16 sm:px-6 lg:grid-cols-[1.2fr_0.8fr]">
+          <div>
+            <h2 className="text-3xl font-semibold tracking-tight text-white">
+              Good at what you do? Get found for it.
+            </h2>
+            <p className="mt-3 max-w-[55ch] leading-relaxed text-brand-100">
+              Create a free profile with your photos, rates and contact
+              details. Customers across Sri Lanka search ServiceHub every day
+              for someone exactly like you.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3 lg:justify-end">
+            <Link
+              href="/register/provider"
+              className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-brand-800 transition-[background-color,transform] duration-200 ease-snap hover:bg-brand-50 active:scale-[0.97]"
+            >
+              Create your profile
+            </Link>
+            <Link
+              href="/providers"
+              className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-full border border-brand-400 px-6 py-3 text-sm font-semibold text-white transition-[border-color,background-color,transform] duration-200 ease-snap hover:border-brand-300 hover:bg-brand-600 active:scale-[0.97]"
+            >
+              See who&apos;s on it
+            </Link>
+          </div>
         </div>
       </section>
     </div>

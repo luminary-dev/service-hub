@@ -6,13 +6,16 @@ export default async function Navbar() {
   const session = await getSession();
 
   return (
-    <header className="sticky top-0 z-40 border-b border-ink-200 bg-white/80 backdrop-blur-lg">
+    <header className="sticky top-0 z-40 border-b border-ink-200 bg-white/85 backdrop-blur-lg">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-        <Link href="/" className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-sm font-bold text-white">
+        <Link
+          href="/"
+          className="flex items-center gap-2.5 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+        >
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-700 text-sm font-bold text-white">
             S
           </span>
-          <span className="text-lg font-bold tracking-tight text-ink-900">
+          <span className="text-lg font-semibold tracking-tight text-ink-900">
             Service<span className="text-brand-600">Hub</span>
           </span>
         </Link>

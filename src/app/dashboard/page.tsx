@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { FaArrowUpRightFromSquare, FaCircleCheck } from "react-icons/fa6";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import DashboardTabs from "@/components/dashboard/DashboardTabs";
@@ -36,8 +37,9 @@ export default async function DashboardPage({
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
       {welcome && (
         <div className="mb-6 rounded-2xl border border-brand-200 bg-brand-50 p-5">
-          <h2 className="font-semibold text-brand-900">
-            🎉 Welcome to ServiceHub, {provider.user.name.split(" ")[0]}!
+          <h2 className="flex items-center gap-2 font-semibold text-brand-900">
+            <FaCircleCheck className="h-4 w-4 text-brand-600" />
+            Welcome to ServiceHub, {provider.user.name.split(" ")[0]}!
           </h2>
           <p className="mt-1 text-sm text-brand-800">
             Your profile is live. Upload some work photos and a profile picture
@@ -60,7 +62,8 @@ export default async function DashboardPage({
           className="btn-secondary"
           target="_blank"
         >
-          View public profile ↗
+          View public profile
+          <FaArrowUpRightFromSquare className="h-3 w-3" />
         </a>
       </div>
 

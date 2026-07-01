@@ -1,13 +1,10 @@
 import { notFound } from "next/navigation";
+import { FaLocationDot } from "react-icons/fa6";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
-import {
-  categoryIcon,
-  categoryLabel,
-  formatLKR,
-  priceTypeLabel,
-} from "@/lib/constants";
+import { categoryLabel, formatLKR, priceTypeLabel } from "@/lib/constants";
 import Avatar from "@/components/Avatar";
+import CategoryIcon from "@/components/CategoryIcon";
 import Stars from "@/components/Stars";
 import PhotoGallery from "@/components/PhotoGallery";
 import InquiryForm from "@/components/InquiryForm";
@@ -67,8 +64,9 @@ export default async function ProviderProfilePage({
                     {provider.user.name}
                   </h1>
                   {provider.available ? (
-                    <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700 ring-1 ring-brand-200">
-                      ● Available for work
+                    <span className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      Available for work
                     </span>
                   ) : (
                     <span className="rounded-full bg-ink-100 px-2.5 py-1 text-xs font-medium text-ink-500">
@@ -76,12 +74,13 @@ export default async function ProviderProfilePage({
                     </span>
                   )}
                 </div>
-                <p className="mt-1 font-medium text-brand-700">
-                  {categoryIcon(provider.category)}{" "}
+                <p className="mt-1 flex items-center gap-1.5 font-medium text-brand-700">
+                  <CategoryIcon slug={provider.category} className="h-4 w-4" />
                   {categoryLabel(provider.category)}
                 </p>
-                <p className="mt-1 text-sm text-ink-500">
-                  📍 {provider.city}, {provider.district}
+                <p className="mt-1 flex items-center gap-1.5 text-sm text-ink-500">
+                  <FaLocationDot className="h-3.5 w-3.5 text-ink-500" />
+                  {provider.city}, {provider.district}
                   {provider.experience > 0 &&
                     ` · ${provider.experience} year${provider.experience === 1 ? "" : "s"} experience`}
                 </p>
@@ -92,13 +91,13 @@ export default async function ProviderProfilePage({
                       <span className="font-semibold text-ink-800">
                         {avg.toFixed(1)}
                       </span>
-                      <span className="text-sm text-ink-400">
+                      <span className="text-sm text-ink-500">
                         ({provider.reviews.length} review
                         {provider.reviews.length === 1 ? "" : "s"})
                       </span>
                     </>
                   ) : (
-                    <span className="text-sm text-ink-400">
+                    <span className="text-sm text-ink-500">
                       No reviews yet
                     </span>
                   )}
@@ -137,7 +136,7 @@ export default async function ProviderProfilePage({
                 Services & Rates
               </h2>
               {provider.services.length === 0 ? (
-                <p className="mt-3 text-sm text-ink-400">
+                <p className="mt-3 text-sm text-ink-500">
                   No services listed yet.
                 </p>
               ) : (
@@ -159,7 +158,7 @@ export default async function ProviderProfilePage({
                         <span className="font-semibold text-brand-700">
                           {formatLKR(s.price)}
                         </span>
-                        <span className="block text-xs text-ink-400">
+                        <span className="block text-xs text-ink-500">
                           {priceTypeLabel(s.priceType)}
                         </span>
                       </p>
@@ -174,7 +173,7 @@ export default async function ProviderProfilePage({
                 Work Photos
               </h2>
               {provider.photos.length === 0 ? (
-                <p className="mt-3 text-sm text-ink-400">
+                <p className="mt-3 text-sm text-ink-500">
                   No work photos uploaded yet.
                 </p>
               ) : (

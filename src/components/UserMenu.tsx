@@ -52,7 +52,7 @@ export default function UserMenu({
           {name.split(" ")[0]}
         </span>
         <svg
-          className={`h-4 w-4 text-ink-400 transition ${open ? "rotate-180" : ""}`}
+          className={`h-4 w-4 text-ink-500 transition ${open ? "rotate-180" : ""}`}
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"

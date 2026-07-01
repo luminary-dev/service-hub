@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { FaEnvelope, FaInbox, FaPhone } from "react-icons/fa6";
 import type { InquiryItem } from "./DashboardTabs";
 
 const STATUS_STYLES: Record<string, string> = {
   NEW: "bg-brand-50 text-brand-700 ring-brand-200",
-  RESPONDED: "bg-blue-50 text-blue-700 ring-blue-200",
+  RESPONDED: "bg-emerald-50 text-emerald-700 ring-emerald-200",
   CLOSED: "bg-ink-100 text-ink-500 ring-ink-200",
 };
 
@@ -28,7 +29,7 @@ export default function InquiriesList({ initial }: { initial: InquiryItem[] }) {
   if (inquiries.length === 0) {
     return (
       <div className="card flex flex-col items-center p-12 text-center">
-        <span className="text-4xl">📭</span>
+        <FaInbox className="h-10 w-10 text-ink-300" />
         <h2 className="mt-3 font-semibold text-ink-900">No inquiries yet</h2>
         <p className="mt-1 max-w-sm text-sm text-ink-500">
           When customers send you an inquiry from your profile, it will show up
@@ -45,22 +46,22 @@ export default function InquiriesList({ initial }: { initial: InquiryItem[] }) {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="font-semibold text-ink-900">{i.name}</p>
-              <p className="mt-0.5 text-sm text-ink-500">
-                📞{" "}
+              <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-500">
                 <a
                   href={`tel:${i.phone}`}
-                  className="font-medium text-brand-700 hover:underline"
+                  className="inline-flex items-center gap-1.5 font-medium text-brand-700 hover:underline"
                 >
+                  <FaPhone className="h-3 w-3" />
                   {i.phone}
                 </a>
                 {i.email && (
                   <>
-                    {" "}
-                    · ✉️{" "}
+                    <span className="text-ink-300">·</span>
                     <a
                       href={`mailto:${i.email}`}
-                      className="font-medium text-brand-700 hover:underline"
+                      className="inline-flex items-center gap-1.5 font-medium text-brand-700 hover:underline"
                     >
+                      <FaEnvelope className="h-3 w-3" />
                       {i.email}
                     </a>
                   </>
@@ -73,7 +74,7 @@ export default function InquiriesList({ initial }: { initial: InquiryItem[] }) {
               >
                 {i.status}
               </span>
-              <span className="text-xs text-ink-400">
+              <span className="text-xs text-ink-500">
                 {new Date(i.createdAt).toLocaleDateString("en-GB", {
                   day: "numeric",
                   month: "short",

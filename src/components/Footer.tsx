@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FaHeart } from "react-icons/fa6";
 import { CATEGORIES } from "@/lib/constants";
 
 export default function Footer() {
@@ -7,15 +8,15 @@ export default function Footer() {
       <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-sm font-bold text-white">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-700 text-sm font-bold text-white">
                 S
               </span>
-              <span className="text-lg font-bold tracking-tight text-ink-900">
+              <span className="text-lg font-semibold tracking-tight text-ink-900">
                 Service<span className="text-brand-600">Hub</span>
               </span>
             </div>
-            <p className="mt-3 text-sm leading-relaxed text-ink-500">
+            <p className="mt-3 max-w-[36ch] text-sm leading-relaxed text-ink-600">
               Connecting Sri Lankan homes and businesses with trusted local
               professionals.
             </p>
@@ -30,7 +31,7 @@ export default function Footer() {
                 <li key={c.slug}>
                   <Link
                     href={`/providers?category=${c.slug}`}
-                    className="text-sm text-ink-500 transition hover:text-brand-600"
+                    className="text-sm text-ink-600 transition-colors duration-200 hover:text-brand-700"
                   >
                     {c.label}
                   </Link>
@@ -47,7 +48,7 @@ export default function Footer() {
               <li>
                 <Link
                   href="/register/provider"
-                  className="text-sm text-ink-500 transition hover:text-brand-600"
+                  className="text-sm text-ink-600 transition-colors duration-200 hover:text-brand-700"
                 >
                   Join as a Professional
                 </Link>
@@ -55,7 +56,7 @@ export default function Footer() {
               <li>
                 <Link
                   href="/login"
-                  className="text-sm text-ink-500 transition hover:text-brand-600"
+                  className="text-sm text-ink-600 transition-colors duration-200 hover:text-brand-700"
                 >
                   Sign in
                 </Link>
@@ -63,7 +64,7 @@ export default function Footer() {
               <li>
                 <Link
                   href="/dashboard"
-                  className="text-sm text-ink-500 transition hover:text-brand-600"
+                  className="text-sm text-ink-600 transition-colors duration-200 hover:text-brand-700"
                 >
                   Dashboard
                 </Link>
@@ -79,7 +80,7 @@ export default function Footer() {
               <li>
                 <Link
                   href="/providers"
-                  className="text-sm text-ink-500 transition hover:text-brand-600"
+                  className="text-sm text-ink-600 transition-colors duration-200 hover:text-brand-700"
                 >
                   Browse Professionals
                 </Link>
@@ -87,7 +88,7 @@ export default function Footer() {
               <li>
                 <Link
                   href="/register/customer"
-                  className="text-sm text-ink-500 transition hover:text-brand-600"
+                  className="text-sm text-ink-600 transition-colors duration-200 hover:text-brand-700"
                 >
                   Create an Account
                 </Link>
@@ -96,8 +97,10 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="mt-10 border-t border-ink-100 pt-6 text-sm text-ink-400">
-          © {new Date().getFullYear()} ServiceHub. Made for Sri Lanka 🇱🇰
+        <div className="mt-10 flex items-center gap-1.5 border-t border-ink-100 pt-6 text-sm text-ink-500">
+          © {new Date().getFullYear()} ServiceHub. Made with
+          <FaHeart className="h-3 w-3 text-brand-500" />
+          for Sri Lanka
         </div>
       </div>
     </footer>

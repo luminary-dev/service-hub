@@ -1,3 +1,4 @@
+import { FaMagnifyingGlass } from "react-icons/fa6";
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { categoryLabel } from "@/lib/constants";
@@ -102,7 +103,7 @@ export default async function ProvidersPage({
 
       {results.length === 0 ? (
         <div className="card mt-8 flex flex-col items-center px-6 py-20 text-center">
-          <span className="text-5xl">🔍</span>
+          <FaMagnifyingGlass className="h-12 w-12 text-ink-300" />
           <h2 className="mt-4 text-lg font-semibold text-ink-900">
             No professionals found
           </h2>

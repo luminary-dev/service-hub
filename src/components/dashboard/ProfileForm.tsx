@@ -63,7 +63,7 @@ export default function ProfileForm({ data }: { data: DashboardData }) {
           <span className="block text-sm font-medium text-ink-800">
             Available for work
           </span>
-          <span className="block text-xs text-ink-400">
+          <span className="block text-xs text-ink-500">
             Shown as a badge on your profile
           </span>
         </span>
@@ -71,7 +71,7 @@ export default function ProfileForm({ data }: { data: DashboardData }) {
           type="checkbox"
           checked={form.available}
           onChange={(e) => set("available", e.target.checked)}
-          className="h-5 w-5 accent-emerald-600"
+          className="h-5 w-5 cursor-pointer accent-brand-700"
         />
       </label>
 

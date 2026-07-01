@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { FaCircleCheck, FaRegPaperPlane } from "react-icons/fa6";
 
 export default function InquiryForm({
   providerId,
@@ -39,8 +40,8 @@ export default function InquiryForm({
 
   if (sent) {
     return (
-      <div className="card p-6 text-center">
-        <span className="text-4xl">✅</span>
+      <div className="card flex flex-col items-center p-6 text-center">
+        <FaCircleCheck className="h-10 w-10 text-emerald-500" />
         <h3 className="mt-3 font-semibold text-ink-900">Inquiry sent!</h3>
         <p className="mt-1 text-sm text-ink-500">
           {providerName} will get back to you soon. For urgent work, call them
@@ -55,7 +56,7 @@ export default function InquiryForm({
       <h3 className="font-semibold text-ink-900">
         Send an inquiry to {providerName.split(" ")[0]}
       </h3>
-      <p className="mt-1 text-xs text-ink-400">
+      <p className="mt-1 text-xs text-ink-500">
         Free, no account required. They&apos;ll contact you back.
       </p>
 
@@ -84,7 +85,7 @@ export default function InquiryForm({
         </div>
         <div>
           <label className="label">
-            Email <span className="text-ink-400">(optional)</span>
+            Email <span className="text-ink-500">(optional)</span>
           </label>
           <input
             className="input"
@@ -109,6 +110,7 @@ export default function InquiryForm({
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
 
       <button type="submit" disabled={loading} className="btn-primary mt-4 w-full">
+        <FaRegPaperPlane className="h-3.5 w-3.5" />
         {loading ? "Sending…" : "Send Inquiry"}
       </button>
     </form>

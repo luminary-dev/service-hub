@@ -183,7 +183,7 @@ export default function ServicesManager({
               )}
               <p className="mt-1 text-sm font-semibold text-brand-700">
                 {formatLKR(s.price)}{" "}
-                <span className="font-normal text-ink-400">
+                <span className="font-normal text-ink-500">
                   · {priceTypeLabel(s.priceType)}
                 </span>
               </p>

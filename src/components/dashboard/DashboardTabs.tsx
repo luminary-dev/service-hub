@@ -67,7 +67,7 @@ export default function DashboardTabs({ data }: { data: DashboardData }) {
     <div>
       <div className="mt-8 grid gap-4 sm:grid-cols-4">
         <div className="card p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-ink-400">
+          <p className="text-xs font-medium uppercase tracking-wide text-ink-500">
             Rating
           </p>
           {data.stats.rating !== null ? (
@@ -82,7 +82,7 @@ export default function DashboardTabs({ data }: { data: DashboardData }) {
           )}
         </div>
         <div className="card p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-ink-400">
+          <p className="text-xs font-medium uppercase tracking-wide text-ink-500">
             Reviews
           </p>
           <p className="mt-1 text-2xl font-bold text-ink-900">
@@ -90,7 +90,7 @@ export default function DashboardTabs({ data }: { data: DashboardData }) {
           </p>
         </div>
         <div className="card p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-ink-400">
+          <p className="text-xs font-medium uppercase tracking-wide text-ink-500">
             Work photos
           </p>
           <p className="mt-1 text-2xl font-bold text-ink-900">
@@ -98,7 +98,7 @@ export default function DashboardTabs({ data }: { data: DashboardData }) {
           </p>
         </div>
         <div className="card p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-ink-400">
+          <p className="text-xs font-medium uppercase tracking-wide text-ink-500">
             New inquiries
           </p>
           <p className="mt-1 text-2xl font-bold text-brand-600">

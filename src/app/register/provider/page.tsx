@@ -164,7 +164,7 @@ export default function ProviderRegisterPage() {
             />
             <span
               className={`hidden text-xs font-medium sm:block ${
-                i <= step ? "text-brand-700" : "text-ink-400"
+                i <= step ? "text-brand-700" : "text-ink-500"
               }`}
             >
               {label}
@@ -207,7 +207,7 @@ export default function ProviderRegisterPage() {
                 value={form.phone}
                 onChange={(e) => set("phone", e.target.value)}
               />
-              <p className="mt-1 text-xs text-ink-400">
+              <p className="mt-1 text-xs text-ink-500">
                 Customers will call you on this number.
               </p>
             </div>
@@ -240,7 +240,13 @@ export default function ProviderRegisterPage() {
                         : "border-ink-200 text-ink-600 hover:border-ink-300"
                     }`}
                   >
-                    <span>{c.icon}</span>
+                    <c.icon
+                      className={`h-4 w-4 shrink-0 ${
+                        form.category === c.slug
+                          ? "text-brand-600"
+                          : "text-ink-500"
+                      }`}
+                    />
                     {c.label}
                   </button>
                 ))}
@@ -389,7 +395,7 @@ export default function ProviderRegisterPage() {
             {services.map((s, i) => (
               <div key={i} className="rounded-xl border border-ink-200 p-4">
                 <div className="flex items-start justify-between gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-ink-400">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-ink-500">
                     Service {i + 1}
                   </span>
                   {services.length > 1 && (

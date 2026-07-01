@@ -92,7 +92,7 @@ export default function CustomerRegisterPage() {
             minLength={6}
             autoComplete="new-password"
           />
-          <p className="mt-1 text-xs text-ink-400">At least 6 characters.</p>
+          <p className="mt-1 text-xs text-ink-500">At least 6 characters.</p>
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
         <button type="submit" disabled={loading} className="btn-primary w-full">

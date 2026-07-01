@@ -1,9 +1,10 @@
 import Link from "next/link";
+import { FaCompass } from "react-icons/fa6";
 
 export default function NotFound() {
   return (
     <div className="mx-auto flex max-w-md flex-col items-center px-4 py-24 text-center">
-      <span className="text-6xl">🧭</span>
+      <FaCompass className="h-16 w-16 text-ink-300" />
       <h1 className="mt-6 text-3xl font-bold tracking-tight text-ink-900">
         Page not found
       </h1>

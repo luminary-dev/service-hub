@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { FaStar } from "react-icons/fa6";
 import Stars from "./Stars";
 import Avatar from "./Avatar";
 
@@ -83,15 +84,13 @@ export default function ReviewSection({
                 onClick={() => setRating(i)}
                 onMouseEnter={() => setHover(i)}
                 onMouseLeave={() => setHover(0)}
-                className="text-2xl transition hover:scale-110"
+                className="transition hover:scale-110"
               >
-                <span
-                  className={
+                <FaStar
+                  className={`h-6 w-6 ${
                     i <= (hover || rating) ? "text-amber-400" : "text-ink-300"
-                  }
-                >
-                  ★
-                </span>
+                  }`}
+                />
               </button>
             ))}
           </div>
@@ -121,7 +120,7 @@ export default function ReviewSection({
       )}
 
       {reviews.length === 0 ? (
-        <p className="mt-4 text-sm text-ink-400">
+        <p className="mt-4 text-sm text-ink-500">
           No reviews yet. Be the first to share your experience.
         </p>
       ) : (
@@ -136,7 +135,7 @@ export default function ReviewSection({
                   </p>
                   <div className="flex items-center gap-2">
                     <Stars rating={r.rating} />
-                    <span className="text-xs text-ink-400">
+                    <span className="text-xs text-ink-500">
                       {new Date(r.createdAt).toLocaleDateString("en-GB", {
                         day: "numeric",
                         month: "short",

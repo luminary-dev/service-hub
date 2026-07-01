@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import { FaUpload } from "react-icons/fa6";
 import Avatar from "../Avatar";
 import type { PhotoItem } from "./DashboardTabs";
 
@@ -92,7 +93,7 @@ export default function PhotosManager({
             >
               {avatarUploading ? "Uploading…" : "Change picture"}
             </button>
-            <p className="mt-1.5 text-xs text-ink-400">
+            <p className="mt-1.5 text-xs text-ink-500">
               JPEG, PNG or WebP, max 5MB.
             </p>
           </div>
@@ -129,14 +130,15 @@ export default function PhotosManager({
             disabled={uploading}
             className="btn-primary"
           >
-            {uploading ? "Uploading…" : "⬆ Upload photo"}
+            <FaUpload className="h-3.5 w-3.5" />
+            {uploading ? "Uploading…" : "Upload photo"}
           </button>
         </div>
 
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
 
         {photos.length === 0 ? (
-          <p className="mt-6 rounded-xl bg-ink-50 p-6 text-center text-sm text-ink-400">
+          <p className="mt-6 rounded-xl bg-ink-50 p-6 text-center text-sm text-ink-500">
             No work photos yet. Upload your first one above.
           </p>
         ) : (

@@ -1,21 +1,46 @@
-export const CATEGORIES = [
-  { slug: "mechanic", label: "Mechanic", icon: "🔧" },
-  { slug: "electrician", label: "Electrician", icon: "⚡" },
-  { slug: "plumber", label: "Plumber", icon: "🚿" },
-  { slug: "carpenter", label: "Carpenter", icon: "🪚" },
-  { slug: "mason", label: "Mason", icon: "🧱" },
-  { slug: "painter", label: "Painter", icon: "🎨" },
-  { slug: "garden-designer", label: "Garden Designer", icon: "🌿" },
-  { slug: "ac-repair", label: "AC Repair", icon: "❄️" },
-  { slug: "appliance-repair", label: "Appliance Repair", icon: "🔌" },
-  { slug: "welder", label: "Welder", icon: "🔥" },
-  { slug: "roofer", label: "Roofer", icon: "🏠" },
-  { slug: "tile-layer", label: "Tile Layer", icon: "◼️" },
-  { slug: "cctv-security", label: "CCTV & Security", icon: "📷" },
-  { slug: "pest-control", label: "Pest Control", icon: "🐜" },
-  { slug: "cleaning", label: "Cleaning", icon: "🧹" },
-  { slug: "movers", label: "Movers", icon: "🚚" },
-] as const;
+import type { IconType } from "react-icons";
+import {
+  FaBolt,
+  FaBorderAll,
+  FaBroom,
+  FaBug,
+  FaFire,
+  FaHammer,
+  FaHouseChimney,
+  FaLeaf,
+  FaPaintRoller,
+  FaPlug,
+  FaScrewdriverWrench,
+  FaShower,
+  FaSnowflake,
+  FaTrowel,
+  FaTruck,
+  FaVideo,
+  FaWrench,
+} from "react-icons/fa6";
+
+export const CATEGORIES: readonly {
+  slug: string;
+  label: string;
+  icon: IconType;
+}[] = [
+  { slug: "mechanic", label: "Mechanic", icon: FaWrench },
+  { slug: "electrician", label: "Electrician", icon: FaBolt },
+  { slug: "plumber", label: "Plumber", icon: FaShower },
+  { slug: "carpenter", label: "Carpenter", icon: FaHammer },
+  { slug: "mason", label: "Mason", icon: FaTrowel },
+  { slug: "painter", label: "Painter", icon: FaPaintRoller },
+  { slug: "garden-designer", label: "Garden Designer", icon: FaLeaf },
+  { slug: "ac-repair", label: "AC Repair", icon: FaSnowflake },
+  { slug: "appliance-repair", label: "Appliance Repair", icon: FaPlug },
+  { slug: "welder", label: "Welder", icon: FaFire },
+  { slug: "roofer", label: "Roofer", icon: FaHouseChimney },
+  { slug: "tile-layer", label: "Tile Layer", icon: FaBorderAll },
+  { slug: "cctv-security", label: "CCTV & Security", icon: FaVideo },
+  { slug: "pest-control", label: "Pest Control", icon: FaBug },
+  { slug: "cleaning", label: "Cleaning", icon: FaBroom },
+  { slug: "movers", label: "Movers", icon: FaTruck },
+];
 
 export const DISTRICTS = [
   "Ampara", "Anuradhapura", "Badulla", "Batticaloa", "Colombo", "Galle",
@@ -36,8 +61,8 @@ export function categoryLabel(slug: string) {
   return CATEGORIES.find((c) => c.slug === slug)?.label ?? slug;
 }
 
-export function categoryIcon(slug: string) {
-  return CATEGORIES.find((c) => c.slug === slug)?.icon ?? "🛠️";
+export function categoryIcon(slug: string): IconType {
+  return CATEGORIES.find((c) => c.slug === slug)?.icon ?? FaScrewdriverWrench;
 }
 
 export function priceTypeLabel(value: string) {
