@@ -2,7 +2,14 @@ import { notFound } from "next/navigation";
 import { FaLocationDot } from "react-icons/fa6";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
-import { categoryLabel, formatLKR, priceTypeLabel } from "@/lib/constants";
+import { formatLKR } from "@/lib/constants";
+import {
+  dict,
+  categoryLabelLoc,
+  districtLabelLoc,
+  priceTypeLabelLoc,
+} from "@/lib/i18n";
+import { getLocale } from "@/lib/locale";
 import Avatar from "@/components/Avatar";
 import CategoryIcon from "@/components/CategoryIcon";
 import Stars from "@/components/Stars";
@@ -19,7 +26,7 @@ export default async function ProviderProfilePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [provider, session] = await Promise.all([
+  const [provider, session, locale] = await Promise.all([
     db.provider.findUnique({
       where: { id },
       include: {
@@ -33,9 +40,11 @@ export default async function ProviderProfilePage({
       },
     }),
     getSession(),
+    getLocale(),
   ]);
 
   if (!provider) notFound();
+  const t = dict[locale];
 
   const avg = provider.reviews.length
     ? provider.reviews.reduce((s, r) => s + r.rating, 0) /
@@ -60,29 +69,29 @@ export default async function ProviderProfilePage({
               />
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-2xl font-bold tracking-tight text-ink-900 sm:text-3xl">
+                  <h1 className="text-2xl font-semibold tracking-tight text-ink-900 sm:text-3xl">
                     {provider.user.name}
                   </h1>
                   {provider.available ? (
-                    <span className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200">
+                    <span className="chip bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">
                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                      Available for work
+                      {t.profile.available}
                     </span>
                   ) : (
-                    <span className="rounded-full bg-ink-100 px-2.5 py-1 text-xs font-medium text-ink-500">
-                      Currently unavailable
+                    <span className="chip bg-ink-100 text-ink-500">
+                      {t.profile.unavailable}
                     </span>
                   )}
                 </div>
                 <p className="mt-1 flex items-center gap-1.5 font-medium text-brand-700">
                   <CategoryIcon slug={provider.category} className="h-4 w-4" />
-                  {categoryLabel(provider.category)}
+                  {categoryLabelLoc(provider.category, locale)}
                 </p>
                 <p className="mt-1 flex items-center gap-1.5 text-sm text-ink-500">
                   <FaLocationDot className="h-3.5 w-3.5 text-ink-500" />
-                  {provider.city}, {provider.district}
+                  {provider.city}, {districtLabelLoc(provider.district, locale)}
                   {provider.experience > 0 &&
-                    ` · ${provider.experience} year${provider.experience === 1 ? "" : "s"} experience`}
+                    ` · ${t.profile.exp(provider.experience)}`}
                 </p>
                 <div className="mt-2 flex items-center gap-2">
                   {avg !== null ? (
@@ -92,13 +101,12 @@ export default async function ProviderProfilePage({
                         {avg.toFixed(1)}
                       </span>
                       <span className="text-sm text-ink-500">
-                        ({provider.reviews.length} review
-                        {provider.reviews.length === 1 ? "" : "s"})
+                        {t.profile.reviewsShort(provider.reviews.length)}
                       </span>
                     </>
                   ) : (
                     <span className="text-sm text-ink-500">
-                      No reviews yet
+                      {t.card.noReviews}
                     </span>
                   )}
                 </div>
@@ -113,6 +121,7 @@ export default async function ProviderProfilePage({
               tiktok={provider.tiktok}
               youtube={provider.youtube}
               website={provider.website}
+              altLabel={t.profile.altPhone}
             />
           </div>
         </div>
@@ -122,7 +131,9 @@ export default async function ProviderProfilePage({
         <div className="grid gap-8 lg:grid-cols-3">
           <div className="space-y-8 lg:col-span-2">
             <section className="card p-6">
-              <h2 className="text-lg font-semibold text-ink-900">About</h2>
+              <h2 className="text-lg font-semibold text-ink-900">
+                {t.profile.about}
+              </h2>
               <p className="mt-2 font-medium text-ink-700">
                 {provider.headline}
               </p>
@@ -133,11 +144,11 @@ export default async function ProviderProfilePage({
 
             <section className="card p-6">
               <h2 className="text-lg font-semibold text-ink-900">
-                Services & Rates
+                {t.profile.services}
               </h2>
               {provider.services.length === 0 ? (
                 <p className="mt-3 text-sm text-ink-500">
-                  No services listed yet.
+                  {t.profile.noServices}
                 </p>
               ) : (
                 <ul className="mt-4 divide-y divide-ink-100">
@@ -155,11 +166,11 @@ export default async function ProviderProfilePage({
                         )}
                       </div>
                       <p className="shrink-0 text-right">
-                        <span className="font-semibold text-brand-700">
+                        <span className="font-semibold tabular-nums text-brand-700">
                           {formatLKR(s.price)}
                         </span>
                         <span className="block text-xs text-ink-500">
-                          {priceTypeLabel(s.priceType)}
+                          {priceTypeLabelLoc(s.priceType, locale)}
                         </span>
                       </p>
                     </li>
@@ -170,11 +181,11 @@ export default async function ProviderProfilePage({
 
             <section className="card p-6">
               <h2 className="text-lg font-semibold text-ink-900">
-                Work Photos
+                {t.profile.photos}
               </h2>
               {provider.photos.length === 0 ? (
                 <p className="mt-3 text-sm text-ink-500">
-                  No work photos uploaded yet.
+                  {t.profile.noPhotos}
                 </p>
               ) : (
                 <div className="mt-4">

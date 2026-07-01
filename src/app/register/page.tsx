@@ -1,17 +1,20 @@
 import Link from "next/link";
 import { FaHouse, FaScrewdriverWrench } from "react-icons/fa6";
+import { dict } from "@/lib/i18n";
+import { getLocale } from "@/lib/locale";
 
-export const metadata = { title: "Join ServiceHub" };
+export const metadata = { title: "Join Baas.lk" };
 
-export default function RegisterChoicePage() {
+export default async function RegisterChoicePage() {
+  const locale = await getLocale();
+  const t = dict[locale];
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
-      <h1 className="text-center text-3xl font-bold tracking-tight text-ink-900">
-        Join ServiceHub
+      <h1 className="text-center text-3xl font-semibold tracking-tight text-ink-900">
+        {t.choose.title}
       </h1>
-      <p className="mt-2 text-center text-ink-500">
-        How would you like to use ServiceHub?
-      </p>
+      <p className="mt-2 text-center text-ink-600">{t.choose.sub}</p>
 
       <div className="mt-10 grid gap-6 sm:grid-cols-2">
         <Link
@@ -22,14 +25,13 @@ export default function RegisterChoicePage() {
             <FaScrewdriverWrench className="h-6 w-6" />
           </span>
           <h2 className="mt-4 text-xl font-semibold text-white">
-            I offer services
+            {t.choose.offerTitle}
           </h2>
           <p className="mt-2 text-sm leading-relaxed text-brand-100">
-            Build your professional profile with photos, rates and contact
-            details. Get discovered by customers across Sri Lanka.
+            {t.choose.offerBody}
           </p>
           <span className="mt-4 inline-block text-sm font-semibold text-white">
-            Join as a professional →
+            {t.choose.offerCta}
           </span>
         </Link>
 
@@ -41,25 +43,24 @@ export default function RegisterChoicePage() {
             <FaHouse className="h-6 w-6" />
           </span>
           <h2 className="mt-4 text-xl font-semibold text-ink-900 transition-colors duration-200 group-hover:text-brand-700">
-            I need a service
+            {t.choose.needTitle}
           </h2>
           <p className="mt-2 text-sm leading-relaxed text-ink-600">
-            Create a free customer account to send inquiries and leave reviews.
-            You can also browse without an account.
+            {t.choose.needBody}
           </p>
           <span className="mt-4 inline-block text-sm font-semibold text-brand-700">
-            Sign up as a customer →
+            {t.choose.needCta}
           </span>
         </Link>
       </div>
 
       <p className="mt-8 text-center text-sm text-ink-500">
-        Already have an account?{" "}
+        {t.choose.already}{" "}
         <Link
           href="/login"
           className="font-semibold text-brand-600 hover:text-brand-700"
         >
-          Sign in
+          {t.choose.signIn}
         </Link>
       </p>
     </div>

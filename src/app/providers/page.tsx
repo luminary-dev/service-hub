@@ -1,7 +1,8 @@
 import { FaMagnifyingGlass } from "react-icons/fa6";
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
-import { categoryLabel } from "@/lib/constants";
+import { dict, categoryLabelLoc } from "@/lib/i18n";
+import { getLocale } from "@/lib/locale";
 import ProviderCard, { ProviderSummary } from "@/components/ProviderCard";
 import FilterBar from "@/components/FilterBar";
 import Link from "next/link";
@@ -16,6 +17,8 @@ export default async function ProvidersPage({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const params = await searchParams;
+  const locale = await getLocale();
+  const t = dict[locale];
   const q = typeof params.q === "string" ? params.q.trim() : "";
   const category = typeof params.category === "string" ? params.category : "";
   const district = typeof params.district === "string" ? params.district : "";
@@ -87,12 +90,11 @@ export default async function ProvidersPage({
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-ink-900">
-            {category ? categoryLabel(category) : "All Professionals"}
+          <h1 className="text-3xl font-semibold tracking-tight text-ink-900">
+            {category ? categoryLabelLoc(category, locale) : t.browse.title}
           </h1>
-          <p className="mt-1 text-ink-500">
-            {total} professional{total === 1 ? "" : "s"} found
-            {district ? ` in ${district}` : " across Sri Lanka"}
+          <p className="mt-1 text-ink-600">
+            {t.browse.found(total, district || null)}
           </p>
         </div>
       </div>
@@ -105,19 +107,19 @@ export default async function ProvidersPage({
         <div className="card mt-8 flex flex-col items-center px-6 py-20 text-center">
           <FaMagnifyingGlass className="h-12 w-12 text-ink-300" />
           <h2 className="mt-4 text-lg font-semibold text-ink-900">
-            No professionals found
+            {t.browse.emptyTitle}
           </h2>
           <p className="mt-1 max-w-sm text-sm text-ink-500">
-            Try a different category or district, or clear your search.
+            {t.browse.emptyBody}
           </p>
           <Link href="/providers" className="btn-secondary mt-6">
-            Clear filters
+            {t.browse.clear}
           </Link>
         </div>
       ) : (
         <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {results.map((p) => (
-            <ProviderCard key={p.id} p={p} />
+            <ProviderCard key={p.id} p={p} locale={locale} />
           ))}
         </div>
       )}
@@ -126,15 +128,15 @@ export default async function ProvidersPage({
         <div className="mt-10 flex items-center justify-center gap-2">
           {page > 1 && (
             <Link href={pageLink(page - 1)} className="btn-secondary">
-              ← Previous
+              {t.browse.prev}
             </Link>
           )}
           <span className="px-3 text-sm text-ink-500">
-            Page {page} of {totalPages}
+            {t.browse.pageOf(page, totalPages)}
           </span>
           {page < totalPages && (
             <Link href={pageLink(page + 1)} className="btn-secondary">
-              Next →
+              {t.browse.next}
             </Link>
           )}
         </div>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { useT } from "./I18nProvider";
 
 export default function UserMenu({
   name,
@@ -14,6 +15,7 @@ export default function UserMenu({
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const t = useT();
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -74,7 +76,7 @@ export default function UserMenu({
               onClick={() => setOpen(false)}
               className="block px-4 py-2.5 text-sm text-ink-700 transition hover:bg-ink-50"
             >
-              Dashboard
+              {t.nav.dashboard}
             </Link>
           )}
           <Link
@@ -82,13 +84,13 @@ export default function UserMenu({
             onClick={() => setOpen(false)}
             className="block px-4 py-2.5 text-sm text-ink-700 transition hover:bg-ink-50"
           >
-            Find Professionals
+            {t.nav.find}
           </Link>
           <button
             onClick={logout}
-            className="block w-full px-4 py-2.5 text-left text-sm text-red-600 transition hover:bg-red-50"
+            className="block w-full cursor-pointer px-4 py-2.5 text-left text-sm text-red-600 transition hover:bg-red-50"
           >
-            Sign out
+            {t.nav.signOut}
           </button>
         </div>
       )}

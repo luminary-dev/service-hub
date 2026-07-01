@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { FaCircleCheck, FaRegPaperPlane } from "react-icons/fa6";
+import { useT } from "./I18nProvider";
 
 export default function InquiryForm({
   providerId,
@@ -19,6 +20,7 @@ export default function InquiryForm({
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
+  const t = useT();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -34,7 +36,7 @@ export default function InquiryForm({
       setSent(true);
     } else {
       const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "Something went wrong. Please try again.");
+      setError(data.error ?? t.inquiry.error);
     }
   }
 
@@ -42,10 +44,11 @@ export default function InquiryForm({
     return (
       <div className="card flex flex-col items-center p-6 text-center">
         <FaCircleCheck className="h-10 w-10 text-emerald-500" />
-        <h3 className="mt-3 font-semibold text-ink-900">Inquiry sent!</h3>
+        <h3 className="mt-3 font-semibold text-ink-900">
+          {t.inquiry.sentTitle}
+        </h3>
         <p className="mt-1 text-sm text-ink-500">
-          {providerName} will get back to you soon. For urgent work, call them
-          directly.
+          {t.inquiry.sentBody(providerName)}
         </p>
       </div>
     );
@@ -54,15 +57,13 @@ export default function InquiryForm({
   return (
     <form onSubmit={submit} className="card p-6">
       <h3 className="font-semibold text-ink-900">
-        Send an inquiry to {providerName.split(" ")[0]}
+        {t.inquiry.title(providerName.split(" ")[0])}
       </h3>
-      <p className="mt-1 text-xs text-ink-500">
-        Free, no account required. They&apos;ll contact you back.
-      </p>
+      <p className="mt-1 text-xs text-ink-500">{t.inquiry.sub}</p>
 
       <div className="mt-4 space-y-3">
         <div>
-          <label className="label">Your name</label>
+          <label className="label">{t.inquiry.name}</label>
           <input
             className="input"
             value={name}
@@ -72,7 +73,7 @@ export default function InquiryForm({
           />
         </div>
         <div>
-          <label className="label">Phone number</label>
+          <label className="label">{t.inquiry.phone}</label>
           <input
             className="input"
             type="tel"
@@ -85,7 +86,8 @@ export default function InquiryForm({
         </div>
         <div>
           <label className="label">
-            Email <span className="text-ink-500">(optional)</span>
+            {t.inquiry.email}{" "}
+            <span className="text-ink-500">{t.inquiry.optional}</span>
           </label>
           <input
             className="input"
@@ -95,10 +97,10 @@ export default function InquiryForm({
           />
         </div>
         <div>
-          <label className="label">What do you need done?</label>
+          <label className="label">{t.inquiry.message}</label>
           <textarea
             className="input min-h-28 resize-y"
-            placeholder="Describe the job, location and when you need it…"
+            placeholder={t.inquiry.messagePh}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             required
@@ -111,7 +113,7 @@ export default function InquiryForm({
 
       <button type="submit" disabled={loading} className="btn-primary mt-4 w-full">
         <FaRegPaperPlane className="h-3.5 w-3.5" />
-        {loading ? "Sending…" : "Send Inquiry"}
+        {loading ? t.inquiry.sending : t.inquiry.send}
       </button>
     </form>
   );

@@ -3,7 +3,14 @@ import Link from "next/link";
 import Stars from "./Stars";
 import Avatar from "./Avatar";
 import CategoryIcon from "./CategoryIcon";
-import { categoryLabel, formatLKR, priceTypeLabel } from "@/lib/constants";
+import { formatLKR } from "@/lib/constants";
+import {
+  dict,
+  categoryLabelLoc,
+  districtLabelLoc,
+  priceTypeLabelLoc,
+  type Locale,
+} from "@/lib/i18n";
 
 export type ProviderSummary = {
   id: string;
@@ -22,7 +29,14 @@ export type ProviderSummary = {
   reviewCount: number;
 };
 
-export default function ProviderCard({ p }: { p: ProviderSummary }) {
+export default function ProviderCard({
+  p,
+  locale = "en",
+}: {
+  p: ProviderSummary;
+  locale?: Locale;
+}) {
+  const t = dict[locale];
   return (
     <Link
       href={`/providers/${p.id}`}
@@ -46,12 +60,12 @@ export default function ProviderCard({ p }: { p: ProviderSummary }) {
         {p.available && (
           <span className="chip absolute right-3 top-3 bg-white/95 text-emerald-700">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            Available
+            {t.card.available}
           </span>
         )}
         {p.experience > 0 && (
           <span className="chip absolute left-3 top-3 bg-ink-900/75 text-white">
-            {p.experience}+ yrs
+            {t.card.yrs(p.experience)}
           </span>
         )}
       </div>
@@ -66,7 +80,8 @@ export default function ProviderCard({ p }: { p: ProviderSummary }) {
               {p.name}
             </h3>
             <p className="text-xs text-ink-500">
-              {categoryLabel(p.category)} · {p.city}, {p.district}
+              {categoryLabelLoc(p.category, locale)} · {p.city},{" "}
+              {districtLabelLoc(p.district, locale)}
             </p>
           </div>
         </div>
@@ -85,7 +100,7 @@ export default function ProviderCard({ p }: { p: ProviderSummary }) {
               <span className="text-ink-500">({p.reviewCount})</span>
             </span>
           ) : (
-            <span className="text-sm text-ink-500">No reviews yet</span>
+            <span className="text-sm text-ink-500">{t.card.noReviews}</span>
           )}
           {p.fromPrice !== null && (
             <span className="text-sm font-semibold tabular-nums text-brand-700">
@@ -93,7 +108,7 @@ export default function ProviderCard({ p }: { p: ProviderSummary }) {
               {p.fromPriceType && (
                 <span className="font-normal text-ink-500">
                   {" "}
-                  · {priceTypeLabel(p.fromPriceType)}
+                  · {priceTypeLabelLoc(p.fromPriceType, locale)}
                 </span>
               )}
             </span>

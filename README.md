@@ -1,6 +1,8 @@
-# ServiceHub 🇱🇰
+# Baas.lk
 
-A service marketplace for Sri Lanka connecting customers with local professionals — mechanics, electricians, plumbers, garden designers and more. Professionals build a public profile with work photos, social links, contact numbers and rates; customers browse, filter by district/category, send inquiries and leave reviews. No payments happen on the platform — customers deal with professionals directly.
+A service marketplace for Sri Lanka connecting customers with local professionals — mechanics, electricians, plumbers, garden designers and more. "Baas" (බාස්) is the Sinhala word for a skilled tradesman. Professionals build a public profile with work photos, social links, contact numbers and rates; customers browse, filter by district/category, send inquiries and leave reviews. No payments happen on the platform — customers deal with professionals directly.
+
+The customer-facing UI is bilingual — an EN/සිං toggle in the navbar switches between English and Sinhala (cookie-based, translations in `src/lib/i18n.ts`).
 
 ## Stack
 

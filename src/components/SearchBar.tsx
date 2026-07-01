@@ -4,11 +4,15 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { FaMagnifyingGlass } from "react-icons/fa6";
 import { CATEGORIES } from "@/lib/constants";
+import { categoryLabelLoc } from "@/lib/i18n";
+import { useLocale, useT } from "./I18nProvider";
 
 export default function SearchBar() {
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("");
   const router = useRouter();
+  const locale = useLocale();
+  const t = useT();
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -26,25 +30,25 @@ export default function SearchBar() {
       <input
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="What do you need? e.g. wiring, brake repair…"
+        placeholder={t.search.placeholder}
         className="min-w-0 flex-1 rounded-xl px-4 py-2.5 text-sm text-ink-900 placeholder:text-ink-500 focus:outline-none"
       />
       <select
         value={category}
         onChange={(e) => setCategory(e.target.value)}
-        aria-label="Category"
+        aria-label={t.search.allCategories}
         className="cursor-pointer rounded-xl bg-ink-100 px-3 py-2.5 text-sm text-ink-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
       >
-        <option value="">All categories</option>
+        <option value="">{t.search.allCategories}</option>
         {CATEGORIES.map((c) => (
           <option key={c.slug} value={c.slug}>
-            {c.label}
+            {categoryLabelLoc(c.slug, locale)}
           </option>
         ))}
       </select>
       <button type="submit" className="btn-primary">
         <FaMagnifyingGlass className="h-3.5 w-3.5" />
-        Search
+        {t.search.button}
       </button>
     </form>
   );

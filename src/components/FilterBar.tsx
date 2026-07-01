@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { CATEGORIES, DISTRICTS } from "@/lib/constants";
+import { categoryLabelLoc, districtLabelLoc } from "@/lib/i18n";
+import { useLocale, useT } from "./I18nProvider";
 
 export default function FilterBar({
   q: initialQ,
@@ -17,6 +19,8 @@ export default function FilterBar({
   const [category, setCategory] = useState(initialCategory);
   const [district, setDistrict] = useState(initialDistrict);
   const router = useRouter();
+  const locale = useLocale();
+  const t = useT();
 
   function apply(next: { q?: string; category?: string; district?: string }) {
     const params = new URLSearchParams();
@@ -40,7 +44,7 @@ export default function FilterBar({
       <input
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="Search by name, skill or city…"
+        placeholder={t.browse.searchPh}
         className="input sm:flex-1"
       />
       <select
@@ -49,12 +53,13 @@ export default function FilterBar({
           setCategory(e.target.value);
           apply({ category: e.target.value });
         }}
-        className="input sm:w-48"
+        aria-label={t.search.allCategories}
+        className="input cursor-pointer sm:w-48"
       >
-        <option value="">All categories</option>
+        <option value="">{t.search.allCategories}</option>
         {CATEGORIES.map((c) => (
           <option key={c.slug} value={c.slug}>
-            {c.label}
+            {categoryLabelLoc(c.slug, locale)}
           </option>
         ))}
       </select>
@@ -64,17 +69,18 @@ export default function FilterBar({
           setDistrict(e.target.value);
           apply({ district: e.target.value });
         }}
-        className="input sm:w-44"
+        aria-label={t.browse.allDistricts}
+        className="input cursor-pointer sm:w-44"
       >
-        <option value="">All districts</option>
+        <option value="">{t.browse.allDistricts}</option>
         {DISTRICTS.map((d) => (
           <option key={d} value={d}>
-            {d}
+            {districtLabelLoc(d, locale)}
           </option>
         ))}
       </select>
       <button type="submit" className="btn-primary">
-        Search
+        {t.search.button}
       </button>
     </form>
   );

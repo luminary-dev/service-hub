@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useT } from "@/components/I18nProvider";
 
 export default function CustomerRegisterPage() {
   const [form, setForm] = useState({
@@ -14,6 +15,7 @@ export default function CustomerRegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
+  const t = useT();
 
   function set(field: string, value: string) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -34,22 +36,20 @@ export default function CustomerRegisterPage() {
       router.refresh();
     } else {
       const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "Registration failed. Please try again.");
+      setError(data.error ?? t.custReg.failed);
     }
   }
 
   return (
     <div className="mx-auto flex max-w-md flex-col px-4 py-16 sm:px-6">
-      <h1 className="text-2xl font-bold tracking-tight text-ink-900">
-        Create your account
+      <h1 className="text-2xl font-semibold tracking-tight text-ink-900">
+        {t.custReg.title}
       </h1>
-      <p className="mt-1 text-sm text-ink-500">
-        Send inquiries and review professionals you&apos;ve hired.
-      </p>
+      <p className="mt-1 text-sm text-ink-500">{t.custReg.sub}</p>
 
       <form onSubmit={submit} className="card mt-8 space-y-4 p-6">
         <div>
-          <label className="label">Full name</label>
+          <label className="label">{t.custReg.fullName}</label>
           <input
             className="input"
             value={form.name}
@@ -59,7 +59,7 @@ export default function CustomerRegisterPage() {
           />
         </div>
         <div>
-          <label className="label">Email</label>
+          <label className="label">{t.custReg.email}</label>
           <input
             className="input"
             type="email"
@@ -70,7 +70,7 @@ export default function CustomerRegisterPage() {
           />
         </div>
         <div>
-          <label className="label">Phone number</label>
+          <label className="label">{t.custReg.phone}</label>
           <input
             className="input"
             type="tel"
@@ -82,7 +82,7 @@ export default function CustomerRegisterPage() {
           />
         </div>
         <div>
-          <label className="label">Password</label>
+          <label className="label">{t.custReg.password}</label>
           <input
             className="input"
             type="password"
@@ -92,21 +92,21 @@ export default function CustomerRegisterPage() {
             minLength={6}
             autoComplete="new-password"
           />
-          <p className="mt-1 text-xs text-ink-500">At least 6 characters.</p>
+          <p className="mt-1 text-xs text-ink-500">{t.custReg.passwordHint}</p>
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
         <button type="submit" disabled={loading} className="btn-primary w-full">
-          {loading ? "Creating account…" : "Create account"}
+          {loading ? t.custReg.creating : t.custReg.create}
         </button>
       </form>
 
       <p className="mt-6 text-center text-sm text-ink-500">
-        Offering services instead?{" "}
+        {t.custReg.offering}{" "}
         <Link
           href="/register/provider"
           className="font-semibold text-brand-600 hover:text-brand-700"
         >
-          Join as a professional
+          {t.custReg.joinPro}
         </Link>
       </p>
     </div>

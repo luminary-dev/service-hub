@@ -39,7 +39,7 @@ export default async function DashboardPage({
         <div className="mb-6 rounded-2xl border border-brand-200 bg-brand-50 p-5">
           <h2 className="flex items-center gap-2 font-semibold text-brand-900">
             <FaCircleCheck className="h-4 w-4 text-brand-600" />
-            Welcome to ServiceHub, {provider.user.name.split(" ")[0]}!
+            Welcome to Baas.lk, {provider.user.name.split(" ")[0]}!
           </h2>
           <p className="mt-1 text-sm text-brand-800">
             Your profile is live. Upload some work photos and a profile picture

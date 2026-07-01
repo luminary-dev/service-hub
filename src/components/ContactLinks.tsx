@@ -22,6 +22,7 @@ export default function ContactLinks(props: {
   tiktok: string | null;
   youtube: string | null;
   website: string | null;
+  altLabel?: string;
 }) {
   const socials: { label: string; value: string | null; icon: IconType; bg: string }[] = [
     { label: "Facebook", value: props.facebook, icon: FaFacebookF, bg: "bg-blue-600" },
@@ -56,7 +57,9 @@ export default function ContactLinks(props: {
         )}
       </div>
       {props.phone2 && (
-        <p className="text-sm text-ink-500">Alt: {props.phone2}</p>
+        <p className="text-sm text-ink-500">
+          {props.altLabel ?? "Alt:"} {props.phone2}
+        </p>
       )}
       {socials.length > 0 && (
         <div className="flex gap-2">

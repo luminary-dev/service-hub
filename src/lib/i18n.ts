@@ -1,0 +1,441 @@
+import { CATEGORIES, PRICE_TYPES } from "./constants";
+
+export type Locale = "en" | "si";
+
+const en = {
+  nav: {
+    find: "Find Professionals",
+    offer: "Offer Your Services",
+    signIn: "Sign in",
+    getStarted: "Get Started",
+    dashboard: "Dashboard",
+    signOut: "Sign out",
+  },
+  home: {
+    heroTitle1: "The tradespeople Sri Lanka",
+    heroTitle2: " calls back.",
+    heroSub:
+      "Mechanics, electricians, garden designers and more — with real work photos, upfront rates in rupees, and direct phone numbers. No middlemen, no booking fees.",
+    popular: "Popular:",
+    popularChips: [
+      ["House wiring", "wiring"],
+      ["AC service", "AC"],
+      ["Garden makeover", "garden"],
+      ["Leak repair", "leak"],
+    ] as [string, string][],
+    statsLine: (p: number, c: number, r: number) =>
+      `${p} professionals across ${c} trades · ${r} customer reviews`,
+    catHeading: "What do you need done?",
+    viewAll: "All professionals",
+    featuredHeading: "Recently joined",
+    featuredSub: "Fresh talent ready to take on your project.",
+    trustHeading: "Hiring a stranger shouldn't feel like a gamble",
+    trustBody:
+      "Every professional on Baas.lk registers with their real details — experience, location, rates and photos of past work. You see the full picture before you dial, and reviews come only from registered customers.",
+    trustCta: "Browse professionals",
+    steps: [
+      {
+        title: "Search by trade and district",
+        body: "Filter to your area, compare rates in rupees, and study real work photos — not stock images.",
+      },
+      {
+        title: "Contact them directly",
+        body: "Call, WhatsApp or send an inquiry from the profile. Baas.lk takes no commission and adds no fees.",
+      },
+      {
+        title: "Agree the price face to face",
+        body: "You and the professional settle the details between yourselves, the way it's always worked here.",
+      },
+      {
+        title: "Leave a review",
+        body: "Your rating helps the next customer choose well — and helps good tradespeople stand out.",
+      },
+    ],
+    ctaHeading: "Good at what you do? Get found for it.",
+    ctaBody:
+      "Create a free profile with your photos, rates and contact details. Customers across Sri Lanka search Baas.lk every day for someone exactly like you.",
+    ctaCreate: "Create your profile",
+    ctaSee: "See who's on it",
+    cardCall: "Call",
+    cardConsult: "Consultation",
+    cardQuote:
+      "“Transformed our bare backyard into a beautiful tropical garden. Worth every rupee.”",
+    cardQuoteBy: "— Tharindu, Kandy",
+    cardAnswered: "Inquiry answered in 2 hours",
+  },
+  search: {
+    placeholder: "What do you need? e.g. wiring, brake repair…",
+    allCategories: "All categories",
+    button: "Search",
+  },
+  browse: {
+    title: "All Professionals",
+    found: (n: number, district: string | null) =>
+      `${n} professional${n === 1 ? "" : "s"} found ${district ? `in ${district}` : "across Sri Lanka"}`,
+    searchPh: "Search by name, skill or city…",
+    allDistricts: "All districts",
+    emptyTitle: "No professionals found",
+    emptyBody: "Try a different category or district, or clear your search.",
+    clear: "Clear filters",
+    prev: "← Previous",
+    next: "Next →",
+    pageOf: (p: number, t: number) => `Page ${p} of ${t}`,
+  },
+  card: {
+    available: "Available",
+    yrs: (n: number) => `${n}+ yrs`,
+    noReviews: "No reviews yet",
+  },
+  profile: {
+    available: "Available for work",
+    unavailable: "Currently unavailable",
+    exp: (n: number) => `${n} year${n === 1 ? "" : "s"} experience`,
+    reviewsShort: (n: number) => `(${n} review${n === 1 ? "" : "s"})`,
+    about: "About",
+    services: "Services & Rates",
+    noServices: "No services listed yet.",
+    photos: "Work Photos",
+    noPhotos: "No work photos uploaded yet.",
+    altPhone: "Alt:",
+  },
+  inquiry: {
+    title: (name: string) => `Send an inquiry to ${name}`,
+    sub: "Free, no account required. They'll contact you back.",
+    name: "Your name",
+    phone: "Phone number",
+    email: "Email",
+    optional: "(optional)",
+    message: "What do you need done?",
+    messagePh: "Describe the job, location and when you need it…",
+    send: "Send Inquiry",
+    sending: "Sending…",
+    sentTitle: "Inquiry sent!",
+    sentBody: (name: string) =>
+      `${name} will get back to you soon. For urgent work, call them directly.`,
+    error: "Something went wrong. Please try again.",
+  },
+  reviews: {
+    title: (n: number) => `Reviews (${n})`,
+    write: "Write a review",
+    edit: "Edit your review",
+    signIn: "Sign in to review",
+    rating: "Your rating",
+    yourReview: "Your review",
+    ph: "How was the work quality, punctuality and pricing?",
+    submit: "Submit review",
+    saving: "Saving…",
+    cancel: "Cancel",
+    empty: "No reviews yet. Be the first to share your experience.",
+    error: "Could not save your review.",
+  },
+  login: {
+    title: "Welcome back",
+    sub: "Sign in to your Baas.lk account.",
+    email: "Email",
+    password: "Password",
+    signIn: "Sign in",
+    signingIn: "Signing in…",
+    failed: "Sign in failed. Please try again.",
+    newTo: "New to Baas.lk?",
+    create: "Create an account",
+  },
+  choose: {
+    title: "Join Baas.lk",
+    sub: "How would you like to use Baas.lk?",
+    offerTitle: "I offer services",
+    offerBody:
+      "Build your professional profile with photos, rates and contact details. Get discovered by customers across Sri Lanka.",
+    offerCta: "Join as a professional →",
+    needTitle: "I need a service",
+    needBody:
+      "Create a free customer account to send inquiries and leave reviews. You can also browse without an account.",
+    needCta: "Sign up as a customer →",
+    already: "Already have an account?",
+    signIn: "Sign in",
+  },
+  custReg: {
+    title: "Create your account",
+    sub: "Send inquiries and review professionals you've hired.",
+    fullName: "Full name",
+    email: "Email",
+    phone: "Phone number",
+    password: "Password",
+    passwordHint: "At least 6 characters.",
+    create: "Create account",
+    creating: "Creating account…",
+    failed: "Registration failed. Please try again.",
+    offering: "Offering services instead?",
+    joinPro: "Join as a professional",
+  },
+  footer: {
+    tagline:
+      "Connecting Sri Lankan homes and businesses with trusted local professionals.",
+    popular: "Popular Services",
+    forPros: "For Professionals",
+    forCustomers: "For Customers",
+    joinPro: "Join as a Professional",
+    signIn: "Sign in",
+    dashboard: "Dashboard",
+    browse: "Browse Professionals",
+    createAccount: "Create an Account",
+    made1: "Made with",
+    made2: "for Sri Lanka",
+  },
+};
+
+export type Dict = typeof en;
+
+const si: Dict = {
+  nav: {
+    find: "වෘත්තිකයන් සොයන්න",
+    offer: "සේවා සපයන්න",
+    signIn: "පිවිසෙන්න",
+    getStarted: "ආරම්භ කරන්න",
+    dashboard: "පාලක පුවරුව",
+    signOut: "ඉවත් වන්න",
+  },
+  home: {
+    heroTitle1: "විශ්වාසවන්ත කාර්මිකයන්,",
+    heroTitle2: " ඔබ ළඟම.",
+    heroSub:
+      "රථ කාර්මිකයන්, විදුලි කාර්මිකයන්, උද්‍යාන නිර්මාණකරුවන් සහ තවත් අය — සැබෑ වැඩ ඡායාරූප, රුපියල්වලින් පැහැදිලි ගාස්තු, සෘජු දුරකථන අංක සමඟ. අතරමැදියන් නැහැ, වෙන්කිරීම් ගාස්තු නැහැ.",
+    popular: "ජනප්‍රිය:",
+    popularChips: [
+      ["ගෙදර වයරින්", "wiring"],
+      ["A/C සේවාව", "AC"],
+      ["වත්ත හැඩගැන්වීම", "garden"],
+      ["කාන්දු අලුත්වැඩියා", "leak"],
+    ] as [string, string][],
+    statsLine: (p: number, c: number, r: number) =>
+      `වෘත්තිකයන් ${p}ක් · ක්ෂේත්‍ර ${c}ක් · පාරිභෝගික සමාලෝචන ${r}ක්`,
+    catHeading: "ඔබට කරගන්න අවශ්‍ය මොනවාද?",
+    viewAll: "සියලු වෘත්තිකයන්",
+    featuredHeading: "අලුතින් එක් වූ අය",
+    featuredSub: "ඔබේ වැඩට සූදානම් අලුත් දක්ෂතා.",
+    trustHeading: "නාඳුනන කෙනෙක් ගැනීම අවදානමක් විය යුතු නැහැ",
+    trustBody:
+      "Baas.lk හි සෑම වෘත්තිකයෙක්ම ලියාපදිංචි වන්නේ සැබෑ විස්තර සමඟයි — පළපුරුද්ද, ස්ථානය, ගාස්තු සහ පෙර වැඩවල ඡායාරූප. ඇමතීමට පෙර සම්පූර්ණ තොරතුරු ඔබට පෙනෙනවා. සමාලෝචන එන්නේ ලියාපදිංචි පාරිභෝගිකයන්ගෙන් පමණයි.",
+    trustCta: "වෘත්තිකයන් බලන්න",
+    steps: [
+      {
+        title: "ක්ෂේත්‍රය සහ දිස්ත්‍රික්කය අනුව සොයන්න",
+        body: "ඔබේ ප්‍රදේශයට පෙරහන් කර, රුපියල්වලින් ගාස්තු සසඳා, සැබෑ වැඩ ඡායාරූප බලන්න.",
+      },
+      {
+        title: "ඔවුන්ව සෘජුවම අමතන්න",
+        body: "ඇමතුමක්, WhatsApp පණිවිඩයක් හෝ විමසුමක් යවන්න. Baas.lk කොමිස් ගන්නේ නැහැ, අමතර ගාස්තු නැහැ.",
+      },
+      {
+        title: "මිල මුහුණට මුහුණ එකඟ වන්න",
+        body: "විස්තර තීරණය වන්නේ ඔබ දෙදෙනා අතරමයි — මෙතෙක් සිදු වූ ආකාරයටම.",
+      },
+      {
+        title: "සමාලෝචනයක් තබන්න",
+        body: "ඔබේ ඇගයීම ඊළඟ පාරිභෝගිකයාට උදව් වන අතර දක්ෂ කාර්මිකයන්ව ඉස්මතු කරයි.",
+      },
+    ],
+    ctaHeading: "ඔබ ඔබේ වැඩේට දක්ෂද? ඔබව සොයාගන්න ඉඩ දෙන්න.",
+    ctaBody:
+      "ඡායාරූප, ගාස්තු සහ සම්බන්ධතා විස්තර සමඟ නොමිලේ ගිණුමක් හදන්න. ලංකාව පුරා පාරිභෝගිකයන් හැමදාම ඔබ වගේ කෙනෙක්ව සොයනවා.",
+    ctaCreate: "ඔබේ ගිණුම හදන්න",
+    ctaSee: "කවුද ඉන්නේ බලන්න",
+    cardCall: "අමතන්න",
+    cardConsult: "උපදේශනය",
+    cardQuote:
+      "“අපේ හිස් වත්ත ලස්සන නිවර්තන උයනක් කළා. හැම රුපියලක්ම වටිනවා.”",
+    cardQuoteBy: "— තරිඳු, මහනුවර",
+    cardAnswered: "පැය 2කින් පිළිතුරු ලැබුණා",
+  },
+  search: {
+    placeholder: "ඔබට අවශ්‍ය කුමක්ද? උදා: වයරින්, බ්‍රේක්…",
+    allCategories: "සියලු ක්ෂේත්‍ර",
+    button: "සොයන්න",
+  },
+  browse: {
+    title: "සියලු වෘත්තිකයන්",
+    found: (n: number, district: string | null) =>
+      district
+        ? `${district} හි වෘත්තිකයන් ${n}ක් හමු විය`
+        : `ලංකාව පුරා වෘත්තිකයන් ${n}ක් හමු විය`,
+    searchPh: "නම, කුසලතාව හෝ නගරය…",
+    allDistricts: "සියලු දිස්ත්‍රික්ක",
+    emptyTitle: "වෘත්තිකයන් හමු නොවුණා",
+    emptyBody:
+      "වෙනත් ක්ෂේත්‍රයක් හෝ දිස්ත්‍රික්කයක් උත්සාහ කරන්න, නැතිනම් සෙවුම හිස් කරන්න.",
+    clear: "පෙරහන් ඉවත් කරන්න",
+    prev: "← පෙර",
+    next: "ඊළඟ →",
+    pageOf: (p: number, t: number) => `පිටුව ${p} / ${t}`,
+  },
+  card: {
+    available: "සූදානම්",
+    yrs: (n: number) => `අවු ${n}+`,
+    noReviews: "සමාලෝචන නැත",
+  },
+  profile: {
+    available: "වැඩට සූදානම්",
+    unavailable: "දැනට ලබාගත නොහැක",
+    exp: (n: number) => `අවුරුදු ${n}ක පළපුරුද්ද`,
+    reviewsShort: (n: number) => `(සමාලෝචන ${n})`,
+    about: "පිළිබඳව",
+    services: "සේවා සහ ගාස්තු",
+    noServices: "තවම සේවා ලැයිස්තුගත කර නැත.",
+    photos: "වැඩ ඡායාරූප",
+    noPhotos: "තවම වැඩ ඡායාරූප නැත.",
+    altPhone: "වෙනත්:",
+  },
+  inquiry: {
+    title: (name: string) => `${name}ට විමසුමක් යවන්න`,
+    sub: "නොමිලේ — ගිණුමක් අවශ්‍ය නැත. ඔවුන් ඔබට නැවත කතා කරයි.",
+    name: "ඔබේ නම",
+    phone: "දුරකථන අංකය",
+    email: "විද්‍යුත් තැපෑල",
+    optional: "(අත්‍යවශ්‍ය නොවේ)",
+    message: "ඔබට කුමක් කරගන්න අවශ්‍යද?",
+    messagePh: "වැඩේ, ස්ථානය සහ අවශ්‍ය කාලය විස්තර කරන්න…",
+    send: "විමසුම යවන්න",
+    sending: "යවමින්…",
+    sentTitle: "විමසුම යවා ඇත!",
+    sentBody: (name: string) =>
+      `${name} ඉක්මනින් ඔබට පිළිතුරු දෙයි. හදිසි වැඩකට නම් සෘජුවම අමතන්න.`,
+    error: "යම් වරදක් සිදු විය. නැවත උත්සාහ කරන්න.",
+  },
+  reviews: {
+    title: (n: number) => `සමාලෝචන (${n})`,
+    write: "සමාලෝචනයක් ලියන්න",
+    edit: "ඔබේ සමාලෝචනය වෙනස් කරන්න",
+    signIn: "සමාලෝචනයට පිවිසෙන්න",
+    rating: "ඔබේ ඇගයීම",
+    yourReview: "ඔබේ සමාලෝචනය",
+    ph: "වැඩේ ගුණාත්මකභාවය, වේලාවට පැමිණීම සහ මිල කෙසේද?",
+    submit: "යොමු කරන්න",
+    saving: "සුරකිමින්…",
+    cancel: "අවලංගු කරන්න",
+    empty: "තවම සමාලෝචන නැත. පළමු අත්දැකීම බෙදාගන්න.",
+    error: "සමාලෝචනය සුරැකීමට නොහැකි විය.",
+  },
+  login: {
+    title: "නැවත සාදරයෙන් පිළිගනිමු",
+    sub: "ඔබේ Baas.lk ගිණුමට පිවිසෙන්න.",
+    email: "විද්‍යුත් තැපෑල",
+    password: "මුරපදය",
+    signIn: "පිවිසෙන්න",
+    signingIn: "පිවිසෙමින්…",
+    failed: "පිවිසීම අසාර්ථකයි. නැවත උත්සාහ කරන්න.",
+    newTo: "Baas.lk අලුත්ද?",
+    create: "ගිණුමක් හදන්න",
+  },
+  choose: {
+    title: "Baas.lk සමඟ එක්වන්න",
+    sub: "ඔබ Baas.lk භාවිතා කරන්නේ කෙසේද?",
+    offerTitle: "මම සේවා සපයනවා",
+    offerBody:
+      "ඡායාරූප, ගාස්තු සහ සම්බන්ධතා විස්තර සමඟ ඔබේ වෘත්තීය ගිණුම හදන්න. ලංකාව පුරා පාරිභෝගිකයන්ට ඔබව හමුවෙයි.",
+    offerCta: "වෘත්තිකයෙක් ලෙස එක්වන්න →",
+    needTitle: "මට සේවාවක් අවශ්‍යයි",
+    needBody:
+      "විමසුම් යැවීමට සහ සමාලෝචන තැබීමට නොමිලේ ගිණුමක් හදන්න. ගිණුමක් නැතුවත් බැලිය හැක.",
+    needCta: "පාරිභෝගිකයෙක් ලෙස ලියාපදිංචි වන්න →",
+    already: "දැනටමත් ගිණුමක් තිබේද?",
+    signIn: "පිවිසෙන්න",
+  },
+  custReg: {
+    title: "ඔබේ ගිණුම හදන්න",
+    sub: "විමසුම් යවන්න, ඔබ බඳවාගත් වෘත්තිකයන්ට සමාලෝචන තබන්න.",
+    fullName: "සම්පූර්ණ නම",
+    email: "විද්‍යුත් තැපෑල",
+    phone: "දුරකථන අංකය",
+    password: "මුරපදය",
+    passwordHint: "අවම අකුරු 6ක්.",
+    create: "ගිණුම හදන්න",
+    creating: "හදමින්…",
+    failed: "ලියාපදිංචිය අසාර්ථකයි. නැවත උත්සාහ කරන්න.",
+    offering: "සේවා සපයන්නෙක්ද?",
+    joinPro: "වෘත්තිකයෙක් ලෙස එක්වන්න",
+  },
+  footer: {
+    tagline:
+      "ලංකාවේ නිවෙස් සහ ව්‍යාපාර විශ්වාසවන්ත ප්‍රාදේශීය වෘත්තිකයන් සමඟ සම්බන්ධ කරයි.",
+    popular: "ජනප්‍රිය සේවා",
+    forPros: "වෘත්තිකයන්ට",
+    forCustomers: "පාරිභෝගිකයන්ට",
+    joinPro: "වෘත්තිකයෙක් ලෙස එක්වන්න",
+    signIn: "පිවිසෙන්න",
+    dashboard: "පාලක පුවරුව",
+    browse: "වෘත්තිකයන් බලන්න",
+    createAccount: "ගිණුමක් හදන්න",
+    made1: "හදන ලද්දේ",
+    made2: "ලංකාවට ආදරයෙන්",
+  },
+};
+
+export const dict: Record<Locale, Dict> = { en, si };
+
+const CATEGORIES_SI: Record<string, string> = {
+  mechanic: "රථ කාර්මික",
+  electrician: "විදුලි කාර්මික",
+  plumber: "ජලනළ කාර්මික",
+  carpenter: "වඩු කාර්මික",
+  mason: "පෙදරේරු",
+  painter: "තීන්ත ආලේපක",
+  "garden-designer": "උද්‍යාන නිර්මාණකරු",
+  "ac-repair": "A/C අලුත්වැඩියා",
+  "appliance-repair": "ගෘහ උපකරණ අලුත්වැඩියා",
+  welder: "වෙල්ඩින් කාර්මික",
+  roofer: "වහල කාර්මික",
+  "tile-layer": "ටයිල් කාර්මික",
+  "cctv-security": "CCTV සහ ආරක්ෂණ",
+  "pest-control": "පළිබෝධ පාලනය",
+  cleaning: "පිරිසිදු කිරීම",
+  movers: "බඩු ප්‍රවාහනය",
+};
+
+const DISTRICTS_SI: Record<string, string> = {
+  Ampara: "අම්පාර",
+  Anuradhapura: "අනුරාධපුරය",
+  Badulla: "බදුල්ල",
+  Batticaloa: "මඩකලපුව",
+  Colombo: "කොළඹ",
+  Galle: "ගාල්ල",
+  Gampaha: "ගම්පහ",
+  Hambantota: "හම්බන්තොට",
+  Jaffna: "යාපනය",
+  Kalutara: "කළුතර",
+  Kandy: "මහනුවර",
+  Kegalle: "කෑගල්ල",
+  Kilinochchi: "කිලිනොච්චිය",
+  Kurunegala: "කුරුණෑගල",
+  Mannar: "මන්නාරම",
+  Matale: "මාතලේ",
+  Matara: "මාතර",
+  Monaragala: "මොනරාගල",
+  Mullaitivu: "මුලතිව්",
+  "Nuwara Eliya": "නුවරඑළිය",
+  Polonnaruwa: "පොළොන්නරුව",
+  Puttalam: "පුත්තලම",
+  Ratnapura: "රත්නපුර",
+  Trincomalee: "ත්‍රිකුණාමලය",
+  Vavuniya: "වව්නියාව",
+};
+
+const PRICE_TYPES_SI: Record<string, string> = {
+  HOURLY: "පැයකට",
+  DAILY: "දිනකට",
+  FIXED: "ස්ථිර මිල",
+  VISIT: "පැමිණීමකට",
+};
+
+export function categoryLabelLoc(slug: string, locale: Locale) {
+  if (locale === "si") return CATEGORIES_SI[slug] ?? slug;
+  return CATEGORIES.find((c) => c.slug === slug)?.label ?? slug;
+}
+
+export function districtLabelLoc(name: string, locale: Locale) {
+  if (locale === "si") return DISTRICTS_SI[name] ?? name;
+  return name;
+}
+
+export function priceTypeLabelLoc(value: string, locale: Locale) {
+  if (locale === "si") return PRICE_TYPES_SI[value] ?? value;
+  return PRICE_TYPES.find((p) => p.value === value)?.label ?? value;
+}

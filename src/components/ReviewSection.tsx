@@ -6,6 +6,7 @@ import { useState } from "react";
 import { FaStar } from "react-icons/fa6";
 import Stars from "./Stars";
 import Avatar from "./Avatar";
+import { useT } from "./I18nProvider";
 
 type ReviewItem = {
   id: string;
@@ -35,6 +36,7 @@ export default function ReviewSection({
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const router = useRouter();
+  const t = useT();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -51,7 +53,7 @@ export default function ReviewSection({
       router.refresh();
     } else {
       const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "Could not save your review.");
+      setError(data.error ?? t.reviews.error);
     }
   }
 
@@ -59,23 +61,26 @@ export default function ReviewSection({
     <section className="card p-6">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-ink-900">
-          Reviews ({reviews.length})
+          {t.reviews.title(reviews.length)}
         </h2>
         {canReview && !showForm && (
           <button onClick={() => setShowForm(true)} className="btn-secondary">
-            {myReview ? "Edit your review" : "Write a review"}
+            {myReview ? t.reviews.edit : t.reviews.write}
           </button>
         )}
         {!signedIn && (
-          <Link href="/login" className="text-sm font-medium text-brand-600 hover:text-brand-700">
-            Sign in to review
+          <Link
+            href="/login"
+            className="text-sm font-medium text-brand-600 hover:text-brand-700"
+          >
+            {t.reviews.signIn}
           </Link>
         )}
       </div>
 
       {showForm && (
         <form onSubmit={submit} className="mt-4 rounded-xl bg-ink-50 p-4">
-          <label className="label">Your rating</label>
+          <label className="label">{t.reviews.rating}</label>
           <div className="flex gap-1">
             {[1, 2, 3, 4, 5].map((i) => (
               <button
@@ -94,35 +99,33 @@ export default function ReviewSection({
               </button>
             ))}
           </div>
-          <label className="label mt-3">Your review</label>
+          <label className="label mt-3">{t.reviews.yourReview}</label>
           <textarea
             className="input min-h-24 resize-y"
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             required
             minLength={3}
-            placeholder="How was the work quality, punctuality and pricing?"
+            placeholder={t.reviews.ph}
           />
           {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
           <div className="mt-3 flex gap-2">
             <button type="submit" disabled={loading} className="btn-primary">
-              {loading ? "Saving…" : "Submit review"}
+              {loading ? t.reviews.saving : t.reviews.submit}
             </button>
             <button
               type="button"
               onClick={() => setShowForm(false)}
               className="btn-ghost"
             >
-              Cancel
+              {t.reviews.cancel}
             </button>
           </div>
         </form>
       )}
 
       {reviews.length === 0 ? (
-        <p className="mt-4 text-sm text-ink-500">
-          No reviews yet. Be the first to share your experience.
-        </p>
+        <p className="mt-4 text-sm text-ink-500">{t.reviews.empty}</p>
       ) : (
         <ul className="mt-4 divide-y divide-ink-100">
           {reviews.map((r) => (

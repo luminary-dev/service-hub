@@ -21,7 +21,8 @@
   --color-ink-700: oklch(0.38 0.012 55);
   --color-ink-800: oklch(0.28 0.01 50);
   --color-ink-900: oklch(0.2 0.01 45);
-  --font-sans: var(--font-poppins), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-poppins), var(--font-sinhala), ui-sans-serif,
+    system-ui, sans-serif;
   --ease-snap: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-flow: cubic-bezier(0.77, 0, 0.175, 1);
 }
