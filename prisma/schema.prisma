@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  phone        String?
+  role         String    @default("CUSTOMER")
+  createdAt    DateTime  @default(now())
+  provider     Provider?
+  reviews      Review[]
+  inquiries    Inquiry[]
+}
+
+model Provider {
+  id         String      @id @default(cuid())
+  userId     String      @unique
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category   String
+  headline   String
+  bio        String
+  district   String
+  city       String
+  experience Int         @default(0)
+  whatsapp   String?
+  phone2     String?
+  facebook   String?
+  instagram  String?
+  tiktok     String?
+  youtube    String?
+  website    String?
+  avatarUrl  String?
+  available  Boolean     @default(true)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  services   Service[]
+  photos     WorkPhoto[]
+  reviews    Review[]
+  inquiries  Inquiry[]
+}
+
+model Service {
+  id          String   @id @default(cuid())
+  providerId  String
+  provider    Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  price       Float
+  priceType   String   @default("FIXED")
+}
+
+model WorkPhoto {
+  id         String   @id @default(cuid())
+  providerId String
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  url        String
+  caption    String?
+  createdAt  DateTime @default(now())
+}
+
+model Review {
+  id         String   @id @default(cuid())
+  providerId String
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating     Int
+  comment    String
+  createdAt  DateTime @default(now())
+
+  @@unique([providerId, userId])
+}
+
+model Inquiry {
+  id         String   @id @default(cuid())
+  providerId String
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  name       String
+  phone      String
+  email      String?
+  message    String
+  status     String   @default("NEW")
+  createdAt  DateTime @default(now())
+}
