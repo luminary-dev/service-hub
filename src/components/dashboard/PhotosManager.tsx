@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { FaUpload } from "react-icons/fa6";
 import Avatar from "../Avatar";
+import { useT } from "../I18nProvider";
 import type { PhotoItem } from "./DashboardTabs";
 
 export default function PhotosManager({
@@ -25,6 +26,7 @@ export default function PhotosManager({
   const fileRef = useRef<HTMLInputElement>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+  const ph = useT().dashboard.photos;
 
   async function upload(file: File, kind: "work" | "avatar") {
     const setBusy = kind === "avatar" ? setAvatarUploading : setUploading;
@@ -54,7 +56,7 @@ export default function PhotosManager({
       router.refresh();
     } else {
       const d = await res.json().catch(() => ({}));
-      setError(d.error ?? "Upload failed. Please try again.");
+      setError(d.error ?? ph.uploadError);
     }
   }
 
@@ -71,7 +73,7 @@ export default function PhotosManager({
   return (
     <div className="space-y-6">
       <div className="card p-6">
-        <h2 className="font-semibold text-ink-900">Profile picture</h2>
+        <h2 className="font-semibold text-ink-900">{ph.profilePicture}</h2>
         <div className="mt-4 flex items-center gap-5">
           <Avatar name={name} url={avatarUrl} size={72} />
           <div>
@@ -91,25 +93,21 @@ export default function PhotosManager({
               disabled={avatarUploading}
               className="btn-secondary"
             >
-              {avatarUploading ? "Uploading…" : "Change picture"}
+              {avatarUploading ? ph.uploading : ph.changePicture}
             </button>
-            <p className="mt-1.5 text-xs text-ink-500">
-              JPEG, PNG or WebP, max 5MB.
-            </p>
+            <p className="mt-1.5 text-xs text-ink-500">{ph.pictureHint}</p>
           </div>
         </div>
       </div>
 
       <div className="card p-6">
-        <h2 className="font-semibold text-ink-900">Work photos</h2>
-        <p className="mt-1 text-sm text-ink-500">
-          Show off your best work — these appear on your public profile.
-        </p>
+        <h2 className="font-semibold text-ink-900">{ph.workPhotos}</h2>
+        <p className="mt-1 text-sm text-ink-500">{ph.workPhotosSub}</p>
 
         <div className="mt-4 flex flex-col gap-2 sm:flex-row">
           <input
             className="input sm:flex-1"
-            placeholder="Caption for the next photo (optional)"
+            placeholder={ph.captionPh}
             value={caption}
             onChange={(e) => setCaption(e.target.value)}
             maxLength={120}
@@ -131,7 +129,7 @@ export default function PhotosManager({
             className="btn-primary"
           >
             <FaUpload className="h-3.5 w-3.5" />
-            {uploading ? "Uploading…" : "Upload photo"}
+            {uploading ? ph.uploading : ph.upload}
           </button>
         </div>
 
@@ -139,7 +137,7 @@ export default function PhotosManager({
 
         {photos.length === 0 ? (
           <p className="mt-6 rounded-xl bg-ink-50 p-6 text-center text-sm text-ink-500">
-            No work photos yet. Upload your first one above.
+            {ph.empty}
           </p>
         ) : (
           <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -162,7 +160,7 @@ export default function PhotosManager({
                   onClick={() => removePhoto(p.id)}
                   className="absolute right-2 top-2 hidden rounded-full bg-black/60 px-2.5 py-1 text-xs font-medium text-white backdrop-blur transition hover:bg-red-600 group-hover:block"
                 >
-                  Delete
+                  {ph.delete}
                 </button>
               </div>
             ))}

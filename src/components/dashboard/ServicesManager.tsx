@@ -2,7 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { PRICE_TYPES, formatLKR, priceTypeLabel } from "@/lib/constants";
+import { PRICE_TYPES, formatLKR } from "@/lib/constants";
+import { priceTypeLabelLoc } from "@/lib/i18n";
+import { useLocale, useT } from "../I18nProvider";
 import type { ServiceItem } from "./DashboardTabs";
 
 type Draft = {
@@ -30,6 +32,8 @@ export default function ServicesManager({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
+  const locale = useLocale();
+  const s2 = useT().dashboard.services;
 
   function startNew() {
     setDraft(emptyDraft);
@@ -50,7 +54,7 @@ export default function ServicesManager({
 
   async function save() {
     if (draft.title.trim().length < 2 || !draft.price || Number(draft.price) <= 0) {
-      setError("A title and a valid price are required.");
+      setError(s2.titlePriceRequired);
       return;
     }
     setLoading(true);
@@ -89,13 +93,13 @@ export default function ServicesManager({
       router.refresh();
     } else {
       const d = await res.json().catch(() => ({}));
-      setError(d.error ?? "Could not save service.");
+      setError(d.error ?? s2.saveError);
     }
   }
 
   async function remove(id: string) {
     if (services.length === 1) {
-      setError("Keep at least one service on your profile.");
+      setError(s2.keepOne);
       return;
     }
     const res = await fetch(`/api/provider/services/${id}`, {
@@ -110,9 +114,9 @@ export default function ServicesManager({
   return (
     <div className="card p-6">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-ink-900">Your services & rates</h2>
+        <h2 className="font-semibold text-ink-900">{s2.heading}</h2>
         <button onClick={startNew} className="btn-primary !px-4 !py-2">
-          + Add service
+          {s2.add}
         </button>
       </div>
 
@@ -123,13 +127,13 @@ export default function ServicesManager({
           <div className="space-y-3">
             <input
               className="input"
-              placeholder="Service title"
+              placeholder={s2.titlePh}
               value={draft.title}
               onChange={(e) => setDraft({ ...draft, title: e.target.value })}
             />
             <input
               className="input"
-              placeholder="Short description (optional)"
+              placeholder={s2.descPh}
               value={draft.description}
               onChange={(e) =>
                 setDraft({ ...draft, description: e.target.value })
@@ -140,7 +144,7 @@ export default function ServicesManager({
                 className="input flex-1"
                 type="number"
                 min={1}
-                placeholder="Price (Rs.)"
+                placeholder={s2.pricePh}
                 value={draft.price}
                 onChange={(e) => setDraft({ ...draft, price: e.target.value })}
               />
@@ -151,9 +155,9 @@ export default function ServicesManager({
                   setDraft({ ...draft, priceType: e.target.value })
                 }
               >
-                {PRICE_TYPES.map((p) => (
-                  <option key={p.value} value={p.value}>
-                    {p.label}
+                {PRICE_TYPES.map((pt) => (
+                  <option key={pt.value} value={pt.value}>
+                    {priceTypeLabelLoc(pt.value, locale)}
                   </option>
                 ))}
               </select>
@@ -161,10 +165,10 @@ export default function ServicesManager({
           </div>
           <div className="mt-3 flex gap-2">
             <button onClick={save} disabled={loading} className="btn-primary">
-              {loading ? "Saving…" : "Save"}
+              {loading ? s2.saving : s2.save}
             </button>
             <button onClick={() => setEditing(null)} className="btn-ghost">
-              Cancel
+              {s2.cancel}
             </button>
           </div>
         </div>
@@ -184,7 +188,7 @@ export default function ServicesManager({
               <p className="mt-1 text-sm font-semibold text-brand-700">
                 {formatLKR(s.price)}{" "}
                 <span className="font-normal text-ink-500">
-                  · {priceTypeLabel(s.priceType)}
+                  · {priceTypeLabelLoc(s.priceType, locale)}
                 </span>
               </p>
             </div>
@@ -193,13 +197,13 @@ export default function ServicesManager({
                 onClick={() => startEdit(s)}
                 className="text-sm font-medium text-ink-500 hover:text-ink-800"
               >
-                Edit
+                {s2.edit}
               </button>
               <button
                 onClick={() => remove(s.id)}
                 className="text-sm font-medium text-red-500 hover:text-red-600"
               >
-                Delete
+                {s2.delete}
               </button>
             </div>
           </li>
