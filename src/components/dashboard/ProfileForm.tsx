@@ -3,9 +3,14 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { CATEGORIES, DISTRICTS } from "@/lib/constants";
+import { categoryLabelLoc, districtLabelLoc } from "@/lib/i18n";
+import { useLocale, useT } from "../I18nProvider";
 import type { DashboardData } from "./DashboardTabs";
 
 export default function ProfileForm({ data }: { data: DashboardData }) {
+  const locale = useLocale();
+  const tx = useT();
+  const p = tx.dashboard.profile;
   const [form, setForm] = useState({
     name: data.name,
     phone: data.phone,
@@ -48,11 +53,11 @@ export default function ProfileForm({ data }: { data: DashboardData }) {
     });
     setLoading(false);
     if (res.ok) {
-      setMessage({ ok: true, text: "Profile saved." });
+      setMessage({ ok: true, text: p.saved });
       router.refresh();
     } else {
       const d = await res.json().catch(() => ({}));
-      setMessage({ ok: false, text: d.error ?? "Could not save profile." });
+      setMessage({ ok: false, text: d.error ?? p.saveError });
     }
   }
 
@@ -61,10 +66,10 @@ export default function ProfileForm({ data }: { data: DashboardData }) {
       <label className="flex cursor-pointer items-center justify-between rounded-xl bg-ink-50 px-4 py-3">
         <span>
           <span className="block text-sm font-medium text-ink-800">
-            Available for work
+            {p.availableTitle}
           </span>
           <span className="block text-xs text-ink-500">
-            Shown as a badge on your profile
+            {p.availableHint}
           </span>
         </span>
         <input
@@ -77,7 +82,7 @@ export default function ProfileForm({ data }: { data: DashboardData }) {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="label">Full name</label>
+          <label className="label">{p.fullName}</label>
           <input
             className="input"
             value={form.name}
@@ -87,7 +92,7 @@ export default function ProfileForm({ data }: { data: DashboardData }) {
           />
         </div>
         <div>
-          <label className="label">Phone number</label>
+          <label className="label">{p.phone}</label>
           <input
             className="input"
             type="tel"
@@ -98,7 +103,7 @@ export default function ProfileForm({ data }: { data: DashboardData }) {
           />
         </div>
         <div>
-          <label className="label">Category</label>
+          <label className="label">{p.category}</label>
           <select
             className="input"
             value={form.category}
@@ -106,13 +111,13 @@ export default function ProfileForm({ data }: { data: DashboardData }) {
           >
             {CATEGORIES.map((c) => (
               <option key={c.slug} value={c.slug}>
-                {c.label}
+                {categoryLabelLoc(c.slug, locale)}
               </option>
             ))}
           </select>
         </div>
         <div>
-          <label className="label">Years of experience</label>
+          <label className="label">{p.experience}</label>
           <input
             className="input"
             type="number"
@@ -123,7 +128,7 @@ export default function ProfileForm({ data }: { data: DashboardData }) {
           />
         </div>
         <div>
-          <label className="label">District</label>
+          <label className="label">{p.district}</label>
           <select
             className="input"
             value={form.district}
@@ -131,13 +136,13 @@ export default function ProfileForm({ data }: { data: DashboardData }) {
           >
             {DISTRICTS.map((d) => (
               <option key={d} value={d}>
-                {d}
+                {districtLabelLoc(d, locale)}
               </option>
             ))}
           </select>
         </div>
         <div>
-          <label className="label">Town / City</label>
+          <label className="label">{p.townCity}</label>
           <input
             className="input"
             value={form.city}
@@ -148,7 +153,7 @@ export default function ProfileForm({ data }: { data: DashboardData }) {
       </div>
 
       <div>
-        <label className="label">Headline</label>
+        <label className="label">{p.headline}</label>
         <input
           className="input"
           value={form.headline}
@@ -159,7 +164,7 @@ export default function ProfileForm({ data }: { data: DashboardData }) {
         />
       </div>
       <div>
-        <label className="label">About</label>
+        <label className="label">{p.about}</label>
         <textarea
           className="input min-h-32 resize-y"
           value={form.bio}
@@ -171,11 +176,11 @@ export default function ProfileForm({ data }: { data: DashboardData }) {
 
       <div>
         <h3 className="text-sm font-semibold text-ink-900">
-          Contact & social links
+          {p.contactSocial}
         </h3>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="label">WhatsApp</label>
+            <label className="label">{p.whatsapp}</label>
             <input
               className="input"
               value={form.whatsapp}
@@ -184,7 +189,7 @@ export default function ProfileForm({ data }: { data: DashboardData }) {
             />
           </div>
           <div>
-            <label className="label">Alternate phone</label>
+            <label className="label">{p.altPhone}</label>
             <input
               className="input"
               value={form.phone2}
@@ -192,7 +197,7 @@ export default function ProfileForm({ data }: { data: DashboardData }) {
             />
           </div>
           <div>
-            <label className="label">Facebook</label>
+            <label className="label">{p.facebook}</label>
             <input
               className="input"
               value={form.facebook}
@@ -200,7 +205,7 @@ export default function ProfileForm({ data }: { data: DashboardData }) {
             />
           </div>
           <div>
-            <label className="label">Instagram</label>
+            <label className="label">{p.instagram}</label>
             <input
               className="input"
               value={form.instagram}
@@ -208,7 +213,7 @@ export default function ProfileForm({ data }: { data: DashboardData }) {
             />
           </div>
           <div>
-            <label className="label">TikTok</label>
+            <label className="label">{p.tiktok}</label>
             <input
               className="input"
               value={form.tiktok}
@@ -216,7 +221,7 @@ export default function ProfileForm({ data }: { data: DashboardData }) {
             />
           </div>
           <div>
-            <label className="label">YouTube</label>
+            <label className="label">{p.youtube}</label>
             <input
               className="input"
               value={form.youtube}
@@ -224,7 +229,7 @@ export default function ProfileForm({ data }: { data: DashboardData }) {
             />
           </div>
           <div className="sm:col-span-2">
-            <label className="label">Website</label>
+            <label className="label">{p.website}</label>
             <input
               className="input"
               value={form.website}
@@ -243,7 +248,7 @@ export default function ProfileForm({ data }: { data: DashboardData }) {
       )}
 
       <button type="submit" disabled={loading} className="btn-primary">
-        {loading ? "Saving…" : "Save changes"}
+        {loading ? p.saving : p.save}
       </button>
     </form>
   );

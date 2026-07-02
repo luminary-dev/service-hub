@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { FaEnvelope, FaInbox, FaPhone } from "react-icons/fa6";
+import { useT } from "../I18nProvider";
 import type { InquiryItem } from "./DashboardTabs";
 
 const STATUS_STYLES: Record<string, string> = {
@@ -12,6 +13,12 @@ const STATUS_STYLES: Record<string, string> = {
 
 export default function InquiriesList({ initial }: { initial: InquiryItem[] }) {
   const [inquiries, setInquiries] = useState(initial);
+  const q = useT().dashboard.inquiries;
+  const statusLabel: Record<string, string> = {
+    NEW: q.statusNew,
+    RESPONDED: q.statusResponded,
+    CLOSED: q.statusClosed,
+  };
 
   async function setStatus(id: string, status: string) {
     const res = await fetch(`/api/provider/inquiries/${id}`, {
@@ -30,11 +37,8 @@ export default function InquiriesList({ initial }: { initial: InquiryItem[] }) {
     return (
       <div className="card flex flex-col items-center p-12 text-center">
         <FaInbox className="h-10 w-10 text-ink-300" />
-        <h2 className="mt-3 font-semibold text-ink-900">No inquiries yet</h2>
-        <p className="mt-1 max-w-sm text-sm text-ink-500">
-          When customers send you an inquiry from your profile, it will show up
-          here with their contact details.
-        </p>
+        <h2 className="mt-3 font-semibold text-ink-900">{q.emptyTitle}</h2>
+        <p className="mt-1 max-w-sm text-sm text-ink-500">{q.emptyBody}</p>
       </div>
     );
   }
@@ -72,7 +76,7 @@ export default function InquiriesList({ initial }: { initial: InquiryItem[] }) {
               <span
                 className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${STATUS_STYLES[i.status] ?? STATUS_STYLES.NEW}`}
               >
-                {i.status}
+                {statusLabel[i.status] ?? i.status}
               </span>
               <span className="text-xs text-ink-500">
                 {new Date(i.createdAt).toLocaleDateString("en-GB", {
@@ -91,7 +95,7 @@ export default function InquiriesList({ initial }: { initial: InquiryItem[] }) {
                 onClick={() => setStatus(i.id, "RESPONDED")}
                 className="btn-secondary !px-3 !py-1.5 !text-xs"
               >
-                Mark responded
+                {q.markResponded}
               </button>
             )}
             {i.status !== "CLOSED" && (
@@ -99,7 +103,7 @@ export default function InquiriesList({ initial }: { initial: InquiryItem[] }) {
                 onClick={() => setStatus(i.id, "CLOSED")}
                 className="btn-ghost !px-3 !py-1.5 !text-xs"
               >
-                Close
+                {q.close}
               </button>
             )}
             {i.status === "CLOSED" && (
@@ -107,7 +111,7 @@ export default function InquiriesList({ initial }: { initial: InquiryItem[] }) {
                 onClick={() => setStatus(i.id, "NEW")}
                 className="btn-ghost !px-3 !py-1.5 !text-xs"
               >
-                Reopen
+                {q.reopen}
               </button>
             )}
           </div>

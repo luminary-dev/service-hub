@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { CATEGORIES, DISTRICTS, PRICE_TYPES } from "@/lib/constants";
+import { categoryLabelLoc, districtLabelLoc, priceTypeLabelLoc } from "@/lib/i18n";
+import { useLocale, useT } from "@/components/I18nProvider";
 
 type ServiceInput = {
   title: string;
@@ -11,8 +13,6 @@ type ServiceInput = {
   price: string;
   priceType: string;
 };
-
-const STEPS = ["Account", "Profile", "Contact & Socials", "Services & Rates"];
 
 const emptyService: ServiceInput = {
   title: "",
@@ -26,6 +26,9 @@ export default function ProviderRegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
+  const locale = useLocale();
+  const r = useT().providerReg;
+  const STEPS = r.steps;
 
   const [form, setForm] = useState({
     name: "",
@@ -62,26 +65,23 @@ export default function ProviderRegisterPage() {
 
   function validateStep(): string {
     if (step === 0) {
-      if (form.name.trim().length < 2) return "Please enter your full name.";
-      if (!/^\S+@\S+\.\S+$/.test(form.email)) return "Please enter a valid email.";
-      if (form.phone.trim().length < 9) return "Please enter a valid phone number.";
-      if (form.password.length < 6) return "Password must be at least 6 characters.";
+      if (form.name.trim().length < 2) return r.errName;
+      if (!/^\S+@\S+\.\S+$/.test(form.email)) return r.errEmail;
+      if (form.phone.trim().length < 9) return r.errPhone;
+      if (form.password.length < 6) return r.errPassword;
     }
     if (step === 1) {
-      if (!form.category) return "Please choose your service category.";
-      if (form.headline.trim().length < 5)
-        return "Add a short headline (at least 5 characters).";
-      if (form.bio.trim().length < 20)
-        return "Tell customers about yourself (at least 20 characters).";
-      if (!form.district) return "Please select your district.";
-      if (!form.city.trim()) return "Please enter your town or city.";
+      if (!form.category) return r.errCategory;
+      if (form.headline.trim().length < 5) return r.errHeadline;
+      if (form.bio.trim().length < 20) return r.errBio;
+      if (!form.district) return r.errDistrict;
+      if (!form.city.trim()) return r.errCity;
     }
     if (step === 3) {
-      if (services.length === 0) return "Add at least one service.";
+      if (services.length === 0) return r.errServiceCount;
       for (const s of services) {
-        if (s.title.trim().length < 2) return "Every service needs a title.";
-        if (!s.price || Number(s.price) <= 0)
-          return "Every service needs a valid price.";
+        if (s.title.trim().length < 2) return r.errServiceTitle;
+        if (!s.price || Number(s.price) <= 0) return r.errServicePrice;
       }
     }
     return "";
@@ -141,18 +141,16 @@ export default function ProviderRegisterPage() {
       router.refresh();
     } else {
       const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "Registration failed. Please try again.");
+      setError(data.error ?? r.createFailed);
     }
   }
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-12 sm:px-6">
       <h1 className="text-2xl font-bold tracking-tight text-ink-900">
-        Join as a Professional
+        {r.title}
       </h1>
-      <p className="mt-1 text-sm text-ink-500">
-        Free forever. Your profile goes live as soon as you finish.
-      </p>
+      <p className="mt-1 text-sm text-ink-500">{r.subtitle}</p>
 
       <ol className="mt-8 flex items-center gap-2">
         {STEPS.map((label, i) => (
@@ -173,23 +171,23 @@ export default function ProviderRegisterPage() {
         ))}
       </ol>
       <p className="mt-2 text-sm font-medium text-ink-700 sm:hidden">
-        Step {step + 1} of {STEPS.length}: {STEPS[step]}
+        {r.stepOf(step + 1, STEPS.length, STEPS[step])}
       </p>
 
       <div className="card mt-6 p-6">
         {step === 0 && (
           <div className="space-y-4">
             <div>
-              <label className="label">Full name</label>
+              <label className="label">{r.fullName}</label>
               <input
                 className="input"
                 value={form.name}
                 onChange={(e) => set("name", e.target.value)}
-                placeholder="e.g. Nuwan Perera"
+                placeholder={r.fullNamePh}
               />
             </div>
             <div>
-              <label className="label">Email</label>
+              <label className="label">{r.email}</label>
               <input
                 className="input"
                 type="email"
@@ -199,7 +197,7 @@ export default function ProviderRegisterPage() {
               />
             </div>
             <div>
-              <label className="label">Phone number</label>
+              <label className="label">{r.phone}</label>
               <input
                 className="input"
                 type="tel"
@@ -207,12 +205,10 @@ export default function ProviderRegisterPage() {
                 value={form.phone}
                 onChange={(e) => set("phone", e.target.value)}
               />
-              <p className="mt-1 text-xs text-ink-500">
-                Customers will call you on this number.
-              </p>
+              <p className="mt-1 text-xs text-ink-500">{r.phoneHint}</p>
             </div>
             <div>
-              <label className="label">Password</label>
+              <label className="label">{r.password}</label>
               <input
                 className="input"
                 type="password"
@@ -227,7 +223,7 @@ export default function ProviderRegisterPage() {
         {step === 1 && (
           <div className="space-y-4">
             <div>
-              <label className="label">What service do you offer?</label>
+              <label className="label">{r.serviceQuestion}</label>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {CATEGORIES.map((c) => (
                   <button
@@ -247,57 +243,57 @@ export default function ProviderRegisterPage() {
                           : "text-ink-500"
                       }`}
                     />
-                    {c.label}
+                    {categoryLabelLoc(c.slug, locale)}
                   </button>
                 ))}
               </div>
             </div>
             <div>
-              <label className="label">Headline</label>
+              <label className="label">{r.headline}</label>
               <input
                 className="input"
                 value={form.headline}
                 onChange={(e) => set("headline", e.target.value)}
-                placeholder="e.g. Reliable auto repairs with 10+ years experience"
+                placeholder={r.headlinePh}
                 maxLength={120}
               />
             </div>
             <div>
-              <label className="label">About you & your work</label>
+              <label className="label">{r.about}</label>
               <textarea
                 className="input min-h-32 resize-y"
                 value={form.bio}
                 onChange={(e) => set("bio", e.target.value)}
-                placeholder="Describe your skills, the kinds of jobs you take on, areas you cover, and what makes your work stand out…"
+                placeholder={r.aboutPh}
               />
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
               <div>
-                <label className="label">District</label>
+                <label className="label">{r.district}</label>
                 <select
                   className="input"
                   value={form.district}
                   onChange={(e) => set("district", e.target.value)}
                 >
-                  <option value="">Select…</option>
+                  <option value="">{r.selectPlaceholder}</option>
                   {DISTRICTS.map((d) => (
                     <option key={d} value={d}>
-                      {d}
+                      {districtLabelLoc(d, locale)}
                     </option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="label">Town / City</label>
+                <label className="label">{r.townCity}</label>
                 <input
                   className="input"
                   value={form.city}
                   onChange={(e) => set("city", e.target.value)}
-                  placeholder="e.g. Nugegoda"
+                  placeholder={r.townCityPh}
                 />
               </div>
               <div>
-                <label className="label">Years of experience</label>
+                <label className="label">{r.experience}</label>
                 <input
                   className="input"
                   type="number"
@@ -313,13 +309,10 @@ export default function ProviderRegisterPage() {
 
         {step === 2 && (
           <div className="space-y-4">
-            <p className="text-sm text-ink-500">
-              All of these are optional — add the ones you use so customers can
-              reach you their favourite way.
-            </p>
+            <p className="text-sm text-ink-500">{r.contactOptional}</p>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="label">WhatsApp number</label>
+                <label className="label">{r.whatsapp}</label>
                 <input
                   className="input"
                   type="tel"
@@ -329,7 +322,7 @@ export default function ProviderRegisterPage() {
                 />
               </div>
               <div>
-                <label className="label">Alternate phone</label>
+                <label className="label">{r.altPhone}</label>
                 <input
                   className="input"
                   type="tel"
@@ -338,7 +331,7 @@ export default function ProviderRegisterPage() {
                 />
               </div>
               <div>
-                <label className="label">Facebook</label>
+                <label className="label">{r.facebook}</label>
                 <input
                   className="input"
                   placeholder="facebook.com/yourpage"
@@ -347,7 +340,7 @@ export default function ProviderRegisterPage() {
                 />
               </div>
               <div>
-                <label className="label">Instagram</label>
+                <label className="label">{r.instagram}</label>
                 <input
                   className="input"
                   placeholder="instagram.com/yourprofile"
@@ -356,7 +349,7 @@ export default function ProviderRegisterPage() {
                 />
               </div>
               <div>
-                <label className="label">TikTok</label>
+                <label className="label">{r.tiktok}</label>
                 <input
                   className="input"
                   placeholder="tiktok.com/@you"
@@ -365,7 +358,7 @@ export default function ProviderRegisterPage() {
                 />
               </div>
               <div>
-                <label className="label">YouTube</label>
+                <label className="label">{r.youtube}</label>
                 <input
                   className="input"
                   placeholder="youtube.com/@yourchannel"
@@ -374,7 +367,7 @@ export default function ProviderRegisterPage() {
                 />
               </div>
               <div className="sm:col-span-2">
-                <label className="label">Website</label>
+                <label className="label">{r.website}</label>
                 <input
                   className="input"
                   placeholder="www.yoursite.lk"
@@ -388,15 +381,12 @@ export default function ProviderRegisterPage() {
 
         {step === 3 && (
           <div className="space-y-4">
-            <p className="text-sm text-ink-500">
-              List the services you offer with your rates in LKR. You can edit
-              these anytime from your dashboard.
-            </p>
+            <p className="text-sm text-ink-500">{r.servicesIntro}</p>
             {services.map((s, i) => (
               <div key={i} className="rounded-xl border border-ink-200 p-4">
                 <div className="flex items-start justify-between gap-2">
                   <span className="text-xs font-semibold uppercase tracking-wide text-ink-500">
-                    Service {i + 1}
+                    {r.serviceN(i + 1)}
                   </span>
                   {services.length > 1 && (
                     <button
@@ -406,20 +396,20 @@ export default function ProviderRegisterPage() {
                       }
                       className="text-xs font-medium text-red-500 hover:text-red-600"
                     >
-                      Remove
+                      {r.remove}
                     </button>
                   )}
                 </div>
                 <div className="mt-2 space-y-3">
                   <input
                     className="input"
-                    placeholder="Service title, e.g. Full house wiring"
+                    placeholder={r.serviceTitlePh}
                     value={s.title}
                     onChange={(e) => setService(i, "title", e.target.value)}
                   />
                   <input
                     className="input"
-                    placeholder="Short description (optional)"
+                    placeholder={r.serviceDescPh}
                     value={s.description}
                     onChange={(e) =>
                       setService(i, "description", e.target.value)
@@ -431,7 +421,7 @@ export default function ProviderRegisterPage() {
                         className="input"
                         type="number"
                         min={1}
-                        placeholder="Price (Rs.)"
+                        placeholder={r.pricePh}
                         value={s.price}
                         onChange={(e) => setService(i, "price", e.target.value)}
                       />
@@ -443,9 +433,9 @@ export default function ProviderRegisterPage() {
                         setService(i, "priceType", e.target.value)
                       }
                     >
-                      {PRICE_TYPES.map((p) => (
-                        <option key={p.value} value={p.value}>
-                          {p.label}
+                      {PRICE_TYPES.map((pt) => (
+                        <option key={pt.value} value={pt.value}>
+                          {priceTypeLabelLoc(pt.value, locale)}
                         </option>
                       ))}
                     </select>
@@ -459,7 +449,7 @@ export default function ProviderRegisterPage() {
                 onClick={() => setServices((list) => [...list, { ...emptyService }])}
                 className="btn-secondary w-full"
               >
-                + Add another service
+                {r.addAnother}
               </button>
             )}
           </div>
@@ -477,14 +467,14 @@ export default function ProviderRegisterPage() {
               }}
               className="btn-ghost"
             >
-              ← Back
+              {r.back}
             </button>
           ) : (
             <span />
           )}
           {step < STEPS.length - 1 ? (
             <button type="button" onClick={next} className="btn-primary">
-              Continue →
+              {r.continue}
             </button>
           ) : (
             <button
@@ -493,19 +483,19 @@ export default function ProviderRegisterPage() {
               disabled={loading}
               className="btn-primary"
             >
-              {loading ? "Creating profile…" : "Create my profile"}
+              {loading ? r.creating : r.create}
             </button>
           )}
         </div>
       </div>
 
       <p className="mt-6 text-center text-sm text-ink-500">
-        Already have an account?{" "}
+        {r.alreadyHave}{" "}
         <Link
           href="/login"
           className="font-semibold text-brand-600 hover:text-brand-700"
         >
-          Sign in
+          {r.signIn}
         </Link>
       </p>
     </div>

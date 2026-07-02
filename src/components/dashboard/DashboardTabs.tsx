@@ -6,6 +6,7 @@ import ServicesManager from "./ServicesManager";
 import PhotosManager from "./PhotosManager";
 import InquiriesList from "./InquiriesList";
 import Stars from "../Stars";
+import { useT } from "../I18nProvider";
 
 export type ServiceItem = {
   id: string;
@@ -62,13 +63,20 @@ const TABS = ["Profile", "Services", "Photos", "Inquiries"] as const;
 
 export default function DashboardTabs({ data }: { data: DashboardData }) {
   const [tab, setTab] = useState<(typeof TABS)[number]>("Profile");
+  const tx = useT();
+  const tabLabels: Record<(typeof TABS)[number], string> = {
+    Profile: tx.dashboard.tabs.profile,
+    Services: tx.dashboard.tabs.services,
+    Photos: tx.dashboard.tabs.photos,
+    Inquiries: tx.dashboard.tabs.inquiries,
+  };
 
   return (
     <div>
       <div className="mt-8 grid gap-4 sm:grid-cols-4">
         <div className="card p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-ink-500">
-            Rating
+            {tx.dashboard.stats.rating}
           </p>
           {data.stats.rating !== null ? (
             <div className="mt-1 flex items-center gap-2">
@@ -83,7 +91,7 @@ export default function DashboardTabs({ data }: { data: DashboardData }) {
         </div>
         <div className="card p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-ink-500">
-            Reviews
+            {tx.dashboard.stats.reviews}
           </p>
           <p className="mt-1 text-2xl font-bold text-ink-900">
             {data.stats.reviewCount}
@@ -91,7 +99,7 @@ export default function DashboardTabs({ data }: { data: DashboardData }) {
         </div>
         <div className="card p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-ink-500">
-            Work photos
+            {tx.dashboard.stats.photos}
           </p>
           <p className="mt-1 text-2xl font-bold text-ink-900">
             {data.stats.photoCount}
@@ -99,7 +107,7 @@ export default function DashboardTabs({ data }: { data: DashboardData }) {
         </div>
         <div className="card p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-ink-500">
-            New inquiries
+            {tx.dashboard.stats.newInquiries}
           </p>
           <p className="mt-1 text-2xl font-bold text-brand-600">
             {data.stats.newInquiries}
@@ -118,7 +126,7 @@ export default function DashboardTabs({ data }: { data: DashboardData }) {
                 : "text-ink-500 hover:text-ink-800"
             }`}
           >
-            {t}
+            {tabLabels[t]}
             {t === "Inquiries" && data.stats.newInquiries > 0 && (
               <span className="ml-1.5 rounded-full bg-brand-600 px-1.5 py-0.5 text-xs font-semibold text-white">
                 {data.stats.newInquiries}
