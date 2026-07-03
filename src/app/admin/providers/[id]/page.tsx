@@ -1,0 +1,127 @@
+/* eslint-disable @next/next/no-img-element */
+import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
+import { db } from "@/lib/db";
+import { getSession } from "@/lib/auth";
+import { getLocale } from "@/lib/locale";
+import { dict, categoryLabelLoc } from "@/lib/i18n";
+import Avatar from "@/components/Avatar";
+import Stars from "@/components/Stars";
+import AdminProviderActions from "@/components/admin/AdminProviderActions";
+import AdminDeleteButton from "@/components/admin/AdminDeleteButton";
+
+export const dynamic = "force-dynamic";
+
+export default async function AdminProviderModeratePage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const session = await getSession();
+  if (!session) redirect("/login");
+  if (session.role !== "ADMIN") redirect("/");
+
+  const { id } = await params;
+  const [locale, provider] = await Promise.all([
+    getLocale(),
+    db.provider.findUnique({
+      where: { id },
+      include: {
+        user: { select: { name: true, email: true } },
+        reviews: {
+          include: { user: { select: { name: true } } },
+          orderBy: { createdAt: "desc" },
+        },
+        photos: { orderBy: { createdAt: "desc" } },
+      },
+    }),
+  ]);
+  if (!provider) notFound();
+  const t = dict[locale].admin;
+
+  return (
+    <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
+      <Link
+        href="/admin/providers"
+        className="text-sm font-medium text-brand-700 hover:text-brand-800"
+      >
+        ← {t.back}
+      </Link>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <Avatar name={provider.user.name} url={provider.avatarUrl} size={52} />
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-ink-900">
+              {provider.user.name}
+            </h1>
+            <p className="text-sm text-ink-500">
+              {categoryLabelLoc(provider.category, locale)} · {provider.city} ·{" "}
+              {provider.user.email}
+            </p>
+          </div>
+        </div>
+        <AdminProviderActions
+          providerId={provider.id}
+          verified={provider.verificationStatus === "VERIFIED"}
+          suspended={provider.suspended}
+        />
+      </div>
+
+      <section className="card mt-8 p-6">
+        <h2 className="font-semibold text-ink-900">{t.reviewsHeading}</h2>
+        {provider.reviews.length === 0 ? (
+          <p className="mt-3 text-sm text-ink-500">{t.noReviews}</p>
+        ) : (
+          <ul className="mt-4 divide-y divide-ink-100">
+            {provider.reviews.map((r) => (
+              <li
+                key={r.id}
+                className="flex items-start justify-between gap-4 py-3"
+              >
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-ink-800">
+                      {r.user.name}
+                    </span>
+                    <Stars rating={r.rating} />
+                  </div>
+                  <p className="mt-1 text-sm text-ink-600">{r.comment}</p>
+                </div>
+                <AdminDeleteButton endpoint={`/api/admin/reviews/${r.id}`} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="card mt-6 p-6">
+        <h2 className="font-semibold text-ink-900">{t.photosHeading}</h2>
+        {provider.photos.length === 0 ? (
+          <p className="mt-3 text-sm text-ink-500">{t.noPhotos}</p>
+        ) : (
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {provider.photos.map((ph) => (
+              <div
+                key={ph.id}
+                className="overflow-hidden rounded-xl border border-ink-200"
+              >
+                <img
+                  src={ph.url}
+                  alt={ph.caption ?? "Work photo"}
+                  className="aspect-square w-full object-cover"
+                />
+                <div className="flex items-center justify-between gap-2 p-2">
+                  <span className="truncate text-xs text-ink-500">
+                    {ph.caption ?? "—"}
+                  </span>
+                  <AdminDeleteButton endpoint={`/api/admin/photos/${ph.id}`} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}

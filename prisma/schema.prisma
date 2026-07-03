@@ -78,6 +78,7 @@ model Provider {
   website    String?
   avatarUrl  String?
   available  Boolean     @default(true)
+  suspended  Boolean     @default(false)
   // NONE | PENDING | VERIFIED | REJECTED
   verificationStatus String   @default("NONE")
   verifiedAt         DateTime?

@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
   const pageSize = 12;
 
   const where = {
+    suspended: false,
     ...(category ? { category } : {}),
     ...(district ? { district } : {}),
     ...(q
