@@ -38,6 +38,7 @@ export default async function ProvidersPage({
   const page = Math.max(1, Number(params.page) || 1);
 
   const where: Prisma.ProviderWhereInput = {
+    suspended: false,
     ...(category ? { category } : {}),
     ...(district ? { district } : {}),
     ...(q

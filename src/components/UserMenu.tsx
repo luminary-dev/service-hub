@@ -81,7 +81,7 @@ export default function UserMenu({
           )}
           {role === "ADMIN" && (
             <Link
-              href="/admin/verifications"
+              href="/admin"
               onClick={() => setOpen(false)}
               className="block px-4 py-2.5 text-sm text-ink-700 transition hover:bg-ink-50"
             >
