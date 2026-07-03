@@ -9,6 +9,7 @@ const en = {
     signIn: "Sign in",
     getStarted: "Get Started",
     dashboard: "Dashboard",
+    saved: "Saved",
     signOut: "Sign out",
   },
   home: {
@@ -94,6 +95,14 @@ const en = {
     available: "Available",
     yrs: (n: number) => `${n}+ yrs`,
     noReviews: "No reviews yet",
+    save: "Save",
+    saved: "Saved",
+  },
+  account: {
+    title: "Saved professionals",
+    subtitle: "Providers you've shortlisted.",
+    empty: "You haven't saved any professionals yet.",
+    emptyCta: "Browse professionals",
   },
   profile: {
     available: "Available for work",
@@ -389,6 +398,7 @@ const si: Dict = {
     signIn: "පිවිසෙන්න",
     getStarted: "ආරම්භ කරන්න",
     dashboard: "පාලක පුවරුව",
+    saved: "සුරකින ලද",
     signOut: "ඉවත් වන්න",
   },
   home: {
@@ -477,6 +487,14 @@ const si: Dict = {
     available: "සූදානම්",
     yrs: (n: number) => `අවු ${n}+`,
     noReviews: "සමාලෝචන නැත",
+    save: "සුරකින්න",
+    saved: "සුරකා ඇත",
+  },
+  account: {
+    title: "සුරකින ලද වෘත්තිකයන්",
+    subtitle: "ඔබ තෝරාගත් වෘත්තිකයන්.",
+    empty: "ඔබ තවම කිසිම වෘත්තිකයෙක් සුරකා නැත.",
+    emptyCta: "වෘත්තිකයන් බලන්න",
   },
   profile: {
     available: "වැඩට සූදානම්",

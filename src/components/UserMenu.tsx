@@ -80,6 +80,13 @@ export default function UserMenu({
             </Link>
           )}
           <Link
+            href="/account"
+            onClick={() => setOpen(false)}
+            className="block px-4 py-2.5 text-sm text-ink-700 transition hover:bg-ink-50"
+          >
+            {t.nav.saved}
+          </Link>
+          <Link
             href="/providers"
             onClick={() => setOpen(false)}
             className="block px-4 py-2.5 text-sm text-ink-700 transition hover:bg-ink-50"

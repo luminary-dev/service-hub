@@ -4,6 +4,8 @@ import { Prisma } from "@prisma/client";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
 import { normalizeSort, sortProviders } from "@/lib/sort";
+import { getSession } from "@/lib/auth";
+import { getFavoriteIds } from "@/lib/favorites";
 import ProviderCard, { ProviderSummary } from "@/components/ProviderCard";
 import FilterBar from "@/components/FilterBar";
 import Link from "next/link";
@@ -25,6 +27,10 @@ export default async function ProvidersPage({
   const params = await searchParams;
   const locale = await getLocale();
   const t = dict[locale];
+  const session = await getSession();
+  const favoriteIds = session
+    ? await getFavoriteIds(session.userId)
+    : new Set<string>();
   const q = typeof params.q === "string" ? params.q.trim() : "";
   const category = typeof params.category === "string" ? params.category : "";
   const district = typeof params.district === "string" ? params.district : "";
@@ -132,7 +138,13 @@ export default async function ProvidersPage({
       ) : (
         <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {results.map((p) => (
-            <ProviderCard key={p.id} p={p} locale={locale} />
+            <ProviderCard
+              key={p.id}
+              p={p}
+              locale={locale}
+              showFavorite={!!session}
+              favorited={favoriteIds.has(p.id)}
+            />
           ))}
         </div>
       )}
