@@ -10,6 +10,8 @@ import { db } from "@/lib/db";
 import { CATEGORIES } from "@/lib/constants";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
+import { getSession } from "@/lib/auth";
+import { getFavoriteIds } from "@/lib/favorites";
 import ProviderCard, { ProviderSummary } from "@/components/ProviderCard";
 import SearchBar from "@/components/SearchBar";
 
@@ -32,6 +34,10 @@ export default async function HomePage() {
     db.review.count(),
   ]);
   const t = dict[locale];
+  const session = await getSession();
+  const favoriteIds = session
+    ? await getFavoriteIds(session.userId)
+    : new Set<string>();
 
   const featured: ProviderSummary[] = providers.map((p) => ({
     id: p.id,
@@ -210,7 +216,12 @@ export default async function HomePage() {
                   className="rise"
                   style={{ "--rise-index": i } as React.CSSProperties}
                 >
-                  <ProviderCard p={p} locale={locale} />
+                  <ProviderCard
+                    p={p}
+                    locale={locale}
+                    showFavorite={!!session}
+                    favorited={favoriteIds.has(p.id)}
+                  />
                 </div>
               ))}
             </div>

@@ -3,6 +3,7 @@ import Image from "next/image";
 import Stars from "./Stars";
 import Avatar from "./Avatar";
 import CategoryIcon from "./CategoryIcon";
+import FavoriteButton from "./FavoriteButton";
 import { isSvg } from "@/lib/image";
 import { formatLKR } from "@/lib/constants";
 import {
@@ -33,17 +34,27 @@ export type ProviderSummary = {
 export default function ProviderCard({
   p,
   locale = "en",
+  showFavorite = false,
+  favorited = false,
 }: {
   p: ProviderSummary;
   locale?: Locale;
+  showFavorite?: boolean;
+  favorited?: boolean;
 }) {
   const t = dict[locale];
   return (
-    <Link
-      href={`/providers/${p.id}`}
-      className="card group block overflow-hidden transition-[border-color,transform] duration-200 ease-snap hover:-translate-y-1 hover:border-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 active:scale-[0.99]"
-    >
-      <div className="relative h-36 bg-ink-100">
+    <div className="relative">
+      {showFavorite && (
+        <div className="absolute right-3 top-3 z-10">
+          <FavoriteButton providerId={p.id} initialFavorited={favorited} />
+        </div>
+      )}
+      <Link
+        href={`/providers/${p.id}`}
+        className="card group block overflow-hidden transition-[border-color,transform] duration-200 ease-snap hover:-translate-y-1 hover:border-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 active:scale-[0.99]"
+      >
+        <div className="relative h-36 bg-ink-100">
         {p.coverPhoto ? (
           <Image
             src={p.coverPhoto}
@@ -62,7 +73,7 @@ export default function ProviderCard({
           </div>
         )}
         {p.available && (
-          <span className="chip absolute right-3 top-3 bg-white/95 text-emerald-700">
+          <span className="chip absolute bottom-3 right-3 bg-white/95 text-emerald-700">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
             {t.card.available}
           </span>
@@ -72,7 +83,7 @@ export default function ProviderCard({
             {t.card.yrs(p.experience)}
           </span>
         )}
-      </div>
+        </div>
 
       <div className="p-4">
         <div className="flex items-start gap-3">
@@ -119,6 +130,7 @@ export default function ProviderCard({
           )}
         </div>
       </div>
-    </Link>
+      </Link>
+    </div>
   );
 }

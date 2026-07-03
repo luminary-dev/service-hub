@@ -18,9 +18,23 @@ model User {
   provider      Provider?
   reviews       Review[]
   inquiries     Inquiry[]
+  favorites     Favorite[]
 
   passwordResetTokens     PasswordResetToken[]
   emailVerificationTokens EmailVerificationToken[]
+}
+
+model Favorite {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  providerId String
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, providerId])
+  @@index([userId])
+  @@index([providerId])
 }
 
 model PasswordResetToken {
@@ -70,6 +84,7 @@ model Provider {
   photos     WorkPhoto[]
   reviews    Review[]
   inquiries  Inquiry[]
+  favorites  Favorite[]
 }
 
 model Service {

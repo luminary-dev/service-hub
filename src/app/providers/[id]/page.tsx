@@ -10,6 +10,7 @@ import {
   priceTypeLabelLoc,
 } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
+import { isFavorited } from "@/lib/favorites";
 import Avatar from "@/components/Avatar";
 import CategoryIcon from "@/components/CategoryIcon";
 import Stars from "@/components/Stars";
@@ -17,6 +18,7 @@ import PhotoGallery from "@/components/PhotoGallery";
 import InquiryForm from "@/components/InquiryForm";
 import ReviewSection from "@/components/ReviewSection";
 import ContactLinks from "@/components/ContactLinks";
+import FavoriteButton from "@/components/FavoriteButton";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +57,11 @@ export default async function ProviderProfilePage({
   const myReview = session
     ? provider.reviews.find((r) => r.userId === session.userId) ?? null
     : null;
+  // Customers can save any profile but their own.
+  const canFavorite = !!session && !isOwner;
+  const favorited = canFavorite
+    ? await isFavorited(session!.userId, provider.id)
+    : false;
 
   return (
     <div>
@@ -112,17 +119,26 @@ export default async function ProviderProfilePage({
                 </div>
               </div>
             </div>
-            <ContactLinks
-              phone={provider.user.phone}
-              whatsapp={provider.whatsapp}
-              phone2={provider.phone2}
-              facebook={provider.facebook}
-              instagram={provider.instagram}
-              tiktok={provider.tiktok}
-              youtube={provider.youtube}
-              website={provider.website}
-              altLabel={t.profile.altPhone}
-            />
+            <div className="flex flex-col items-start gap-3 sm:items-end">
+              {canFavorite && (
+                <FavoriteButton
+                  providerId={provider.id}
+                  initialFavorited={favorited}
+                  variant="inline"
+                />
+              )}
+              <ContactLinks
+                phone={provider.user.phone}
+                whatsapp={provider.whatsapp}
+                phone2={provider.phone2}
+                facebook={provider.facebook}
+                instagram={provider.instagram}
+                tiktok={provider.tiktok}
+                youtube={provider.youtube}
+                website={provider.website}
+                altLabel={t.profile.altPhone}
+              />
+            </div>
           </div>
         </div>
       </div>
