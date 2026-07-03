@@ -1,9 +1,11 @@
 const { PrismaClient } = require("@prisma/client");
+const { PrismaPg } = require("@prisma/adapter-pg");
 const bcrypt = require("bcryptjs");
 const fs = require("fs");
 const path = require("path");
 
-const db = new PrismaClient();
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+const db = new PrismaClient({ adapter });
 
 function xmlEscape(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
