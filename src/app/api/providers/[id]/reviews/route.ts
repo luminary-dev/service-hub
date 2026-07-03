@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
+import { rateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 const schema = z.object({
   rating: z.number().int().min(1).max(5),
@@ -12,6 +13,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const limited = rateLimit(req, "review", RATE_LIMITS.review);
+  if (limited) return limited;
+
   const session = await getSession();
   if (!session) {
     return NextResponse.json(

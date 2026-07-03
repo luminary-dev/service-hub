@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { db } from "@/lib/db";
@@ -45,6 +46,9 @@ const providerSchema = baseSchema.extend({
 const schema = z.discriminatedUnion("role", [customerSchema, providerSchema]);
 
 export async function POST(req: NextRequest) {
+  const limited = rateLimit(req, "auth-register", RATE_LIMITS.authSignup);
+  if (limited) return limited;
+
   const body = await req.json().catch(() => null);
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
