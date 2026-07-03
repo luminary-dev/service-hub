@@ -46,13 +46,27 @@ jobs:
           category: trivy
 
   npm-audit:
-    name: npm audit
+    name: npm audit / ${{ matrix.package }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - web
+          - identity-service
+          - provider-service
+          - review-service
+          - job-service
+          - notification-service
+          - api-gateway
+    defaults:
+      run:
+        working-directory: ${{ matrix.package == 'web' && '.' || format('services/{0}', matrix.package) }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
       # Informational: surfaces advisories in the run log without blocking merges.
       - name: npm audit (production dependencies)
         run: npm audit --omit=dev --audit-level=high
