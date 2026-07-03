@@ -19,6 +19,7 @@ import InquiryForm from "@/components/InquiryForm";
 import ReviewSection from "@/components/ReviewSection";
 import ContactLinks from "@/components/ContactLinks";
 import FavoriteButton from "@/components/FavoriteButton";
+import VerifiedBadge from "@/components/VerifiedBadge";
 
 export const dynamic = "force-dynamic";
 
@@ -79,6 +80,9 @@ export default async function ProviderProfilePage({
                   <h1 className="text-2xl font-semibold tracking-tight text-ink-900 sm:text-3xl">
                     {provider.user.name}
                   </h1>
+                  {provider.verificationStatus === "VERIFIED" && (
+                    <VerifiedBadge label={t.card.verified} size="md" />
+                  )}
                   {provider.available ? (
                     <span className="chip bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">
                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
