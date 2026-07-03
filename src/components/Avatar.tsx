@@ -1,4 +1,6 @@
-/* eslint-disable @next/next/no-img-element */
+import Image from "next/image";
+import { isSvg } from "@/lib/image";
+
 export default function Avatar({
   name,
   url,
@@ -10,11 +12,12 @@ export default function Avatar({
 }) {
   if (url) {
     return (
-      <img
+      <Image
         src={url}
         alt={name}
         width={size}
         height={size}
+        unoptimized={isSvg(url)}
         className="rounded-full object-cover"
         style={{ width: size, height: size }}
       />

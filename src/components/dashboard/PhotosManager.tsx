@@ -1,11 +1,12 @@
 "use client";
 
-/* eslint-disable @next/next/no-img-element */
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { FaUpload } from "react-icons/fa6";
 import Avatar from "../Avatar";
 import { useT } from "../I18nProvider";
+import { isSvg } from "@/lib/image";
 import type { PhotoItem } from "./DashboardTabs";
 
 export default function PhotosManager({
@@ -146,10 +147,13 @@ export default function PhotosManager({
                 key={p.id}
                 className="group relative aspect-square overflow-hidden rounded-xl bg-ink-100"
               >
-                <img
+                <Image
                   src={p.url}
                   alt={p.caption || "Work photo"}
-                  className="h-full w-full object-cover"
+                  fill
+                  sizes="(min-width: 640px) 33vw, 50vw"
+                  unoptimized={isSvg(p.url)}
+                  className="object-cover"
                 />
                 {p.caption && (
                   <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-3 pb-2 pt-8 text-xs text-white">
