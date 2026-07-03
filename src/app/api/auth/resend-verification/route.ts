@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { sendVerificationEmail } from "@/lib/verification";
 
 export async function POST(req: NextRequest) {
+  const limited = rateLimit(req, "auth-resend", RATE_LIMITS.resend);
+  if (limited) return limited;
+
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

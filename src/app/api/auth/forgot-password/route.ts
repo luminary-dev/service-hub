@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { createToken, RESET_TOKEN_TTL_MS } from "@/lib/tokens";
@@ -8,6 +9,9 @@ import { getLocale } from "@/lib/locale";
 const schema = z.object({ email: z.string().email() });
 
 export async function POST(req: NextRequest) {
+  const limited = rateLimit(req, "auth-forgot", RATE_LIMITS.authStrict);
+  if (limited) return limited;
+
   const body = await req.json().catch(() => null);
   const parsed = schema.safeParse(body);
   // Always return the same response regardless of whether the email exists,

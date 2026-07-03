@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
+import { rateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 const schema = z.object({
   name: z.string().min(2).max(80),
@@ -14,6 +15,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const limited = rateLimit(req, "inquiry", RATE_LIMITS.inquiry);
+  if (limited) return limited;
+
   const { id } = await params;
   const provider = await db.provider.findUnique({ where: { id } });
   if (!provider) {
