@@ -72,3 +72,4 @@ public/uploads/    user-uploaded images (gitignored)
 - Set a strong `AUTH_SECRET` in `.env`
 - Move `DATABASE_URL` to PostgreSQL and re-run `prisma db push`
 - Uploads write to `public/uploads/`; use object storage (S3 etc.) behind a CDN when deploying serverless
+- **Email (password reset & verification) is NOT delivering to real users yet** — it needs a verified sending domain + `RESEND_API_KEY`. See [docs/EMAIL_SETUP.md](docs/EMAIL_SETUP.md).
