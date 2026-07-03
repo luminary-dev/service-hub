@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { db } from "@/lib/db";
+import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
@@ -9,21 +9,29 @@ import AdminProviderActions from "@/components/admin/AdminProviderActions";
 
 export const dynamic = "force-dynamic";
 
+// Admin listing as served by `GET /api/admin/providers` on the gateway
+// (newest first, with contact details and review/photo counts hydrated).
+type AdminProviderRow = {
+  id: string;
+  category: string;
+  city: string;
+  avatarUrl: string | null;
+  verificationStatus: string;
+  suspended: boolean;
+  user: { name: string; email: string };
+  _count: { reviews: number; photos: number };
+};
+
 export default async function AdminProvidersPage() {
   const session = await getSession();
   if (!session) redirect("/login");
   if (session.role !== "ADMIN") redirect("/");
 
-  const [locale, providers] = await Promise.all([
+  const [locale, data] = await Promise.all([
     getLocale(),
-    db.provider.findMany({
-      orderBy: { createdAt: "desc" },
-      include: {
-        user: { select: { name: true, email: true } },
-        _count: { select: { reviews: true, photos: true } },
-      },
-    }),
+    apiJson<{ providers: AdminProviderRow[] }>("/api/admin/providers"),
   ]);
+  const providers = data?.providers ?? [];
   const t = dict[locale].admin;
 
   return (

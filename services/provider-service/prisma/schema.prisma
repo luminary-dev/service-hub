@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// userId references a User owned by identity-service; no FK across service
+// boundaries. Contact fields are denormalized from the user at registration
+// and kept in sync on profile updates (S2S PATCH to identity).
+model Provider {
+  id           String  @id @default(cuid())
+  userId       String  @unique
+  contactName  String
+  contactEmail String
+  contactPhone String?
+
+  category   String
+  headline   String
+  bio        String
+  district   String
+  city       String
+  experience Int     @default(0)
+  whatsapp   String?
+  phone2     String?
+  facebook   String?
+  instagram  String?
+  tiktok     String?
+  youtube    String?
+  website    String?
+  avatarUrl  String?
+  available  Boolean @default(true)
+  suspended  Boolean @default(false)
+  // NONE | PENDING | VERIFIED | REJECTED
+  verificationStatus String    @default("NONE")
+  verifiedAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  services         Service[]
+  photos           WorkPhoto[]
+  inquiries        Inquiry[]
+  verificationDocs VerificationDocument[]
+}
+
+model VerificationDocument {
+  id         String   @id @default(cuid())
+  providerId String
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  kind       String // "NIC" | "BUSINESS"
+  url        String
+  createdAt  DateTime @default(now())
+
+  @@index([providerId])
+}
+
+model Service {
+  id          String   @id @default(cuid())
+  providerId  String
+  provider    Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  price       Float
+  priceType   String   @default("FIXED")
+}
+
+model WorkPhoto {
+  id         String   @id @default(cuid())
+  providerId String
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  url        String
+  caption    String?
+  createdAt  DateTime @default(now())
+}
+
+// userId references a User owned by identity-service (plain string, nullable —
+// anonymous inquiries are allowed).
+model Inquiry {
+  id         String   @id @default(cuid())
+  providerId String
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  userId     String?
+  name       String
+  phone      String
+  email      String?
+  message    String
+  status     String   @default("NEW")
+  createdAt  DateTime @default(now())
+}

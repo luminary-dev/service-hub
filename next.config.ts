@@ -46,6 +46,16 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
+  // All /api/* traffic (client components use relative URLs) is proxied to
+  // the API gateway; server components fetch it directly via src/lib/api.ts.
+  async rewrites() {
+    return [
+      {
+        source: "/api/:path*",
+        destination: `${process.env.GATEWAY_URL ?? "http://localhost:4000"}/api/:path*`,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

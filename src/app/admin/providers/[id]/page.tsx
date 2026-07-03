@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { db } from "@/lib/db";
+import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
@@ -11,6 +11,26 @@ import AdminProviderActions from "@/components/admin/AdminProviderActions";
 import AdminDeleteButton from "@/components/admin/AdminDeleteButton";
 
 export const dynamic = "force-dynamic";
+
+// Moderation payload as served by `GET /api/admin/providers/:id` on the
+// gateway (contact email plus reviews with hydrated reviewer names).
+type AdminProviderDetail = {
+  id: string;
+  category: string;
+  city: string;
+  avatarUrl: string | null;
+  verificationStatus: string;
+  suspended: boolean;
+  user: { name: string; email: string };
+  reviews: {
+    id: string;
+    rating: number;
+    comment: string;
+    createdAt: string;
+    user: { name: string };
+  }[];
+  photos: { id: string; url: string; caption: string | null }[];
+};
 
 export default async function AdminProviderModeratePage({
   params,
@@ -22,20 +42,13 @@ export default async function AdminProviderModeratePage({
   if (session.role !== "ADMIN") redirect("/");
 
   const { id } = await params;
-  const [locale, provider] = await Promise.all([
+  const [locale, data] = await Promise.all([
     getLocale(),
-    db.provider.findUnique({
-      where: { id },
-      include: {
-        user: { select: { name: true, email: true } },
-        reviews: {
-          include: { user: { select: { name: true } } },
-          orderBy: { createdAt: "desc" },
-        },
-        photos: { orderBy: { createdAt: "desc" } },
-      },
-    }),
+    apiJson<{ provider: AdminProviderDetail }>(
+      `/api/admin/providers/${encodeURIComponent(id)}`
+    ),
   ]);
+  const provider = data?.provider ?? null;
   if (!provider) notFound();
   const t = dict[locale].admin;
 

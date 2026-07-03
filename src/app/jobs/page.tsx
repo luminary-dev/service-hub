@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { FaPhone, FaPlus } from "react-icons/fa6";
-import { db } from "@/lib/db";
+import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
-import { getCurrentProvider } from "@/lib/provider-auth";
 import { getLocale } from "@/lib/locale";
 import { dict, categoryLabelLoc, districtLabelLoc } from "@/lib/i18n";
 import JobRespondForm from "@/components/jobs/JobRespondForm";
@@ -11,7 +10,39 @@ import JobStatusToggle from "@/components/jobs/JobStatusToggle";
 
 export const dynamic = "force-dynamic";
 
-function fmtDate(d: Date) {
+// Job payloads as served by the gateway. Board jobs come with the customer
+// name and a precomputed `responded` flag; own jobs carry hydrated responses.
+type BoardJob = {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  district: string;
+  budget: number | null;
+  status: string;
+  createdAt: string;
+  customer: { name: string };
+  responded: boolean;
+};
+
+type MyJob = {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  district: string;
+  budget: number | null;
+  status: string;
+  createdAt: string;
+  responses: {
+    id: string;
+    message: string;
+    createdAt: string;
+    provider: { id: string; name: string; phone: string | null };
+  }[];
+};
+
+function fmtDate(d: string) {
   return new Date(d).toLocaleDateString("en-GB", {
     day: "numeric",
     month: "short",
@@ -23,42 +54,28 @@ export default async function JobsPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const [locale, provider] = await Promise.all([
+  // The board subtitle needs the caller's provider category/district, which
+  // the dashboard endpoint carries (it also confirms a provider profile
+  // exists — role alone isn't enough, matching the old getCurrentProvider()).
+  const [locale, dashboard] = await Promise.all([
     getLocale(),
-    getCurrentProvider(),
+    session.role === "PROVIDER"
+      ? apiJson<{ provider: { category: string; district: string } }>(
+          "/api/provider/dashboard"
+        )
+      : Promise.resolve(null),
   ]);
   const t = dict[locale].jobs;
+  const provider = dashboard?.provider ?? null;
 
-  const board = provider
-    ? await db.jobRequest.findMany({
-        where: {
-          status: "OPEN",
-          category: provider.category,
-          district: provider.district,
-          NOT: { customerId: session.userId },
-        },
-        orderBy: { createdAt: "desc" },
-        include: {
-          customer: { select: { name: true } },
-          responses: { where: { providerId: provider.id }, select: { id: true } },
-        },
-      })
-    : [];
-
-  const myJobs = await db.jobRequest.findMany({
-    where: { customerId: session.userId },
-    orderBy: { createdAt: "desc" },
-    include: {
-      responses: {
-        include: {
-          provider: {
-            include: { user: { select: { name: true, phone: true } } },
-          },
-        },
-        orderBy: { createdAt: "desc" },
-      },
-    },
-  });
+  const [boardData, mineData] = await Promise.all([
+    provider
+      ? apiJson<{ jobs: BoardJob[] }>("/api/jobs/board")
+      : Promise.resolve(null),
+    apiJson<{ jobs: MyJob[] }>("/api/jobs/mine"),
+  ]);
+  const board = boardData?.jobs ?? [];
+  const myJobs = mineData?.jobs ?? [];
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
@@ -103,7 +120,7 @@ export default async function JobsPage() {
                   <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-ink-600">
                     {job.description}
                   </p>
-                  {job.responses.length > 0 ? (
+                  {job.responded ? (
                     <span className="chip mt-3 bg-emerald-50 text-emerald-700">
                       {t.respondedTag}
                     </span>
@@ -169,18 +186,18 @@ export default async function JobsPage() {
                         <li key={r.id} className="py-3">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <Link
-                              href={`/providers/${r.providerId}`}
+                              href={`/providers/${r.provider.id}`}
                               className="text-sm font-medium text-ink-800 hover:text-brand-700"
                             >
-                              {r.provider.user.name}
+                              {r.provider.name}
                             </Link>
-                            {r.provider.user.phone && (
+                            {r.provider.phone && (
                               <a
-                                href={`tel:${r.provider.user.phone}`}
+                                href={`tel:${r.provider.phone}`}
                                 className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-700 hover:underline"
                               >
                                 <FaPhone className="h-3 w-3" />
-                                {r.provider.user.phone}
+                                {r.provider.phone}
                               </a>
                             )}
                           </div>

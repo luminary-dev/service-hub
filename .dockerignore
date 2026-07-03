@@ -1,0 +1,15 @@
+node_modules
+.next
+services
+docs
+images
+scripts
+.git
+.github
+.vercel
+.claude
+.env
+.env.local
+*.log
+Dockerfile
+docker-compose.yml

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { FaLocationDot } from "react-icons/fa6";
-import { db } from "@/lib/db";
+import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { formatLKR } from "@/lib/constants";
 import {
@@ -11,7 +11,6 @@ import {
   priceTypeLabelLoc,
 } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
-import { isFavorited } from "@/lib/favorites";
 import Avatar from "@/components/Avatar";
 import CategoryIcon from "@/components/CategoryIcon";
 import Stars from "@/components/Stars";
@@ -24,25 +23,65 @@ import VerifiedBadge from "@/components/VerifiedBadge";
 
 export const dynamic = "force-dynamic";
 
+// Profile payload as served by `GET /api/providers/:id/full` on the gateway.
+// Suspended profiles come back 404 for everyone but admins; dates are ISO
+// strings; reviews arrive newest-first with reviewer names hydrated.
+type FullReview = {
+  id: string;
+  userId: string;
+  rating: number;
+  comment: string;
+  createdAt: string;
+  user: { name: string };
+  photos: { id: string; url: string }[];
+};
+
+type FullProvider = {
+  id: string;
+  userId: string;
+  category: string;
+  headline: string;
+  bio: string;
+  district: string;
+  city: string;
+  experience: number;
+  available: boolean;
+  suspended: boolean;
+  verificationStatus: string;
+  avatarUrl: string | null;
+  whatsapp: string | null;
+  phone2: string | null;
+  facebook: string | null;
+  instagram: string | null;
+  tiktok: string | null;
+  youtube: string | null;
+  website: string | null;
+  user: { name: string; phone: string | null; email: string | null };
+  services: {
+    id: string;
+    title: string;
+    description: string | null;
+    price: number;
+    priceType: string;
+  }[];
+  photos: { id: string; url: string; caption: string | null }[];
+  reviews: FullReview[];
+};
+
+function fetchProvider(id: string) {
+  return apiJson<{ provider: FullProvider }>(
+    `/api/providers/${encodeURIComponent(id)}/full`
+  );
+}
+
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
-  const [locale, provider] = await Promise.all([
-    getLocale(),
-    db.provider.findUnique({
-      where: { id },
-      select: {
-        category: true,
-        city: true,
-        headline: true,
-        suspended: true,
-        user: { select: { name: true } },
-      },
-    }),
-  ]);
+  const [locale, data] = await Promise.all([getLocale(), fetchProvider(id)]);
+  const provider = data?.provider;
   if (!provider || provider.suspended) return {};
 
   const category = categoryLabelLoc(provider.category, locale);
@@ -67,28 +106,16 @@ export default async function ProviderProfilePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [provider, session, locale] = await Promise.all([
-    db.provider.findUnique({
-      where: { id },
-      include: {
-        user: { select: { name: true, phone: true, email: true } },
-        services: { orderBy: { price: "asc" } },
-        photos: { orderBy: { createdAt: "desc" } },
-        reviews: {
-          include: {
-            user: { select: { name: true } },
-            photos: { orderBy: { createdAt: "asc" } },
-          },
-          orderBy: { createdAt: "desc" },
-        },
-      },
-    }),
+  const [data, session, locale] = await Promise.all([
+    fetchProvider(id),
     getSession(),
     getLocale(),
   ]);
+  const provider = data?.provider ?? null;
 
+  // The service already 404s suspended profiles for non-admins; the local
+  // check is defense in depth (admins moderate via /admin).
   if (!provider) notFound();
-  // Suspended profiles are hidden from the public; admins moderate via /admin.
   if (provider.suspended && session?.role !== "ADMIN") notFound();
   const t = dict[locale];
 
@@ -103,9 +130,13 @@ export default async function ProviderProfilePage({
     : null;
   // Customers can save any profile but their own.
   const canFavorite = !!session && !isOwner;
-  const favorited = canFavorite
-    ? await isFavorited(session!.userId, provider.id)
-    : false;
+  let favorited = false;
+  if (canFavorite) {
+    const favorites = await apiJson<{ providerIds: string[] }>(
+      "/api/favorites"
+    );
+    favorited = favorites?.providerIds.includes(provider.id) ?? false;
+  }
 
   return (
     <div>
@@ -269,7 +300,7 @@ export default async function ProviderProfilePage({
                 id: r.id,
                 rating: r.rating,
                 comment: r.comment,
-                createdAt: r.createdAt.toISOString(),
+                createdAt: r.createdAt,
                 userName: r.user.name,
                 photos: r.photos.map((ph) => ({ id: ph.id, url: ph.url })),
               }))}

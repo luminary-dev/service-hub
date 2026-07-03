@@ -1,7 +1,18 @@
 import { ImageResponse } from "next/og";
-import { db } from "@/lib/db";
+import { apiJson } from "@/lib/api";
 import { categoryLabelLoc } from "@/lib/i18n";
 import { SITE_NAME } from "@/lib/site";
+
+// OG-image payload as served by `GET /api/providers/:id/card` on the gateway.
+type ProviderCard = {
+  name: string;
+  category: string;
+  city: string;
+  district: string;
+  suspended: boolean;
+  rating: number | null;
+  reviewCount: number;
+};
 
 export const dynamic = "force-dynamic";
 export const size = { width: 1200, height: 630 };
@@ -17,33 +28,26 @@ export default async function Image({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const provider = await db.provider.findUnique({
-    where: { id },
-    select: {
-      category: true,
-      city: true,
-      district: true,
-      suspended: true,
-      user: { select: { name: true } },
-      reviews: { select: { rating: true } },
-    },
-  });
+  const provider = await apiJson<ProviderCard>(
+    `/api/providers/${encodeURIComponent(id)}/card`
+  );
 
   const brand = "#8f3a1c";
   const ink = "#1c1917";
   const live = provider && !provider.suspended;
 
-  const name = live ? provider.user.name : SITE_NAME;
+  const name = live ? provider.name : SITE_NAME;
   const category = live
     ? categoryLabelLoc(provider.category, "en")
     : "Trusted tradespeople in Sri Lanka";
   const location = live ? `${provider.city}, ${provider.district}` : "";
-  const reviews = provider?.reviews ?? [];
-  const avg = reviews.length
-    ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)
-    : null;
+  const reviewCount = provider?.reviewCount ?? 0;
+  const avg =
+    provider?.rating != null && reviewCount > 0
+      ? provider.rating.toFixed(1)
+      : null;
   const footer = avg
-    ? `Rated ${avg} out of 5 (${reviews.length} review${reviews.length === 1 ? "" : "s"})`
+    ? `Rated ${avg} out of 5 (${reviewCount} review${reviewCount === 1 ? "" : "s"})`
     : "Verified local professionals";
 
   return new ImageResponse(

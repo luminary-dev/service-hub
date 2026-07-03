@@ -1,0 +1,145 @@
+name: service-hub
+
+x-service-env: &service-env
+  INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-dev-internal-secret}
+  IDENTITY_SERVICE_URL: http://identity-service:4001
+  PROVIDER_SERVICE_URL: http://provider-service:4002
+  REVIEW_SERVICE_URL: http://review-service:4003
+  JOB_SERVICE_URL: http://job-service:4004
+  NOTIFICATION_SERVICE_URL: http://notification-service:4005
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      # 5433 on the host: many dev machines already run a local Postgres on 5432.
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  identity-service:
+    build: ./services/identity-service
+    environment:
+      <<: *service-env
+      PORT: 4001
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/identity_db
+      AUTH_SECRET: ${AUTH_SECRET:-dev-only-secret}
+    ports:
+      - "4001:4001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck: &node-healthcheck
+      test: ["CMD-SHELL", "wget -qO- http://localhost:$$PORT/healthz > /dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  provider-service:
+    build: ./services/provider-service
+    environment:
+      <<: *service-env
+      PORT: 4002
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/provider_db
+      UPLOAD_DIR: /app/data/uploads
+      BLOB_READ_WRITE_TOKEN: ${BLOB_READ_WRITE_TOKEN:-}
+    ports:
+      - "4002:4002"
+    volumes:
+      - provider_uploads:/app/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck: *node-healthcheck
+
+  review-service:
+    build: ./services/review-service
+    environment:
+      <<: *service-env
+      PORT: 4003
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/review_db
+      UPLOAD_DIR: /app/data/uploads
+      BLOB_READ_WRITE_TOKEN: ${BLOB_READ_WRITE_TOKEN:-}
+    ports:
+      - "4003:4003"
+    volumes:
+      - review_uploads:/app/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck: *node-healthcheck
+
+  job-service:
+    build: ./services/job-service
+    environment:
+      <<: *service-env
+      PORT: 4004
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/job_db
+    ports:
+      - "4004:4004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck: *node-healthcheck
+
+  notification-service:
+    build: ./services/notification-service
+    environment:
+      <<: *service-env
+      PORT: 4005
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+    ports:
+      - "4005:4005"
+    healthcheck: *node-healthcheck
+
+  api-gateway:
+    build: ./services/api-gateway
+    environment:
+      <<: *service-env
+      PORT: 4000
+      AUTH_SECRET: ${AUTH_SECRET:-dev-only-secret}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+    ports:
+      - "4000:4000"
+    depends_on:
+      identity-service:
+        condition: service_healthy
+      provider-service:
+        condition: service_healthy
+      review-service:
+        condition: service_healthy
+      job-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+    healthcheck: *node-healthcheck
+
+  web:
+    build:
+      context: .
+      args:
+        GATEWAY_URL: http://api-gateway:4000
+    environment:
+      GATEWAY_URL: http://api-gateway:4000
+      AUTH_SECRET: ${AUTH_SECRET:-dev-only-secret}
+      NEXT_PUBLIC_SITE_URL: ${WEB_ORIGIN:-http://localhost:3000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  provider_uploads:
+  review_uploads:

@@ -6,59 +6,34 @@ import {
   FaStar,
   FaWhatsapp,
 } from "react-icons/fa6";
-import { db } from "@/lib/db";
+import { apiJson } from "@/lib/api";
 import { CATEGORIES } from "@/lib/constants";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
 import { getSession } from "@/lib/auth";
-import { getFavoriteIds } from "@/lib/favorites";
-import ProviderCard, { ProviderSummary } from "@/components/ProviderCard";
+import ProviderCard, { ProviderCardDTO } from "@/components/ProviderCard";
 import SearchBar from "@/components/SearchBar";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [locale, providers, providerCount, reviewCount] = await Promise.all([
+  const [locale, listing, stats] = await Promise.all([
     getLocale(),
-    db.provider.findMany({
-      where: { suspended: false },
-      include: {
-        user: { select: { name: true } },
-        services: { orderBy: { price: "asc" }, take: 1 },
-        photos: { take: 1, orderBy: { createdAt: "desc" } },
-        reviews: { select: { rating: true } },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 6,
-    }),
-    db.provider.count({ where: { suspended: false } }),
-    db.review.count(),
+    apiJson<{ providers: ProviderCardDTO[] }>(
+      "/api/providers?sort=newest&pageSize=6"
+    ),
+    apiJson<{ providerCount: number; reviewCount: number }>("/api/stats"),
   ]);
   const t = dict[locale];
+  const providerCount = stats?.providerCount ?? 0;
+  const reviewCount = stats?.reviewCount ?? 0;
   const session = await getSession();
-  const favoriteIds = session
-    ? await getFavoriteIds(session.userId)
-    : new Set<string>();
+  const favorites = session
+    ? await apiJson<{ providerIds: string[] }>("/api/favorites")
+    : null;
+  const favoriteIds = new Set(favorites?.providerIds ?? []);
 
-  const featured: ProviderSummary[] = providers.map((p) => ({
-    id: p.id,
-    name: p.user.name,
-    category: p.category,
-    headline: p.headline,
-    district: p.district,
-    city: p.city,
-    experience: p.experience,
-    available: p.available,
-    avatarUrl: p.avatarUrl,
-    coverPhoto: p.photos[0]?.url ?? null,
-    fromPrice: p.services[0]?.price ?? null,
-    fromPriceType: p.services[0]?.priceType ?? null,
-    rating: p.reviews.length
-      ? p.reviews.reduce((s, r) => s + r.rating, 0) / p.reviews.length
-      : null,
-    reviewCount: p.reviews.length,
-    verified: p.verificationStatus === "VERIFIED",
-  }));
+  const featured: ProviderCardDTO[] = listing?.providers ?? [];
 
   return (
     <div>

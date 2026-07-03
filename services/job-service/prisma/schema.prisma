@@ -1,0 +1,39 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// customerId references a User owned by identity-service; providerId
+// references a Provider owned by provider-service. No FKs across service
+// boundaries — existence is checked over S2S HTTP at write time and names
+// are hydrated at read time.
+model JobRequest {
+  id          String        @id @default(cuid())
+  customerId  String
+  category    String
+  district    String
+  title       String
+  description String
+  budget      Int? // optional, LKR
+  status      String        @default("OPEN") // OPEN | CLOSED
+  createdAt   DateTime      @default(now())
+  responses   JobResponse[]
+
+  @@index([category, district, status])
+  @@index([customerId])
+}
+
+model JobResponse {
+  id           String     @id @default(cuid())
+  jobRequestId String
+  jobRequest   JobRequest @relation(fields: [jobRequestId], references: [id], onDelete: Cascade)
+  providerId   String
+  message      String
+  createdAt    DateTime   @default(now())
+
+  @@unique([jobRequestId, providerId])
+  @@index([providerId])
+}

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { FaArrowUpRightFromSquare, FaCircleCheck } from "react-icons/fa6";
-import { db } from "@/lib/db";
+import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
@@ -12,6 +12,54 @@ import VerificationSection from "@/components/dashboard/VerificationSection";
 
 export const dynamic = "force-dynamic";
 
+// Dashboard payload as served by `GET /api/provider/dashboard` on the
+// gateway. Contact details live on identity-service and arrive hydrated
+// under `user`; the review summary comes precomputed from review-service.
+type DashboardProvider = {
+  id: string;
+  userId: string;
+  category: string;
+  headline: string;
+  bio: string;
+  district: string;
+  city: string;
+  experience: number;
+  available: boolean;
+  verificationStatus: string;
+  avatarUrl: string | null;
+  whatsapp: string | null;
+  phone2: string | null;
+  facebook: string | null;
+  instagram: string | null;
+  tiktok: string | null;
+  youtube: string | null;
+  website: string | null;
+  user: {
+    name: string;
+    email: string;
+    phone: string | null;
+    emailVerified: string | null;
+  };
+  services: {
+    id: string;
+    title: string;
+    description: string | null;
+    price: number;
+    priceType: string;
+  }[];
+  photos: { id: string; url: string; caption: string | null }[];
+  inquiries: {
+    id: string;
+    name: string;
+    phone: string;
+    email: string | null;
+    message: string;
+    status: string;
+    createdAt: string;
+  }[];
+  ratingSummary: { rating: number | null; count: number };
+};
+
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -21,36 +69,19 @@ export default async function DashboardPage({
   if (!session) redirect("/login");
   if (session.role !== "PROVIDER") redirect("/providers");
 
-  const provider = await db.provider.findUnique({
-    where: { userId: session.userId },
-    include: {
-      user: {
-        select: { name: true, email: true, phone: true, emailVerified: true },
-      },
-      services: { orderBy: { price: "asc" } },
-      photos: { orderBy: { createdAt: "desc" } },
-      reviews: { select: { rating: true } },
-      inquiries: { orderBy: { createdAt: "desc" } },
-    },
-  });
+  const dashboard = await apiJson<{
+    provider: DashboardProvider;
+    openJobsCount: number;
+  }>("/api/provider/dashboard");
+  const provider = dashboard?.provider ?? null;
   if (!provider) redirect("/register/provider");
 
-  const matchingJobs = await db.jobRequest.count({
-    where: {
-      status: "OPEN",
-      category: provider.category,
-      district: provider.district,
-      NOT: { customerId: session.userId },
-    },
-  });
+  const matchingJobs = dashboard?.openJobsCount ?? 0;
 
   const locale = await getLocale();
   const t = dict[locale];
   const { welcome } = await searchParams;
-  const avg = provider.reviews.length
-    ? provider.reviews.reduce((s, r) => s + r.rating, 0) /
-      provider.reviews.length
-    : null;
+  const avg = provider.ratingSummary.rating;
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
@@ -139,11 +170,11 @@ export default async function DashboardPage({
             email: i.email ?? "",
             message: i.message,
             status: i.status,
-            createdAt: i.createdAt.toISOString(),
+            createdAt: i.createdAt,
           })),
           stats: {
             rating: avg,
-            reviewCount: provider.reviews.length,
+            reviewCount: provider.ratingSummary.count,
             photoCount: provider.photos.length,
             newInquiries: provider.inquiries.filter((i) => i.status === "NEW")
               .length,

@@ -1,0 +1,266 @@
+// Public provider directory + profile endpoints (behavior ported from the
+// monolith's /api/providers routes and the /providers pages). `name` comes
+// from the denormalized contact columns instead of the old user join.
+import { Hono } from "hono";
+import { z } from "zod";
+import type { Prisma } from "@prisma/client";
+import { db } from "../db";
+import { getAuth } from "../lib/http";
+import { fetchProviderReviews, fetchRatings, fetchReviewCount, type RatingEntry } from "../lib/clients";
+import { normalizeListQuery } from "../lib/query";
+import { sortProviders, type Sortable } from "../lib/sort";
+
+export const providersRoutes = new Hono();
+
+type CardRow = Prisma.ProviderGetPayload<{
+  include: { services: true; photos: true };
+}>;
+
+const cardInclude = {
+  services: { orderBy: { price: "asc" as const }, take: 1 },
+  photos: { take: 1, orderBy: { createdAt: "desc" as const } },
+};
+
+function toCardDTO(p: CardRow, r: RatingEntry | undefined) {
+  return {
+    id: p.id,
+    userId: p.userId,
+    name: p.contactName,
+    category: p.category,
+    headline: p.headline,
+    district: p.district,
+    city: p.city,
+    experience: p.experience,
+    available: p.available,
+    verificationStatus: p.verificationStatus,
+    verifiedAt: p.verifiedAt,
+    createdAt: p.createdAt,
+    avatarUrl: p.avatarUrl,
+    coverPhoto: p.photos[0]?.url ?? null,
+    photos: p.photos.slice(0, 1).map((ph) => ({ url: ph.url, caption: ph.caption })),
+    services: p.services
+      .slice(0, 1)
+      .map((s) => ({ id: s.id, title: s.title, price: s.price, priceType: s.priceType })),
+    fromPrice: p.services[0]?.price ?? null,
+    fromPriceType: p.services[0]?.priceType ?? null,
+    rating: r?.rating ?? null,
+    reviewCount: r?.count ?? 0,
+  };
+}
+
+function contactAsUser(p: { contactName: string; contactPhone: string | null; contactEmail: string }) {
+  return { name: p.contactName, phone: p.contactPhone, email: p.contactEmail };
+}
+
+providersRoutes.get("/api/providers", async (c) => {
+  const query = c.req.query();
+  const q = query.q?.trim();
+  const category = query.category;
+  const district = query.district;
+  const { page, pageSize, sort } = normalizeListQuery({
+    page: query.page ?? null,
+    pageSize: query.pageSize ?? null,
+    take: query.take ?? null,
+    sort: query.sort ?? null,
+  });
+
+  // ids= returns exactly those providers (suspended excluded) in input order —
+  // used by the account/favorites page. No sorting or pagination.
+  if (query.ids !== undefined) {
+    const ids = query.ids
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const rows = ids.length
+      ? await db.provider.findMany({
+          where: { id: { in: ids }, suspended: false },
+          include: cardInclude,
+        })
+      : [];
+    const byId = new Map(rows.map((p) => [p.id, p]));
+    const ordered = ids.flatMap((id) => byId.get(id) ?? []);
+    const ratings = await fetchRatings(ordered.map((p) => p.id));
+    const providers = ordered.map((p) => toCardDTO(p, ratings[p.id]));
+    return c.json({
+      providers,
+      total: providers.length,
+      page: 1,
+      pageSize: providers.length,
+    });
+  }
+
+  const where: Prisma.ProviderWhereInput = {
+    suspended: false,
+    ...(category ? { category } : {}),
+    ...(district ? { district } : {}),
+    ...(q
+      ? {
+          OR: [
+            { headline: { contains: q, mode: "insensitive" } },
+            { bio: { contains: q, mode: "insensitive" } },
+            { city: { contains: q, mode: "insensitive" } },
+            { contactName: { contains: q, mode: "insensitive" } },
+            { services: { some: { title: { contains: q, mode: "insensitive" } } } },
+          ],
+        }
+      : {}),
+  };
+
+  // Rating and starting price are derived data, so (matching the monolith's
+  // providers page) we rank in memory across the full match set and paginate
+  // afterwards. Fine at the current scale.
+  const rows = await db.provider.findMany({ where, include: cardInclude });
+  const ratings = await fetchRatings(rows.map((p) => p.id));
+
+  const enriched: (Sortable & { dto: ReturnType<typeof toCardDTO> })[] = rows.map((p) => {
+    const r = ratings[p.id];
+    const rating = r?.rating ?? null;
+    const count = r?.count ?? 0;
+    return {
+      rating,
+      ratingSum: rating !== null ? rating * count : 0,
+      reviewCount: count,
+      fromPrice: p.services[0]?.price ?? null,
+      experience: p.experience,
+      createdAt: p.createdAt,
+      verified: p.verificationStatus === "VERIFIED",
+      dto: toCardDTO(p, r),
+    };
+  });
+
+  const total = enriched.length;
+  const results = sortProviders(enriched, sort)
+    .slice((page - 1) * pageSize, page * pageSize)
+    .map((e) => e.dto);
+
+  return c.json({ providers: results, total, page, pageSize });
+});
+
+// Sitemap feed: every non-suspended provider id + updatedAt.
+providersRoutes.get("/api/providers/ids", async (c) => {
+  const providers = await db.provider.findMany({
+    where: { suspended: false },
+    select: { id: true, updatedAt: true },
+    orderBy: { updatedAt: "desc" },
+  });
+  return c.json({ providers });
+});
+
+providersRoutes.get("/api/stats", async (c) => {
+  const [providerCount, reviewCount] = await Promise.all([
+    db.provider.count({ where: { suspended: false } }),
+    fetchReviewCount(),
+  ]);
+  return c.json({ providerCount, reviewCount });
+});
+
+// Legacy detail shape (kept for existing consumers): provider incl. services
+// and photos, contact exposed as `user`. Reviews are NOT included any more —
+// they live in review-service and are served via /:id/full.
+providersRoutes.get("/api/providers/:id", async (c) => {
+  const id = c.req.param("id");
+  const provider = await db.provider.findUnique({
+    where: { id },
+    include: {
+      services: true,
+      photos: { orderBy: { createdAt: "desc" } },
+    },
+  });
+  if (!provider) {
+    return c.json({ error: "Provider not found" }, 404);
+  }
+  return c.json({ provider: { ...provider, user: contactAsUser(provider) } });
+});
+
+// Full page payload for /providers/[id]: services (price asc), photos
+// (createdAt desc) and reviews hydrated from review-service (degrades to []).
+// Suspended profiles are hidden from the public; admins moderate via /admin.
+providersRoutes.get("/api/providers/:id/full", async (c) => {
+  const id = c.req.param("id");
+  const provider = await db.provider.findUnique({
+    where: { id },
+    include: {
+      services: { orderBy: { price: "asc" } },
+      photos: { orderBy: { createdAt: "desc" } },
+    },
+  });
+  if (!provider) {
+    return c.json({ error: "Provider not found" }, 404);
+  }
+  const auth = getAuth(c);
+  if (provider.suspended && auth?.role !== "ADMIN") {
+    return c.json({ error: "Provider not found" }, 404);
+  }
+
+  const reviews = await fetchProviderReviews(id);
+  return c.json({
+    provider: { ...provider, user: contactAsUser(provider), reviews },
+  });
+});
+
+// OG-image payload (the web app renders the image; suspended profiles fall
+// back to the generic card there, so this returns the flag rather than a 404).
+providersRoutes.get("/api/providers/:id/card", async (c) => {
+  const id = c.req.param("id");
+  const provider = await db.provider.findUnique({
+    where: { id },
+    select: {
+      contactName: true,
+      category: true,
+      city: true,
+      district: true,
+      suspended: true,
+      verificationStatus: true,
+    },
+  });
+  if (!provider) {
+    return c.json({ error: "Provider not found" }, 404);
+  }
+  const ratings = await fetchRatings([id]);
+  const r = ratings[id];
+  return c.json({
+    name: provider.contactName,
+    category: provider.category,
+    city: provider.city,
+    district: provider.district,
+    suspended: provider.suspended,
+    rating: r?.rating ?? null,
+    reviewCount: r?.count ?? 0,
+    verificationStatus: provider.verificationStatus,
+  });
+});
+
+const inquirySchema = z.object({
+  name: z.string().min(2).max(80),
+  phone: z.string().min(9).max(15),
+  email: z.string().email().optional().or(z.literal("")),
+  message: z.string().min(10).max(2000),
+});
+
+providersRoutes.post("/api/providers/:id/inquiries", async (c) => {
+  const id = c.req.param("id");
+  const provider = await db.provider.findUnique({ where: { id } });
+  if (!provider) {
+    return c.json({ error: "Provider not found" }, 404);
+  }
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = inquirySchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0]?.message ?? "Invalid input" }, 400);
+  }
+
+  const auth = getAuth(c);
+  const inquiry = await db.inquiry.create({
+    data: {
+      providerId: id,
+      userId: auth?.userId ?? null,
+      name: parsed.data.name,
+      phone: parsed.data.phone,
+      email: parsed.data.email || null,
+      message: parsed.data.message,
+    },
+  });
+
+  return c.json({ inquiry });
+});
