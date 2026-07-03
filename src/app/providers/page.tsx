@@ -1,19 +1,12 @@
 import { FaMagnifyingGlass } from "react-icons/fa6";
-import { db } from "@/lib/db";
-import { Prisma } from "@prisma/client";
+import { apiJson } from "@/lib/api";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
-import { normalizeSort, sortProviders } from "@/lib/sort";
+import { normalizeSort } from "@/lib/sort-keys";
 import { getSession } from "@/lib/auth";
-import { getFavoriteIds } from "@/lib/favorites";
-import ProviderCard, { ProviderSummary } from "@/components/ProviderCard";
+import ProviderCard, { ProviderCardDTO } from "@/components/ProviderCard";
 import FilterBar from "@/components/FilterBar";
 import Link from "next/link";
-
-type EnrichedSummary = ProviderSummary & {
-  ratingSum: number;
-  createdAt: Date;
-};
 
 export const dynamic = "force-dynamic";
 
@@ -28,74 +21,36 @@ export default async function ProvidersPage({
   const locale = await getLocale();
   const t = dict[locale];
   const session = await getSession();
-  const favoriteIds = session
-    ? await getFavoriteIds(session.userId)
-    : new Set<string>();
+  const favorites = session
+    ? await apiJson<{ providerIds: string[] }>("/api/favorites")
+    : null;
+  const favoriteIds = new Set(favorites?.providerIds ?? []);
   const q = typeof params.q === "string" ? params.q.trim() : "";
   const category = typeof params.category === "string" ? params.category : "";
   const district = typeof params.district === "string" ? params.district : "";
   const sort = normalizeSort(params.sort);
   const page = Math.max(1, Number(params.page) || 1);
 
-  const where: Prisma.ProviderWhereInput = {
-    suspended: false,
-    ...(category ? { category } : {}),
-    ...(district ? { district } : {}),
-    ...(q
-      ? {
-          OR: [
-            { headline: { contains: q } },
-            { bio: { contains: q } },
-            { city: { contains: q } },
-            { user: { name: { contains: q } } },
-            { services: { some: { title: { contains: q } } } },
-          ],
-        }
-      : {}),
-  };
+  // Search, filtering, ranking and pagination all happen in provider-service;
+  // the query params pass straight through the gateway.
+  const query = new URLSearchParams();
+  if (q) query.set("q", q);
+  if (category) query.set("category", category);
+  if (district) query.set("district", district);
+  query.set("sort", sort);
+  query.set("page", String(page));
 
-  // Rating and starting price are derived from related rows, so we rank and
-  // paginate in memory. Fine at the current scale; a DB-level ranking / search
-  // index is tracked separately (see issue #56) for when the directory grows.
-  const providers = await db.provider.findMany({
-    where,
-    include: {
-      user: { select: { name: true } },
-      services: { orderBy: { price: "asc" }, take: 1 },
-      photos: { take: 1, orderBy: { createdAt: "desc" } },
-      reviews: { select: { rating: true } },
-    },
-  });
+  const listing = await apiJson<{
+    providers: ProviderCardDTO[];
+    total: number;
+    page: number;
+    pageSize: number;
+  }>(`/api/providers?${query.toString()}`);
 
-  const enriched: EnrichedSummary[] = providers.map((p) => {
-    const ratingSum = p.reviews.reduce((s, r) => s + r.rating, 0);
-    return {
-      id: p.id,
-      name: p.user.name,
-      category: p.category,
-      headline: p.headline,
-      district: p.district,
-      city: p.city,
-      experience: p.experience,
-      available: p.available,
-      avatarUrl: p.avatarUrl,
-      coverPhoto: p.photos[0]?.url ?? null,
-      fromPrice: p.services[0]?.price ?? null,
-      fromPriceType: p.services[0]?.priceType ?? null,
-      rating: p.reviews.length ? ratingSum / p.reviews.length : null,
-      reviewCount: p.reviews.length,
-      verified: p.verificationStatus === "VERIFIED",
-      ratingSum,
-      createdAt: p.createdAt,
-    };
-  });
-
-  const total = enriched.length;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const results = sortProviders(enriched, sort).slice(
-    (page - 1) * PAGE_SIZE,
-    page * PAGE_SIZE
-  );
+  const results = listing?.providers ?? [];
+  const total = listing?.total ?? 0;
+  const pageSize = listing?.pageSize ?? PAGE_SIZE;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   function pageLink(target: number) {
     const sp = new URLSearchParams();

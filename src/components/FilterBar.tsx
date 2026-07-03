@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { CATEGORIES, DISTRICTS } from "@/lib/constants";
 import { categoryLabelLoc, districtLabelLoc } from "@/lib/i18n";
-import { SORT_KEYS, type SortKey } from "@/lib/sort";
+import { SORT_KEYS, type SortKey } from "@/lib/sort-keys";
 import { useLocale, useT } from "./I18nProvider";
 
 export default function FilterBar({

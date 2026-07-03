@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { FaRegHeart } from "react-icons/fa6";
-import { db } from "@/lib/db";
+import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
-import ProviderCard, { ProviderSummary } from "@/components/ProviderCard";
+import ProviderCard, { ProviderCardDTO } from "@/components/ProviderCard";
 
 export const dynamic = "force-dynamic";
 
@@ -15,42 +15,27 @@ export default async function AccountPage() {
 
   const [locale, favorites] = await Promise.all([
     getLocale(),
-    db.favorite.findMany({
-      where: { userId: session.userId, provider: { suspended: false } },
-      orderBy: { createdAt: "desc" },
-      include: {
-        provider: {
-          include: {
-            user: { select: { name: true } },
-            services: { orderBy: { price: "asc" }, take: 1 },
-            photos: { take: 1, orderBy: { createdAt: "desc" } },
-            reviews: { select: { rating: true } },
-          },
-        },
-      },
-    }),
+    apiJson<{ providerIds: string[] }>("/api/favorites"),
   ]);
   const t = dict[locale];
 
-  const results: ProviderSummary[] = favorites.map(({ provider: p }) => ({
-    id: p.id,
-    name: p.user.name,
-    category: p.category,
-    headline: p.headline,
-    district: p.district,
-    city: p.city,
-    experience: p.experience,
-    available: p.available,
-    avatarUrl: p.avatarUrl,
-    coverPhoto: p.photos[0]?.url ?? null,
-    fromPrice: p.services[0]?.price ?? null,
-    fromPriceType: p.services[0]?.priceType ?? null,
-    rating: p.reviews.length
-      ? p.reviews.reduce((s, r) => s + r.rating, 0) / p.reviews.length
-      : null,
-    reviewCount: p.reviews.length,
-    verified: p.verificationStatus === "VERIFIED",
-  }));
+  // Saved ids come newest-first from identity-service; the card lookup
+  // excludes suspended profiles, and we keep the favorites order.
+  const ids = favorites?.providerIds ?? [];
+  let results: ProviderCardDTO[] = [];
+  if (ids.length > 0) {
+    const listing = await apiJson<{ providers: ProviderCardDTO[] }>(
+      `/api/providers?ids=${ids.map(encodeURIComponent).join(",")}`
+    );
+    const order = new Map(ids.map((id, i) => [id, i]));
+    results = (listing?.providers ?? [])
+      .slice()
+      .sort(
+        (a, b) =>
+          (order.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+          (order.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+      );
+  }
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">

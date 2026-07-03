@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { FaFileLines, FaShieldHalved } from "react-icons/fa6";
-import { db } from "@/lib/db";
+import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
@@ -9,22 +9,28 @@ import VerificationActions from "@/components/admin/VerificationActions";
 
 export const dynamic = "force-dynamic";
 
+// Pending queue as served by `GET /api/admin/verifications` on the gateway
+// (oldest submission first, with docs and contact details).
+type PendingVerification = {
+  id: string;
+  category: string;
+  city: string;
+  avatarUrl: string | null;
+  updatedAt: string;
+  user: { name: string; email: string };
+  verificationDocs: { id: string; kind: string; url: string }[];
+};
+
 export default async function AdminVerificationsPage() {
   const session = await getSession();
   if (!session) redirect("/login");
   if (session.role !== "ADMIN") redirect("/");
 
-  const [locale, pending] = await Promise.all([
+  const [locale, data] = await Promise.all([
     getLocale(),
-    db.provider.findMany({
-      where: { verificationStatus: "PENDING" },
-      orderBy: { updatedAt: "asc" },
-      include: {
-        user: { select: { name: true, email: true } },
-        verificationDocs: true,
-      },
-    }),
+    apiJson<{ providers: PendingVerification[] }>("/api/admin/verifications"),
   ]);
+  const pending = data?.providers ?? [];
   const t = dict[locale];
 
   return (

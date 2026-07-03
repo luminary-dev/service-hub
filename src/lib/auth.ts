@@ -1,6 +1,5 @@
-import { SignJWT, jwtVerify } from "jose";
+import { jwtVerify } from "jose";
 import { cookies } from "next/headers";
-import { db } from "./db";
 
 if (!process.env.AUTH_SECRET && process.env.NODE_ENV === "production") {
   throw new Error("AUTH_SECRET must be set in production");
@@ -18,28 +17,9 @@ export type SessionPayload = {
   name: string;
 };
 
-export async function createSession(payload: SessionPayload) {
-  const token = await new SignJWT(payload)
-    .setProtectedHeader({ alg: "HS256" })
-    .setIssuedAt()
-    .setExpirationTime("7d")
-    .sign(secret);
-
-  const cookieStore = await cookies();
-  cookieStore.set(COOKIE_NAME, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    maxAge: 60 * 60 * 24 * 7,
-    path: "/",
-  });
-}
-
-export async function destroySession() {
-  const cookieStore = await cookies();
-  cookieStore.delete(COOKIE_NAME);
-}
-
+// Read-only session check for page gating. The session cookie is signed by
+// identity-service and verified here (and by the gateway) with the shared
+// AUTH_SECRET.
 export async function getSession(): Promise<SessionPayload | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE_NAME)?.value;
@@ -54,13 +34,4 @@ export async function getSession(): Promise<SessionPayload | null> {
   } catch {
     return null;
   }
-}
-
-export async function getCurrentUser() {
-  const session = await getSession();
-  if (!session) return null;
-  return db.user.findUnique({
-    where: { id: session.userId },
-    include: { provider: true },
-  });
 }

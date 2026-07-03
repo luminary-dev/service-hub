@@ -9,58 +9,54 @@ on:
 permissions:
   contents: read
 
-# Dummy values so `prisma validate`, module init and `next build` don't need
-# real secrets. Nothing here connects to a real database or is used at runtime.
+# Dummy values so module init and `next build` don't need real secrets.
+# Nothing here connects to a real database or is used at runtime.
 env:
   DATABASE_URL: "postgresql://user:password@localhost:5432/db?schema=public"
   AUTH_SECRET: "ci-dummy-secret"
+  GATEWAY_URL: "http://localhost:4000"
 
 jobs:
-  typecheck:
-    name: typecheck
+  web:
+    name: web (${{ matrix.check }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [typecheck, lint, test, build]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
+      - run: npm ci
+      - run: npm run ${{ matrix.check }}
+
+  services:
+    name: ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - identity-service
+          - provider-service
+          - review-service
+          - job-service
+          - notification-service
+          - api-gateway
+    defaults:
+      run:
+        working-directory: services/${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: services/${{ matrix.service }}/package-lock.json
       - run: npm ci
       - run: npm run typecheck
-
-  lint:
-    name: lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
-      - run: npm run lint
-
-  test:
-    name: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
       - run: npm test
-
-  build:
-    name: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
-      - run: npx prisma validate
       - run: npm run build

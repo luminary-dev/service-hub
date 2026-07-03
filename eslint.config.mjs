@@ -12,7 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
-    "prisma/seed.js",
+    // Backend services and templates are separate packages with their own
+    // linting; the root config covers the web app only.
+    "services/**",
+    "docs/**",
   ]),
 ]);
 

@@ -1,0 +1,30 @@
+# CI for the standalone provider-service repo (this directory is mirrored to
+# its own repository via git subtree; the monorepo has its own workflow).
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Dummy value so `prisma generate` (postinstall) never needs a real database.
+env:
+  DATABASE_URL: "postgresql://user:password@localhost:5432/db?schema=public"
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build

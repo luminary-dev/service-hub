@@ -15,8 +15,12 @@ import {
   type Locale,
 } from "@/lib/i18n";
 
-export type ProviderSummary = {
+// Card payload as served by `GET /api/providers` on the gateway
+// (provider-service's ProviderCardDTO). Dates arrive as ISO strings; rating
+// and reviewCount come precomputed by review-service.
+export type ProviderCardDTO = {
   id: string;
+  userId: string;
   name: string;
   category: string;
   headline: string;
@@ -24,13 +28,17 @@ export type ProviderSummary = {
   city: string;
   experience: number;
   available: boolean;
+  verificationStatus: string;
+  verifiedAt: string | null;
+  createdAt: string;
   avatarUrl: string | null;
   coverPhoto: string | null;
+  photos: { url: string; caption: string | null }[];
+  services: { id: string; title: string; price: number; priceType: string }[];
   fromPrice: number | null;
   fromPriceType: string | null;
   rating: number | null;
   reviewCount: number;
-  verified: boolean;
 };
 
 export default function ProviderCard({
@@ -39,12 +47,13 @@ export default function ProviderCard({
   showFavorite = false,
   favorited = false,
 }: {
-  p: ProviderSummary;
+  p: ProviderCardDTO;
   locale?: Locale;
   showFavorite?: boolean;
   favorited?: boolean;
 }) {
   const t = dict[locale];
+  const verified = p.verificationStatus === "VERIFIED";
   return (
     <div className="relative">
       {showFavorite && (
@@ -95,7 +104,7 @@ export default function ProviderCard({
           <div className="min-w-0 flex-1 pt-1">
             <h3 className="flex items-center gap-1 truncate font-semibold text-ink-900 transition-colors duration-200 group-hover:text-brand-700">
               <span className="truncate">{p.name}</span>
-              {p.verified && (
+              {verified && (
                 <FaCircleCheck
                   className="h-3.5 w-3.5 shrink-0 text-brand-600"
                   title={t.card.verified}

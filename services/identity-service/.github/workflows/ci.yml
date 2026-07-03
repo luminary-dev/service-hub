@@ -1,0 +1,46 @@
+# CI for identity-service. This directory becomes the repository root when the
+# service is subtree-split to its own repo, so paths assume the service root.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  # Dummy values: prisma generate and the unit tests never touch a real DB.
+  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/identity_db
+  AUTH_SECRET: ci-dummy-secret
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
