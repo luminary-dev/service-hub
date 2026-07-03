@@ -16,7 +16,7 @@ export default async function AccountPage() {
   const [locale, favorites] = await Promise.all([
     getLocale(),
     db.favorite.findMany({
-      where: { userId: session.userId },
+      where: { userId: session.userId, provider: { suspended: false } },
       orderBy: { createdAt: "desc" },
       include: {
         provider: {
