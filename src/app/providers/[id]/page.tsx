@@ -50,6 +50,8 @@ export default async function ProviderProfilePage({
   ]);
 
   if (!provider) notFound();
+  // Suspended profiles are hidden from the public; admins moderate via /admin.
+  if (provider.suspended && session?.role !== "ADMIN") notFound();
   const t = dict[locale];
 
   const avg = provider.reviews.length

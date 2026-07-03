@@ -21,6 +21,7 @@ export default async function HomePage() {
   const [locale, providers, providerCount, reviewCount] = await Promise.all([
     getLocale(),
     db.provider.findMany({
+      where: { suspended: false },
       include: {
         user: { select: { name: true } },
         services: { orderBy: { price: "asc" }, take: 1 },
@@ -30,7 +31,7 @@ export default async function HomePage() {
       orderBy: { createdAt: "desc" },
       take: 6,
     }),
-    db.provider.count(),
+    db.provider.count({ where: { suspended: false } }),
     db.review.count(),
   ]);
   const t = dict[locale];
