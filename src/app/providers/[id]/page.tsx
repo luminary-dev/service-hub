@@ -37,7 +37,10 @@ export default async function ProviderProfilePage({
         services: { orderBy: { price: "asc" } },
         photos: { orderBy: { createdAt: "desc" } },
         reviews: {
-          include: { user: { select: { name: true } } },
+          include: {
+            user: { select: { name: true } },
+            photos: { orderBy: { createdAt: "asc" } },
+          },
           orderBy: { createdAt: "desc" },
         },
       },
@@ -228,12 +231,20 @@ export default async function ProviderProfilePage({
                 comment: r.comment,
                 createdAt: r.createdAt.toISOString(),
                 userName: r.user.name,
+                photos: r.photos.map((ph) => ({ id: ph.id, url: ph.url })),
               }))}
               canReview={!!session && !isOwner}
               signedIn={!!session}
               myReview={
                 myReview
-                  ? { rating: myReview.rating, comment: myReview.comment }
+                  ? {
+                      rating: myReview.rating,
+                      comment: myReview.comment,
+                      photos: myReview.photos.map((ph) => ({
+                        id: ph.id,
+                        url: ph.url,
+                      })),
+                    }
                   : null
               }
             />

@@ -1,12 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { FaStar } from "react-icons/fa6";
+import { useRef, useState } from "react";
+import { FaStar, FaXmark } from "react-icons/fa6";
 import Stars from "./Stars";
 import Avatar from "./Avatar";
+import { isSvg } from "@/lib/image";
 import { useT } from "./I18nProvider";
+
+type ReviewPhoto = { id: string; url: string };
 
 type ReviewItem = {
   id: string;
@@ -14,7 +18,10 @@ type ReviewItem = {
   comment: string;
   createdAt: string;
   userName: string;
+  photos: ReviewPhoto[];
 };
+
+const MAX_PHOTOS = 3;
 
 export default function ReviewSection({
   providerId,
@@ -27,7 +34,7 @@ export default function ReviewSection({
   reviews: ReviewItem[];
   canReview: boolean;
   signedIn: boolean;
-  myReview: { rating: number; comment: string } | null;
+  myReview: { rating: number; comment: string; photos: ReviewPhoto[] } | null;
 }) {
   const [rating, setRating] = useState(myReview?.rating ?? 5);
   const [hover, setHover] = useState(0);
@@ -35,26 +42,47 @@ export default function ReviewSection({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const t = useT();
 
+  const existingCount = myReview?.photos.length ?? 0;
+  const slotsLeft = MAX_PHOTOS - existingCount;
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    const files = fileRef.current?.files;
+    if (files && files.length > slotsLeft) {
+      setError(t.reviews.tooManyPhotos(MAX_PHOTOS));
+      return;
+    }
     setLoading(true);
     setError("");
+    const fd = new FormData();
+    fd.append("rating", String(rating));
+    fd.append("comment", comment);
+    if (files) for (const f of Array.from(files)) fd.append("photos", f);
+
     const res = await fetch(`/api/providers/${providerId}/reviews`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rating, comment }),
+      body: fd,
     });
     setLoading(false);
     if (res.ok) {
       setShowForm(false);
+      if (fileRef.current) fileRef.current.value = "";
       router.refresh();
     } else {
       const data = await res.json().catch(() => ({}));
       setError(data.error ?? t.reviews.error);
     }
+  }
+
+  async function removePhoto(photoId: string) {
+    const res = await fetch(`/api/reviews/photos/${photoId}`, {
+      method: "DELETE",
+    }).catch(() => null);
+    if (res && res.ok) router.refresh();
   }
 
   return (
@@ -108,6 +136,45 @@ export default function ReviewSection({
             minLength={3}
             placeholder={t.reviews.ph}
           />
+
+          {myReview && myReview.photos.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {myReview.photos.map((ph) => (
+                <div key={ph.id} className="relative">
+                  <Image
+                    src={ph.url}
+                    alt=""
+                    width={64}
+                    height={64}
+                    unoptimized={isSvg(ph.url)}
+                    className="h-16 w-16 rounded-lg object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removePhoto(ph.id)}
+                    aria-label={t.reviews.removePhoto}
+                    className="absolute -right-1.5 -top-1.5 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-ink-900 text-white"
+                  >
+                    <FaXmark className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <label className="label mt-3">{t.reviews.addPhotos}</label>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            disabled={slotsLeft <= 0}
+            className="input"
+          />
+          <p className="mt-1 text-xs text-ink-500">
+            {t.reviews.photosHint(slotsLeft)}
+          </p>
+
           {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
           <div className="mt-3 flex gap-2">
             <button type="submit" disabled={loading} className="btn-primary">
@@ -151,6 +218,28 @@ export default function ReviewSection({
               <p className="mt-2 text-sm leading-relaxed text-ink-600">
                 {r.comment}
               </p>
+              {r.photos.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {r.photos.map((ph) => (
+                    <a
+                      key={ph.id}
+                      href={ph.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block overflow-hidden rounded-lg border border-ink-200"
+                    >
+                      <Image
+                        src={ph.url}
+                        alt=""
+                        width={96}
+                        height={96}
+                        unoptimized={isSvg(ph.url)}
+                        className="h-24 w-24 object-cover transition hover:opacity-90"
+                      />
+                    </a>
+                  ))}
+                </div>
+              )}
             </li>
           ))}
         </ul>

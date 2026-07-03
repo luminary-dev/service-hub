@@ -130,8 +130,19 @@ model Review {
   rating     Int
   comment    String
   createdAt  DateTime @default(now())
+  photos     ReviewPhoto[]
 
   @@unique([providerId, userId])
+}
+
+model ReviewPhoto {
+  id        String   @id @default(cuid())
+  reviewId  String
+  review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  url       String
+  createdAt DateTime @default(now())
+
+  @@index([reviewId])
 }
 
 model Inquiry {

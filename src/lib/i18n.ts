@@ -176,6 +176,13 @@ const en = {
     cancel: "Cancel",
     empty: "No reviews yet. Be the first to share your experience.",
     error: "Could not save your review.",
+    addPhotos: "Add photos of the work",
+    photosHint: (n: number) =>
+      n > 0
+        ? `You can add ${n} more photo${n === 1 ? "" : "s"} (JPEG/PNG/WebP).`
+        : "You've added the maximum of 3 photos.",
+    tooManyPhotos: (max: number) => `A review can have at most ${max} photos.`,
+    removePhoto: "Remove photo",
   },
   login: {
     title: "Welcome back",
@@ -599,6 +606,13 @@ const si: Dict = {
     cancel: "අවලංගු කරන්න",
     empty: "තවම සමාලෝචන නැත. පළමු අත්දැකීම බෙදාගන්න.",
     error: "සමාලෝචනය සුරැකීමට නොහැකි විය.",
+    addPhotos: "වැඩෙහි ඡායාරූප එක් කරන්න",
+    photosHint: (n: number) =>
+      n > 0
+        ? `ඔබට තවත් ඡායාරූප ${n}ක් එක් කළ හැක (JPEG/PNG/WebP).`
+        : "ඔබ උපරිම ඡායාරූප 3 එක් කර ඇත.",
+    tooManyPhotos: (max: number) => `සමාලෝචනයකට උපරිම ඡායාරූප ${max}ක් තිබිය හැක.`,
+    removePhoto: "ඡායාරූපය ඉවත් කරන්න",
   },
   login: {
     title: "නැවත සාදරයෙන් පිළිගනිමු",
