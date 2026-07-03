@@ -3,6 +3,8 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { createSession } from "@/lib/auth";
+import { getLocale } from "@/lib/locale";
+import { sendVerificationEmail } from "@/lib/verification";
 
 const serviceSchema = z.object({
   title: z.string().min(2).max(100),
@@ -97,6 +99,14 @@ export async function POST(req: NextRequest) {
   });
 
   await createSession({ userId: user.id, role: user.role, name: user.name });
+
+  // Best-effort: a failure here must not fail registration.
+  try {
+    const locale = await getLocale();
+    await sendVerificationEmail(user.id, user.email, req.nextUrl.origin, locale);
+  } catch (e) {
+    console.error("[register] verification email failed", e);
+  }
 
   return NextResponse.json({
     user: { id: user.id, name: user.name, role: user.role },
