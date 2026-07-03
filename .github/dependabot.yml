@@ -1,9 +1,12 @@
 version: 2
 updates:
-  # Application dependencies. Security fixes are always opened as individual
-  # PRs regardless of the grouping below; grouping only tidies routine updates.
+  # Application dependencies: the web app at the root plus every service
+  # package. Security fixes are always opened as individual PRs regardless of
+  # the grouping below; grouping only tidies routine updates.
   - package-ecosystem: npm
-    directory: "/"
+    directories:
+      - "/"
+      - "/services/*"
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
@@ -19,8 +22,11 @@ updates:
           - minor
           - patch
 
-  # Keep the GitHub Actions used in workflows patched too.
+  # Keep the GitHub Actions used in workflows patched too — the root workflows
+  # and each service's own workflow (active in its mirror repo).
   - package-ecosystem: github-actions
-    directory: "/"
+    directories:
+      - "/"
+      - "/services/*"
     schedule:
       interval: weekly
