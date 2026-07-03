@@ -10,6 +10,12 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    ignore:
+      # eslint 10 removed deprecated context APIs that the eslint-plugin-react
+      # inside eslint-config-next still uses (see PR #103). Unblock when
+      # eslint-config-next ships eslint-10 support.
+      - dependency-name: eslint
+        update-types: ["version-update:semver-major"]
     groups:
       dev-dependencies:
         dependency-type: development
