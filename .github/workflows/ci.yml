@@ -18,7 +18,7 @@ env:
 
 jobs:
   web:
-    name: web (${{ matrix.check }})
+    name: web / ${{ matrix.check }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -34,29 +34,28 @@ jobs:
       - run: npm run ${{ matrix.check }}
 
   services:
-    name: ${{ matrix.service }}
+    name: ${{ matrix.package }} / ${{ matrix.check }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        service:
+        package:
           - identity-service
           - provider-service
           - review-service
           - job-service
           - notification-service
           - api-gateway
+        check: [typecheck, test, build]
     defaults:
       run:
-        working-directory: services/${{ matrix.service }}
+        working-directory: services/${{ matrix.package }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: services/${{ matrix.service }}/package-lock.json
+          cache-dependency-path: services/${{ matrix.package }}/package-lock.json
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run build
+      - run: npm run ${{ matrix.check }}

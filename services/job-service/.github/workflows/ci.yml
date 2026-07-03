@@ -9,15 +9,19 @@ on:
 permissions:
   contents: read
 
-# Dummy value so `prisma generate` and module init don't need real secrets.
-# Nothing here connects to a real database.
+# Dummy values so prisma generate / module init don't need real secrets.
 env:
-  DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/job_db"
+  DATABASE_URL: "postgresql://user:password@localhost:5432/db?schema=public"
+  AUTH_SECRET: "ci-dummy-secret"
 
 jobs:
-  ci:
-    name: typecheck / test / build
+  check:
+    name: job-service / ${{ matrix.check }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [typecheck, test, build]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
@@ -25,6 +29,4 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run build
+      - run: npm run ${{ matrix.check }}
