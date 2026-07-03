@@ -2,9 +2,11 @@ import { describe, it, expect } from "vitest";
 import { jwtVerify } from "jose";
 import { signSession, COOKIE_NAME } from "./session";
 
-// AUTH_SECRET is unset in unit tests, so session.ts falls back to the
-// dev-only secret — the same fallback the gateway/web use outside production.
-const secret = new TextEncoder().encode("dev-only-secret");
+// Verify with the same secret session.ts resolved at import time: AUTH_SECRET
+// when the environment provides one (CI does), else the shared dev fallback.
+const secret = new TextEncoder().encode(
+  process.env.AUTH_SECRET ?? "dev-only-secret"
+);
 
 describe("session JWT", () => {
   it("uses the sh_session cookie name", () => {
