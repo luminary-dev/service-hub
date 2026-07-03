@@ -19,9 +19,40 @@ model User {
   reviews       Review[]
   inquiries     Inquiry[]
   favorites     Favorite[]
+  jobRequests   JobRequest[]
 
   passwordResetTokens     PasswordResetToken[]
   emailVerificationTokens EmailVerificationToken[]
+}
+
+model JobRequest {
+  id          String        @id @default(cuid())
+  customerId  String
+  customer    User          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  category    String
+  district    String
+  title       String
+  description String
+  budget      Int? // optional, LKR
+  status      String        @default("OPEN") // OPEN | CLOSED
+  createdAt   DateTime      @default(now())
+  responses   JobResponse[]
+
+  @@index([category, district, status])
+  @@index([customerId])
+}
+
+model JobResponse {
+  id           String     @id @default(cuid())
+  jobRequestId String
+  jobRequest   JobRequest @relation(fields: [jobRequestId], references: [id], onDelete: Cascade)
+  providerId   String
+  provider     Provider   @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  message      String
+  createdAt    DateTime   @default(now())
+
+  @@unique([jobRequestId, providerId])
+  @@index([providerId])
 }
 
 model Favorite {
@@ -90,6 +121,7 @@ model Provider {
   inquiries  Inquiry[]
   favorites  Favorite[]
   verificationDocs VerificationDocument[]
+  jobResponses JobResponse[]
 }
 
 model VerificationDocument {

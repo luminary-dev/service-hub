@@ -4,6 +4,8 @@ import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
+import Link from "next/link";
+import { FaBriefcase } from "react-icons/fa6";
 import DashboardTabs from "@/components/dashboard/DashboardTabs";
 import EmailVerifyBanner from "@/components/EmailVerifyBanner";
 import VerificationSection from "@/components/dashboard/VerificationSection";
@@ -33,6 +35,15 @@ export default async function DashboardPage({
   });
   if (!provider) redirect("/register/provider");
 
+  const matchingJobs = await db.jobRequest.count({
+    where: {
+      status: "OPEN",
+      category: provider.category,
+      district: provider.district,
+      NOT: { customerId: session.userId },
+    },
+  });
+
   const locale = await getLocale();
   const t = dict[locale];
   const { welcome } = await searchParams;
@@ -45,6 +56,20 @@ export default async function DashboardPage({
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
       {!provider.user.emailVerified && <EmailVerifyBanner />}
       <VerificationSection status={provider.verificationStatus} />
+      {matchingJobs > 0 && (
+        <Link
+          href="/jobs"
+          className="mb-6 flex items-center justify-between gap-3 rounded-2xl border border-brand-200 bg-brand-50 p-4 transition hover:border-brand-400"
+        >
+          <span className="flex items-center gap-2 text-sm font-medium text-brand-900">
+            <FaBriefcase className="h-4 w-4 text-brand-600" />
+            {t.jobs.matchingBadge(matchingJobs)}
+          </span>
+          <span className="text-sm font-semibold text-brand-700">
+            {t.jobs.boardTitle} →
+          </span>
+        </Link>
+      )}
       {welcome && (
         <div className="mb-6 rounded-2xl border border-brand-200 bg-brand-50 p-5">
           <h2 className="flex items-center gap-2 font-semibold text-brand-900">
