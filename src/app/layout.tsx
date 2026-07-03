@@ -5,6 +5,8 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { I18nProvider } from "@/components/I18nProvider";
 import { getLocale } from "@/lib/locale";
+import { dict } from "@/lib/i18n";
+import { SITE_NAME, SITE_URL } from "@/lib/site";
 
 const poppins = Poppins({
   variable: "--font-poppins",
@@ -20,11 +22,24 @@ const notoSinhala = Noto_Sans_Sinhala({
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  title: "Baas.lk — Find Trusted Professionals in Sri Lanka",
-  description:
-    "Hire trusted mechanics, electricians, garden designers and more across Sri Lanka. Browse profiles, view work photos and contact your baas directly.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  const m = dict[locale].meta;
+  return {
+    metadataBase: new URL(SITE_URL),
+    title: { default: m.title, template: `%s · ${SITE_NAME}` },
+    description: m.description,
+    openGraph: {
+      title: m.title,
+      description: m.description,
+      siteName: SITE_NAME,
+      type: "website",
+      locale: locale === "si" ? "si_LK" : "en_US",
+      url: SITE_URL,
+    },
+    twitter: { card: "summary_large_image", title: m.title, description: m.description },
+  };
+}
 
 export default async function RootLayout({
   children,

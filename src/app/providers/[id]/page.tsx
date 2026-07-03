@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { FaLocationDot } from "react-icons/fa6";
 import { db } from "@/lib/db";
@@ -22,6 +23,43 @@ import FavoriteButton from "@/components/FavoriteButton";
 import VerifiedBadge from "@/components/VerifiedBadge";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const [locale, provider] = await Promise.all([
+    getLocale(),
+    db.provider.findUnique({
+      where: { id },
+      select: {
+        category: true,
+        city: true,
+        headline: true,
+        suspended: true,
+        user: { select: { name: true } },
+      },
+    }),
+  ]);
+  if (!provider || provider.suspended) return {};
+
+  const category = categoryLabelLoc(provider.category, locale);
+  const title = `${provider.user.name} — ${category}`;
+  const description = dict[locale].meta.providerDesc(
+    provider.user.name,
+    category,
+    provider.city
+  );
+  // The opengraph-image.tsx sibling supplies the preview image automatically.
+  return {
+    title,
+    description,
+    openGraph: { title, description, type: "profile" },
+    twitter: { card: "summary_large_image", title, description },
+  };
+}
 
 export default async function ProviderProfilePage({
   params,

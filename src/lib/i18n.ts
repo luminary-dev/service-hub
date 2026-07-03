@@ -3,6 +3,13 @@ import { CATEGORIES, PRICE_TYPES } from "./constants";
 export type Locale = "en" | "si";
 
 const en = {
+  meta: {
+    title: "Baas.lk — Find trusted tradespeople in Sri Lanka",
+    description:
+      "Hire trusted mechanics, electricians, garden designers and more across Sri Lanka. Browse profiles, real work photos and rates, and contact your baas directly.",
+    providerDesc: (name: string, category: string, city: string) =>
+      `${name} — ${category} in ${city}. See rates, work photos and reviews on Baas.lk.`,
+  },
   nav: {
     find: "Find Professionals",
     offer: "Offer Your Services",
@@ -453,6 +460,13 @@ const en = {
 export type Dict = typeof en;
 
 const si: Dict = {
+  meta: {
+    title: "Baas.lk — ලංකාවේ විශ්වාසවන්ත කාර්මිකයන් සොයන්න",
+    description:
+      "ලංකාව පුරා විශ්වාසවන්ත රථ කාර්මිකයන්, විදුලි කාර්මිකයන්, උද්‍යාන නිර්මාණකරුවන් සහ තවත් අය බඳවා ගන්න. පැතිකඩ, සැබෑ වැඩ ඡායාරූප සහ ගාස්තු බලා සෘජුවම සම්බන්ධ වන්න.",
+    providerDesc: (name: string, category: string, city: string) =>
+      `${name} — ${city} හි ${category}. ගාස්තු, වැඩ ඡායාරූප සහ සමාලෝචන Baas.lk හි බලන්න.`,
+  },
   nav: {
     find: "වෘත්තිකයන් සොයන්න",
     offer: "සේවා සපයන්න",
