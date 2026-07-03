@@ -11,6 +11,7 @@ function make(overrides: Partial<Sortable> & { id: string }): Sortable & {
     fromPrice: null,
     experience: 0,
     createdAt: new Date("2024-01-01"),
+    verified: false,
     ...overrides,
   };
 }
@@ -95,6 +96,14 @@ describe("sortProviders", () => {
     });
     const ranked = sortProviders([oneReview, established], "recommended");
     expect(ranked[0].id).toBe("established");
+  });
+
+  it("recommended boosts a verified provider over an equal unverified one", () => {
+    const base = { rating: 4.5, ratingSum: 4.5 * 5, reviewCount: 5 };
+    const verified = make({ id: "verified", ...base, verified: true });
+    const plain = make({ id: "plain", ...base, verified: false });
+    const ranked = sortProviders([plain, verified], "recommended");
+    expect(ranked[0].id).toBe("verified");
   });
 
   it("does not mutate the input array", () => {

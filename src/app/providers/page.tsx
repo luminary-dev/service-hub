@@ -83,6 +83,7 @@ export default async function ProvidersPage({
       fromPriceType: p.services[0]?.priceType ?? null,
       rating: p.reviews.length ? ratingSum / p.reviews.length : null,
       reviewCount: p.reviews.length,
+      verified: p.verificationStatus === "VERIFIED",
       ratingSum,
       createdAt: p.createdAt,
     };

@@ -49,6 +49,7 @@ export default async function AccountPage() {
       ? p.reviews.reduce((s, r) => s + r.rating, 0) / p.reviews.length
       : null,
     reviewCount: p.reviews.length,
+    verified: p.verificationStatus === "VERIFIED",
   }));
 
   return (

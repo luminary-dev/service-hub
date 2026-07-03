@@ -79,6 +79,15 @@ export default function UserMenu({
               {t.nav.dashboard}
             </Link>
           )}
+          {role === "ADMIN" && (
+            <Link
+              href="/admin/verifications"
+              onClick={() => setOpen(false)}
+              className="block px-4 py-2.5 text-sm text-ink-700 transition hover:bg-ink-50"
+            >
+              {t.nav.admin}
+            </Link>
+          )}
           <Link
             href="/account"
             onClick={() => setOpen(false)}

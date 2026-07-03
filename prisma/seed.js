@@ -232,6 +232,16 @@ async function main() {
     customerRecords.push(user);
   }
 
+  await db.user.create({
+    data: {
+      name: "Baas Admin",
+      email: "admin@baas.lk",
+      phone: "0770000000",
+      passwordHash,
+      role: "ADMIN",
+    },
+  });
+
   for (const r of REVIEWS) {
     await db.review.create({
       data: {
@@ -255,7 +265,7 @@ async function main() {
   });
 
   console.log(
-    `Seeded ${PROVIDERS.length} providers, ${CUSTOMERS.length} customers, ${REVIEWS.length} reviews.`
+    `Seeded ${PROVIDERS.length} providers, ${CUSTOMERS.length} customers, 1 admin (admin@baas.lk), ${REVIEWS.length} reviews.`
   );
   console.log("All accounts use password: password123");
 }

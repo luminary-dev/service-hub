@@ -10,6 +10,7 @@ const en = {
     getStarted: "Get Started",
     dashboard: "Dashboard",
     saved: "Saved",
+    admin: "Admin",
     signOut: "Sign out",
   },
   home: {
@@ -97,12 +98,42 @@ const en = {
     noReviews: "No reviews yet",
     save: "Save",
     saved: "Saved",
+    verified: "Verified",
   },
   account: {
     title: "Saved professionals",
     subtitle: "Providers you've shortlisted.",
     empty: "You haven't saved any professionals yet.",
     emptyCta: "Browse professionals",
+  },
+  verification: {
+    title: "Get verified",
+    intro:
+      "Upload your NIC and/or business registration. Once an admin approves it, a Verified badge appears on your profile and you rank higher in search.",
+    nicLabel: "NIC (front)",
+    businessLabel: "Business registration",
+    submit: "Submit for verification",
+    resubmit: "Resubmit documents",
+    submitting: "Uploading…",
+    privacyHint:
+      "Documents are private and only visible to our review team. JPEG, PNG or WebP, max 5MB each.",
+    pickOne: "Upload at least one document.",
+    error: "Upload failed. Please try again.",
+    pendingTitle: "Verification pending",
+    pendingBody: "Your documents are under review. This usually takes a day or two.",
+    verifiedTitle: "You're verified",
+    verifiedBody: "Your profile shows a Verified badge and ranks higher in search.",
+    rejectedBody:
+      "Your last submission couldn't be verified. Please re-upload clear documents.",
+  },
+  admin: {
+    title: "Verification requests",
+    subtitle: "Review provider documents and approve or reject.",
+    empty: "No pending verification requests.",
+    approve: "Approve",
+    reject: "Reject",
+    documents: "Documents",
+    submitted: "Submitted",
   },
   profile: {
     available: "Available for work",
@@ -399,6 +430,7 @@ const si: Dict = {
     getStarted: "ආරම්භ කරන්න",
     dashboard: "පාලක පුවරුව",
     saved: "සුරකින ලද",
+    admin: "පරිපාලක",
     signOut: "ඉවත් වන්න",
   },
   home: {
@@ -489,12 +521,42 @@ const si: Dict = {
     noReviews: "සමාලෝචන නැත",
     save: "සුරකින්න",
     saved: "සුරකා ඇත",
+    verified: "සත්‍යාපිතයි",
   },
   account: {
     title: "සුරකින ලද වෘත්තිකයන්",
     subtitle: "ඔබ තෝරාගත් වෘත්තිකයන්.",
     empty: "ඔබ තවම කිසිම වෘත්තිකයෙක් සුරකා නැත.",
     emptyCta: "වෘත්තිකයන් බලන්න",
+  },
+  verification: {
+    title: "සත්‍යාපනය ලබාගන්න",
+    intro:
+      "ඔබේ ජා.හැ.ප. සහ/හෝ ව්‍යාපාර ලියාපදිංචිය උඩුගත කරන්න. පරිපාලකයෙක් අනුමත කළ පසු, ඔබේ පැතිකඩෙහි සත්‍යාපිත ලාංඡනයක් දිස්වන අතර සෙවුමේ ඉහළින් පෙන්වයි.",
+    nicLabel: "ජා.හැ.ප. (ඉදිරිපස)",
+    businessLabel: "ව්‍යාපාර ලියාපදිංචිය",
+    submit: "සත්‍යාපනය සඳහා යොමු කරන්න",
+    resubmit: "ලේඛන නැවත යොමු කරන්න",
+    submitting: "උඩුගත කරමින්…",
+    privacyHint:
+      "ලේඛන පෞද්ගලිකයි, අපගේ සමාලෝචන කණ්ඩායමට පමණක් පෙනේ. JPEG, PNG හෝ WebP, එකකට උපරිම 5MB.",
+    pickOne: "අවම වශයෙන් එක් ලේඛනයක් උඩුගත කරන්න.",
+    error: "උඩුගත කිරීම අසාර්ථකයි. නැවත උත්සාහ කරන්න.",
+    pendingTitle: "සත්‍යාපනය පොරොත්තුවෙන්",
+    pendingBody: "ඔබේ ලේඛන සමාලෝචනය වෙමින් පවතී. සාමාන්‍යයෙන් දිනක් දෙකක් ගතවේ.",
+    verifiedTitle: "ඔබ සත්‍යාපිතයි",
+    verifiedBody: "ඔබේ පැතිකඩ සත්‍යාපිත ලාංඡනයක් පෙන්වන අතර සෙවුමේ ඉහළින් පෙන්වයි.",
+    rejectedBody:
+      "ඔබේ අවසන් යොමුව සත්‍යාපනය කළ නොහැකි විය. කරුණාකර පැහැදිලි ලේඛන නැවත උඩුගත කරන්න.",
+  },
+  admin: {
+    title: "සත්‍යාපන ඉල්ලීම්",
+    subtitle: "වෘත්තික ලේඛන සමාලෝචනය කර අනුමත හෝ ප්‍රතික්ෂේප කරන්න.",
+    empty: "පොරොත්තු සත්‍යාපන ඉල්ලීම් නැත.",
+    approve: "අනුමත කරන්න",
+    reject: "ප්‍රතික්ෂේප කරන්න",
+    documents: "ලේඛන",
+    submitted: "යොමු කළේ",
   },
   profile: {
     available: "වැඩට සූදානම්",

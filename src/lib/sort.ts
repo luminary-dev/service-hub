@@ -26,6 +26,7 @@ export type Sortable = {
   fromPrice: number | null;
   experience: number;
   createdAt: Date;
+  verified: boolean;
 };
 
 // Bayesian rating pulls low-volume profiles toward a sensible prior so a single
@@ -35,13 +36,15 @@ const PRIOR_COUNT = 3;
 const PRIOR_MEAN = 4.0;
 const RECENCY_WEIGHT = 0.6;
 const RECENCY_HALFLIFE_DAYS = 45;
+const VERIFIED_BOOST = 0.75;
 
 function recommendedScore(p: Sortable, now: number) {
   const bayes =
     (p.ratingSum + PRIOR_MEAN * PRIOR_COUNT) / (p.reviewCount + PRIOR_COUNT);
   const ageDays = (now - p.createdAt.getTime()) / 86_400_000;
   const recency = RECENCY_WEIGHT * Math.exp(-ageDays / RECENCY_HALFLIFE_DAYS);
-  return bayes + recency;
+  const verified = p.verified ? VERIFIED_BOOST : 0;
+  return bayes + recency + verified;
 }
 
 // null prices/ratings always sort last regardless of direction.

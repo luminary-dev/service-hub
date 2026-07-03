@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
+import { FaCircleCheck } from "react-icons/fa6";
 import Stars from "./Stars";
 import Avatar from "./Avatar";
 import CategoryIcon from "./CategoryIcon";
@@ -29,6 +30,7 @@ export type ProviderSummary = {
   fromPriceType: string | null;
   rating: number | null;
   reviewCount: number;
+  verified: boolean;
 };
 
 export default function ProviderCard({
@@ -91,8 +93,14 @@ export default function ProviderCard({
             <Avatar name={p.name} url={p.avatarUrl} size={56} />
           </div>
           <div className="min-w-0 flex-1 pt-1">
-            <h3 className="truncate font-semibold text-ink-900 transition-colors duration-200 group-hover:text-brand-700">
-              {p.name}
+            <h3 className="flex items-center gap-1 truncate font-semibold text-ink-900 transition-colors duration-200 group-hover:text-brand-700">
+              <span className="truncate">{p.name}</span>
+              {p.verified && (
+                <FaCircleCheck
+                  className="h-3.5 w-3.5 shrink-0 text-brand-600"
+                  title={t.card.verified}
+                />
+              )}
             </h3>
             <p className="text-xs text-ink-500">
               {categoryLabelLoc(p.category, locale)} · {p.city},{" "}

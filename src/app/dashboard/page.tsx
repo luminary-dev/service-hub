@@ -6,6 +6,7 @@ import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
 import DashboardTabs from "@/components/dashboard/DashboardTabs";
 import EmailVerifyBanner from "@/components/EmailVerifyBanner";
+import VerificationSection from "@/components/dashboard/VerificationSection";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +44,7 @@ export default async function DashboardPage({
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
       {!provider.user.emailVerified && <EmailVerifyBanner />}
+      <VerificationSection status={provider.verificationStatus} />
       {welcome && (
         <div className="mb-6 rounded-2xl border border-brand-200 bg-brand-50 p-5">
           <h2 className="flex items-center gap-2 font-semibold text-brand-900">

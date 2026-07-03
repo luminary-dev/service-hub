@@ -78,6 +78,9 @@ model Provider {
   website    String?
   avatarUrl  String?
   available  Boolean     @default(true)
+  // NONE | PENDING | VERIFIED | REJECTED
+  verificationStatus String   @default("NONE")
+  verifiedAt         DateTime?
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
   services   Service[]
@@ -85,6 +88,18 @@ model Provider {
   reviews    Review[]
   inquiries  Inquiry[]
   favorites  Favorite[]
+  verificationDocs VerificationDocument[]
+}
+
+model VerificationDocument {
+  id         String   @id @default(cuid())
+  providerId String
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  kind       String // "NIC" | "BUSINESS"
+  url        String
+  createdAt  DateTime @default(now())
+
+  @@index([providerId])
 }
 
 model Service {
