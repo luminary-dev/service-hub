@@ -85,3 +85,25 @@ export function verifyEmail(url: string, locale: Locale = "en") {
     html: layout(t.verifyHeading, t.verifyBody, t.verifyButton, url),
   };
 }
+
+export function jobResponseEmail(
+  url: string,
+  providerName: string,
+  jobTitle: string,
+  locale: Locale = "en"
+) {
+  const si = locale === "si";
+  return {
+    subject: si
+      ? `${providerName} ඔබේ රැකියාවට ප්‍රතිචාර දැක්වීය`
+      : `${providerName} responded to your job`,
+    html: layout(
+      si ? "ඔබේ රැකියාවට නව ප්‍රතිචාරයක්" : "New response to your job",
+      si
+        ? `${providerName} ඔබේ "${jobTitle}" රැකියාවට ප්‍රතිචාර දැක්වීය. ඔවුන්ගේ පණිවිඩය සහ සම්බන්ධතා විස්තර බලන්න.`
+        : `${providerName} responded to your job "${jobTitle}". View their message and contact details.`,
+      si ? "ප්‍රතිචාරය බලන්න" : "View response",
+      url
+    ),
+  };
+}

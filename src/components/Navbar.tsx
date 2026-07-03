@@ -28,7 +28,11 @@ export default async function Navbar() {
           <Link href="/providers" className="btn-ghost">
             {t.nav.find}
           </Link>
-          {!session && (
+          {session ? (
+            <Link href="/jobs" className="btn-ghost">
+              {t.nav.jobs}
+            </Link>
+          ) : (
             <Link href="/register/provider" className="btn-ghost">
               {t.nav.offer}
             </Link>
