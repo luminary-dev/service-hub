@@ -1,8 +1,9 @@
-/* eslint-disable @next/next/no-img-element */
 import Link from "next/link";
+import Image from "next/image";
 import Stars from "./Stars";
 import Avatar from "./Avatar";
 import CategoryIcon from "./CategoryIcon";
+import { isSvg } from "@/lib/image";
 import { formatLKR } from "@/lib/constants";
 import {
   dict,
@@ -44,10 +45,13 @@ export default function ProviderCard({
     >
       <div className="relative h-36 bg-ink-100">
         {p.coverPhoto ? (
-          <img
+          <Image
             src={p.coverPhoto}
             alt=""
-            className="h-full w-full object-cover"
+            fill
+            sizes="(min-width: 1024px) 384px, (min-width: 640px) 50vw, 100vw"
+            unoptimized={isSvg(p.coverPhoto)}
+            className="object-cover"
           />
         ) : (
           <div className="flex h-full items-center justify-center">

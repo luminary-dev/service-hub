@@ -1,8 +1,9 @@
 "use client";
 
-/* eslint-disable @next/next/no-img-element */
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { FaChevronLeft, FaChevronRight, FaXmark } from "react-icons/fa6";
+import { isSvg } from "@/lib/image";
 
 type Photo = { id: string; url: string; caption: string | null };
 
@@ -31,10 +32,13 @@ export default function PhotoGallery({ photos }: { photos: Photo[] }) {
             aria-label={p.caption ? `View photo: ${p.caption}` : "View photo"}
             className="group relative aspect-square cursor-pointer overflow-hidden rounded-xl bg-ink-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
           >
-            <img
+            <Image
               src={p.url}
               alt={p.caption ?? "Work photo"}
-              className="h-full w-full object-cover transition group-hover:scale-105"
+              fill
+              sizes="(min-width: 640px) 33vw, 50vw"
+              unoptimized={isSvg(p.url)}
+              className="object-cover transition group-hover:scale-105"
             />
             {p.caption && (
               <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-3 pb-2 pt-8 text-left text-xs text-white">
@@ -82,14 +86,19 @@ export default function PhotoGallery({ photos }: { photos: Photo[] }) {
             </>
           )}
           <figure
-            className="max-h-full max-w-4xl"
+            className="flex max-h-full w-full max-w-4xl flex-col items-center"
             onClick={(e) => e.stopPropagation()}
           >
-            <img
-              src={photos[active].url}
-              alt={photos[active].caption ?? "Work photo"}
-              className="max-h-[80vh] w-auto rounded-xl object-contain"
-            />
+            <div className="relative h-[80vh] w-full">
+              <Image
+                src={photos[active].url}
+                alt={photos[active].caption ?? "Work photo"}
+                fill
+                sizes="100vw"
+                unoptimized={isSvg(photos[active].url)}
+                className="rounded-xl object-contain"
+              />
+            </div>
             {photos[active].caption && (
               <figcaption className="mt-3 text-center text-sm text-white/80">
                 {photos[active].caption}
