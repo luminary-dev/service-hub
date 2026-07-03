@@ -80,6 +80,15 @@ const en = {
     prev: "← Previous",
     next: "Next →",
     pageOf: (p: number, t: number) => `Page ${p} of ${t}`,
+    sortLabel: "Sort by",
+    sort: {
+      recommended: "Recommended",
+      rating: "Highest rated",
+      reviews: "Most reviews",
+      price: "Lowest price",
+      experience: "Most experienced",
+      newest: "Newest",
+    },
   },
   card: {
     available: "Available",
@@ -454,6 +463,15 @@ const si: Dict = {
     prev: "← පෙර",
     next: "ඊළඟ →",
     pageOf: (p: number, t: number) => `පිටුව ${p} / ${t}`,
+    sortLabel: "අනුපිළිවෙල",
+    sort: {
+      recommended: "නිර්දේශිත",
+      rating: "ඉහළම ඇගයීම",
+      reviews: "වැඩිම සමාලෝචන",
+      price: "අඩුම මිල",
+      experience: "වැඩිම පළපුරුද්ද",
+      newest: "අලුත්ම",
+    },
   },
   card: {
     available: "සූදානම්",

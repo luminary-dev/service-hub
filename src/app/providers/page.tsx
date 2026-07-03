@@ -3,9 +3,15 @@ import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
+import { normalizeSort, sortProviders } from "@/lib/sort";
 import ProviderCard, { ProviderSummary } from "@/components/ProviderCard";
 import FilterBar from "@/components/FilterBar";
 import Link from "next/link";
+
+type EnrichedSummary = ProviderSummary & {
+  ratingSum: number;
+  createdAt: Date;
+};
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +28,7 @@ export default async function ProvidersPage({
   const q = typeof params.q === "string" ? params.q.trim() : "";
   const category = typeof params.category === "string" ? params.category : "";
   const district = typeof params.district === "string" ? params.district : "";
+  const sort = normalizeSort(params.sort);
   const page = Math.max(1, Number(params.page) || 1);
 
   const where: Prisma.ProviderWhereInput = {
@@ -40,48 +47,54 @@ export default async function ProvidersPage({
       : {}),
   };
 
-  const [providers, total] = await Promise.all([
-    db.provider.findMany({
-      where,
-      include: {
-        user: { select: { name: true } },
-        services: { orderBy: { price: "asc" }, take: 1 },
-        photos: { take: 1, orderBy: { createdAt: "desc" } },
-        reviews: { select: { rating: true } },
-      },
-      orderBy: { createdAt: "desc" },
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-    }),
-    db.provider.count({ where }),
-  ]);
+  // Rating and starting price are derived from related rows, so we rank and
+  // paginate in memory. Fine at the current scale; a DB-level ranking / search
+  // index is tracked separately (see issue #56) for when the directory grows.
+  const providers = await db.provider.findMany({
+    where,
+    include: {
+      user: { select: { name: true } },
+      services: { orderBy: { price: "asc" }, take: 1 },
+      photos: { take: 1, orderBy: { createdAt: "desc" } },
+      reviews: { select: { rating: true } },
+    },
+  });
 
-  const results: ProviderSummary[] = providers.map((p) => ({
-    id: p.id,
-    name: p.user.name,
-    category: p.category,
-    headline: p.headline,
-    district: p.district,
-    city: p.city,
-    experience: p.experience,
-    available: p.available,
-    avatarUrl: p.avatarUrl,
-    coverPhoto: p.photos[0]?.url ?? null,
-    fromPrice: p.services[0]?.price ?? null,
-    fromPriceType: p.services[0]?.priceType ?? null,
-    rating: p.reviews.length
-      ? p.reviews.reduce((s, r) => s + r.rating, 0) / p.reviews.length
-      : null,
-    reviewCount: p.reviews.length,
-  }));
+  const enriched: EnrichedSummary[] = providers.map((p) => {
+    const ratingSum = p.reviews.reduce((s, r) => s + r.rating, 0);
+    return {
+      id: p.id,
+      name: p.user.name,
+      category: p.category,
+      headline: p.headline,
+      district: p.district,
+      city: p.city,
+      experience: p.experience,
+      available: p.available,
+      avatarUrl: p.avatarUrl,
+      coverPhoto: p.photos[0]?.url ?? null,
+      fromPrice: p.services[0]?.price ?? null,
+      fromPriceType: p.services[0]?.priceType ?? null,
+      rating: p.reviews.length ? ratingSum / p.reviews.length : null,
+      reviewCount: p.reviews.length,
+      ratingSum,
+      createdAt: p.createdAt,
+    };
+  });
 
+  const total = enriched.length;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const results = sortProviders(enriched, sort).slice(
+    (page - 1) * PAGE_SIZE,
+    page * PAGE_SIZE
+  );
 
   function pageLink(target: number) {
     const sp = new URLSearchParams();
     if (q) sp.set("q", q);
     if (category) sp.set("category", category);
     if (district) sp.set("district", district);
+    if (sort !== "recommended") sp.set("sort", sort);
     sp.set("page", String(target));
     return `/providers?${sp.toString()}`;
   }
@@ -100,7 +113,7 @@ export default async function ProvidersPage({
       </div>
 
       <div className="mt-6">
-        <FilterBar q={q} category={category} district={district} />
+        <FilterBar q={q} category={category} district={district} sort={sort} />
       </div>
 
       {results.length === 0 ? (
