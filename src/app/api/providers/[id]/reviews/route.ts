@@ -3,6 +3,9 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { rateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { storeImage, validateImage } from "@/lib/upload";
+
+const MAX_REVIEW_PHOTOS = 3;
 
 const schema = z.object({
   rating: z.number().int().min(1).max(5),
@@ -36,18 +39,48 @@ export async function POST(
     );
   }
 
-  const body = await req.json().catch(() => null);
-  const parsed = schema.safeParse(body);
+  const form = await req.formData().catch(() => null);
+  if (!form) {
+    return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+  }
+  const parsed = schema.safeParse({
+    rating: Number(form.get("rating")),
+    comment: String(form.get("comment") ?? ""),
+  });
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
+
+  const files = form
+    .getAll("photos")
+    .filter((f): f is File => f instanceof File && f.size > 0);
 
   const review = await db.review.upsert({
     where: { providerId_userId: { providerId: id, userId: session.userId } },
     create: { providerId: id, userId: session.userId, ...parsed.data },
     update: parsed.data,
-    include: { user: { select: { name: true } } },
+    include: { photos: true },
   });
 
-  return NextResponse.json({ review });
+  if (files.length > 0) {
+    const remaining = MAX_REVIEW_PHOTOS - review.photos.length;
+    if (files.length > remaining) {
+      return NextResponse.json(
+        {
+          error: `A review can have at most ${MAX_REVIEW_PHOTOS} photos.`,
+        },
+        { status: 400 }
+      );
+    }
+    for (const file of files) {
+      const check = validateImage(file);
+      if (!check.ok) {
+        return NextResponse.json({ error: check.error }, { status: 400 });
+      }
+      const url = await storeImage(check.file, "reviews");
+      await db.reviewPhoto.create({ data: { reviewId: review.id, url } });
+    }
+  }
+
+  return NextResponse.json({ ok: true });
 }
