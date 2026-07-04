@@ -1,0 +1,65 @@
+import { afterEach, describe, expect, it } from "vitest";
+import { NextRequest } from "next/server";
+import {
+  getRewrittenUrl,
+  isRewrite,
+  // The proxy.md docs call this unstable_doesProxyMatch, but 16.2.10 still
+  // exports it under the pre-rename name.
+  unstable_doesMiddlewareMatch,
+} from "next/experimental/testing/server";
+import { config, proxy } from "./proxy";
+
+const ORIGINAL_GATEWAY_URL = process.env.GATEWAY_URL;
+
+afterEach(() => {
+  if (ORIGINAL_GATEWAY_URL === undefined) delete process.env.GATEWAY_URL;
+  else process.env.GATEWAY_URL = ORIGINAL_GATEWAY_URL;
+});
+
+describe("proxy", () => {
+  it("rewrites /api/* to GATEWAY_URL read at request time", () => {
+    process.env.GATEWAY_URL = "http://api-gateway:4000";
+    const response = proxy(
+      new NextRequest("http://localhost:3000/api/providers/123"),
+    );
+    expect(isRewrite(response)).toBe(true);
+    expect(getRewrittenUrl(response)).toBe(
+      "http://api-gateway:4000/api/providers/123",
+    );
+  });
+
+  it("picks up a changed GATEWAY_URL without a rebuild", () => {
+    process.env.GATEWAY_URL = "http://gateway-a:4000";
+    const first = proxy(new NextRequest("http://localhost:3000/api/jobs"));
+    process.env.GATEWAY_URL = "http://gateway-b:4000";
+    const second = proxy(new NextRequest("http://localhost:3000/api/jobs"));
+    expect(getRewrittenUrl(first)).toBe("http://gateway-a:4000/api/jobs");
+    expect(getRewrittenUrl(second)).toBe("http://gateway-b:4000/api/jobs");
+  });
+
+  it("preserves the query string", () => {
+    process.env.GATEWAY_URL = "http://api-gateway:4000";
+    const response = proxy(
+      new NextRequest("http://localhost:3000/api/providers?district=colombo&page=2"),
+    );
+    expect(getRewrittenUrl(response)).toBe(
+      "http://api-gateway:4000/api/providers?district=colombo&page=2",
+    );
+  });
+
+  it("falls back to localhost:4000 when GATEWAY_URL is unset", () => {
+    delete process.env.GATEWAY_URL;
+    const response = proxy(new NextRequest("http://localhost:3000/api/auth/me"));
+    expect(getRewrittenUrl(response)).toBe("http://localhost:4000/api/auth/me");
+  });
+
+  it("only matches /api/*", () => {
+    expect(
+      unstable_doesMiddlewareMatch({ config, url: "/api/providers" }),
+    ).toBe(true);
+    expect(unstable_doesMiddlewareMatch({ config, url: "/" })).toBe(false);
+    expect(
+      unstable_doesMiddlewareMatch({ config, url: "/dashboard" }),
+    ).toBe(false);
+  });
+});

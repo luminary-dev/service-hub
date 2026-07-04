@@ -4,6 +4,7 @@ import "./globals.css";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { I18nProvider } from "@/components/I18nProvider";
+import { ToastProvider } from "@/components/ToastProvider";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
 import { SITE_NAME, SITE_URL } from "@/lib/site";
@@ -55,9 +56,11 @@ export default async function RootLayout({
     >
       <body className="flex min-h-screen flex-col">
         <I18nProvider locale={locale}>
-          <Navbar />
-          <main className="flex-1">{children}</main>
-          <Footer />
+          <ToastProvider>
+            <Navbar />
+            <main className="flex-1">{children}</main>
+            <Footer />
+          </ToastProvider>
         </I18nProvider>
       </body>
     </html>
