@@ -3,8 +3,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
-import { sweepOrphans } from "../lib/orphans";
-import { removeStoredFile } from "../lib/storage";
+import { removeStoredFile, sweepMedia } from "../lib/storage";
 
 export const internalRoutes = new Hono();
 
@@ -198,7 +197,7 @@ internalRoutes.post("/internal/maintenance/sweep-orphans", async (c) => {
     ...docs.map((d) => d.url),
     ...avatars.map((a) => a.avatarUrl as string),
   ]);
-  const result = await sweepOrphans(referenced);
+  const result = await sweepMedia("provider", [...referenced]);
   return c.json(result);
 });
 

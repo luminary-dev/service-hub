@@ -61,6 +61,7 @@ jobs:
           - review-service
           - job-service
           - notification-service
+          - media-service
           - api-gateway
     steps:
       - uses: actions/checkout@v7
@@ -106,6 +107,7 @@ jobs:
           - review-service
           - job-service
           - notification-service
+          - media-service
           - api-gateway
     defaults:
       run:

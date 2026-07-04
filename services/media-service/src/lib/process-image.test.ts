@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import sharp from "sharp";
-import { InvalidImageError, processImage } from "./storage";
+import { InvalidImageError, processImage } from "./media";
 
 async function jpegWithExif(): Promise<Buffer> {
   return sharp({

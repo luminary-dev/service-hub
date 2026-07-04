@@ -89,10 +89,10 @@ through internal HTTP endpoints.
 | `DATABASE_URL` | identity, provider, review, job |
 | `AUTH_SECRET` | identity (sign), gateway + web (verify) |
 | `INTERNAL_API_SECRET` | all services + gateway |
-| `IDENTITY_SERVICE_URL`, `PROVIDER_SERVICE_URL`, `REVIEW_SERVICE_URL`, `JOB_SERVICE_URL`, `NOTIFICATION_SERVICE_URL` | gateway + any service that calls that peer |
+| `IDENTITY_SERVICE_URL`, `PROVIDER_SERVICE_URL`, `REVIEW_SERVICE_URL`, `JOB_SERVICE_URL`, `NOTIFICATION_SERVICE_URL`, `MEDIA_SERVICE_URL` | gateway + any service that calls that peer |
 | `RESEND_API_KEY`, `EMAIL_FROM` | notification (console fallback when unset) |
 | `BLOB_READ_WRITE_TOKEN` | provider, review (uploads; local-disk fallback) |
-| `UPLOAD_DIR` | provider, review (local upload dir, default `./data/uploads`) |
+| `MEDIA_DIR` | media (local upload root, default `./data`; per-namespace subdirs) |
 | `WEB_ORIGIN` | gateway (fallback for `x-origin`) |
 | `GATEWAY_URL` | web (runtime `/api/*` proxy target in `src/proxy.ts` + server-side fetches; read per request, never baked into the build/image) |
 
@@ -125,20 +125,20 @@ same-service constraints (`@@unique([providerId, userId])` etc.) and S2S
 existence checks at write time. There are no cross-service delete cascades in
 the product today (admin suspends/verifies; deletes are per-review/photo).
 
-## Uploads
+## Uploads (media-service :4006)
 
-`storeImage(file, prefix)` (provider- and review-service) decodes and
-re-encodes every upload with sharp before storing: non-images and formats
-outside JPEG/PNG/WebP are rejected with 400 regardless of the claimed
-content-type, ALL metadata (EXIF GPS etc.) is stripped, the EXIF orientation
-is baked in first, and the re-encoded content decides the stored extension.
-Storage backend:
-Vercel Blob when `BLOB_READ_WRITE_TOKEN` is set (absolute URL stored),
-otherwise local disk under `$UPLOAD_DIR/<prefix>/<uuid>.<ext>` with the URL
-stored as `/api/files/<service>/<prefix>/<uuid>.<ext>`. Each uploading service
-serves `GET /files/*` from `$UPLOAD_DIR` (public through the gateway). Limits
-unchanged: 5MB, jpeg/png/webp. Deletion mirrors the monolith (unlink local /
-blob `del`, errors swallowed). Seed photos stay in web `public/uploads/seed/`.
+Image processing and storage are owned by **media-service** (`POST
+/internal/media/store` — multipart, decodes/re-encodes with sharp, strips EXIF,
+returns the URL to persist; `/internal/media/delete`; `/internal/media/sweep`).
+provider- and review-service call it over S2S via a thin identical
+`lib/storage.ts` client (`storeImage(namespace, file, prefix)`); the photo
+**rows** stay with them (their FKs). Namespaces (`provider`, `review`) preserve
+the existing `/api/files/<namespace>/...` URL shape — the callers' original
+upload volumes are simply remounted into media, so no file or row migration is
+needed. Backend: Vercel Blob when `BLOB_READ_WRITE_TOKEN` is set, else local
+disk under `$MEDIA_DIR/<namespace>/`. media serves `GET /files/<namespace>/*`
+(public through the gateway; the gateway routes `/api/files/*` → media and
+supplies the internal secret). Limits unchanged: 5MB, jpeg/png/webp.
 
 ## api-gateway (:4000)
 
