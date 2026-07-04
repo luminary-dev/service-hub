@@ -13,6 +13,7 @@ import {
   sendInquiryEmail,
   type RatingEntry,
 } from "../lib/clients";
+import { isEffectivelyAvailable } from "../lib/availability";
 import { slPhone } from "../lib/field-rules";
 import { normalizeListQuery } from "../lib/query";
 import { averageResponseMs } from "../lib/response-time";
@@ -58,7 +59,10 @@ function toCardDTO(p: CardRow, r: RatingEntry | undefined) {
     district: p.district,
     city: p.city,
     experience: p.experience,
-    available: p.available,
+    // Effective availability (#49): an away provider reports available=false;
+    // awayUntil lets the web render "Away until {date}" instead.
+    available: isEffectivelyAvailable(p),
+    awayUntil: p.awayUntil,
     verificationStatus: p.verificationStatus,
     verifiedAt: p.verifiedAt,
     createdAt: p.createdAt,
@@ -226,7 +230,14 @@ providersRoutes.get("/api/providers/:id", async (c) => {
   if (!provider) {
     return c.json({ error: "Provider not found" }, 404);
   }
-  return c.json({ provider: { ...provider, user: contactAsUser(provider) } });
+  return c.json({
+    provider: {
+      ...provider,
+      // Effective availability (#49) — raw awayUntil rides along.
+      available: isEffectivelyAvailable(provider),
+      user: contactAsUser(provider),
+    },
+  });
 });
 
 // Bounds for the /full composition: profile pages must not grow unbounded
@@ -283,6 +294,9 @@ providersRoutes.get("/api/providers/:id/full", async (c) => {
   return c.json({
     provider: {
       ...providerFields,
+      // Effective availability (#49): away providers surface available=false;
+      // the profile page renders "Away until {awayUntil}" from the raw field.
+      available: isEffectivelyAvailable(provider),
       user: contactAsUser(provider),
       reviews,
       reviewsNextCursor: nextCursor,

@@ -75,6 +75,33 @@ providerDashboardRoutes.get("/api/provider/dashboard", async (c) => {
   });
 });
 
+// Away mode (#49): an optional return date. Absent leaves the stored value
+// untouched; null (or "") clears it. Anything else must parse as a date and
+// be at most one year out — past dates are accepted (they simply mean "not
+// away", matching lib/availability.ts).
+const awayUntilField = z
+  .union([z.string(), z.null()])
+  .optional()
+  .transform((v, ctx) => {
+    if (v === undefined) return undefined;
+    if (v === null || v.trim() === "") return null;
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) {
+      ctx.addIssue({ code: "custom", message: "Invalid away-until date" });
+      return z.NEVER;
+    }
+    const max = new Date();
+    max.setFullYear(max.getFullYear() + 1);
+    if (d > max) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Away-until date can be at most one year from now",
+      });
+      return z.NEVER;
+    }
+    return d;
+  });
+
 const profileSchema = z.object({
   name: z.string().min(2).max(80),
   phone: slPhone,
@@ -87,6 +114,7 @@ const profileSchema = z.object({
   city: z.string().min(1).max(60),
   experience: z.number().int().min(0).max(60),
   available: z.boolean(),
+  awayUntil: awayUntilField,
   whatsapp: optionalSlPhone,
   phone2: optionalSlPhone,
   facebook: optionalWebUrl,

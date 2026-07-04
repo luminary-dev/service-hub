@@ -101,7 +101,10 @@ through internal HTTP endpoints.
 - **identity-service**: `User`, `PasswordResetToken`, `EmailVerificationToken`,
   `Favorite` (providerId is a plain string).
 - **provider-service**: `Provider`, `Service`, `WorkPhoto`,
-  `VerificationDocument`, `Inquiry`, `Category` (the managed service-category
+  `VerificationDocument`, `Inquiry`, `Report` (abuse reports on providers and
+  work photos — each content-owning service keeps the reports on its own
+  content; reporterId is a plain nullable string, null = anonymous),
+  `Category` (the managed service-category
   list: slug PK, en/si labels, icon, active flag, sortOrder — no hard delete;
   deactivating hides a category from public lists while existing providers
   keep the slug). `Provider.userId` is a plain string.
@@ -109,7 +112,8 @@ through internal HTTP endpoints.
   `contactPhone` (copied from the user at registration; profile updates write
   both locally and S2S to identity). This replaces the monolith's
   `provider.user` joins for listing search, cards, admin lists and OG images.
-- **review-service**: `Review`, `ReviewPhoto`. `providerId`/`userId` plain
+- **review-service**: `Review`, `ReviewPhoto`, `Report` (abuse reports on
+  reviews, same shape as provider-service's). `providerId`/`userId` plain
   strings; reviewer names hydrated from identity at read time.
 - **job-service**: `JobRequest`, `JobResponse`. `customerId`/`providerId`
   plain strings; hydrated at read time.
@@ -152,8 +156,11 @@ Public entry. Responsibilities:
    authStrict; `POST /api/auth/register` → authSignup;
    `POST /api/auth/resend-verification` → resend; `POST /api/jobs` and
    `POST /api/providers/:id/inquiries` → inquiry; `POST /api/jobs/:id/responses`
-   and `POST /api/providers/:id/reviews` → review. 429 body/headers identical
-   to the monolith (`Retry-After`).
+   and `POST /api/providers/:id/reviews` → review;
+   `POST /api/providers/:id/report`, `POST /api/photos/:id/report` and
+   `POST /api/reviews/:id/report` → report (review budget — abuse reports
+   accept anonymous submissions, so the IP budget is the main spam control).
+   429 body/headers identical to the monolith (`Retry-After`).
 3. **Session**: verify `sh_session` (jose), then check the token's `sv`
    against the user's current sessionVersion (S2S to identity, 60s per-user
    cache, fail-open). Invalid/absent/revoked → forward without identity
@@ -168,8 +175,10 @@ Public entry. Responsibilities:
    - `/api/providers/:id/reviews` → review
    - `/api/providers*`, `/api/provider/*`, `/api/categories`, `/api/stats` →
      provider
-   - `/api/reviews/*`, `/api/admin/reviews/*` → review
-   - `/api/admin/*` (providers, photos, verifications) → provider
+   - `/api/reviews/*`, `/api/admin/reviews/*`, `/api/admin/review-reports*` →
+     review
+   - `/api/admin/*` (providers, photos, verifications, reports) → provider
+   - `/api/photos/:id/report` → provider (work-photo abuse reports)
    - `/api/jobs*` → job
    - `/api/files/provider/*` → provider `/files/*`; `/api/files/review/*` →
      review `/files/*`
@@ -252,7 +261,11 @@ Public (all monolith semantics preserved; `name` fields come from denormalized
 - `GET /api/providers` — query `q, category, district, sort, page, pageSize
   (default 12, max 24), ids, take, priceMin, priceMax (integer rupees; a
   provider matches when ANY service price is in range), ratingMin (1..5),
-  availableOnly=1`. Filters `suspended=false`, search across
+  availableOnly=1`. `availableOnly` filters on EFFECTIVE availability
+  (`lib/availability.ts`: `available && (awayUntil == null || awayUntil <=
+  now)`) — a provider away until a future date (#49) is excluded via the
+  where clause, and flips back automatically once the date passes.
+  Filters `suspended=false`, search across
   headline/bio/city/contactName/services.title (insensitive `contains`,
   backed by pg_trgm GIN indexes — migration `search_trgm`; a tsvector
   upgrade can layer on later). `q` is also resolved against the Category
@@ -268,9 +281,12 @@ Public (all monolith semantics preserved; `name` fields come from denormalized
   experience/newest — then paginates. Returns
   `{ providers: ProviderCardDTO[], total, page, pageSize }`.
   `ProviderCardDTO = { id, userId, name, category, headline, district, city,
-  experience, available, verificationStatus, verifiedAt, createdAt, avatarUrl,
-  coverPhoto, photos: [{url,caption}](first), services: [{id,title,price,
-  priceType}](cheapest), fromPrice, fromPriceType, rating, reviewCount }`.
+  experience, available, awayUntil, verificationStatus, verifiedAt, createdAt,
+  avatarUrl, coverPhoto, photos: [{url,caption}](first), services: [{id,title,
+  price,priceType}](cheapest), fromPrice, fromPriceType, rating, reviewCount }`.
+  `available` in card/detail/full payloads is the effective value (away
+  providers report `false`); the raw `awayUntil` rides along so the web can
+  render a localized "Away until {date}" chip.
   `ids=` returns those providers (suspended excluded) unsorted-by-input-order
   preserved — used by the account/favorites page.
 - `GET /api/providers/ids` — `{ providers: [{id, updatedAt}] }` non-suspended
@@ -294,6 +310,13 @@ Public (all monolith semantics preserved; `name` fields come from denormalized
   best-effort).
 - `GET /api/stats` — `{ providerCount, reviewCount }` (S2S review
   `/internal/count`).
+- `POST /api/providers/:id/report`, `POST /api/photos/:id/report` — abuse
+  reports (#50); session OPTIONAL (anonymous visitors can report). Body
+  `{ reason: "spam"|"scam"|"offensive"|"fake"|"other", details? (≤500) }`;
+  missing target → 404. A signed-in user re-reporting the same target updates
+  their existing OPEN report instead of creating another; anonymous duplicates
+  are allowed (the gateway "report" rate budget is the backstop) →
+  `{ ok: true }`.
 - `GET /api/account/inquiries` — session required (401); the caller's sent
   inquiries newest-first (cap 50), each hydrated with the provider's
   `{ id, name, category, suspended }` in a single local query (inquiries and
@@ -306,7 +329,10 @@ Public (all monolith semantics preserved; `name` fields come from denormalized
   excludeCustomerId=`).
   `PUT /api/provider/profile` — same tightened field rules as registration
   (shared `lib/field-rules.ts`; phones normalized to E.164 BEFORE both the
-  local write and the S2S sync); category checked post-parse against the
+  local write and the S2S sync); accepts optional `awayUntil` (#49: ISO date
+  string or null to clear; must parse and be at most one year out — stored
+  alongside `available`, the away window only affects public reads);
+  category checked post-parse against the
   local Category table (60s cache, static fallback; inactive slugs stay
   valid so deactivation never blocks a profile save); updates provider +
   contactName/contactPhone, then S2S `PATCH identity /internal/users/:userId`
@@ -346,6 +372,11 @@ Public (all monolith semantics preserved; `name` fields come from denormalized
   `POST /api/admin/categories` (slug `^[a-z0-9-]{2,40}$`, labels required),
   `PATCH /api/admin/categories/:slug` (labelEn/labelSi/icon/active/sortOrder).
   No hard delete — deactivate instead.
+  Abuse-report queue: `GET /api/admin/reports` — OPEN first (newest first),
+  then a bounded tail of recently closed ones; each report carries a hydrated
+  target summary from local tables (provider name / photo url + owner; null
+  when the target was hard-deleted). `PATCH /api/admin/reports/:id`
+  `{ status: "RESOLVED"|"DISMISSED" }` → `{ ok: true }`.
 - `GET /files/*` — serves `$UPLOAD_DIR` files.
 
 Internal: `GET /internal/categories` → `{ categories: [...] }` (every
@@ -376,9 +407,16 @@ contactPhone, suspended}] }` (job-service hydration),
   provider: { id, name }, photos }] }`.
 - `DELETE /api/reviews/photos/:id` — owner-or-admin (401/403/404), deletes
   file best-effort.
+- `POST /api/reviews/:id/report` — abuse reports (#50); session OPTIONAL.
+  Same body/semantics as provider-service's report endpoints (soft-deleted or
+  missing review → 404) → `{ ok: true }`.
 - `DELETE /api/admin/reviews/:id` — ADMIN only (403); SOFT delete (sets
   `deletedAt`; row/photos/files survive) → `{ ok: true }`.
 - `PATCH /api/admin/reviews/:id/restore` — ADMIN only; clears `deletedAt`.
+- `GET /api/admin/review-reports`, `PATCH /api/admin/review-reports/:id` —
+  the review-report moderation queue, same shape/semantics as
+  provider-service's `/api/admin/reports` (target summary = rating, comment,
+  providerId, removed flag for soft-deleted reviews).
 - `GET /files/*`.
 
 Internal: `GET /internal/ratings?providerIds=` → `{ ratings: { [providerId]:
