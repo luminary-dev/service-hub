@@ -96,7 +96,10 @@ model Inquiry {
   email      String?
   message    String
   status     String   @default("NEW")
-  createdAt  DateTime @default(now())
+  // Stamped once, when status first moves to RESPONDED; drives the public
+  // profile's average-response-time stat.
+  respondedAt DateTime?
+  createdAt   DateTime  @default(now())
 
   @@index([providerId])
 }

@@ -8,6 +8,7 @@ import { db } from "../db";
 import { getAuth } from "../lib/http";
 import { fetchProviderReviews, fetchRatings, fetchReviewCount, type RatingEntry } from "../lib/clients";
 import { normalizeListQuery } from "../lib/query";
+import { averageResponseMs } from "../lib/response-time";
 import { sortProviders, type Sortable } from "../lib/sort";
 
 export const providersRoutes = new Hono();
@@ -192,9 +193,20 @@ providersRoutes.get("/api/providers/:id/full", async (c) => {
     return c.json({ error: "Provider not found" }, 404);
   }
 
-  const reviews = await fetchProviderReviews(id);
+  const [reviews, answered] = await Promise.all([
+    fetchProviderReviews(id),
+    db.inquiry.findMany({
+      where: { providerId: id, respondedAt: { not: null } },
+      select: { createdAt: true, respondedAt: true },
+    }),
+  ]);
   return c.json({
-    provider: { ...provider, user: contactAsUser(provider), reviews },
+    provider: {
+      ...provider,
+      user: contactAsUser(provider),
+      reviews,
+      avgResponseMs: averageResponseMs(answered),
+    },
   });
 });
 
