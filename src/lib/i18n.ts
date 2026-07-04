@@ -520,6 +520,24 @@ const en = {
       empty: "No work photos yet. Upload your first one above.",
       uploadError: "Upload failed. Please try again.",
       delete: "Delete",
+      // Multi-photo upload with progress (#53)
+      dropTitle: "Drag & drop photos here",
+      dropOr: "or",
+      browse: "Choose photos",
+      queued: "Waiting…",
+      uploaded: "Uploaded",
+      failed: "Upload failed",
+      retry: "Retry",
+      // Mirror the provider-service rejection messages (lib/storage.ts).
+      fileTypeError: "Only JPEG, PNG and WebP images are allowed",
+      fileSizeError: "Image must be under 5MB",
+      // Drag-to-reorder (#53)
+      reorderHint:
+        "Drag photos to reorder — the first photo is the cover on your public profile.",
+      cover: "Cover",
+      moveLeft: "Move left",
+      moveRight: "Move right",
+      reorderError: "Could not save the new photo order.",
     },
     inquiries: {
       emptyTitle: "No inquiries yet",
@@ -1115,6 +1133,21 @@ const si: Dict = {
       empty: "තවම වැඩ ඡායාරූප නැත. ඉහළින් ඔබේ පළමු එක උඩුගත කරන්න.",
       uploadError: "උඩුගත කිරීම අසාර්ථකයි. නැවත උත්සාහ කරන්න.",
       delete: "මකන්න",
+      dropTitle: "ඡායාරූප මෙතැනට ඇද දමන්න",
+      dropOr: "හෝ",
+      browse: "ඡායාරූප තෝරන්න",
+      queued: "පොරොත්තුවෙන්…",
+      uploaded: "උඩුගත විය",
+      failed: "උඩුගත කිරීම අසාර්ථකයි",
+      retry: "නැවත උත්සාහ කරන්න",
+      fileTypeError: "JPEG, PNG සහ WebP ඡායාරූප පමණක් අවසර ඇත",
+      fileSizeError: "ඡායාරූපය 5MB ට අඩු විය යුතුයි",
+      reorderHint:
+        "අනුපිළිවෙල වෙනස් කිරීමට ඡායාරූප අදින්න — පළමු ඡායාරූපය ඔබේ පොදු පැතිකඩෙහි කවරය ලෙස දිස්වේ.",
+      cover: "කවරය",
+      moveLeft: "වමට ගෙනයන්න",
+      moveRight: "දකුණට ගෙනයන්න",
+      reorderError: "නව අනුපිළිවෙල සුරැකීමට නොහැකි විය.",
     },
     inquiries: {
       emptyTitle: "තවම විමසුම් නැත",
