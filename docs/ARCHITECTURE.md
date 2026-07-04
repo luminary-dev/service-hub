@@ -222,9 +222,11 @@ Public (all monolith semantics preserved; `name` fields come from denormalized
   services, photos; reviews NOT included here anymore; 404 "Provider not
   found").
 - `GET /api/providers/:id/full` — page payload: provider + contact
-  `{name, phone, email}` + services (price asc) + photos (createdAt desc) +
-  reviews (S2S `review /internal/by-provider/:id`, hydrated reviewer names +
-  photos) + `favorited` (S2S identity if `x-user-id`). Suspended → 404 unless
+  `{name, phone, email}` + services (price asc) + first 50 photos
+  (createdAt desc, `photosTotal` alongside) + first page of reviews (S2S
+  `review /internal/by-provider/:id`, hydrated reviewer names + photos;
+  `reviewsTake`/`reviewsCursor` thread through, `reviewsNextCursor` returned)
+  + `favorited` (S2S identity if `x-user-id`). Suspended → 404 unless
   `x-user-role=ADMIN`.
 - `GET /api/providers/:id/card` — OG-image payload `{ name, category, city,
   district, suspended, rating, reviewCount, verificationStatus }`.
@@ -273,6 +275,10 @@ contactPhone, suspended}] }` (job-service hydration),
 
 ## review-service (:4003)
 
+- `GET /api/providers/:id/reviews?take&cursor` — public paginated reviews
+  (take default 10, max 100) → `{ reviews, nextCursor }` for profile
+  lazy-loading; suspended/missing provider → 404 (check degrades open on a
+  provider-service outage).
 - `POST /api/providers/:id/reviews` — session required (401 "Sign in...");
   S2S provider summary (404; own-profile 400); multipart rating/comment +
   up to 3 photos (existing count enforced); upsert; photos stored with prefix
@@ -283,8 +289,9 @@ contactPhone, suspended}] }` (job-service hydration),
 - `GET /files/*`.
 
 Internal: `GET /internal/ratings?providerIds=` → `{ ratings: { [providerId]:
-{ rating, count } } }`; `GET /internal/by-provider/:id` → reviews (createdAt
-desc) with reviewer names (S2S identity batch) and photos;
+{ rating, count } } }`; `GET /internal/by-provider/:id?take&cursor` → reviews
+(createdAt desc, cursor-paginated, take default 50 max 100) with reviewer
+names (S2S identity batch) and photos, plus `nextCursor`;
 `GET /internal/count` → `{ count }`.
 
 ## job-service (:4004)

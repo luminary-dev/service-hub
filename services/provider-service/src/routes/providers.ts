@@ -179,8 +179,17 @@ providersRoutes.get("/api/providers/:id", async (c) => {
   return c.json({ provider: { ...provider, user: contactAsUser(provider) } });
 });
 
-// Full page payload for /providers/[id]: services (price asc), photos
-// (createdAt desc) and reviews hydrated from review-service (degrades to []).
+// Bounds for the /full composition: profile pages must not grow unbounded
+// with a provider's history. Deeper pages come from the paginated public
+// reviews endpoint (web lazy-load) — photos beyond the cap have no public
+// consumer yet (photosTotal tells the UI they exist).
+const FULL_PHOTOS_TAKE = 50;
+const FULL_REVIEWS_TAKE = 50;
+
+// Full page payload for /providers/[id]: services (price asc), first
+// FULL_PHOTOS_TAKE photos (createdAt desc, photosTotal alongside) and the
+// first page of reviews hydrated from review-service (degrades to [];
+// reviewsTake/reviewsCursor thread through, reviewsNextCursor comes back).
 // Suspended profiles are hidden from the public; admins moderate via /admin.
 providersRoutes.get("/api/providers/:id/full", async (c) => {
   const id = c.req.param("id");
@@ -188,7 +197,8 @@ providersRoutes.get("/api/providers/:id/full", async (c) => {
     where: { id },
     include: {
       services: { orderBy: { price: "asc" } },
-      photos: { orderBy: { createdAt: "desc" } },
+      photos: { orderBy: { createdAt: "desc" }, take: FULL_PHOTOS_TAKE },
+      _count: { select: { photos: true } },
     },
   });
   if (!provider) {
@@ -199,18 +209,29 @@ providersRoutes.get("/api/providers/:id/full", async (c) => {
     return c.json({ error: "Provider not found" }, 404);
   }
 
-  const [reviews, answered] = await Promise.all([
-    fetchProviderReviews(id),
+  const rawTake = Math.floor(Number(c.req.query("reviewsTake")));
+  const reviewsTake =
+    Number.isFinite(rawTake) && rawTake >= 1
+      ? Math.min(rawTake, 100)
+      : FULL_REVIEWS_TAKE;
+  const [{ reviews, nextCursor }, answered] = await Promise.all([
+    fetchProviderReviews(id, {
+      take: reviewsTake,
+      cursor: c.req.query("reviewsCursor") || undefined,
+    }),
     db.inquiry.findMany({
       where: { providerId: id, respondedAt: { not: null } },
       select: { createdAt: true, respondedAt: true },
     }),
   ]);
+  const { _count, ...providerFields } = provider;
   return c.json({
     provider: {
-      ...provider,
+      ...providerFields,
       user: contactAsUser(provider),
       reviews,
+      reviewsNextCursor: nextCursor,
+      photosTotal: _count.photos,
       avgResponseMs: averageResponseMs(answered),
     },
   });
