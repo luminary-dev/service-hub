@@ -237,9 +237,20 @@ Public (all monolith semantics preserved; `name` fields come from denormalized
   `{ categories: [{ slug, labelEn, labelSi, icon }] }`. The web app degrades
   to its static constants if this fetch fails.
 - `GET /api/providers` — query `q, category, district, sort, page, pageSize
-  (default 12, max 24), ids, take`. Filters `suspended=false`, search across
-  headline/bio/city/contactName/services.title. Hydrates ratings via S2S
-  `review /internal/ratings?providerIds=`. Sorts with the port of
+  (default 12, max 24), ids, take, priceMin, priceMax (integer rupees; a
+  provider matches when ANY service price is in range), ratingMin (1..5),
+  availableOnly=1`. Filters `suspended=false`, search across
+  headline/bio/city/contactName/services.title (insensitive `contains`,
+  backed by pg_trgm GIN indexes — migration `search_trgm`; a tsvector
+  upgrade can layer on later). `q` is also resolved against the Category
+  table's labelEn/labelSi (inactive included), and matching slugs join the
+  search OR as `category IN (...)` — this is what makes category words and
+  Sinhala queries ("mechanic", "කාර්මික") match even though provider data is
+  stored in English (`lib/search.ts` builds the where, `lib/query.ts`
+  normalizes/clamps the params, both unit-tested). Hydrates ratings via S2S
+  `review /internal/ratings?providerIds=`; `ratingMin` is applied after
+  hydration, in memory (consistent with the in-memory ranking below —
+  no-review providers never pass a minimum). Sorts with the port of
   `src/lib/sort.ts` (+ tests) — keys recommended/rating/reviews/price/
   experience/newest — then paginates. Returns
   `{ providers: ProviderCardDTO[], total, page, pageSize }`.
