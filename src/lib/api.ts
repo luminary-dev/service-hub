@@ -20,10 +20,29 @@ export async function apiFetch(path: string, init?: RequestInit) {
 
 // GET a JSON payload from the gateway; null on any non-2xx response
 // (pages map that to notFound()/redirect/empty states). Network errors
-// propagate — pages are force-dynamic, so a dead gateway is a 500, matching
-// the old behavior when the database was down.
-export async function apiJson<T>(path: string): Promise<T | null> {
-  const res = await apiFetch(path);
+// propagate — a dead gateway is a 500 on uncached pages, matching the old
+// behavior when the database was down (cached entries keep serving stale
+// data through a brief outage, which is strictly better).
+//
+// Caching (#57): by default a call forwards the user's cookies and is
+// `no-store`, so nothing gets cached accidentally. Passing `revalidate`
+// opts the call into Next's Data Cache: the request is then sent WITHOUT
+// cookies — a shared cache entry must never be built from (or vary by) an
+// authenticated request — and is re-fetched once the entry is older than
+// `revalidate` seconds. Only use it for endpoints whose response is
+// identical for every caller.
+export async function apiJson<T>(
+  path: string,
+  opts?: { revalidate?: number }
+): Promise<T | null> {
+  const res =
+    opts?.revalidate !== undefined
+      ? // No `cache` option here: `no-store` conflicts with `revalidate` and
+        // Next would ignore both (see fetch() API reference).
+        await fetch(`${GATEWAY_URL}${path}`, {
+          next: { revalidate: opts.revalidate },
+        })
+      : await apiFetch(path);
   if (!res.ok) return null;
   return (await res.json()) as T;
 }

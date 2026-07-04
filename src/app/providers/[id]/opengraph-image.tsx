@@ -14,7 +14,10 @@ type ProviderCard = {
   reviewCount: number;
 };
 
-export const dynamic = "force-dynamic";
+// Caching (#57): public-and-stable. OG images are fetched by link scrapers;
+// a rating/name that is up to 5 minutes stale is harmless, so the card
+// payload comes from the Data Cache (cookie-less fetch below) instead of
+// hitting the gateway on every scrape.
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 export const alt = "Baas.lk provider";
@@ -29,7 +32,8 @@ export default async function Image({
 }) {
   const { id } = await params;
   const provider = await apiJson<ProviderCard>(
-    `/api/providers/${encodeURIComponent(id)}/card`
+    `/api/providers/${encodeURIComponent(id)}/card`,
+    { revalidate: 300 }
   );
 
   const brand = "#8f3a1c";

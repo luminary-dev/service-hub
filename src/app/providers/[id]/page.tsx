@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { FaLocationDot } from "react-icons/fa6";
 import { apiJson } from "@/lib/api";
-import { getSession } from "@/lib/auth";
+import { getSession, type SessionPayload } from "@/lib/auth";
 import { formatDate, formatLKR } from "@/lib/format";
 import {
   dict,
@@ -22,8 +22,6 @@ import FavoriteButton from "@/components/FavoriteButton";
 import ReportButton from "@/components/ReportButton";
 import ShareButton from "@/components/ShareButton";
 import VerifiedBadge from "@/components/VerifiedBadge";
-
-export const dynamic = "force-dynamic";
 
 // Profile payload as served by `GET /api/providers/:id/full` on the gateway.
 // Suspended profiles come back 404 for everyone but admins; dates are ISO
@@ -73,10 +71,20 @@ type FullProvider = {
   reviews: FullReview[];
 };
 
-function fetchProvider(id: string) {
-  return apiJson<{ provider: FullProvider }>(
-    `/api/providers/${encodeURIComponent(id)}/full`
-  );
+// Caching (#57): public-but-fresh, split by viewer. Anonymous traffic (the
+// vast majority — search engines and logged-out browsing) reads the profile
+// from the Data Cache with a 60-second revalidate: reviews and the
+// away/availability chip can be at most a minute stale, which is defensible
+// for a directory profile. Signed-in requests bypass the cache entirely: the
+// viewer may have just posted a review or sent an inquiry and must see the
+// result immediately, and admins need the cookie-authenticated fetch to view
+// suspended profiles at all. Both calls are memoized within a request, so
+// generateMetadata and the page share one gateway hit.
+function fetchProvider(id: string, session: SessionPayload | null) {
+  const path = `/api/providers/${encodeURIComponent(id)}/full`;
+  return session
+    ? apiJson<{ provider: FullProvider }>(path)
+    : apiJson<{ provider: FullProvider }>(path, { revalidate: 60 });
 }
 
 export async function generateMetadata({
@@ -85,7 +93,8 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
-  const [locale, data] = await Promise.all([getLocale(), fetchProvider(id)]);
+  const [locale, session] = await Promise.all([getLocale(), getSession()]);
+  const data = await fetchProvider(id, session);
   const provider = data?.provider;
   if (!provider || provider.suspended) return {};
 
@@ -111,11 +120,8 @@ export default async function ProviderProfilePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [data, session, locale] = await Promise.all([
-    fetchProvider(id),
-    getSession(),
-    getLocale(),
-  ]);
+  const [session, locale] = await Promise.all([getSession(), getLocale()]);
+  const data = await fetchProvider(id, session);
   const provider = data?.provider ?? null;
 
   // The service already 404s suspended profiles for non-admins; the local

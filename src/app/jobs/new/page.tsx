@@ -5,6 +5,8 @@ import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
 import JobPostForm from "@/components/jobs/JobPostForm";
 
+// Caching (#57): session-gated and must reflect the user's own writes
+// immediately — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
 
 export default async function NewJobPage() {
