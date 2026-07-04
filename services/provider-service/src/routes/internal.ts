@@ -3,6 +3,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
+import { removeStoredFile } from "../lib/storage";
 
 export const internalRoutes = new Hono();
 
@@ -134,6 +135,39 @@ internalRoutes.get("/internal/inquiries/exists", async (c) => {
     select: { id: true },
   });
   return c.json({ exists: inquiry !== null });
+});
+
+// POST /internal/users/:id/erase — account-deletion fan-out from
+// identity-service. Deletes the user's Provider (Service/WorkPhoto/
+// VerificationDocument/Inquiry rows cascade) plus its stored upload files
+// (best-effort), and the Inquiry rows this user sent to other providers.
+// Idempotent: erasing an unknown user is a no-op 200.
+internalRoutes.post("/internal/users/:id/erase", async (c) => {
+  const userId = c.req.param("id");
+
+  const provider = await db.provider.findUnique({
+    where: { userId },
+    include: {
+      photos: { select: { url: true } },
+      verificationDocs: { select: { url: true } },
+    },
+  });
+  if (provider) {
+    await db.provider.delete({ where: { id: provider.id } });
+    for (const f of [
+      ...provider.photos.map((p) => p.url),
+      ...provider.verificationDocs.map((d) => d.url),
+      ...(provider.avatarUrl ? [provider.avatarUrl] : []),
+    ]) {
+      await removeStoredFile(f);
+    }
+  }
+
+  // Inquiries this user sent to other providers (anonymous ones carry no
+  // userId and are untouched by design).
+  await db.inquiry.deleteMany({ where: { userId } });
+
+  return c.json({ ok: true });
 });
 
 // Existence/suspended check (favorites, reviews). Always 200 — the caller
