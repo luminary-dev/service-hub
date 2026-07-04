@@ -24,6 +24,12 @@ const POPULAR_CATEGORIES = [
   "cleaning",
 ] as const;
 
+// Keep only digit strings in the URL/state for the rupee inputs — the service
+// does the authoritative normalization (normalizeListQuery).
+function numericParam(v: string | string[] | undefined): string {
+  return typeof v === "string" && /^\d+$/.test(v.trim()) ? v.trim() : "";
+}
+
 export default async function ProvidersPage({
   searchParams,
 }: {
@@ -42,6 +48,11 @@ export default async function ProvidersPage({
   const district = typeof params.district === "string" ? params.district : "";
   const sort = normalizeSort(params.sort);
   const page = Math.max(1, Number(params.page) || 1);
+  // Advanced filters (#47) — shareable via the URL like every other filter.
+  const priceMin = numericParam(params.priceMin);
+  const priceMax = numericParam(params.priceMax);
+  const ratingMin = numericParam(params.ratingMin);
+  const availableOnly = params.availableOnly === "1";
 
   // Search, filtering, ranking and pagination all happen in provider-service;
   // the query params pass straight through the gateway.
@@ -49,6 +60,10 @@ export default async function ProvidersPage({
   if (q) query.set("q", q);
   if (category) query.set("category", category);
   if (district) query.set("district", district);
+  if (priceMin) query.set("priceMin", priceMin);
+  if (priceMax) query.set("priceMax", priceMax);
+  if (ratingMin) query.set("ratingMin", ratingMin);
+  if (availableOnly) query.set("availableOnly", "1");
   query.set("sort", sort);
   query.set("page", String(page));
 
@@ -72,6 +87,10 @@ export default async function ProvidersPage({
     if (q) sp.set("q", q);
     if (category) sp.set("category", category);
     if (district) sp.set("district", district);
+    if (priceMin) sp.set("priceMin", priceMin);
+    if (priceMax) sp.set("priceMax", priceMax);
+    if (ratingMin) sp.set("ratingMin", ratingMin);
+    if (availableOnly) sp.set("availableOnly", "1");
     if (sort !== "recommended") sp.set("sort", sort);
     sp.set("page", String(target));
     return `/providers?${sp.toString()}`;
@@ -96,6 +115,10 @@ export default async function ProvidersPage({
           category={category}
           district={district}
           sort={sort}
+          priceMin={priceMin}
+          priceMax={priceMax}
+          ratingMin={ratingMin}
+          availableOnly={availableOnly}
           categories={categories}
         />
       </div>

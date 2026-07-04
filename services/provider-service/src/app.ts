@@ -4,6 +4,7 @@ import { log } from "./lib/log";
 import { getRequestId, requestLogger } from "./lib/logging";
 import { providersRoutes } from "./routes/providers";
 import { providerDashboardRoutes } from "./routes/provider";
+import { accountRoutes } from "./routes/account";
 import { adminRoutes } from "./routes/admin";
 import { internalRoutes } from "./routes/internal";
 import { filesRoutes } from "./routes/files";
@@ -16,6 +17,7 @@ app.use("*", requireInternalSecret);
 
 app.route("/", providersRoutes);
 app.route("/", providerDashboardRoutes);
+app.route("/", accountRoutes);
 app.route("/", adminRoutes);
 app.route("/", internalRoutes);
 app.route("/", filesRoutes);
