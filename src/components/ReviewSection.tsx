@@ -11,6 +11,7 @@ import { isSvg } from "@/lib/image";
 import { useLocale, useT } from "./I18nProvider";
 import { useToast } from "./ToastProvider";
 import { formatDate } from "@/lib/format";
+import ReportButton from "./ReportButton";
 
 type ReviewPhoto = { id: string; url: string };
 
@@ -202,19 +203,27 @@ export default function ReviewSection({
         <ul className="mt-4 divide-y divide-ink-100">
           {reviews.map((r) => (
             <li key={r.id} className="py-4">
-              <div className="flex items-center gap-3">
-                <Avatar name={r.userName} size={36} />
-                <div>
-                  <p className="text-sm font-medium text-ink-800">
-                    {r.userName}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <Stars rating={r.rating} />
-                    <span className="text-xs text-ink-500">
-                      {formatDate(r.createdAt, locale)}
-                    </span>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <Avatar name={r.userName} size={36} />
+                  <div>
+                    <p className="text-sm font-medium text-ink-800">
+                      {r.userName}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Stars rating={r.rating} />
+                      <span className="text-xs text-ink-500">
+                        {formatDate(r.createdAt, locale)}
+                      </span>
+                    </div>
                   </div>
                 </div>
+                <ReportButton
+                  endpoint={`/api/reviews/${r.id}/report`}
+                  label={t.report.reportReview}
+                  variant="text"
+                  showLabel={false}
+                />
               </div>
               <p className="mt-2 text-sm leading-relaxed text-ink-600">
                 {r.comment}

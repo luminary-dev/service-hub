@@ -45,7 +45,7 @@ providerDashboardRoutes.get("/api/provider/dashboard", async (c) => {
       db.service.findMany({ where: { providerId: provider.id }, orderBy: { price: "asc" } }),
       db.workPhoto.findMany({
         where: { providerId: provider.id, deletedAt: null },
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
       }),
       db.inquiry.findMany({
         where: { providerId: provider.id },
@@ -75,6 +75,33 @@ providerDashboardRoutes.get("/api/provider/dashboard", async (c) => {
   });
 });
 
+// Away mode (#49): an optional return date. Absent leaves the stored value
+// untouched; null (or "") clears it. Anything else must parse as a date and
+// be at most one year out — past dates are accepted (they simply mean "not
+// away", matching lib/availability.ts).
+const awayUntilField = z
+  .union([z.string(), z.null()])
+  .optional()
+  .transform((v, ctx) => {
+    if (v === undefined) return undefined;
+    if (v === null || v.trim() === "") return null;
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) {
+      ctx.addIssue({ code: "custom", message: "Invalid away-until date" });
+      return z.NEVER;
+    }
+    const max = new Date();
+    max.setFullYear(max.getFullYear() + 1);
+    if (d > max) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Away-until date can be at most one year from now",
+      });
+      return z.NEVER;
+    }
+    return d;
+  });
+
 const profileSchema = z.object({
   name: z.string().min(2).max(80),
   phone: slPhone,
@@ -87,6 +114,7 @@ const profileSchema = z.object({
   city: z.string().min(1).max(60),
   experience: z.number().int().min(0).max(60),
   available: z.boolean(),
+  awayUntil: awayUntilField,
   whatsapp: optionalSlPhone,
   phone2: optionalSlPhone,
   facebook: optionalWebUrl,
@@ -260,6 +288,43 @@ providerDashboardRoutes.post("/api/provider/photos", async (c) => {
   });
 
   return c.json({ photo });
+});
+
+// Reorder the caller's gallery: sortOrder = position of the photo's id in the
+// submitted array. Ids that don't belong to the caller (or don't exist) are
+// ignored, so a stale or hostile payload can never touch another provider's
+// photos; own photos missing from the payload keep their old sortOrder.
+const photoOrderSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(500),
+});
+
+providerDashboardRoutes.patch("/api/provider/photos/order", async (c) => {
+  const provider = await getCurrentProvider(c);
+  if (!provider) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = photoOrderSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid input" }, 400);
+  }
+
+  const owned = await db.workPhoto.findMany({
+    where: { id: { in: parsed.data.ids }, providerId: provider.id },
+    select: { id: true },
+  });
+  const ownedIds = new Set(owned.map((p) => p.id));
+
+  await db.$transaction(
+    parsed.data.ids
+      .filter((id) => ownedIds.has(id))
+      .map((id, index) =>
+        db.workPhoto.update({ where: { id }, data: { sortOrder: index } })
+      )
+  );
+
+  return c.json({ ok: true });
 });
 
 providerDashboardRoutes.delete("/api/provider/photos/:id", async (c) => {

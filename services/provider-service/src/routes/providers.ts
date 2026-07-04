@@ -13,6 +13,7 @@ import {
   sendInquiryEmail,
   type RatingEntry,
 } from "../lib/clients";
+import { isEffectivelyAvailable } from "../lib/availability";
 import { slPhone } from "../lib/field-rules";
 import { normalizeListQuery } from "../lib/query";
 import { averageResponseMs } from "../lib/response-time";
@@ -42,7 +43,9 @@ const cardInclude = {
   photos: {
     where: { deletedAt: null },
     take: 1,
-    orderBy: { createdAt: "desc" as const },
+    // Cover photo = first photo of the provider's manual order (falls back to
+    // newest-first while everything still has the default sortOrder 0).
+    orderBy: [{ sortOrder: "asc" as const }, { createdAt: "desc" as const }],
   },
 };
 
@@ -56,7 +59,10 @@ function toCardDTO(p: CardRow, r: RatingEntry | undefined) {
     district: p.district,
     city: p.city,
     experience: p.experience,
-    available: p.available,
+    // Effective availability (#49): an away provider reports available=false;
+    // awayUntil lets the web render "Away until {date}" instead.
+    available: isEffectivelyAvailable(p),
+    awayUntil: p.awayUntil,
     verificationStatus: p.verificationStatus,
     verifiedAt: p.verifiedAt,
     createdAt: p.createdAt,
@@ -215,13 +221,23 @@ providersRoutes.get("/api/providers/:id", async (c) => {
     where: { id },
     include: {
       services: true,
-      photos: { where: { deletedAt: null }, orderBy: { createdAt: "desc" } },
+      photos: {
+        where: { deletedAt: null },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+      },
     },
   });
   if (!provider) {
     return c.json({ error: "Provider not found" }, 404);
   }
-  return c.json({ provider: { ...provider, user: contactAsUser(provider) } });
+  return c.json({
+    provider: {
+      ...provider,
+      // Effective availability (#49) — raw awayUntil rides along.
+      available: isEffectivelyAvailable(provider),
+      user: contactAsUser(provider),
+    },
+  });
 });
 
 // Bounds for the /full composition: profile pages must not grow unbounded
@@ -232,7 +248,8 @@ const FULL_PHOTOS_TAKE = 50;
 const FULL_REVIEWS_TAKE = 50;
 
 // Full page payload for /providers/[id]: services (price asc), first
-// FULL_PHOTOS_TAKE photos (createdAt desc, photosTotal alongside) and the
+// FULL_PHOTOS_TAKE photos (sortOrder asc then createdAt desc — the provider's
+// manual order, photosTotal alongside) and the
 // first page of reviews hydrated from review-service (degrades to [];
 // reviewsTake/reviewsCursor thread through, reviewsNextCursor comes back).
 // Suspended profiles are hidden from the public; admins moderate via /admin.
@@ -244,7 +261,7 @@ providersRoutes.get("/api/providers/:id/full", async (c) => {
       services: { orderBy: { price: "asc" } },
       photos: {
         where: { deletedAt: null },
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
         take: FULL_PHOTOS_TAKE,
       },
       _count: { select: { photos: { where: { deletedAt: null } } } },
@@ -277,6 +294,9 @@ providersRoutes.get("/api/providers/:id/full", async (c) => {
   return c.json({
     provider: {
       ...providerFields,
+      // Effective availability (#49): away providers surface available=false;
+      // the profile page renders "Away until {awayUntil}" from the raw field.
+      available: isEffectivelyAvailable(provider),
       user: contactAsUser(provider),
       reviews,
       reviewsNextCursor: nextCursor,

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { FaChevronLeft, FaChevronRight, FaXmark } from "react-icons/fa6";
 import { isSvg } from "@/lib/image";
 import { useT } from "./I18nProvider";
+import ReportButton from "./ReportButton";
 
 type Photo = { id: string; url: string; caption: string | null };
 
@@ -138,6 +139,13 @@ export default function PhotoGallery({ photos }: { photos: Photo[] }) {
                 {photos[active].caption}
               </figcaption>
             )}
+            <div className="mt-3">
+              <ReportButton
+                endpoint={`/api/photos/${photos[active].id}/report`}
+                label={t.report.reportPhoto}
+                variant="overlay"
+              />
+            </div>
           </figure>
         </div>
       )}

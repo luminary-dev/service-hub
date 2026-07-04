@@ -41,6 +41,8 @@ export type DashboardData = {
   city: string;
   experience: number;
   available: boolean;
+  // ISO string while the provider is away (#49); null when not set.
+  awayUntil: string | null;
   avatarUrl: string | null;
   whatsapp: string;
   phone2: string;

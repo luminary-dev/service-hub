@@ -193,6 +193,119 @@ adminRoutes.patch("/api/admin/photos/:id/restore", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// Abuse-report moderation queue (#50): reports on providers and work photos
+// (review reports live at review-service under /api/admin/review-reports).
+// ---------------------------------------------------------------------------
+
+// The closed tail is bounded — the queue view is about what's OPEN; recently
+// handled reports are kept for context, not as a full audit browser.
+const CLOSED_REPORTS_TAKE = 100;
+
+// OPEN reports first (newest first), then recently closed ones. Every report
+// carries a hydrated target summary from local tables — provider name for
+// PROVIDER targets, photo url + owner for WORK_PHOTO targets — and `target`
+// is null when the target has since been hard-deleted.
+adminRoutes.get("/api/admin/reports", async (c) => {
+  if (!isAdmin(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const [open, closed] = await Promise.all([
+    db.report.findMany({
+      where: { status: "OPEN" },
+      orderBy: { createdAt: "desc" },
+    }),
+    db.report.findMany({
+      where: { status: { not: "OPEN" } },
+      orderBy: { createdAt: "desc" },
+      take: CLOSED_REPORTS_TAKE,
+    }),
+  ]);
+  const rows = [...open, ...closed];
+
+  const providerIds = rows
+    .filter((r) => r.targetType === "PROVIDER")
+    .map((r) => r.targetId);
+  const photoIds = rows
+    .filter((r) => r.targetType === "WORK_PHOTO")
+    .map((r) => r.targetId);
+  const [providers, photos] = await Promise.all([
+    providerIds.length
+      ? db.provider.findMany({
+          where: { id: { in: providerIds } },
+          select: { id: true, contactName: true, suspended: true },
+        })
+      : [],
+    photoIds.length
+      ? db.workPhoto.findMany({
+          where: { id: { in: photoIds } },
+          select: {
+            id: true,
+            url: true,
+            caption: true,
+            deletedAt: true,
+            providerId: true,
+            provider: { select: { contactName: true } },
+          },
+        })
+      : [],
+  ]);
+  const providerById = new Map(providers.map((p) => [p.id, p]));
+  const photoById = new Map(photos.map((p) => [p.id, p]));
+
+  const reports = rows.map((r) => {
+    let target = null;
+    if (r.targetType === "PROVIDER") {
+      const p = providerById.get(r.targetId);
+      if (p) {
+        target = {
+          providerId: p.id,
+          providerName: p.contactName,
+          suspended: p.suspended,
+        };
+      }
+    } else {
+      const ph = photoById.get(r.targetId);
+      if (ph) {
+        target = {
+          providerId: ph.providerId,
+          providerName: ph.provider.contactName,
+          photoUrl: ph.url,
+          caption: ph.caption,
+          removed: ph.deletedAt !== null,
+        };
+      }
+    }
+    return { ...r, target };
+  });
+
+  return c.json({ reports });
+});
+
+const reportStatusSchema = z.object({ status: z.enum(["RESOLVED", "DISMISSED"]) });
+
+adminRoutes.patch("/api/admin/reports/:id", async (c) => {
+  if (!isAdmin(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = reportStatusSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid input" }, 400);
+  }
+
+  const { count } = await db.report.updateMany({
+    where: { id: c.req.param("id") },
+    data: { status: parsed.data.status },
+  });
+  if (count === 0) {
+    return c.json({ error: "Report not found" }, 404);
+  }
+  return c.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
 // Category management (#135/#60). No hard delete: deactivating hides a
 // category from the public list while existing providers keep the slug.
 // ---------------------------------------------------------------------------
