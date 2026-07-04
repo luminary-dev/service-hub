@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useT } from "@/components/I18nProvider";
+import { useToast } from "@/components/ToastProvider";
 
 // Account security controls, backed by identity-service via the gateway:
 // change-password re-issues this session's cookie (other devices drop via the
@@ -10,6 +11,7 @@ import { useT } from "@/components/I18nProvider";
 // and delete-account erases across every service after re-authentication.
 export default function SecuritySettings() {
   const t = useT();
+  const toast = useToast();
   const router = useRouter();
 
   // Change password
@@ -17,11 +19,11 @@ export default function SecuritySettings() {
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
   const [changing, setChanging] = useState(false);
-  const [changeMsg, setChangeMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [changeError, setChangeError] = useState("");
 
   // Sign out everywhere
   const [loggingOut, setLoggingOut] = useState(false);
-  const [logoutMsg, setLogoutMsg] = useState("");
+  const [logoutError, setLogoutError] = useState("");
 
   // Delete account
   const [deletePassword, setDeletePassword] = useState("");
@@ -30,9 +32,9 @@ export default function SecuritySettings() {
 
   async function changePassword(e: React.FormEvent) {
     e.preventDefault();
-    setChangeMsg(null);
+    setChangeError("");
     if (next !== confirm) {
-      setChangeMsg({ ok: false, text: t.security.mismatch });
+      setChangeError(t.security.mismatch);
       return;
     }
     setChanging(true);
@@ -46,23 +48,23 @@ export default function SecuritySettings() {
       setCurrent("");
       setNext("");
       setConfirm("");
-      setChangeMsg({ ok: true, text: t.security.changed });
+      toast.success(t.security.changed);
     } else {
       const data = await res.json().catch(() => ({}));
-      setChangeMsg({ ok: false, text: data.error ?? t.security.genericError });
+      setChangeError(data.error ?? t.security.genericError);
     }
   }
 
   async function logoutAll() {
     setLoggingOut(true);
-    setLogoutMsg("");
+    setLogoutError("");
     const res = await fetch("/api/auth/logout-all", { method: "POST" });
     setLoggingOut(false);
     if (res.ok) {
-      setLogoutMsg(t.security.logoutAllDone);
+      toast.success(t.security.logoutAllDone);
     } else {
       const data = await res.json().catch(() => ({}));
-      setLogoutMsg(data.error ?? t.security.genericError);
+      setLogoutError(data.error ?? t.security.genericError);
     }
   }
 
@@ -133,11 +135,7 @@ export default function SecuritySettings() {
             autoComplete="new-password"
           />
         </div>
-        {changeMsg && (
-          <p className={`text-sm ${changeMsg.ok ? "text-green-700" : "text-red-600"}`}>
-            {changeMsg.text}
-          </p>
-        )}
+        {changeError && <p className="text-sm text-red-600">{changeError}</p>}
         <button type="submit" disabled={changing} className="btn-primary">
           {changing ? t.security.changing : t.security.change}
         </button>
@@ -148,7 +146,9 @@ export default function SecuritySettings() {
           {t.security.logoutAllTitle}
         </h2>
         <p className="mt-1 text-sm text-ink-500">{t.security.logoutAllBody}</p>
-        {logoutMsg && <p className="mt-3 text-sm text-green-700">{logoutMsg}</p>}
+        {logoutError && (
+          <p className="mt-3 text-sm text-red-600">{logoutError}</p>
+        )}
         <button
           type="button"
           onClick={logoutAll}

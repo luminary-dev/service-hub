@@ -4,6 +4,7 @@ import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
 import UserMenu from "./UserMenu";
 import LanguageToggle from "./LanguageToggle";
+import MobileMenu from "./MobileMenu";
 
 export default async function Navbar() {
   const [session, locale] = await Promise.all([getSession(), getLocale()]);
@@ -40,7 +41,9 @@ export default async function Navbar() {
         </nav>
 
         <div className="flex items-center gap-2">
-          <LanguageToggle />
+          <div className="hidden md:block">
+            <LanguageToggle />
+          </div>
           {session ? (
             <UserMenu name={session.name} role={session.role} />
           ) : (
@@ -48,11 +51,17 @@ export default async function Navbar() {
               <Link href="/login" className="btn-ghost hidden sm:inline-flex">
                 {t.nav.signIn}
               </Link>
-              <Link href="/register" className="btn-primary !px-4 !py-2">
+              <Link
+                href="/register"
+                className="btn-primary hidden !px-4 !py-2 md:inline-flex"
+              >
                 {t.nav.getStarted}
               </Link>
             </>
           )}
+          <MobileMenu
+            session={session ? { role: session.role } : null}
+          />
         </div>
       </div>
     </header>
