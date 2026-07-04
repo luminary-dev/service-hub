@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { getTheme } from "@/lib/theme";
 import { dict } from "@/lib/i18n";
+import { localizedHref } from "@/lib/links";
 import UserMenu from "./UserMenu";
 import LanguageToggle from "./LanguageToggle";
 import ThemeToggle from "./ThemeToggle";
@@ -20,7 +21,7 @@ export default async function Navbar() {
     <header className="sticky top-0 z-40 border-b border-ink-200 bg-surface/85 backdrop-blur-lg">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
         <Link
-          href="/"
+          href={localizedHref("/", locale)}
           className="flex items-center gap-2.5 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
         >
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-700 text-sm font-bold text-white dark:text-ink-50">
@@ -32,7 +33,7 @@ export default async function Navbar() {
         </Link>
 
         <nav className="hidden items-center gap-1 md:flex">
-          <Link href="/providers" className="btn-ghost">
+          <Link href={localizedHref("/providers", locale)} className="btn-ghost">
             {t.nav.find}
           </Link>
           {session ? (

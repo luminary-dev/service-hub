@@ -1,8 +1,10 @@
+import type { Metadata } from "next";
 import { FaMagnifyingGlass } from "react-icons/fa6";
 import { apiJson } from "@/lib/api";
 import { fetchCategoryOptions } from "@/lib/categories-server";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
-import { getLocale } from "@/lib/locale";
+import { languageAlternates, localizedHref } from "@/lib/links";
+import { getLocale, getUrlLocale } from "@/lib/locale";
 import { normalizeSort } from "@/lib/sort-keys";
 import { getSession } from "@/lib/auth";
 import ProviderCard, { ProviderCardDTO } from "@/components/ProviderCard";
@@ -32,6 +34,28 @@ const POPULAR_CATEGORIES = [
 // does the authoritative normalization (normalizeListQuery).
 function numericParam(v: string | string[] | undefined): string {
   return typeof v === "string" && /^\d+$/.test(v.trim()) ? v.trim() : "";
+}
+
+// hreflang pairs (#67). The category filter is the indexed dimension (the
+// sitemap lists /providers?category=… pages), so it stays in the canonical /
+// alternate URLs; the remaining filters (q, price, rating, page…) are search
+// permutations that canonicalize to the category listing.
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}): Promise<Metadata> {
+  const [params, urlLocale] = await Promise.all([
+    searchParams,
+    getUrlLocale(),
+  ]);
+  const category =
+    typeof params.category === "string" && params.category
+      ? `?category=${encodeURIComponent(params.category)}`
+      : "";
+  return {
+    alternates: languageAlternates(`/providers${category}`, urlLocale),
+  };
 }
 
 export default async function ProvidersPage({
@@ -97,7 +121,7 @@ export default async function ProvidersPage({
     if (availableOnly) sp.set("availableOnly", "1");
     if (sort !== "recommended") sp.set("sort", sort);
     sp.set("page", String(target));
-    return `/providers?${sp.toString()}`;
+    return localizedHref(`/providers?${sp.toString()}`, locale);
   }
 
   return (
@@ -136,7 +160,7 @@ export default async function ProvidersPage({
           <p className="mt-1 max-w-sm text-sm text-ink-500">
             {t.browse.emptyBody}
           </p>
-          <Link href="/providers" className="btn-secondary mt-6">
+          <Link href={localizedHref("/providers", locale)} className="btn-secondary mt-6">
             {t.browse.clear}
           </Link>
           <p className="mt-8 text-sm font-medium text-ink-700">
@@ -146,7 +170,7 @@ export default async function ProvidersPage({
             {POPULAR_CATEGORIES.map((slug) => (
               <Link
                 key={slug}
-                href={`/providers?category=${slug}`}
+                href={localizedHref(`/providers?category=${slug}`, locale)}
                 className="chip border border-ink-200 bg-surface !px-3 !py-1.5 text-ink-700 transition-[border-color,color] duration-200 ease-snap hover:border-brand-400 hover:text-brand-700"
               >
                 <CategoryIcon slug={slug} className="h-3.5 w-3.5" />

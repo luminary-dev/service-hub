@@ -5,6 +5,7 @@ import { useState } from "react";
 import { FaMagnifyingGlass } from "react-icons/fa6";
 import { CATEGORIES } from "@/lib/constants";
 import { categoryLabelLoc } from "@/lib/i18n";
+import { localizedHref } from "@/lib/links";
 import { useLocale, useT } from "./I18nProvider";
 
 export default function SearchBar() {
@@ -19,7 +20,7 @@ export default function SearchBar() {
     const params = new URLSearchParams();
     if (q.trim()) params.set("q", q.trim());
     if (category) params.set("category", category);
-    router.push(`/providers?${params.toString()}`);
+    router.push(localizedHref(`/providers?${params.toString()}`, locale));
   }
 
   return (

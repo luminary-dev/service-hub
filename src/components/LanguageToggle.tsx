@@ -1,7 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useLocale, useT } from "./I18nProvider";
+import { localizedHref } from "@/lib/links";
 import type { Locale } from "@/lib/i18n";
 
 function writeLocaleCookie(next: Locale) {
@@ -12,11 +13,23 @@ export default function LanguageToggle() {
   const locale = useLocale();
   const t = useT();
   const router = useRouter();
+  const pathname = usePathname();
 
   function setLocale(next: Locale) {
     if (next === locale) return;
+    // The cookie stays the source of truth for the API layer (emails etc.)
+    // and for unprefixed URLs; the /si URL prefix is what makes localized
+    // pages indexable and shareable (#67).
     writeLocaleCookie(next);
-    router.refresh();
+    const current = pathname + window.location.search;
+    const target = localizedHref(current, next);
+    if (target === current) {
+      router.refresh();
+    } else {
+      // Full navigation: the prefixed and unprefixed URL render different
+      // languages, so bypass any client-router-cached RSC payloads.
+      window.location.assign(target);
+    }
   }
 
   return (

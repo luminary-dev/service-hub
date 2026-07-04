@@ -9,6 +9,7 @@ import {
   type CategoryOption,
 } from "@/lib/categories";
 import { districtLabelLoc } from "@/lib/i18n";
+import { localizedHref } from "@/lib/links";
 import { SORT_KEYS, type SortKey } from "@/lib/sort-keys";
 import { useLocale, useT } from "./I18nProvider";
 
@@ -71,7 +72,7 @@ export default function FilterBar({
     if (nr) params.set("ratingMin", nr);
     if (na) params.set("availableOnly", "1");
     if (ns !== "recommended") params.set("sort", ns);
-    router.push(`/providers?${params.toString()}`);
+    router.push(localizedHref(`/providers?${params.toString()}`, locale));
   }
 
   return (

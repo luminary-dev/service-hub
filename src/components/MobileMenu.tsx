@@ -4,7 +4,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { FaBars, FaXmark } from "react-icons/fa6";
-import { useT } from "./I18nProvider";
+import { useLocale, useT } from "./I18nProvider";
+import { localizedHref } from "@/lib/links";
 import LanguageToggle from "./LanguageToggle";
 import ThemeToggle from "./ThemeToggle";
 import type { Theme } from "@/lib/theme";
@@ -24,6 +25,7 @@ export default function MobileMenu({
   const pathname = usePathname();
   const router = useRouter();
   const t = useT();
+  const locale = useLocale();
 
   // Close whenever navigation actually happens (covers back/forward too) —
   // state adjusted during render, per the React "you might not need an
@@ -74,7 +76,11 @@ export default function MobileMenu({
           id="mobile-menu"
           className="absolute inset-x-0 top-16 border-b border-ink-200 bg-surface p-3 shadow-lg"
         >
-          <Link href="/providers" onClick={close} className={itemClass}>
+          <Link
+            href={localizedHref("/providers", locale)}
+            onClick={close}
+            className={itemClass}
+          >
             {t.nav.find}
           </Link>
           {session ? (
