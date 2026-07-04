@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { FaEnvelope, FaInbox, FaPhone } from "react-icons/fa6";
-import { useT } from "../I18nProvider";
+import { useLocale, useT } from "../I18nProvider";
+import { formatDate } from "@/lib/format";
 import type { InquiryItem } from "./DashboardTabs";
 
 const STATUS_STYLES: Record<string, string> = {
@@ -14,6 +15,7 @@ const STATUS_STYLES: Record<string, string> = {
 export default function InquiriesList({ initial }: { initial: InquiryItem[] }) {
   const [inquiries, setInquiries] = useState(initial);
   const q = useT().dashboard.inquiries;
+  const locale = useLocale();
   const statusLabel: Record<string, string> = {
     NEW: q.statusNew,
     RESPONDED: q.statusResponded,
@@ -79,10 +81,7 @@ export default function InquiriesList({ initial }: { initial: InquiryItem[] }) {
                 {statusLabel[i.status] ?? i.status}
               </span>
               <span className="text-xs text-ink-500">
-                {new Date(i.createdAt).toLocaleDateString("en-GB", {
-                  day: "numeric",
-                  month: "short",
-                })}
+                {formatDate(i.createdAt, locale, { day: "numeric", month: "short" })}
               </span>
             </div>
           </div>
