@@ -18,7 +18,7 @@ jobs:
     steps:
       - name: Add issue to board
         id: add
-        uses: actions/add-to-project@v1.0.2
+        uses: actions/add-to-project@v2.0.0
         with:
           project-url: https://github.com/orgs/luminary-dev/projects/1
           github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}
