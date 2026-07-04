@@ -45,6 +45,54 @@ jobs:
           sarif_file: trivy-results.sarif
           category: trivy
 
+  trivy-image:
+    name: Trivy image scan / ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - web
+          - identity-service
+          - provider-service
+          - review-service
+          - job-service
+          - notification-service
+          - api-gateway
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build image
+        run: docker build -t "scan/${{ matrix.image }}:ci" "${{ matrix.image == 'web' && '.' || format('services/{0}', matrix.image) }}"
+
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b "$RUNNER_TEMP/bin"
+
+      - name: Scan image (base-image / OS packages)
+        # --pkg-types os: npm packages are already covered by the lockfile scan
+        # above; this job exists for the node:22-alpine layer (musl, openssl,
+        # busybox, ...). Report-only: never fails the build.
+        run: |
+          "$RUNNER_TEMP/bin/trivy" image \
+            --scanners vuln \
+            --pkg-types os \
+            --severity CRITICAL,HIGH,MEDIUM \
+            --format sarif \
+            --output trivy-image.sarif \
+            "scan/${{ matrix.image }}:ci"
+
+      - name: Upload results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image-${{ matrix.image }}
+
   npm-audit:
     name: npm audit / ${{ matrix.package }}
     runs-on: ubuntu-latest
