@@ -84,7 +84,7 @@ through internal HTTP endpoints.
 | `BLOB_READ_WRITE_TOKEN` | provider, review (uploads; local-disk fallback) |
 | `UPLOAD_DIR` | provider, review (local upload dir, default `./data/uploads`) |
 | `WEB_ORIGIN` | gateway (fallback for `x-origin`) |
-| `GATEWAY_URL` | web (rewrite target + server-side fetches) |
+| `GATEWAY_URL` | web (runtime `/api/*` proxy target in `src/proxy.ts` + server-side fetches; read per request, never baked into the build/image) |
 
 ## Data ownership
 
@@ -365,9 +365,13 @@ console log with `delivered: false`.
 
 ## Web app changes
 
-- `next.config.ts`: add `rewrites()` → `/api/:path*` →
-  `${GATEWAY_URL}/api/:path*`. Client components keep calling `/api/*`
-  unchanged.
+- `src/proxy.ts` (Next 16's rename of middleware) rewrites `/api/:path*` →
+  `${GATEWAY_URL}/api/:path*` at **request** time, so `GATEWAY_URL` is a pure
+  runtime env var and one web image can be promoted across environments.
+  (A `rewrites()` entry in `next.config.ts` — the original approach — is
+  resolved at build time and bakes the gateway address into the routes
+  manifest.) Client components keep calling `/api/*` unchanged; when
+  `GATEWAY_URL` is unset the proxy falls back to `http://localhost:4000`.
 - Server components fetch the gateway directly (`src/lib/api.ts` helper:
   `GATEWAY_URL` + forwarded `cookie` header, `cache: "no-store"`).
 - Delete `src/app/api/**`, `src/lib/db.ts`, and the moved libs (tokens, email,
@@ -375,9 +379,8 @@ console log with `delivered: false`.
   tests (they live in services now). Keep `auth.ts#getSession` (JWT verify
   only) for page gating; drop `createSession`/`destroySession`/
   `getCurrentUser`.
-- Replace `src/middleware.ts` with nothing (CSRF now lives in the gateway;
-  Next 16 deprecates middleware in favor of `proxy.ts`, and we no longer need
-  one).
+- `src/middleware.ts` (CSRF) is gone — CSRF now lives in the gateway. The
+  only `proxy.ts` responsibility is the runtime `/api/*` rewrite above.
 - Prisma is removed from the web app entirely (deps, scripts, prisma/).
 
 ## Local development
