@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { db } from "../db";
 import { getAuth, getLocale, getOrigin } from "../lib/http";
+import { log } from "../lib/log";
 import { createSession, destroySession } from "../lib/session";
 import { hashToken } from "../lib/tokens";
 import { eraseUserData } from "../lib/erase";
@@ -87,7 +88,7 @@ authRoutes.post("/register", async (c) => {
         services: data.services,
       });
     } catch (e) {
-      console.error("[register] provider creation failed", e);
+      log.error("provider creation failed", { context: "register", err: e });
       // Compensation: the user row is useless without its provider profile.
       await db.user.delete({ where: { id: user.id } });
       return c.json({ error: "Upstream service unavailable" }, 502);
@@ -105,7 +106,7 @@ authRoutes.post("/register", async (c) => {
   try {
     await sendVerificationEmail(user.id, user.email, getOrigin(c), getLocale(c));
   } catch (e) {
-    console.error("[register] verification email failed", e);
+    log.error("verification email failed", { context: "register", err: e });
   }
 
   return c.json({
@@ -252,7 +253,7 @@ authRoutes.post("/delete-account", async (c) => {
   try {
     await eraseUserData(user.id, providerId);
   } catch (e) {
-    console.error("[delete-account] peer erase failed", e);
+    log.error("peer erase failed", { context: "delete-account", err: e });
     return c.json({ error: "Upstream service unavailable" }, 502);
   }
 
@@ -400,7 +401,7 @@ authRoutes.post("/resend-verification", async (c) => {
   try {
     await sendVerificationEmail(user.id, user.email, getOrigin(c), getLocale(c));
   } catch (e) {
-    console.error("[resend-verification] failed", e);
+    log.error("verification email failed", { context: "resend-verification", err: e });
     return c.json({ error: "Could not send verification email." }, 500);
   }
 

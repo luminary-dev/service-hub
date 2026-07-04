@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { db } from "../db";
 import { getAuth } from "../lib/http";
+import { log } from "../lib/log";
 import { providerExists } from "../lib/providers";
 
 export const favoritesRoutes = new Hono();
@@ -35,7 +36,7 @@ favoritesRoutes.post("/:id", async (c) => {
   try {
     exists = await providerExists(id);
   } catch (e) {
-    console.error("[favorites] provider existence check failed", e);
+    log.error("provider existence check failed", { context: "favorites", err: e });
     return c.json({ error: "Upstream service unavailable" }, 502);
   }
   if (!exists) {

@@ -13,6 +13,7 @@
 // default fetcher wiring below differs per service).
 import { CATEGORIES } from "./constants";
 import { s2s } from "./http";
+import { log } from "./log";
 
 export type SlugFetcher = () => Promise<string[]>;
 
@@ -35,7 +36,7 @@ export function createCategoryValidator(fetchSlugs: SlugFetcher, ttlMs = TTL_MS)
       expiresAt = now + ttlMs;
       return cached;
     } catch (e) {
-      console.error("[categories] lookup failed — using static fallback", e);
+      log.error("lookup failed — using static fallback", { context: "categories", err: e });
       // Keep serving a stale cache if we have one; otherwise the static list.
       return cached ?? new Set(CATEGORIES);
     }
