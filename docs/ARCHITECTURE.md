@@ -122,8 +122,10 @@ Public entry. Responsibilities:
    allow if `sec-fetch-site` ∈ {`same-origin`,`none`}; else compare `origin`
    host to `x-forwarded-host` ?? `host`. Reject → `403 { error: "Cross-site
    request blocked." }` (this replaces the monolith middleware).
-2. **Rate limiting** (port of `src/lib/rate-limit.ts` + tests, in-memory
-   sliding window, keyed by client IP from `x-forwarded-for`):
+2. **Rate limiting** (port of `src/lib/rate-limit.ts` + tests, sliding
+   window keyed by client IP from `x-forwarded-for`; the window lives in
+   Redis when `REDIS_URL` is set — shared across instances, falling back to
+   the per-instance in-memory store on Redis failure — otherwise in-memory):
    `POST /api/auth/login|forgot-password|reset-password|change-password|delete-account` →
    authStrict; `POST /api/auth/register` → authSignup;
    `POST /api/auth/resend-verification` → resend; `POST /api/jobs` and
