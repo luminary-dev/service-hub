@@ -224,6 +224,16 @@ const en = {
     sendFailed: "Message not sent. Please try again.",
     you: "You",
   },
+  assistant: {
+    title: "Baas.lk Assistant",
+    subtitle: "Describe your job — I'll find the right professional.",
+    greeting:
+      "Hi! Tell me what you need done (for example: \"my sink is leaking in Nugegoda\") and I'll suggest professionals and can send them an inquiry for you.",
+    placeholder: "Describe your job…",
+    send: "Send",
+    open: "Chat with the assistant",
+    error: "Something went wrong. Please try again.",
+  },
   errors: {
     notFoundTitle: "Page not found",
     notFoundBody:
@@ -903,6 +913,16 @@ const si: Dict = {
     loadFailed: "සංවාදය පූරණය කළ නොහැකි විය. නැවත උත්සාහ කරන්න.",
     sendFailed: "පණිවිඩය යවා නැත. නැවත උත්සාහ කරන්න.",
     you: "ඔබ",
+  },
+  assistant: {
+    title: "Baas.lk සහායක",
+    subtitle: "ඔබේ කාර්යය විස්තර කරන්න — සුදුසු වෘත්තිකයා සොයා දෙන්නම්.",
+    greeting:
+      "ආයුබෝවන්! ඔබට කරගත යුතු දේ කියන්න (උදා: \"නුගේගොඩ මගේ සින්ක් එක ලීක් වෙනවා\"). මම වෘත්තිකයන් යෝජනා කර, ඔබ වෙනුවෙන් විමසීමක්ද යැවිය හැක.",
+    placeholder: "ඔබේ කාර්යය විස්තර කරන්න…",
+    send: "යවන්න",
+    open: "සහායක සමඟ කතා කරන්න",
+    error: "යමක් වැරදුණා. නැවත උත්සාහ කරන්න.",
   },
   errors: {
     notFoundTitle: "පිටුව හමු නොවීය",

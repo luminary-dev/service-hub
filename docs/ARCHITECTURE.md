@@ -499,6 +499,18 @@ console log with `delivered: false`.
   only `proxy.ts` responsibility is the runtime `/api/*` rewrite above.
 - Prisma is removed from the web app entirely (deps, scripts, prisma/).
 
+## Chat assistant (#11)
+
+`POST /agent/chat` is served by the WEB APP (deliberately outside the
+gateway-proxied `/api/*` prefix): a streaming Claude (`claude-opus-4-8`)
+concierge with two tools — `search_providers` (gateway browse) and
+`create_inquiry` (the same public endpoint the form uses, with
+`source: "chat-agent"` attribution, the caller's cookie forwarded so
+signed-in inquiries get a userId, and the real client IP forwarded for rate
+limiting). The model may only call `create_inquiry` after showing the exact
+message and getting explicit confirmation. Requires `ANTHROPIC_API_KEY` on
+the web app (unset → 503, widget degrades). Localized en/si.
+
 ## Local development
 
 - `docker compose up -d postgres` then `npm run dev:all` (root script starts

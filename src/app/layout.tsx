@@ -5,6 +5,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { I18nProvider } from "@/components/I18nProvider";
 import { ToastProvider } from "@/components/ToastProvider";
+import ChatAssistant from "@/components/ChatAssistant";
 import { getLocale } from "@/lib/locale";
 import { getTheme } from "@/lib/theme";
 import { dict } from "@/lib/i18n";
@@ -76,6 +77,7 @@ export default async function RootLayout({
             <Navbar />
             <main className="flex-1">{children}</main>
             <Footer />
+            <ChatAssistant />
           </ToastProvider>
         </I18nProvider>
       </body>

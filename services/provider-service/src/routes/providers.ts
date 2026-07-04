@@ -343,6 +343,9 @@ const inquirySchema = z.object({
   phone: slPhone,
   email: z.string().email().optional().or(z.literal("")),
   message: z.string().min(10).max(2000),
+  // Attribution for analytics (#11). Enum-restricted; the plain web form
+  // simply omits it.
+  source: z.enum(["chat-agent"]).optional(),
 });
 
 providersRoutes.post("/api/providers/:id/inquiries", async (c) => {
@@ -367,6 +370,7 @@ providersRoutes.post("/api/providers/:id/inquiries", async (c) => {
       phone: parsed.data.phone,
       email: parsed.data.email || null,
       message: parsed.data.message,
+      source: parsed.data.source ?? null,
     },
   });
 
