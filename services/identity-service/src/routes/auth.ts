@@ -5,6 +5,7 @@ import { db } from "../db";
 import { getAuth, getLocale, getOrigin } from "../lib/http";
 import { createSession, destroySession } from "../lib/session";
 import { hashToken } from "../lib/tokens";
+import { eraseUserData } from "../lib/erase";
 import { isLockedOut, recordFailure } from "../lib/lockout";
 import { passwordSchema, registerSchema } from "../lib/register-schema";
 import {
@@ -202,6 +203,57 @@ authRoutes.post("/logout-all", async (c) => {
     sv: user.sessionVersion,
   });
 
+  return c.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/delete-account — self-service erasure (#68). Re-auth with
+// the current password, fan out to the peers that hold the user's data, then
+// delete the local row (Favorites/tokens cascade) and record a minimal audit
+// row. Peer erases run FIRST: if one fails we return 502 and delete nothing
+// locally, so a retry can finish the job — a still-loggable-in account beats
+// an orphaned half-deleted one.
+// ---------------------------------------------------------------------------
+const deleteAccountSchema = z.object({ password: z.string().min(1) });
+
+authRoutes.post("/delete-account", async (c) => {
+  const auth = getAuth(c);
+  if (!auth) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = deleteAccountSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid input" }, 400);
+  }
+
+  const user = await db.user.findUnique({ where: { id: auth.userId } });
+  if (!user) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  if (!(await bcrypt.compare(parsed.data.password, user.passwordHash))) {
+    return c.json({ error: "Incorrect password." }, 400);
+  }
+
+  // providerId must be resolved BEFORE the provider profile is erased —
+  // job-service needs it to delete the provider's job responses.
+  const providerId = await getProviderIdByUser(user.id);
+  try {
+    await eraseUserData(user.id, providerId);
+  } catch (e) {
+    console.error("[delete-account] peer erase failed", e);
+    return c.json({ error: "Upstream service unavailable" }, 502);
+  }
+
+  await db.$transaction([
+    db.accountDeletion.create({
+      data: { userId: user.id, email: user.email, role: user.role },
+    }),
+    db.user.delete({ where: { id: user.id } }),
+  ]);
+
+  destroySession(c);
   return c.json({ ok: true });
 });
 

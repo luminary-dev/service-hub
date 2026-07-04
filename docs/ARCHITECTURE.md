@@ -124,7 +124,7 @@ Public entry. Responsibilities:
    request blocked." }` (this replaces the monolith middleware).
 2. **Rate limiting** (port of `src/lib/rate-limit.ts` + tests, in-memory
    sliding window, keyed by client IP from `x-forwarded-for`):
-   `POST /api/auth/login|forgot-password|reset-password|change-password` →
+   `POST /api/auth/login|forgot-password|reset-password|change-password|delete-account` →
    authStrict; `POST /api/auth/register` → authSignup;
    `POST /api/auth/resend-verification` → resend; `POST /api/jobs` and
    `POST /api/providers/:id/inquiries` → inquiry; `POST /api/jobs/:id/responses`
@@ -184,6 +184,11 @@ Public endpoints (via gateway), all behavior/messages copied from the monolith:
   `sessionVersion` and re-issues the requester's cookie.
 - `POST /api/auth/logout-all` — session required; bumps `sessionVersion`
   (revoking every device) and re-issues the requester's cookie → `{ ok: true }`.
+- `POST /api/auth/delete-account` — session required; re-auth with the current
+  password, then fan out S2S to provider/review/job `POST
+  /internal/users/:id/erase` (all idempotent; any failure → 502 and nothing is
+  deleted locally so a retry finishes the job), then delete the User
+  (Favorites/tokens cascade) and record an `AccountDeletion` audit row.
 - `POST /api/favorites/:id` — 401 w/o session; S2S provider existence check
   (404 "Provider not found"); upsert → `{ favorited: true }`.
 - `DELETE /api/favorites/:id` — deleteMany → `{ favorited: false }`.
@@ -321,6 +326,12 @@ names (S2S identity batch) and photos, plus `nextCursor`;
 
 Internal: `GET /internal/jobs/count?category&district&excludeCustomerId` →
 `{ count }`.
+
+Erase endpoints (account deletion, all idempotent no-op-200 for unknown users):
+provider `POST /internal/users/:id/erase` (Provider + cascades + upload files
++ the user's inquiries elsewhere), review `POST /internal/users/:id/erase`
+(reviews + photo files), job `POST /internal/users/:id/erase` `{ providerId? }`
+(own JobRequests; JobResponses when providerId given).
 
 ## notification-service (:4005)
 
