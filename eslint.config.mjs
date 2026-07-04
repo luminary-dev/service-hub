@@ -16,6 +16,9 @@ const eslintConfig = defineConfig([
     // linting; the root config covers the web app only.
     "services/**",
     "docs/**",
+    // Local tooling state (agent worktrees, settings) — never lint targets.
+    ".claude/**",
+    "backups/**",
   ]),
 ]);
 
