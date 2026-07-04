@@ -36,10 +36,12 @@ describe("jobSchema", () => {
     ).toBe(false);
   });
 
-  it("rejects an unknown category", () => {
-    expect(
-      jobSchema.safeParse({ ...validJob, category: "astronaut" }).success
-    ).toBe(false);
+  // Unknown-category rejection moved to the route's dynamic check against
+  // provider-service's Category table — see categories.test.ts.
+  it("rejects an empty category", () => {
+    expect(jobSchema.safeParse({ ...validJob, category: "" }).success).toBe(
+      false
+    );
   });
 
   it("rejects an unknown district", () => {

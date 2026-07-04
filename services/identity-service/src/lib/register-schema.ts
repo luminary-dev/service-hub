@@ -3,7 +3,6 @@
 // can be unit-tested without pulling in the DB client.
 import { z } from "zod";
 import {
-  categoryEnum,
   districtEnum,
   optionalSlPhone,
   optionalWebUrl,
@@ -34,7 +33,10 @@ export const customerSchema = baseSchema.extend({
 
 export const providerSchema = baseSchema.extend({
   role: z.literal("PROVIDER"),
-  category: categoryEnum,
+  // Category membership is checked against provider-service's Category table
+  // after parsing (routes/auth.ts) — zod schemas are sync, and the list is
+  // now data, not code.
+  category: z.string().min(1).max(40),
   headline: z.string().min(5).max(120),
   bio: z.string().min(20).max(2000),
   district: districtEnum,

@@ -8,6 +8,7 @@ import { hashToken } from "../lib/tokens";
 import { eraseUserData } from "../lib/erase";
 import { isLockedOut, recordFailure } from "../lib/lockout";
 import { passwordSchema, registerSchema } from "../lib/register-schema";
+import { categoryValidator } from "../lib/categories";
 import {
   createProviderProfile,
   getProviderIdByUser,
@@ -32,6 +33,15 @@ authRoutes.post("/register", async (c) => {
     );
   }
   const data = parsed.data;
+
+  // Category is data now, not code: check it against provider-service's list
+  // (60s cache, static fallback) as an explicit post-parse step.
+  if (
+    data.role === "PROVIDER" &&
+    !(await categoryValidator.isValidCategory(data.category))
+  ) {
+    return c.json({ error: "Invalid category" }, 400);
+  }
 
   const existing = await db.user.findUnique({ where: { email: data.email } });
   if (existing) {
