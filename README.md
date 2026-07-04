@@ -50,6 +50,11 @@ npm run e2e
 
 ### Seeded accounts (password: `password123`)
 
+> Demo accounts are for **local development only** — the seed refuses to run
+> with `NODE_ENV=production`. Bootstrap a real admin with
+> `npm run create-admin` in `services/identity-service` (takes
+> `--email`/`--password` flags or `ADMIN_EMAIL`/`ADMIN_PASSWORD` env vars).
+
 | Role | Email | Notes |
 | --- | --- | --- |
 | Provider | `nuwan@example.com` | Mechanic, Colombo — has reviews + an inquiry |

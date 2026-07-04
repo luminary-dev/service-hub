@@ -31,6 +31,18 @@ const ADMIN = {
 };
 
 async function main() {
+  // These are PUBLIC demo credentials (documented in the README) — they must
+  // never reach a production database. Bootstrap real admins with
+  // `npm run create-admin` instead.
+  if (process.env.NODE_ENV === "production" && process.env.SEED_DEMO_DATA !== "true") {
+    console.error(
+      "Refusing to seed demo accounts with NODE_ENV=production " +
+        "(set SEED_DEMO_DATA=true to override deliberately). " +
+        "Use `npm run create-admin` to bootstrap an admin account."
+    );
+    process.exit(1);
+  }
+
   await db.passwordResetToken.deleteMany();
   await db.emailVerificationToken.deleteMany();
   await db.favorite.deleteMany();
