@@ -56,7 +56,7 @@ adminRoutes.get("/api/admin/providers/:id", async (c) => {
     return c.json({ error: "Provider not found" }, 404);
   }
 
-  const reviews = await fetchProviderReviews(id);
+  const { reviews } = await fetchProviderReviews(id);
   return c.json({
     provider: {
       ...provider,

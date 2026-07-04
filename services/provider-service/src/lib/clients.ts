@@ -39,16 +39,26 @@ export type HydratedReview = {
   photos: { id: string; url: string }[];
 };
 
-// review-service GET /internal/by-provider/:id → reviews with reviewer names
-// and photos. Degrades to [].
-export async function fetchProviderReviews(providerId: string): Promise<HydratedReview[]> {
+// review-service GET /internal/by-provider/:id → reviews (cursor-paginated)
+// with reviewer names and photos. Degrades to an empty page.
+export async function fetchProviderReviews(
+  providerId: string,
+  opts: { take?: number; cursor?: string } = {}
+): Promise<{ reviews: HydratedReview[]; nextCursor: string | null }> {
   try {
-    const res = await s2s(REVIEW_URL, `/internal/by-provider/${providerId}`);
-    if (!res.ok) return [];
-    const data = (await res.json()) as { reviews?: HydratedReview[] };
-    return data.reviews ?? [];
+    const qs = new URLSearchParams();
+    if (opts.take) qs.set("take", String(opts.take));
+    if (opts.cursor) qs.set("cursor", opts.cursor);
+    const suffix = qs.size > 0 ? `?${qs.toString()}` : "";
+    const res = await s2s(REVIEW_URL, `/internal/by-provider/${providerId}${suffix}`);
+    if (!res.ok) return { reviews: [], nextCursor: null };
+    const data = (await res.json()) as {
+      reviews?: HydratedReview[];
+      nextCursor?: string | null;
+    };
+    return { reviews: data.reviews ?? [], nextCursor: data.nextCursor ?? null };
   } catch {
-    return [];
+    return { reviews: [], nextCursor: null };
   }
 }
 
