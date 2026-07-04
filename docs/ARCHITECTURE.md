@@ -161,6 +161,10 @@ Public endpoints (via gateway), all behavior/messages copied from the monolith:
 - `POST /api/auth/login` — verify bcrypt; providerId via S2S
   `GET provider /internal/providers/by-user/:userId` (null if none). Sets
   cookie. Errors: 400 "Invalid input", 401 "Invalid email or password".
+  Per-account lockout: 5 wrong passwords lock the account for 15 min
+  (`failedLogins`/`lockedUntil`, reset on success); locked accounts and
+  unknown emails get the identical 401 (no enumeration), and unknown emails
+  burn a dummy bcrypt compare so timing matches.
 - `POST /api/auth/logout` — clears cookie → `{ ok: true }`.
 - `GET /api/auth/me` — from `x-user-id`; no session → `{ user: null }`; else
   `{ user: {id,name,email,role,providerId} }` (providerId S2S, fresh DB read

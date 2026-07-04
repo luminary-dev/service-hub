@@ -18,6 +18,10 @@ model User {
   // claim); a bump (password change/reset, logout-everywhere) invalidates
   // every older token.
   sessionVersion Int      @default(0)
+  // Per-account lockout: wrong passwords increment failedLogins; at the
+  // threshold the account locks for a window. Successful login resets both.
+  failedLogins  Int       @default(0)
+  lockedUntil   DateTime?
   createdAt     DateTime  @default(now())
   favorites     Favorite[]
 
