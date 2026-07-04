@@ -11,6 +11,7 @@ what kind of test belongs where.
 | Gateway app tests | `services/api-gateway/src/app.test.ts` + `src/lib/*.test.ts` | Gateway routing, cookie/CSRF/rate-limit behavior, S2S forwarding — upstream services are stubbed, nothing real is dialed | Yes — part of the gateway suite |
 | Web unit tests | `src/lib/*.test.ts`, `src/proxy.test.ts` | Pure logic: locale formatting, i18n dictionary parity, category/district/price-type lookups, sort normalization, the `/api/*` proxy rewrite | Yes — web `npm run test` |
 | Web component tests | `src/components/*.test.tsx` | High-value client components (toasts, favorite/share buttons) rendered with Testing Library in jsdom; `fetch`, clipboard and `next/navigation` are mocked | Yes — same web suite |
+| Accessibility checks | `src/components/a11y.test.tsx` | axe-core runs against ~12 rendered components (nav, cards, filters, forms, chat, modals) and fails on any serious/critical WCAG violation | Yes — same web suite |
 | E2E smoke | `scripts/e2e-smoke.sh` | 42 checks against the full docker-compose stack: health, auth, favorites, inquiries, reviews, jobs, admin moderation, CSRF | No — run locally (needs the compose stack) |
 
 ## Running each layer
@@ -59,6 +60,33 @@ web app and `typecheck`/`test`/`build` for every service on each PR.
 - **Cross-service user flows → `scripts/e2e-smoke.sh`.** Register → browse →
   inquire → review style flows that need real databases and all six services
   talking to each other.
+
+## Accessibility
+
+What's automated and what still needs a human (#66):
+
+- **Automated — `src/components/a11y.test.tsx`.** Each test renders a
+  high-traffic component (Navbar's mobile menu, provider cards, filter/search
+  bars, the login/registration/inquiry/review/security forms, message thread,
+  chat assistant, report modal, photo lightbox) and runs
+  [axe-core](https://github.com/dequelabs/axe-core) on the result, failing on
+  any violation axe rates *serious* or *critical* — missing accessible names,
+  broken label/input association, bad ARIA wiring, missing image alt text.
+  The modal tests additionally assert focus behavior directly: focus moves
+  into the dialog on open, `Escape` closes it, and focus returns to the
+  trigger. Add new interactive components to this file as they're built.
+- **Not automatable here — needs a browser.** axe's `color-contrast` rule is
+  disabled because jsdom has no layout engine; contrast must be re-verified
+  in a real browser (both light and dark themes — the token ramps in
+  `globals.css` are independent). Also outside jsdom's reach: focus
+  visibility, zoom/reflow at 200–400%, `prefers-reduced-motion` behavior, and
+  touch-target sizes. Run Lighthouse or the axe DevTools extension against
+  the running app for these.
+- **Needs a human.** Screen-reader walkthroughs (VoiceOver/NVDA) of the two
+  killer flows — search → profile → inquiry, and register → dashboard →
+  photo upload/reorder — in both English and Sinhala, and keyboard-only
+  passes over the photo lightbox and the drag-reorder grid (buttons provide
+  the keyboard fallback for dragging).
 
 ## Deliberate gaps
 
