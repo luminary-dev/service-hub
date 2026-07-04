@@ -121,6 +121,21 @@ internalRoutes.get("/internal/providers", async (c) => {
   return c.json({ providers });
 });
 
+// Review gating (review-service): has this user ever sent this provider an
+// inquiry? Anonymous inquiries carry userId=null, so they never match.
+internalRoutes.get("/internal/inquiries/exists", async (c) => {
+  const providerId = c.req.query("providerId");
+  const userId = c.req.query("userId");
+  if (!providerId || !userId) {
+    return c.json({ error: "providerId and userId are required" }, 400);
+  }
+  const inquiry = await db.inquiry.findFirst({
+    where: { providerId, userId },
+    select: { id: true },
+  });
+  return c.json({ exists: inquiry !== null });
+});
+
 // Existence/suspended check (favorites, reviews). Always 200 — the caller
 // decides its own 404 semantics.
 internalRoutes.get("/internal/providers/:id/summary", async (c) => {
