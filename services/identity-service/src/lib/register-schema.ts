@@ -2,11 +2,19 @@
 // src/app/api/auth/register/route.ts. Kept in its own module so the schema
 // can be unit-tested without pulling in the DB client.
 import { z } from "zod";
+import {
+  categoryEnum,
+  districtEnum,
+  optionalSlPhone,
+  optionalWebUrl,
+  priceRupees,
+  slPhone,
+} from "./field-rules";
 
 export const serviceSchema = z.object({
   title: z.string().min(2).max(100),
   description: z.string().max(500).optional(),
-  price: z.number().positive(),
+  price: priceRupees,
   priceType: z.enum(["HOURLY", "DAILY", "FIXED", "VISIT"]),
 });
 
@@ -17,7 +25,7 @@ const baseSchema = z.object({
   name: z.string().min(2).max(80),
   email: z.string().email(),
   password: passwordSchema,
-  phone: z.string().min(9).max(15),
+  phone: slPhone,
 });
 
 export const customerSchema = baseSchema.extend({
@@ -26,19 +34,19 @@ export const customerSchema = baseSchema.extend({
 
 export const providerSchema = baseSchema.extend({
   role: z.literal("PROVIDER"),
-  category: z.string().min(1),
+  category: categoryEnum,
   headline: z.string().min(5).max(120),
   bio: z.string().min(20).max(2000),
-  district: z.string().min(1),
+  district: districtEnum,
   city: z.string().min(1).max(60),
   experience: z.number().int().min(0).max(60),
-  whatsapp: z.string().max(15).optional().or(z.literal("")),
-  phone2: z.string().max(15).optional().or(z.literal("")),
-  facebook: z.string().max(200).optional().or(z.literal("")),
-  instagram: z.string().max(200).optional().or(z.literal("")),
-  tiktok: z.string().max(200).optional().or(z.literal("")),
-  youtube: z.string().max(200).optional().or(z.literal("")),
-  website: z.string().max(200).optional().or(z.literal("")),
+  whatsapp: optionalSlPhone,
+  phone2: optionalSlPhone,
+  facebook: optionalWebUrl,
+  instagram: optionalWebUrl,
+  tiktok: optionalWebUrl,
+  youtube: optionalWebUrl,
+  website: optionalWebUrl,
   services: z.array(serviceSchema).min(1).max(20),
 });
 

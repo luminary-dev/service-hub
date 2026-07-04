@@ -151,8 +151,12 @@ Public entry. Responsibilities:
 
 Public endpoints (via gateway), all behavior/messages copied from the monolith:
 
-- `POST /api/auth/register` — zod discriminated union (CUSTOMER/PROVIDER, full
-  field rules from the monolith). Dup email → 409. Creates user (bcrypt 10).
+- `POST /api/auth/register` — zod discriminated union (CUSTOMER/PROVIDER).
+  Field rules (shared `lib/field-rules.ts`, identical copy in provider-service):
+  SL phones normalized to E.164, social/website links validated http(s)-only
+  (no credentials, dotted host, ≤200 chars), category/district `z.enum`
+  against the canonical lists, prices integer rupees 50–10,000,000.
+  Dup email → 409. Creates user (bcrypt 10).
   If PROVIDER: S2S `POST provider /internal/providers` with
   `{ userId, name, email, phone, profile..., services[] }`; on failure,
   compensating-delete the user and return 502. Sends verification email
@@ -241,9 +245,11 @@ Public (all monolith semantics preserved; `name` fields come from denormalized
   ratings summary + contact (incl. `emailVerified` fresh from identity) +
   `openJobsCount` (S2S job `/internal/jobs/count?category&district&
   excludeCustomerId=`).
-  `PUT /api/provider/profile` — monolith zod; updates provider + contactName/
-  contactPhone, then S2S `PATCH identity /internal/users/:userId` `{name,
-  phone}`. Returns `{ provider }`.
+  `PUT /api/provider/profile` — same tightened field rules as registration
+  (shared `lib/field-rules.ts`; phones normalized to E.164 BEFORE both the
+  local write and the S2S sync); updates provider + contactName/contactPhone,
+  then S2S `PATCH identity /internal/users/:userId` `{name, phone}`.
+  Returns `{ provider }`.
   `POST /api/provider/services`, `PUT|DELETE /api/provider/services/:id` —
   ownership checks, messages identical.
   `POST /api/provider/photos` (multipart; `kind=avatar` → avatarUrl update,
