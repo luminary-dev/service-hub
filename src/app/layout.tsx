@@ -59,6 +59,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const [locale, theme] = await Promise.all([getLocale(), getTheme()]);
+  const t = dict[locale];
 
   return (
     <html
@@ -72,10 +73,20 @@ export default async function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body className="flex min-h-screen flex-col">
+        {/* First focusable element on every page: lets keyboard and screen
+            reader users jump past the navbar (WCAG 2.4.1 Bypass Blocks). */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-full focus:bg-brand-700 focus:px-5 focus:py-2.5 focus:text-sm focus:font-semibold focus:text-white dark:focus:text-ink-50"
+        >
+          {t.a11y.skipToContent}
+        </a>
         <I18nProvider locale={locale}>
           <ToastProvider>
             <Navbar />
-            <main className="flex-1">{children}</main>
+            <main id="main-content" tabIndex={-1} className="flex-1 outline-none">
+              {children}
+            </main>
             <Footer />
             <ChatAssistant />
           </ToastProvider>
