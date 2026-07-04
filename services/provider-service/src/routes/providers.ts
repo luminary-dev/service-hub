@@ -26,7 +26,11 @@ type CardRow = Prisma.ProviderGetPayload<{
 
 const cardInclude = {
   services: { orderBy: { price: "asc" as const }, take: 1 },
-  photos: { take: 1, orderBy: { createdAt: "desc" as const } },
+  photos: {
+    where: { deletedAt: null },
+    take: 1,
+    orderBy: { createdAt: "desc" as const },
+  },
 };
 
 function toCardDTO(p: CardRow, r: RatingEntry | undefined) {
@@ -171,7 +175,7 @@ providersRoutes.get("/api/providers/:id", async (c) => {
     where: { id },
     include: {
       services: true,
-      photos: { orderBy: { createdAt: "desc" } },
+      photos: { where: { deletedAt: null }, orderBy: { createdAt: "desc" } },
     },
   });
   if (!provider) {
@@ -198,8 +202,12 @@ providersRoutes.get("/api/providers/:id/full", async (c) => {
     where: { id },
     include: {
       services: { orderBy: { price: "asc" } },
-      photos: { orderBy: { createdAt: "desc" }, take: FULL_PHOTOS_TAKE },
-      _count: { select: { photos: true } },
+      photos: {
+        where: { deletedAt: null },
+        orderBy: { createdAt: "desc" },
+        take: FULL_PHOTOS_TAKE,
+      },
+      _count: { select: { photos: { where: { deletedAt: null } } } },
     },
   });
   if (!provider) {

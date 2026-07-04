@@ -43,7 +43,7 @@ providerDashboardRoutes.get("/api/provider/dashboard", async (c) => {
     await Promise.all([
       db.service.findMany({ where: { providerId: provider.id }, orderBy: { price: "asc" } }),
       db.workPhoto.findMany({
-        where: { providerId: provider.id },
+        where: { providerId: provider.id, deletedAt: null },
         orderBy: { createdAt: "desc" },
       }),
       db.inquiry.findMany({

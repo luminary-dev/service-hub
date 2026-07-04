@@ -43,12 +43,13 @@ export type HydratedReview = {
 // with reviewer names and photos. Degrades to an empty page.
 export async function fetchProviderReviews(
   providerId: string,
-  opts: { take?: number; cursor?: string } = {}
+  opts: { take?: number; cursor?: string; includeDeleted?: boolean } = {}
 ): Promise<{ reviews: HydratedReview[]; nextCursor: string | null }> {
   try {
     const qs = new URLSearchParams();
     if (opts.take) qs.set("take", String(opts.take));
     if (opts.cursor) qs.set("cursor", opts.cursor);
+    if (opts.includeDeleted) qs.set("includeDeleted", "1");
     const suffix = qs.size > 0 ? `?${qs.toString()}` : "";
     const res = await s2s(REVIEW_URL, `/internal/by-provider/${providerId}${suffix}`);
     if (!res.ok) return { reviews: [], nextCursor: null };
