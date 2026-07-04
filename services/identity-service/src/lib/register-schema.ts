@@ -10,10 +10,13 @@ export const serviceSchema = z.object({
   priceType: z.enum(["HOURLY", "DAILY", "FIXED", "VISIT"]),
 });
 
+// Single source of truth for password rules — reused by change-password.
+export const passwordSchema = z.string().min(6).max(100);
+
 const baseSchema = z.object({
   name: z.string().min(2).max(80),
   email: z.string().email(),
-  password: z.string().min(6).max(100),
+  password: passwordSchema,
   phone: z.string().min(9).max(15),
 });
 

@@ -5,7 +5,7 @@ import { db } from "../db";
 import { getAuth, getLocale, getOrigin } from "../lib/http";
 import { createSession, destroySession } from "../lib/session";
 import { hashToken } from "../lib/tokens";
-import { registerSchema } from "../lib/register-schema";
+import { passwordSchema, registerSchema } from "../lib/register-schema";
 import {
   createProviderProfile,
   getProviderIdByUser,
@@ -158,6 +158,50 @@ authRoutes.get("/me", async (c) => {
       providerId,
     },
   });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/change-password
+// ---------------------------------------------------------------------------
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: passwordSchema,
+});
+
+authRoutes.post("/change-password", async (c) => {
+  const auth = getAuth(c);
+  if (!auth) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = changePasswordSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json(
+      { error: "New password must be between 6 and 100 characters." },
+      400
+    );
+  }
+
+  const user = await db.user.findUnique({ where: { id: auth.userId } });
+  if (!user) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const ok = await bcrypt.compare(parsed.data.currentPassword, user.passwordHash);
+  if (!ok) {
+    return c.json({ error: "Current password is incorrect." }, 400);
+  }
+
+  const passwordHash = await bcrypt.hash(parsed.data.newPassword, 10);
+  await db.$transaction([
+    db.user.update({ where: { id: user.id }, data: { passwordHash } }),
+    // A pending reset link would still grant access under the old email
+    // flow — changing the password invalidates it, same as reset-password.
+    db.passwordResetToken.deleteMany({ where: { userId: user.id } }),
+  ]);
+
+  return c.json({ ok: true });
 });
 
 // ---------------------------------------------------------------------------
