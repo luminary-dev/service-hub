@@ -1,5 +1,8 @@
 # identity-service
 
+> [!WARNING]
+> This repository is a **read-only mirror** of [`services/identity-service`](https://github.com/luminary-dev/service-hub/tree/main/services/identity-service) in the service-hub monorepo. Do not push or open PRs here — changes land via monorepo PRs and are synced out with `npm run sync:repos`. Direct pushes are blocked by branch protection.
+
 Owns users, sessions, email verification / password reset tokens, and
 favorites for Service Hub (Baas.lk). It is the **only** signer of the
 `sh_session` JWT cookie (HS256 via `AUTH_SECRET`); the api-gateway and the web

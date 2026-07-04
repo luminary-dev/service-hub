@@ -1,5 +1,8 @@
 # job-service
 
+> [!WARNING]
+> This repository is a **read-only mirror** of [`services/job-service`](https://github.com/luminary-dev/service-hub/tree/main/services/job-service) in the service-hub monorepo. Do not push or open PRs here — changes land via monorepo PRs and are synced out with `npm run sync:repos`. Direct pushes are blocked by branch protection.
+
 Job request board ("reverse marketplace") service for Service Hub (Baas.lk).
 Owns `job_db` (`JobRequest`, `JobResponse`). Customers post jobs; registered
 providers see matching open jobs and respond. Runs on port **4004** behind the
