@@ -37,6 +37,7 @@ describe("internal secret enforcement", () => {
     "/internal/email/verify",
     "/internal/email/password-reset",
     "/internal/email/job-response",
+    "/internal/email/inquiry",
   ])("rejects %s without x-internal-secret", async (path) => {
     const res = await post(path, { to: "a@b.lk", url: "https://baas.lk" });
     expect(res.status).toBe(403);
@@ -59,6 +60,7 @@ describe("input validation", () => {
     "/internal/email/verify",
     "/internal/email/password-reset",
     "/internal/email/job-response",
+    "/internal/email/inquiry",
   ])("returns 400 for an invalid body on %s", async (path) => {
     const res = await postWithSecret(path, { to: "a@b.lk" }); // missing url
     expect(res.status).toBe(400);
@@ -82,6 +84,15 @@ describe("input validation", () => {
     const res = await postWithSecret("/internal/email/job-response", {
       to: "a@b.lk",
       url: "https://baas.lk/jobs",
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Invalid input" });
+  });
+
+  it("returns 400 when inquiry is missing customerName", async () => {
+    const res = await postWithSecret("/internal/email/inquiry", {
+      to: "a@b.lk",
+      url: "https://baas.lk/dashboard",
     });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "Invalid input" });
@@ -114,6 +125,17 @@ describe("happy paths (no RESEND_API_KEY → console fallback)", () => {
       url: "https://baas.lk/jobs",
       providerName: "Nimal Perera",
       jobTitle: "Fix a leaking tap",
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, delivered: false });
+  });
+
+  it("POST /internal/email/inquiry", async () => {
+    const res = await postWithSecret("/internal/email/inquiry", {
+      to: "provider@example.com",
+      url: "https://baas.lk/dashboard",
+      customerName: "Dilani Fernando",
+      locale: "si",
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, delivered: false });

@@ -5,8 +5,14 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { db } from "../db";
-import { getAuth } from "../lib/http";
-import { fetchProviderReviews, fetchRatings, fetchReviewCount, type RatingEntry } from "../lib/clients";
+import { getAuth, getLocale, getOrigin } from "../lib/http";
+import {
+  fetchProviderReviews,
+  fetchRatings,
+  fetchReviewCount,
+  sendInquiryEmail,
+  type RatingEntry,
+} from "../lib/clients";
 import { normalizeListQuery } from "../lib/query";
 import { averageResponseMs } from "../lib/response-time";
 import { sortProviders, type Sortable } from "../lib/sort";
@@ -272,6 +278,15 @@ providersRoutes.post("/api/providers/:id/inquiries", async (c) => {
       email: parsed.data.email || null,
       message: parsed.data.message,
     },
+  });
+
+  // Tell the provider (denormalized contactEmail) — best-effort, never fails
+  // the inquiry.
+  await sendInquiryEmail({
+    to: provider.contactEmail,
+    url: `${getOrigin(c)}/dashboard`,
+    customerName: parsed.data.name,
+    locale: getLocale(c),
   });
 
   return c.json({ inquiry });
