@@ -152,6 +152,9 @@ Public entry. Responsibilities:
 4. **Routing** (streaming proxy, preserves method/headers/body incl.
    multipart; passes `Set-Cookie` back):
    - `/api/auth/*`, `/api/favorites/*` → identity
+   - `/api/account/inquiries` → provider; `/api/account/reviews` → review
+     (exact paths — customer account history, each owned by the service that
+     holds the data)
    - `/api/providers/:id/reviews` → review
    - `/api/providers*`, `/api/provider/*`, `/api/categories`, `/api/stats` →
      provider
@@ -269,6 +272,11 @@ Public (all monolith semantics preserved; `name` fields come from denormalized
   best-effort).
 - `GET /api/stats` — `{ providerCount, reviewCount }` (S2S review
   `/internal/count`).
+- `GET /api/account/inquiries` — session required (401); the caller's sent
+  inquiries newest-first (cap 50), each hydrated with the provider's
+  `{ id, name, category, suspended }` in a single local query (inquiries and
+  providers are both local) → `{ inquiries }`. Anonymous inquiries
+  (userId=null) never appear.
 - Dashboard (all require a provider owned by `x-user-id`, else 401):
   `GET /api/provider/dashboard` — provider + services + photos + inquiries +
   ratings summary + contact (incl. `emailVerified` fresh from identity) +
@@ -328,6 +336,11 @@ contactPhone, suspended}] }` (job-service hydration),
   S2S provider summary (404; own-profile 400); multipart rating/comment +
   up to 3 photos (existing count enforced); upsert; photos stored with prefix
   `reviews`; messages identical → `{ ok: true }`.
+- `GET /api/account/reviews` — session required (401); the caller's reviews
+  newest-first excluding soft-deleted (cap 50), provider names hydrated via
+  one S2S batch `GET provider /internal/providers?ids=` (degrades to
+  `"Unknown"`) → `{ reviews: [{ id, rating, comment, verified, createdAt,
+  provider: { id, name }, photos }] }`.
 - `DELETE /api/reviews/photos/:id` — owner-or-admin (401/403/404), deletes
   file best-effort.
 - `DELETE /api/admin/reviews/:id` — ADMIN only (403); SOFT delete (sets
