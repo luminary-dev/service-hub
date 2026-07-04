@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { FaEnvelope, FaInbox, FaPhone } from "react-icons/fa6";
 import { useLocale, useT } from "../I18nProvider";
@@ -14,7 +15,8 @@ const STATUS_STYLES: Record<string, string> = {
 
 export default function InquiriesList({ initial }: { initial: InquiryItem[] }) {
   const [inquiries, setInquiries] = useState(initial);
-  const q = useT().dashboard.inquiries;
+  const t = useT();
+  const q = t.dashboard.inquiries;
   const locale = useLocale();
   const statusLabel: Record<string, string> = {
     NEW: q.statusNew,
@@ -88,7 +90,18 @@ export default function InquiriesList({ initial }: { initial: InquiryItem[] }) {
           <p className="mt-3 whitespace-pre-line rounded-xl bg-ink-50 p-3 text-sm leading-relaxed text-ink-700">
             {i.message}
           </p>
-          <div className="mt-3 flex gap-2">
+          <div className="mt-3 flex items-center gap-2">
+            <Link
+              href={`/dashboard/inquiries/${i.id}`}
+              className="btn-secondary !px-3 !py-1.5 !text-xs"
+            >
+              {t.messages.open}
+            </Link>
+            {(i.unreadCount ?? 0) > 0 && (
+              <span className="chip bg-brand-600 text-white">
+                {t.messages.unread(i.unreadCount ?? 0)}
+              </span>
+            )}
             {i.status !== "RESPONDED" && (
               <button
                 onClick={() => setStatus(i.id, "RESPONDED")}

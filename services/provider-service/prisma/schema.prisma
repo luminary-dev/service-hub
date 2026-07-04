@@ -149,7 +149,27 @@ model Inquiry {
   // Stamped once, when status first moves to RESPONDED; drives the public
   // profile's average-response-time stat.
   respondedAt DateTime?
+  // Where the inquiry came from ("web" form, "chat-agent" for #11) — analytics.
+  source      String?
+  // Thread read markers (#13): each party's last visit to the thread; unread
+  // counts compare these against message timestamps from the other side.
+  customerLastReadAt DateTime?
+  providerLastReadAt DateTime?
   createdAt   DateTime  @default(now())
+  messages    InquiryMessage[]
 
   @@index([providerId])
+}
+
+// Conversation thread per inquiry (#13). Only signed-in inquiries can thread
+// (anonymous inquiries carry no identity to authenticate follow-ups).
+model InquiryMessage {
+  id        String   @id @default(cuid())
+  inquiryId String
+  inquiry   Inquiry  @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  sender    String // "CUSTOMER" | "PROVIDER"
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([inquiryId, createdAt])
 }
