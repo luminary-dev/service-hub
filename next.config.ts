@@ -1,14 +1,18 @@
 import type { NextConfig } from "next";
 
-// CSP directives. Kept Report-Only for now (see headers() below) so we can
-// observe violations before enforcing.
-// - script-src allows 'unsafe-inline' because Next injects inline hydration
-//   scripts; tightening this to a nonce + 'strict-dynamic' is the follow-up
-//   before switching from Report-Only to enforcing.
-// - style-src needs 'unsafe-inline' for Tailwind, next/font, and the inline
+// CSP directives — ENFORCED (promoted from Report-Only, #112). The app pulls
+// in no third-party origins today, so everything is 'self' except:
+// - script-src keeps 'unsafe-inline' because Next injects inline runtime/
+//   hydration scripts without a nonce when self-hosted; enforcing without it
+//   blanks the page. This is the minimal loosening required — migrating to a
+//   per-request nonce + 'strict-dynamic' is the follow-up hardening.
+// - style-src keeps 'unsafe-inline' for Tailwind, next/font, and the inline
 //   style attributes used for gradients / --rise-index vars.
 // - img-src allows the Vercel Blob host (work photos/avatars served directly
-//   to the browser for unoptimized/SVG cases) plus data:/blob:.
+//   to the browser for unoptimized/SVG cases) plus data:/blob: (upload
+//   previews). Uploads served via /api/files/* are same-origin ('self').
+// No Report-Only copy is kept: we never had report-uri/report-to collection
+// infrastructure, so a shadow header would report to nowhere.
 const csp = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline'",
@@ -23,7 +27,7 @@ const csp = [
 ].join("; ");
 
 const securityHeaders = [
-  { key: "Content-Security-Policy-Report-Only", value: csp },
+  { key: "Content-Security-Policy", value: csp },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
@@ -46,16 +50,10 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
-  // All /api/* traffic (client components use relative URLs) is proxied to
-  // the API gateway; server components fetch it directly via src/lib/api.ts.
-  async rewrites() {
-    return [
-      {
-        source: "/api/:path*",
-        destination: `${process.env.GATEWAY_URL ?? "http://localhost:4000"}/api/:path*`,
-      },
-    ];
-  },
+  // /api/* is proxied to the API gateway at request time by src/proxy.ts
+  // (a config-level rewrites() entry would bake GATEWAY_URL into the build,
+  // see #106). Server components fetch the gateway directly via
+  // src/lib/api.ts.
 };
 
 export default nextConfig;
