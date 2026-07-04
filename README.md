@@ -6,7 +6,7 @@ The customer-facing UI is bilingual — an EN/සිං toggle in the navbar swi
 
 ## Architecture
 
-Microservices behind an API gateway; the Next.js app is a pure frontend. Full details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Microservices behind an API gateway; the Next.js app is a pure frontend. Full details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Team documentation (onboarding, workflow, operations) lives in [luminary-dev/service-hub-docs](https://github.com/luminary-dev/service-hub-docs).
 
 ```
 browser ── same-origin /api/* ──> Next.js web (:3000)
