@@ -1,5 +1,8 @@
 # notification-service
 
+> [!WARNING]
+> This repository is a **read-only mirror** of [`services/notification-service`](https://github.com/luminary-dev/service-hub/tree/main/services/notification-service) in the service-hub monorepo. Do not push or open PRs here — changes land via monorepo PRs and are synced out with `npm run sync:repos`. Direct pushes are blocked by branch protection.
+
 Stateless email service for Service Hub (Baas.lk), listening on `:4005`. It
 owns the transactional email templates (English and Sinhala) ported from the
 monolith and sends them via [Resend](https://resend.com) when `RESEND_API_KEY`

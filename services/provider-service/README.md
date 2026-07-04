@@ -1,5 +1,8 @@
 # provider-service
 
+> [!WARNING]
+> This repository is a **read-only mirror** of [`services/provider-service`](https://github.com/luminary-dev/service-hub/tree/main/services/provider-service) in the service-hub monorepo. Do not push or open PRs here — changes land via monorepo PRs and are synced out with `npm run sync:repos`. Direct pushes are blocked by branch protection.
+
 Owns the provider directory for Service Hub (Baas.lk): provider profiles,
 services, work photos, verification documents and inquiries, backed by its own
 `provider_db` Postgres database. `Provider.userId` is a plain string reference
