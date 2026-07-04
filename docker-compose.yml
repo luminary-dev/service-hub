@@ -102,6 +102,14 @@ services:
       - "4005:4005"
     healthcheck: *node-healthcheck
 
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
   api-gateway:
     build: ./services/api-gateway
     environment:
@@ -109,9 +117,14 @@ services:
       PORT: 4000
       AUTH_SECRET: ${AUTH_SECRET:-dev-only-secret}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+      # Shared rate-limit window across gateway instances; unset falls back
+      # to the per-instance in-memory store.
+      REDIS_URL: redis://redis:6379
     ports:
       - "4000:4000"
     depends_on:
+      redis:
+        condition: service_healthy
       identity-service:
         condition: service_healthy
       provider-service:
