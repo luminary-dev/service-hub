@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-time local setup: install every package, create .env files from the
-# examples, start Postgres, push schemas and seed demo data.
+# examples, start Postgres, apply migrations and seed demo data.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -29,7 +29,7 @@ done
 
 for s in "${DB_SERVICES[@]}"; do
   echo "==> Pushing schema + seeding services/$s"
-  (cd "services/$s" && npm run db:push && npm run db:seed)
+  (cd "services/$s" && npm run db:migrate && npm run db:seed)
 done
 
 echo

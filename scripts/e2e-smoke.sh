@@ -6,6 +6,10 @@
 # 15 min / IP; this script uses 3), so after a few back-to-back runs restart
 # the gateway or wait out the window.
 set -uo pipefail
+
+# Rate-limit windows persist in Redis across runs (shared client-IP bucket
+# when x-forwarded-for is absent) — start each run with a clean slate.
+docker compose exec -T redis redis-cli flushall >/dev/null 2>&1 || true
 cd "$(dirname "$0")/.."
 
 WEB="${WEB_URL:-http://localhost:3000}"

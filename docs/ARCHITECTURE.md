@@ -30,8 +30,12 @@ through internal HTTP endpoints.
   `prisma/schema.prisma`, `prisma/seed.js`, `prisma.config.ts` (same pattern as
   root: try `process.loadEnvFile()`), `Dockerfile`, `.env.example`, `README.md`.
   Scripts: `dev` (tsx watch), `build` (tsc -p tsconfig.build.json), `start`,
-  `start:migrate` (`prisma db push --skip-generate && node dist/index.js`),
-  `typecheck`, `test`, `db:push`, `db:seed`, `postinstall` (prisma generate).
+  `start:migrate` (`prisma migrate deploy && node dist/index.js`),
+  `typecheck`, `test`, `db:migrate` (deploy), `db:migrate:dev` (author a new
+  migration), `db:push` (prototyping only), `db:seed`, `postinstall`
+  (prisma generate). Schema changes ship as committed migrations under
+  `prisma/migrations/` (baseline `0_init`); dev databases created before
+  the baseline run `scripts/baseline-migrations.sh` once.
   See `services/identity-service/` for the reference scaffold.
 - **Error shape**: `{ "error": string }` with the exact monolith status codes
   and messages listed per endpoint below. Success shapes also match the
