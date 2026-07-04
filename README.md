@@ -17,6 +17,7 @@ browser ── same-origin /api/* ──> Next.js web (:3000)
                                    ├── review-service       (:4003)  reviews + review photos
                                    ├── job-service          (:4004)  job request board
                                    └── notification-service (:4005)  email (Resend)
+                                   └── media-service        (:4006)  image processing + file storage
 ```
 
 - Each service owns its own Postgres database; cross-service data flows over internal HTTP with a shared secret.

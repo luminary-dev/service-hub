@@ -266,7 +266,7 @@ providerDashboardRoutes.post("/api/provider/photos", async (c) => {
 
   let url: string;
   try {
-    url = await storeImage(file, "uploads");
+    url = await storeImage("provider", file, "uploads");
   } catch (e) {
     if (e instanceof InvalidImageError) return c.json({ error: e.message }, 400);
     throw e;
@@ -443,7 +443,7 @@ providerDashboardRoutes.post("/api/provider/verification", async (c) => {
   for (const { kind, file } of uploads) {
     let url: string;
     try {
-      url = await storeImage(file, "verification");
+      url = await storeImage("provider", file, "verification");
     } catch (e) {
       if (e instanceof InvalidImageError) return c.json({ error: e.message }, 400);
       throw e;

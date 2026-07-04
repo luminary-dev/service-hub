@@ -9,7 +9,6 @@ import { messagesRoutes } from "./routes/messages";
 import { adminRoutes } from "./routes/admin";
 import { reportsRoutes } from "./routes/reports";
 import { internalRoutes } from "./routes/internal";
-import { filesRoutes } from "./routes/files";
 
 export const app = new Hono();
 
@@ -24,7 +23,6 @@ app.route("/", messagesRoutes);
 app.route("/", adminRoutes);
 app.route("/", reportsRoutes);
 app.route("/", internalRoutes);
-app.route("/", filesRoutes);
 
 // Fallbacks mirror the monolith's Next.js behavior.
 app.notFound((c) => c.json({ error: "Not found" }, 404));

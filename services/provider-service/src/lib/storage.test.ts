@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateImage, resolveFilePath, MAX_UPLOAD_SIZE } from "./storage";
+import { validateImage, MAX_UPLOAD_SIZE } from "./storage";
 
 function makeFile(type: string, size = 10): File {
   return new File([new Uint8Array(size)], `test.${type.split("/")[1]}`, { type });
@@ -35,20 +35,3 @@ describe("validateImage", () => {
   });
 });
 
-describe("resolveFilePath", () => {
-  it("resolves a plain relative path inside the upload dir", () => {
-    const resolved = resolveFilePath("uploads/abc.jpg");
-    expect(resolved).not.toBeNull();
-    expect(resolved).toContain("uploads");
-  });
-
-  it("refuses path traversal", () => {
-    expect(resolveFilePath("../../etc/passwd")).toBeNull();
-    expect(resolveFilePath("uploads/../../secret.txt")).toBeNull();
-  });
-
-  it("refuses the upload dir itself", () => {
-    expect(resolveFilePath("")).toBeNull();
-    expect(resolveFilePath(".")).toBeNull();
-  });
-});

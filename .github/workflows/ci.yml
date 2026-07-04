@@ -45,6 +45,7 @@ jobs:
           - review-service
           - job-service
           - notification-service
+          - media-service
           - api-gateway
         check: [typecheck, test, build]
     defaults:

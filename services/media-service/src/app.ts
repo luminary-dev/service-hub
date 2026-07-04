@@ -1,24 +1,22 @@
+// Exports the app so tests can use app.request().
 import { Hono } from "hono";
 import { requireInternalSecret } from "./lib/http";
 import { log } from "./lib/log";
 import { getRequestId, requestLogger } from "./lib/logging";
-import { reviews } from "./routes/reviews";
-import { reports } from "./routes/reports";
-import { account } from "./routes/account";
-import { internal } from "./routes/internal";
+import { filesRoutes } from "./routes/files";
+import { internalRoutes } from "./routes/internal";
 
 export const app = new Hono();
 
 app.use(requestLogger(log));
-app.get("/healthz", (c) => c.json({ ok: true, service: "review-service" }));
+app.get("/healthz", (c) => c.json({ ok: true, service: "media-service" }));
+// Everything else (including /files/*, which the gateway supplies the secret
+// for on behalf of browsers) is behind the internal secret.
 app.use("*", requireInternalSecret);
 
-app.route("/", reviews);
-app.route("/", reports);
-app.route("/", account);
-app.route("/internal", internal);
+app.route("/", filesRoutes);
+app.route("/", internalRoutes);
 
-// Fallbacks mirror the monolith's Next.js behavior.
 app.notFound((c) => c.json({ error: "Not found" }, 404));
 app.onError((err, c) => {
   log.error("unhandled error", { requestId: getRequestId(c), err });

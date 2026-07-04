@@ -7,6 +7,7 @@ x-service-env: &service-env
   REVIEW_SERVICE_URL: http://review-service:4003
   JOB_SERVICE_URL: http://job-service:4004
   NOTIFICATION_SERVICE_URL: http://notification-service:4005
+  MEDIA_SERVICE_URL: http://media-service:4006
 
 services:
   postgres:
@@ -50,14 +51,13 @@ services:
       <<: *service-env
       PORT: 4002
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/provider_db
-      UPLOAD_DIR: /app/data/uploads
-      BLOB_READ_WRITE_TOKEN: ${BLOB_READ_WRITE_TOKEN:-}
+      # Uploads now go through media-service; no local upload volume here.
     ports:
       - "4002:4002"
-    volumes:
-      - provider_uploads:/app/data/uploads
     depends_on:
       postgres:
+        condition: service_healthy
+      media-service:
         condition: service_healthy
     healthcheck: *node-healthcheck
 
@@ -67,14 +67,13 @@ services:
       <<: *service-env
       PORT: 4003
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/review_db
-      UPLOAD_DIR: /app/data/uploads
-      BLOB_READ_WRITE_TOKEN: ${BLOB_READ_WRITE_TOKEN:-}
+      # Uploads now go through media-service; no local upload volume here.
     ports:
       - "4003:4003"
-    volumes:
-      - review_uploads:/app/data/uploads
     depends_on:
       postgres:
+        condition: service_healthy
+      media-service:
         condition: service_healthy
     healthcheck: *node-healthcheck
 
@@ -102,6 +101,22 @@ services:
       - "4005:4005"
     healthcheck: *node-healthcheck
 
+  media-service:
+    build: ./services/media-service
+    environment:
+      <<: *service-env
+      PORT: 4006
+      MEDIA_DIR: /app/data
+      BLOB_READ_WRITE_TOKEN: ${BLOB_READ_WRITE_TOKEN:-}
+    ports:
+      - "4006:4006"
+    volumes:
+      # The callers' original upload volumes, remounted under per-namespace
+      # dirs so existing files and their URLs keep resolving with no migration.
+      - provider_uploads:/app/data/provider
+      - review_uploads:/app/data/review
+    healthcheck: *node-healthcheck
+
   redis:
     image: redis:7-alpine
     healthcheck:
@@ -124,6 +139,8 @@ services:
       - "4000:4000"
     depends_on:
       redis:
+        condition: service_healthy
+      media-service:
         condition: service_healthy
       identity-service:
         condition: service_healthy

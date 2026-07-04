@@ -45,20 +45,13 @@ const IDENTICAL: Record<string, string[]> = {
     svc("notification-service", "logging.ts"),
     svc("api-gateway", "logging.ts"),
   ],
-  "orphans.ts": [
-    svc("provider-service", "orphans.ts"),
-    svc("review-service", "orphans.ts"),
-  ],
-};
-
-// storage.ts differs only by the documented per-service SERVICE_FILE_PREFIX
-// line — compare with that line dropped.
-const NORMALIZED: Record<string, string[]> = {
-  "storage.ts": [
+  "storage.ts (media client)": [
     svc("provider-service", "storage.ts"),
     svc("review-service", "storage.ts"),
   ],
 };
+
+const NORMALIZED: Record<string, string[]> = {};
 
 const read = (p: string) => readFileSync(p, "utf8");
 const normalize = (s: string) =>
