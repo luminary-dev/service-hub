@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "../db";
 import { getAuth, getLocale, getOrigin, s2s } from "../lib/http";
 import { jobSchema, jobResponseSchema } from "../lib/job-schema";
+import { categoryValidator } from "../lib/categories";
 
 const IDENTITY_URL = process.env.IDENTITY_SERVICE_URL ?? "http://localhost:4001";
 const PROVIDER_URL = process.env.PROVIDER_SERVICE_URL ?? "http://localhost:4002";
@@ -80,6 +81,11 @@ jobs.post("/", async (c) => {
       { error: parsed.error.issues[0]?.message ?? "Invalid input" },
       400
     );
+  }
+  // Category is data now, not code: check it against provider-service's list
+  // (60s cache, static fallback) as an explicit post-parse step.
+  if (!(await categoryValidator.isValidCategory(parsed.data.category))) {
+    return c.json({ error: "Invalid category" }, 400);
   }
 
   const job = await db.jobRequest.create({

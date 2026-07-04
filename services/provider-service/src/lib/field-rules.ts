@@ -3,9 +3,10 @@
 // services keep identical copies (services are self-contained; no shared
 // package), so keep edits in lockstep (#29).
 import { z } from "zod";
-import { CATEGORIES, DISTRICTS } from "./constants";
+import { DISTRICTS } from "./constants";
 
-export const categoryEnum = z.enum([...CATEGORIES] as [string, ...string[]]);
+// Districts stay a static enum; categories are validated dynamically against
+// provider-service's Category table (see lib/categories.ts) since #135/#60.
 export const districtEnum = z.enum([...DISTRICTS] as [string, ...string[]]);
 
 // Sri Lankan phone numbers (0771234567, 0112345678, +94/0094/94 variants,

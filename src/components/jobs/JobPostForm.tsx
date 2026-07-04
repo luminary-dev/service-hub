@@ -2,11 +2,20 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { CATEGORIES, DISTRICTS } from "@/lib/constants";
-import { categoryLabelLoc, districtLabelLoc } from "@/lib/i18n";
+import { DISTRICTS } from "@/lib/constants";
+import {
+  categoryOptionLabel,
+  STATIC_CATEGORY_OPTIONS,
+  type CategoryOption,
+} from "@/lib/categories";
+import { districtLabelLoc } from "@/lib/i18n";
 import { useLocale, useT } from "@/components/I18nProvider";
 
-export default function JobPostForm() {
+export default function JobPostForm({
+  categories = STATIC_CATEGORY_OPTIONS,
+}: {
+  categories?: CategoryOption[];
+}) {
   const [form, setForm] = useState({
     category: "",
     district: "",
@@ -73,9 +82,9 @@ export default function JobPostForm() {
             required
           >
             <option value="">{t.selectCategory}</option>
-            {CATEGORIES.map((c) => (
+            {categories.map((c) => (
               <option key={c.slug} value={c.slug}>
-                {categoryLabelLoc(c.slug, locale)}
+                {categoryOptionLabel(c, locale)}
               </option>
             ))}
           </select>

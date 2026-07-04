@@ -20,6 +20,18 @@ import { sortProviders, type Sortable } from "../lib/sort";
 
 export const providersRoutes = new Hono();
 
+// Public category list for browse filters and forms (#135/#60). Active only —
+// deactivated categories disappear from pickers while existing providers keep
+// their slug.
+providersRoutes.get("/api/categories", async (c) => {
+  const rows = await db.category.findMany({
+    where: { active: true },
+    orderBy: [{ sortOrder: "asc" }, { labelEn: "asc" }],
+    select: { slug: true, labelEn: true, labelSi: true, icon: true },
+  });
+  return c.json({ categories: rows });
+});
+
 type CardRow = Prisma.ProviderGetPayload<{
   include: { services: true; photos: true };
 }>;

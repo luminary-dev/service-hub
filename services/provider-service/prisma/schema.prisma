@@ -6,6 +6,20 @@ datasource db {
   provider = "postgresql"
 }
 
+// Managed service categories (#135/#60). provider-service owns the canonical
+// list; siblings read it via GET /internal/categories. No hard delete —
+// deactivating (active=false) hides a category from the public list while
+// existing providers keep the slug. Provider.category stays a plain string
+// (no FK) so historical rows never break.
+model Category {
+  slug      String  @id
+  labelEn   String
+  labelSi   String
+  icon      String?
+  active    Boolean @default(true)
+  sortOrder Int     @default(0)
+}
+
 // userId references a User owned by identity-service; no FK across service
 // boundaries. Contact fields are denormalized from the user at registration
 // and kept in sync on profile updates (S2S PATCH to identity).

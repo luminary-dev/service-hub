@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { FaArrowUpRightFromSquare, FaCircleCheck } from "react-icons/fa6";
 import { apiJson } from "@/lib/api";
+import { fetchCategoryOptions } from "@/lib/categories-server";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
@@ -69,10 +70,13 @@ export default async function DashboardPage({
   if (!session) redirect("/login");
   if (session.role !== "PROVIDER") redirect("/providers");
 
-  const dashboard = await apiJson<{
-    provider: DashboardProvider;
-    openJobsCount: number;
-  }>("/api/provider/dashboard");
+  const [dashboard, categories] = await Promise.all([
+    apiJson<{
+      provider: DashboardProvider;
+      openJobsCount: number;
+    }>("/api/provider/dashboard"),
+    fetchCategoryOptions(),
+  ]);
   const provider = dashboard?.provider ?? null;
   if (!provider) redirect("/register/provider");
 
@@ -131,6 +135,7 @@ export default async function DashboardPage({
       </div>
 
       <DashboardTabs
+        categories={categories}
         data={{
           providerId: provider.id,
           name: provider.user.name,

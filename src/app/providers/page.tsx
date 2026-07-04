@@ -1,5 +1,6 @@
 import { FaMagnifyingGlass } from "react-icons/fa6";
 import { apiJson } from "@/lib/api";
+import { fetchCategoryOptions } from "@/lib/categories-server";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
 import { normalizeSort } from "@/lib/sort-keys";
@@ -51,12 +52,15 @@ export default async function ProvidersPage({
   query.set("sort", sort);
   query.set("page", String(page));
 
-  const listing = await apiJson<{
-    providers: ProviderCardDTO[];
-    total: number;
-    page: number;
-    pageSize: number;
-  }>(`/api/providers?${query.toString()}`);
+  const [listing, categories] = await Promise.all([
+    apiJson<{
+      providers: ProviderCardDTO[];
+      total: number;
+      page: number;
+      pageSize: number;
+    }>(`/api/providers?${query.toString()}`),
+    fetchCategoryOptions(),
+  ]);
 
   const results = listing?.providers ?? [];
   const total = listing?.total ?? 0;
@@ -87,7 +91,13 @@ export default async function ProvidersPage({
       </div>
 
       <div className="mt-6">
-        <FilterBar q={q} category={category} district={district} sort={sort} />
+        <FilterBar
+          q={q}
+          category={category}
+          district={district}
+          sort={sort}
+          categories={categories}
+        />
       </div>
 
       {results.length === 0 ? (

@@ -42,6 +42,16 @@ const createSchema = z.object({
     .max(20),
 });
 
+// Full category list for sibling services' validation caches (#135/#60).
+// Includes inactive entries (with the active flag) so a provider whose
+// category was later deactivated still validates everywhere.
+internalRoutes.get("/internal/categories", async (c) => {
+  const categories = await db.category.findMany({
+    orderBy: [{ sortOrder: "asc" }, { labelEn: "asc" }],
+  });
+  return c.json({ categories });
+});
+
 // Registration orchestration (called by identity-service): creates the
 // provider with its denormalized contact fields and nested services.
 internalRoutes.post("/internal/providers", async (c) => {

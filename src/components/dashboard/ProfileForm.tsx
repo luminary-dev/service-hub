@@ -2,13 +2,24 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { CATEGORIES, DISTRICTS } from "@/lib/constants";
-import { categoryLabelLoc, districtLabelLoc } from "@/lib/i18n";
+import { DISTRICTS } from "@/lib/constants";
+import {
+  categoryOptionLabel,
+  STATIC_CATEGORY_OPTIONS,
+  type CategoryOption,
+} from "@/lib/categories";
+import { districtLabelLoc } from "@/lib/i18n";
 import { useLocale, useT } from "../I18nProvider";
 import { useToast } from "../ToastProvider";
 import type { DashboardData } from "./DashboardTabs";
 
-export default function ProfileForm({ data }: { data: DashboardData }) {
+export default function ProfileForm({
+  data,
+  categories = STATIC_CATEGORY_OPTIONS,
+}: {
+  data: DashboardData;
+  categories?: CategoryOption[];
+}) {
   const locale = useLocale();
   const tx = useT();
   const p = tx.dashboard.profile;
@@ -109,9 +120,14 @@ export default function ProfileForm({ data }: { data: DashboardData }) {
             value={form.category}
             onChange={(e) => set("category", e.target.value)}
           >
-            {CATEGORIES.map((c) => (
+            {/* Keep the saved category selectable even if it was deactivated
+                (it then no longer appears in the fetched list). */}
+            {categories.some((c) => c.slug === data.category) ? null : (
+              <option value={data.category}>{data.category}</option>
+            )}
+            {categories.map((c) => (
               <option key={c.slug} value={c.slug}>
-                {categoryLabelLoc(c.slug, locale)}
+                {categoryOptionLabel(c, locale)}
               </option>
             ))}
           </select>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { CategoryOption } from "@/lib/categories";
 import ProfileForm from "./ProfileForm";
 import ServicesManager from "./ServicesManager";
 import PhotosManager from "./PhotosManager";
@@ -61,7 +62,13 @@ export type DashboardData = {
 
 const TABS = ["Profile", "Services", "Photos", "Inquiries"] as const;
 
-export default function DashboardTabs({ data }: { data: DashboardData }) {
+export default function DashboardTabs({
+  data,
+  categories,
+}: {
+  data: DashboardData;
+  categories?: CategoryOption[];
+}) {
   const [tab, setTab] = useState<(typeof TABS)[number]>("Profile");
   const tx = useT();
   const tabLabels: Record<(typeof TABS)[number], string> = {
@@ -137,7 +144,9 @@ export default function DashboardTabs({ data }: { data: DashboardData }) {
       </div>
 
       <div className="mt-6">
-        {tab === "Profile" && <ProfileForm data={data} />}
+        {tab === "Profile" && (
+          <ProfileForm data={data} categories={categories} />
+        )}
         {tab === "Services" && (
           <ServicesManager initial={data.services} />
         )}
