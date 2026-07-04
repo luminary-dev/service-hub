@@ -91,7 +91,10 @@ through internal HTTP endpoints.
 - **identity-service**: `User`, `PasswordResetToken`, `EmailVerificationToken`,
   `Favorite` (providerId is a plain string).
 - **provider-service**: `Provider`, `Service`, `WorkPhoto`,
-  `VerificationDocument`, `Inquiry`. `Provider.userId` is a plain string.
+  `VerificationDocument`, `Inquiry`, `Category` (the managed service-category
+  list: slug PK, en/si labels, icon, active flag, sortOrder — no hard delete;
+  deactivating hides a category from public lists while existing providers
+  keep the slug). `Provider.userId` is a plain string.
   `Provider` additionally **denormalizes** `contactName`, `contactEmail`,
   `contactPhone` (copied from the user at registration; profile updates write
   both locally and S2S to identity). This replaces the monolith's
@@ -150,7 +153,8 @@ Public entry. Responsibilities:
    multipart; passes `Set-Cookie` back):
    - `/api/auth/*`, `/api/favorites/*` → identity
    - `/api/providers/:id/reviews` → review
-   - `/api/providers*`, `/api/provider/*`, `/api/stats` → provider
+   - `/api/providers*`, `/api/provider/*`, `/api/categories`, `/api/stats` →
+     provider
    - `/api/reviews/*`, `/api/admin/reviews/*` → review
    - `/api/admin/*` (providers, photos, verifications) → provider
    - `/api/jobs*` → job
@@ -165,8 +169,13 @@ Public endpoints (via gateway), all behavior/messages copied from the monolith:
 - `POST /api/auth/register` — zod discriminated union (CUSTOMER/PROVIDER).
   Field rules (shared `lib/field-rules.ts`, identical copy in provider-service):
   SL phones normalized to E.164, social/website links validated http(s)-only
-  (no credentials, dotted host, ≤200 chars), category/district `z.enum`
-  against the canonical lists, prices integer rupees 50–10,000,000.
+  (no credentials, dotted host, ≤200 chars), district `z.enum` against the
+  canonical static list, prices integer rupees 50–10,000,000. Category is
+  data, not code: after `safeParse`, provider registrations check the slug
+  against provider-service's Category table (S2S `GET /internal/categories`,
+  60s in-process cache, fallback to the static `CATEGORIES` list on any
+  failure — shared `lib/categories.ts`, identical factory in all three
+  validating services) and reject with `400 { error: "Invalid category" }`.
   Dup email → 409. Creates user (bcrypt 10).
   If PROVIDER: S2S `POST provider /internal/providers` with
   `{ userId, name, email, phone, profile..., services[] }`; on failure,
@@ -223,6 +232,10 @@ Owns port of `src/lib/tokens.ts` (+ its tests).
 Public (all monolith semantics preserved; `name` fields come from denormalized
 `contactName`):
 
+- `GET /api/categories` — the managed category list for browse filters and
+  forms: active only, ordered by sortOrder then labelEn →
+  `{ categories: [{ slug, labelEn, labelSi, icon }] }`. The web app degrades
+  to its static constants if this fetch fails.
 - `GET /api/providers` — query `q, category, district, sort, page, pageSize
   (default 12, max 24), ids, take`. Filters `suspended=false`, search across
   headline/bio/city/contactName/services.title. Hydrates ratings via S2S
@@ -263,9 +276,11 @@ Public (all monolith semantics preserved; `name` fields come from denormalized
   excludeCustomerId=`).
   `PUT /api/provider/profile` — same tightened field rules as registration
   (shared `lib/field-rules.ts`; phones normalized to E.164 BEFORE both the
-  local write and the S2S sync); updates provider + contactName/contactPhone,
-  then S2S `PATCH identity /internal/users/:userId` `{name, phone}`.
-  Returns `{ provider }`.
+  local write and the S2S sync); category checked post-parse against the
+  local Category table (60s cache, static fallback; inactive slugs stay
+  valid so deactivation never blocks a profile save); updates provider +
+  contactName/contactPhone, then S2S `PATCH identity /internal/users/:userId`
+  `{name, phone}`. Returns `{ provider }`.
   `POST /api/provider/services`, `PUT|DELETE /api/provider/services/:id` —
   ownership checks, messages identical.
   `POST /api/provider/photos` (multipart; `kind=avatar` → avatarUrl update,
@@ -286,9 +301,16 @@ Public (all monolith semantics preserved; `name` fields come from denormalized
   `{ status: "VERIFIED"|"REJECTED" }`.
   `DELETE /api/admin/photos/:id` (SOFT delete — reversible via
   `PATCH /api/admin/photos/:id/restore`; owner deletes stay hard).
+  Category management: `GET /api/admin/categories` (all, inactive included),
+  `POST /api/admin/categories` (slug `^[a-z0-9-]{2,40}$`, labels required),
+  `PATCH /api/admin/categories/:slug` (labelEn/labelSi/icon/active/sortOrder).
+  No hard delete — deactivate instead.
 - `GET /files/*` — serves `$UPLOAD_DIR` files.
 
-Internal: `POST /internal/providers` (register orchestration; creates
+Internal: `GET /internal/categories` → `{ categories: [...] }` (every
+category, inactive included with its `active` flag — identity- and
+job-service validation caches read this), `POST /internal/providers`
+(register orchestration; creates
 provider + services, returns `{ id }`), `GET /internal/providers/by-user/:userId`
 → `{ provider: {id, category, district, ...} | null }`,
 `GET /internal/providers?ids=` → `{ providers: [{id, userId, contactName,
@@ -322,7 +344,8 @@ names (S2S identity batch) and photos, plus `nextCursor`;
 ## job-service (:4004)
 
 - `POST /api/jobs` — session (401 "Sign in to post a job"); `jobSchema` port
-  (zod, category/district enums from constants) → `{ id }`.
+  (zod, district enum from constants; category checked post-parse against
+  provider `/internal/categories`, 60s cache, static fallback) → `{ id }`.
 - `PATCH /api/jobs/:id` — owner only (404 semantics identical); status
   OPEN|CLOSED → `{ ok: true }`.
 - `POST /api/jobs/:id/responses` — session (401 "Sign in to respond");
