@@ -5,6 +5,7 @@ import { db } from "../db";
 import { getAuth, getLocale, getOrigin } from "../lib/http";
 import { createSession, destroySession } from "../lib/session";
 import { hashToken } from "../lib/tokens";
+import { isLockedOut, recordFailure } from "../lib/lockout";
 import { passwordSchema, registerSchema } from "../lib/register-schema";
 import {
   createProviderProfile,
@@ -110,6 +111,10 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+// Hash compared against for unknown emails so both branches cost one bcrypt
+// verification — a fast "no such user" reply would leak which emails exist.
+const DUMMY_HASH = bcrypt.hashSync("timing-equalizer", 10);
+
 authRoutes.post("/login", async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = loginSchema.safeParse(body);
@@ -120,8 +125,31 @@ authRoutes.post("/login", async (c) => {
   const user = await db.user.findUnique({
     where: { email: parsed.data.email },
   });
-  if (!user || !(await bcrypt.compare(parsed.data.password, user.passwordHash))) {
+  if (!user) {
+    await bcrypt.compare(parsed.data.password, DUMMY_HASH);
     return c.json({ error: "Invalid email or password" }, 401);
+  }
+
+  // Locked accounts get the same 401 as a wrong password (no enumeration),
+  // and the password is not even checked — a correct guess during the window
+  // must not be observable.
+  if (isLockedOut(user.lockedUntil)) {
+    return c.json({ error: "Invalid email or password" }, 401);
+  }
+
+  if (!(await bcrypt.compare(parsed.data.password, user.passwordHash))) {
+    await db.user.update({
+      where: { id: user.id },
+      data: recordFailure(user.failedLogins),
+    });
+    return c.json({ error: "Invalid email or password" }, 401);
+  }
+
+  if (user.failedLogins > 0 || user.lockedUntil) {
+    await db.user.update({
+      where: { id: user.id },
+      data: { failedLogins: 0, lockedUntil: null },
+    });
   }
 
   const providerId = await getProviderIdByUser(user.id);
