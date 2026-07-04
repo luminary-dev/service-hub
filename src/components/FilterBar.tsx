@@ -2,8 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { CATEGORIES, DISTRICTS } from "@/lib/constants";
-import { categoryLabelLoc, districtLabelLoc } from "@/lib/i18n";
+import { DISTRICTS } from "@/lib/constants";
+import {
+  categoryOptionLabel,
+  STATIC_CATEGORY_OPTIONS,
+  type CategoryOption,
+} from "@/lib/categories";
+import { districtLabelLoc } from "@/lib/i18n";
 import { SORT_KEYS, type SortKey } from "@/lib/sort-keys";
 import { useLocale, useT } from "./I18nProvider";
 
@@ -12,11 +17,13 @@ export default function FilterBar({
   category: initialCategory,
   district: initialDistrict,
   sort: initialSort,
+  categories = STATIC_CATEGORY_OPTIONS,
 }: {
   q: string;
   category: string;
   district: string;
   sort: SortKey;
+  categories?: CategoryOption[];
 }) {
   const [q, setQ] = useState(initialQ);
   const [category, setCategory] = useState(initialCategory);
@@ -69,9 +76,9 @@ export default function FilterBar({
           className="input cursor-pointer sm:w-48"
         >
           <option value="">{t.search.allCategories}</option>
-          {CATEGORIES.map((c) => (
+          {categories.map((c) => (
             <option key={c.slug} value={c.slug}>
-              {categoryLabelLoc(c.slug, locale)}
+              {categoryOptionLabel(c, locale)}
             </option>
           ))}
         </select>

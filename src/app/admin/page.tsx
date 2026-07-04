@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { FaShieldHalved, FaUsers } from "react-icons/fa6";
+import { FaShieldHalved, FaTags, FaUsers } from "react-icons/fa6";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
@@ -26,6 +26,12 @@ export default async function AdminHomePage() {
       icon: FaShieldHalved,
       title: t.verificationsLink,
       desc: t.verificationsDesc,
+    },
+    {
+      href: "/admin/categories",
+      icon: FaTags,
+      title: t.categoriesLink,
+      desc: t.categoriesDesc,
     },
   ];
 
