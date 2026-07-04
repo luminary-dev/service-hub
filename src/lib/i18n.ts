@@ -183,6 +183,17 @@ const en = {
     deleting: "Deleting…",
     genericError: "Something went wrong. Please try again.",
   },
+  errors: {
+    notFoundTitle: "Page not found",
+    notFoundBody:
+      "The page you're looking for doesn't exist or may have been removed.",
+    goHome: "Go home",
+    browse: "Browse professionals",
+    errorTitle: "Something went wrong",
+    errorBody:
+      "An unexpected error occurred. It's not you, it's us — please try again.",
+    retry: "Try again",
+  },
   verification: {
     title: "Get verified",
     intro:
@@ -711,6 +722,15 @@ const si: Dict = {
     delete: "මගේ ගිණුම මකන්න",
     deleting: "මකමින්…",
     genericError: "යමක් වැරදුණා. නැවත උත්සාහ කරන්න.",
+  },
+  errors: {
+    notFoundTitle: "පිටුව හමු නොවීය",
+    notFoundBody: "ඔබ සොයන පිටුව නොපවතී හෝ ඉවත් කර ඇති විය හැක.",
+    goHome: "මුල් පිටුවට",
+    browse: "වෘත්තිකයන් බලන්න",
+    errorTitle: "යමක් වැරදුණා",
+    errorBody: "අනපේක්ෂිත දෝෂයක් ඇති විය. එය ඔබේ වරදක් නොවේ — නැවත උත්සාහ කරන්න.",
+    retry: "නැවත උත්සාහ කරන්න",
   },
   verification: {
     title: "සත්‍යාපනය ලබාගන්න",
