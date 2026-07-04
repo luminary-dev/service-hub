@@ -152,6 +152,9 @@ Public entry. Responsibilities:
 4. **Routing** (streaming proxy, preserves method/headers/body incl.
    multipart; passes `Set-Cookie` back):
    - `/api/auth/*`, `/api/favorites/*` → identity
+   - `/api/account/inquiries` → provider; `/api/account/reviews` → review
+     (exact paths — customer account history, each owned by the service that
+     holds the data)
    - `/api/providers/:id/reviews` → review
    - `/api/providers*`, `/api/provider/*`, `/api/categories`, `/api/stats` →
      provider
@@ -237,9 +240,20 @@ Public (all monolith semantics preserved; `name` fields come from denormalized
   `{ categories: [{ slug, labelEn, labelSi, icon }] }`. The web app degrades
   to its static constants if this fetch fails.
 - `GET /api/providers` — query `q, category, district, sort, page, pageSize
-  (default 12, max 24), ids, take`. Filters `suspended=false`, search across
-  headline/bio/city/contactName/services.title. Hydrates ratings via S2S
-  `review /internal/ratings?providerIds=`. Sorts with the port of
+  (default 12, max 24), ids, take, priceMin, priceMax (integer rupees; a
+  provider matches when ANY service price is in range), ratingMin (1..5),
+  availableOnly=1`. Filters `suspended=false`, search across
+  headline/bio/city/contactName/services.title (insensitive `contains`,
+  backed by pg_trgm GIN indexes — migration `search_trgm`; a tsvector
+  upgrade can layer on later). `q` is also resolved against the Category
+  table's labelEn/labelSi (inactive included), and matching slugs join the
+  search OR as `category IN (...)` — this is what makes category words and
+  Sinhala queries ("mechanic", "කාර්මික") match even though provider data is
+  stored in English (`lib/search.ts` builds the where, `lib/query.ts`
+  normalizes/clamps the params, both unit-tested). Hydrates ratings via S2S
+  `review /internal/ratings?providerIds=`; `ratingMin` is applied after
+  hydration, in memory (consistent with the in-memory ranking below —
+  no-review providers never pass a minimum). Sorts with the port of
   `src/lib/sort.ts` (+ tests) — keys recommended/rating/reviews/price/
   experience/newest — then paginates. Returns
   `{ providers: ProviderCardDTO[], total, page, pageSize }`.
@@ -269,6 +283,11 @@ Public (all monolith semantics preserved; `name` fields come from denormalized
   best-effort).
 - `GET /api/stats` — `{ providerCount, reviewCount }` (S2S review
   `/internal/count`).
+- `GET /api/account/inquiries` — session required (401); the caller's sent
+  inquiries newest-first (cap 50), each hydrated with the provider's
+  `{ id, name, category, suspended }` in a single local query (inquiries and
+  providers are both local) → `{ inquiries }`. Anonymous inquiries
+  (userId=null) never appear.
 - Dashboard (all require a provider owned by `x-user-id`, else 401):
   `GET /api/provider/dashboard` — provider + services + photos + inquiries +
   ratings summary + contact (incl. `emailVerified` fresh from identity) +
@@ -328,6 +347,11 @@ contactPhone, suspended}] }` (job-service hydration),
   S2S provider summary (404; own-profile 400); multipart rating/comment +
   up to 3 photos (existing count enforced); upsert; photos stored with prefix
   `reviews`; messages identical → `{ ok: true }`.
+- `GET /api/account/reviews` — session required (401); the caller's reviews
+  newest-first excluding soft-deleted (cap 50), provider names hydrated via
+  one S2S batch `GET provider /internal/providers?ids=` (degrades to
+  `"Unknown"`) → `{ reviews: [{ id, rating, comment, verified, createdAt,
+  provider: { id, name }, photos }] }`.
 - `DELETE /api/reviews/photos/:id` — owner-or-admin (401/403/404), deletes
   file best-effort.
 - `DELETE /api/admin/reviews/:id` — ADMIN only (403); SOFT delete (sets
