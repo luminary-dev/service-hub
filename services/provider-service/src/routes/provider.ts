@@ -298,7 +298,14 @@ providerDashboardRoutes.patch("/api/provider/inquiries/:id", async (c) => {
 
   const updated = await db.inquiry.update({
     where: { id },
-    data: { status: parsed.data.status },
+    data: {
+      status: parsed.data.status,
+      // Stamp only the first move to RESPONDED — later status churn must not
+      // rewrite the response time.
+      ...(parsed.data.status === "RESPONDED" && !inquiry.respondedAt
+        ? { respondedAt: new Date() }
+        : {}),
+    },
   });
 
   return c.json({ inquiry: updated });
