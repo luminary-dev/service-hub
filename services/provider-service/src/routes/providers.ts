@@ -16,6 +16,7 @@ import {
 import { slPhone } from "../lib/field-rules";
 import { normalizeListQuery } from "../lib/query";
 import { averageResponseMs } from "../lib/response-time";
+import { buildBrowseWhere } from "../lib/search";
 import { sortProviders, type Sortable } from "../lib/sort";
 
 export const providersRoutes = new Hono();
@@ -81,12 +82,17 @@ providersRoutes.get("/api/providers", async (c) => {
   const q = query.q?.trim();
   const category = query.category;
   const district = query.district;
-  const { page, pageSize, sort } = normalizeListQuery({
-    page: query.page ?? null,
-    pageSize: query.pageSize ?? null,
-    take: query.take ?? null,
-    sort: query.sort ?? null,
-  });
+  const { page, pageSize, sort, priceMin, priceMax, ratingMin, availableOnly } =
+    normalizeListQuery({
+      page: query.page ?? null,
+      pageSize: query.pageSize ?? null,
+      take: query.take ?? null,
+      sort: query.sort ?? null,
+      priceMin: query.priceMin ?? null,
+      priceMax: query.priceMax ?? null,
+      ratingMin: query.ratingMin ?? null,
+      availableOnly: query.availableOnly ?? null,
+    });
 
   // ids= returns exactly those providers (suspended excluded) in input order —
   // used by the account/favorites page. No sorting or pagination.
@@ -113,22 +119,35 @@ providersRoutes.get("/api/providers", async (c) => {
     });
   }
 
-  const where: Prisma.ProviderWhereInput = {
-    suspended: false,
-    ...(category ? { category } : {}),
-    ...(district ? { district } : {}),
-    ...(q
-      ? {
-          OR: [
-            { headline: { contains: q, mode: "insensitive" } },
-            { bio: { contains: q, mode: "insensitive" } },
-            { city: { contains: q, mode: "insensitive" } },
-            { contactName: { contains: q, mode: "insensitive" } },
-            { services: { some: { title: { contains: q, mode: "insensitive" } } } },
-          ],
-        }
-      : {}),
-  };
+  // #128: free text also matches categories by their English AND Sinhala
+  // labels ("mechanic", "කාර්මික" → mechanic providers). Inactive categories
+  // are included on purpose — existing providers keep a deactivated slug and
+  // must stay findable.
+  const categorySlugs = q
+    ? (
+        await db.category.findMany({
+          where: {
+            OR: [
+              { labelEn: { contains: q, mode: "insensitive" } },
+              { labelSi: { contains: q, mode: "insensitive" } },
+            ],
+          },
+          select: { slug: true },
+        })
+      ).map((r) => r.slug)
+    : [];
+
+  // The ILIKE search inside is backed by pg_trgm GIN indexes (see migration
+  // 20260704210000_search_trgm) so it scales past a sequential scan.
+  const where: Prisma.ProviderWhereInput = buildBrowseWhere({
+    q,
+    categorySlugs,
+    category,
+    district,
+    priceMin,
+    priceMax,
+    availableOnly,
+  });
 
   // Rating and starting price are derived data, so (matching the monolith's
   // providers page) we rank in memory across the full match set and paginate
@@ -152,8 +171,17 @@ providersRoutes.get("/api/providers", async (c) => {
     };
   });
 
-  const total = enriched.length;
-  const results = sortProviders(enriched, sort)
+  // ratingMin (#47) is applied here, after S2S rating hydration — ratings are
+  // derived data owned by review-service, so filtering (like ranking) happens
+  // in memory across the match set, before sort + pagination. Providers with
+  // no reviews are excluded by any minimum.
+  const filtered =
+    ratingMin !== null
+      ? enriched.filter((e) => e.rating !== null && e.rating >= ratingMin)
+      : enriched;
+
+  const total = filtered.length;
+  const results = sortProviders(filtered, sort)
     .slice((page - 1) * pageSize, page * pageSize)
     .map((e) => e.dto);
 
