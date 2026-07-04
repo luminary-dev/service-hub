@@ -516,7 +516,6 @@ const en = {
       workPhotosSub:
         "Show off your best work — these appear on your public profile.",
       captionPh: "Caption for the next photo (optional)",
-      upload: "Upload photo",
       empty: "No work photos yet. Upload your first one above.",
       uploadError: "Upload failed. Please try again.",
       delete: "Delete",
@@ -1129,7 +1128,6 @@ const si: Dict = {
       workPhotosSub:
         "ඔබේ හොඳම වැඩ පෙන්වන්න — මේවා ඔබේ පොදු පැතිකඩෙහි දිස්වේ.",
       captionPh: "ඊළඟ ඡායාරූපයට සිරැසියක් (අත්‍යවශ්‍ය නොවේ)",
-      upload: "ඡායාරූපය උඩුගත කරන්න",
       empty: "තවම වැඩ ඡායාරූප නැත. ඉහළින් ඔබේ පළමු එක උඩුගත කරන්න.",
       uploadError: "උඩුගත කිරීම අසාර්ථකයි. නැවත උත්සාහ කරන්න.",
       delete: "මකන්න",
