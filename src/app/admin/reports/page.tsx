@@ -9,6 +9,8 @@ import { formatDate } from "@/lib/format";
 import Stars from "@/components/Stars";
 import ReportActions from "@/components/admin/ReportActions";
 
+// Caching (#57): admin-only moderation view; edits must be visible on the
+// next request — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
 
 // The moderation queue (#50) merges two sources — provider-service owns

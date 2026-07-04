@@ -7,6 +7,8 @@ import AdminCategoryManager, {
   type AdminCategory,
 } from "@/components/admin/AdminCategoryManager";
 
+// Caching (#57): admin-only moderation view; edits must be visible on the
+// next request — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
 
 // Category management as served by `GET /api/admin/categories` on the gateway

@@ -7,6 +7,8 @@ import { dict, categoryLabelLoc } from "@/lib/i18n";
 import Avatar from "@/components/Avatar";
 import AdminProviderActions from "@/components/admin/AdminProviderActions";
 
+// Caching (#57): admin-only moderation view; edits must be visible on the
+// next request — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
 
 // Admin listing as served by `GET /api/admin/providers` on the gateway

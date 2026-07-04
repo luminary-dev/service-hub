@@ -14,15 +14,21 @@ import { getSession } from "@/lib/auth";
 import ProviderCard, { ProviderCardDTO } from "@/components/ProviderCard";
 import SearchBar from "@/components/SearchBar";
 
-export const dynamic = "force-dynamic";
-
+// Caching (#57): public-and-stable. No force-dynamic — the page still
+// renders per request (locale/session cookies below), but the hero stats and
+// the "newest providers" rail are the same for everyone and come from the
+// Data Cache with a 5-minute revalidate instead of hitting the gateway (and
+// the database behind it) on every request. Favorites stay per-user/no-store.
 export default async function HomePage() {
   const [locale, listing, stats] = await Promise.all([
     getLocale(),
     apiJson<{ providers: ProviderCardDTO[] }>(
-      "/api/providers?sort=newest&pageSize=6"
+      "/api/providers?sort=newest&pageSize=6",
+      { revalidate: 300 }
     ),
-    apiJson<{ providerCount: number; reviewCount: number }>("/api/stats"),
+    apiJson<{ providerCount: number; reviewCount: number }>("/api/stats", {
+      revalidate: 300,
+    }),
   ]);
   const t = dict[locale];
   const providerCount = stats?.providerCount ?? 0;
