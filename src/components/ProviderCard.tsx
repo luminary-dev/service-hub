@@ -6,7 +6,7 @@ import Avatar from "./Avatar";
 import CategoryIcon from "./CategoryIcon";
 import FavoriteButton from "./FavoriteButton";
 import { isSvg } from "@/lib/image";
-import { formatLKR } from "@/lib/format";
+import { formatDate, formatLKR } from "@/lib/format";
 import {
   dict,
   categoryLabelLoc,
@@ -27,7 +27,10 @@ export type ProviderCardDTO = {
   district: string;
   city: string;
   experience: number;
+  // `available` is the EFFECTIVE availability (the service already folds the
+  // away window in); `awayUntil` is set when the provider is on leave (#49).
   available: boolean;
+  awayUntil: string | null;
   verificationStatus: string;
   verifiedAt: string | null;
   createdAt: string;
@@ -54,6 +57,9 @@ export default function ProviderCard({
 }) {
   const t = dict[locale];
   const verified = p.verificationStatus === "VERIFIED";
+  // Away mode (#49): a future awayUntil replaces the "Available" chip with a
+  // localized "Away until {date}" chip; a past one is inert.
+  const away = p.awayUntil !== null && new Date(p.awayUntil) > new Date();
   return (
     <div className="relative">
       {showFavorite && (
@@ -83,11 +89,18 @@ export default function ProviderCard({
             />
           </div>
         )}
-        {p.available && (
-          <span className="chip absolute bottom-3 right-3 bg-white/95 text-emerald-700">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            {t.card.available}
+        {away ? (
+          <span className="chip absolute bottom-3 right-3 bg-white/95 text-amber-700">
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+            {t.card.awayUntil(formatDate(p.awayUntil!, locale))}
           </span>
+        ) : (
+          p.available && (
+            <span className="chip absolute bottom-3 right-3 bg-white/95 text-emerald-700">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              {t.card.available}
+            </span>
+          )
         )}
         {p.experience > 0 && (
           <span className="chip absolute left-3 top-3 bg-ink-900/75 text-white">

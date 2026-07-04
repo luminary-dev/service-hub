@@ -45,6 +45,11 @@ model Provider {
   website    String?
   avatarUrl  String?
   available  Boolean @default(true)
+  // Away mode (#49): a provider going on leave sets a return date. Effective
+  // availability = available && (awayUntil == null || awayUntil <= now) —
+  // centralized in lib/availability.ts — so availability flips back
+  // automatically once the date passes; no cron needed.
+  awayUntil  DateTime?
   suspended  Boolean @default(false)
   // NONE | PENDING | VERIFIED | REJECTED
   verificationStatus String    @default("NONE")
