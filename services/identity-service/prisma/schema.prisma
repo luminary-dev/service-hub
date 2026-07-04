@@ -14,6 +14,10 @@ model User {
   phone         String?
   role          String    @default("CUSTOMER")
   emailVerified DateTime?
+  // Session revocation: tokens carry the version they were minted with (sv
+  // claim); a bump (password change/reset, logout-everywhere) invalidates
+  // every older token.
+  sessionVersion Int      @default(0)
   createdAt     DateTime  @default(now())
   favorites     Favorite[]
 

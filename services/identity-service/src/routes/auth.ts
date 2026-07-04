@@ -82,7 +82,12 @@ authRoutes.post("/register", async (c) => {
     }
   }
 
-  await createSession(c, { userId: user.id, role: user.role, name: user.name });
+  await createSession(c, {
+    userId: user.id,
+    role: user.role,
+    name: user.name,
+    sv: user.sessionVersion,
+  });
 
   // Best-effort: a failure here must not fail registration.
   try {
@@ -121,7 +126,12 @@ authRoutes.post("/login", async (c) => {
 
   const providerId = await getProviderIdByUser(user.id);
 
-  await createSession(c, { userId: user.id, role: user.role, name: user.name });
+  await createSession(c, {
+    userId: user.id,
+    role: user.role,
+    name: user.name,
+    sv: user.sessionVersion,
+  });
 
   return c.json({
     user: { id: user.id, name: user.name, role: user.role },
@@ -134,6 +144,36 @@ authRoutes.post("/login", async (c) => {
 // ---------------------------------------------------------------------------
 authRoutes.post("/logout", (c) => {
   destroySession(c);
+  return c.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/logout-all — invalidate every session (all devices), then
+// re-issue this one so the requester stays signed in.
+// ---------------------------------------------------------------------------
+authRoutes.post("/logout-all", async (c) => {
+  const auth = getAuth(c);
+  if (!auth) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const user = await db.user
+    .update({
+      where: { id: auth.userId },
+      data: { sessionVersion: { increment: 1 } },
+    })
+    .catch(() => null);
+  if (!user) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  await createSession(c, {
+    userId: user.id,
+    role: user.role,
+    name: user.name,
+    sv: user.sessionVersion,
+  });
+
   return c.json({ ok: true });
 });
 
@@ -194,12 +234,25 @@ authRoutes.post("/change-password", async (c) => {
   }
 
   const passwordHash = await bcrypt.hash(parsed.data.newPassword, 10);
-  await db.$transaction([
-    db.user.update({ where: { id: user.id }, data: { passwordHash } }),
+  const [updated] = await db.$transaction([
+    // sessionVersion bump revokes every existing session (a hijacked one is
+    // exactly why passwords get changed); the fresh cookie below keeps the
+    // requester signed in.
+    db.user.update({
+      where: { id: user.id },
+      data: { passwordHash, sessionVersion: { increment: 1 } },
+    }),
     // A pending reset link would still grant access under the old email
     // flow — changing the password invalidates it, same as reset-password.
     db.passwordResetToken.deleteMany({ where: { userId: user.id } }),
   ]);
+
+  await createSession(c, {
+    userId: updated.id,
+    role: updated.role,
+    name: updated.name,
+    sv: updated.sessionVersion,
+  });
 
   return c.json({ ok: true });
 });
@@ -313,9 +366,11 @@ authRoutes.post("/reset-password", async (c) => {
 
   const passwordHash = await bcrypt.hash(parsed.data.password, 10);
   await db.$transaction([
+    // sessionVersion bump: whoever prompted the reset (possibly an attacker
+    // holding a session) is signed out everywhere.
     db.user.update({
       where: { id: record.userId },
-      data: { passwordHash },
+      data: { passwordHash, sessionVersion: { increment: 1 } },
     }),
     // Single-use: consume every reset token for this user.
     db.passwordResetToken.deleteMany({ where: { userId: record.userId } }),

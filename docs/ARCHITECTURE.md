@@ -56,9 +56,16 @@ through internal HTTP endpoints.
   gracefully (missing names → `"Unknown"`); write-path dependency failures
   return `502 { error: "Upstream service unavailable" }`.
 - **JWT session**: cookie `sh_session`, HS256 via `jose`, secret `AUTH_SECRET`,
-  payload `{ userId, role, name }`, 7-day expiry, `httpOnly`, `sameSite=lax`,
-  `secure` in production, `path=/`. Signed ONLY by identity-service; verified
-  by the gateway and by the web app (page gating).
+  payload `{ userId, role, name, sv }`, 7-day expiry, `httpOnly`,
+  `sameSite=lax`, `secure` in production, `path=/`. Signed ONLY by
+  identity-service; verified by the gateway and by the web app (page gating).
+- **Session revocation**: `sv` is `User.sessionVersion` at mint time. Identity
+  bumps the version on password change/reset and `POST /api/auth/logout-all`;
+  the gateway rejects tokens minted before the current version (checked via
+  `GET identity /internal/users/:id/session-version`, cached 60s per user,
+  fail-open on identity outage). Tokens minted before this scheme count as
+  version 0. The web app's page-gating verifier stays a soft check — every
+  data/state request goes through the gateway, which is the enforcement point.
 
 ## Environment variables
 
@@ -117,13 +124,16 @@ Public entry. Responsibilities:
    request blocked." }` (this replaces the monolith middleware).
 2. **Rate limiting** (port of `src/lib/rate-limit.ts` + tests, in-memory
    sliding window, keyed by client IP from `x-forwarded-for`):
-   `POST /api/auth/login|forgot-password|reset-password` → authStrict;
-   `POST /api/auth/register` → authSignup; `POST /api/auth/resend-verification`
-   → resend; `POST /api/jobs` and `POST /api/providers/:id/inquiries` →
-   inquiry; `POST /api/jobs/:id/responses` and `POST /api/providers/:id/reviews`
-   → review. 429 body/headers identical to the monolith (`Retry-After`).
-3. **Session**: verify `sh_session` (jose). Invalid/absent → forward without
-   identity headers (services decide 401s). Strip any client-sent `x-user-*`,
+   `POST /api/auth/login|forgot-password|reset-password|change-password` →
+   authStrict; `POST /api/auth/register` → authSignup;
+   `POST /api/auth/resend-verification` → resend; `POST /api/jobs` and
+   `POST /api/providers/:id/inquiries` → inquiry; `POST /api/jobs/:id/responses`
+   and `POST /api/providers/:id/reviews` → review. 429 body/headers identical
+   to the monolith (`Retry-After`).
+3. **Session**: verify `sh_session` (jose), then check the token's `sv`
+   against the user's current sessionVersion (S2S to identity, 60s per-user
+   cache, fail-open). Invalid/absent/revoked → forward without identity
+   headers (services decide 401s). Strip any client-sent `x-user-*`,
    `x-internal-secret`, `x-locale`, `x-origin` headers first.
 4. **Routing** (streaming proxy, preserves method/headers/body incl.
    multipart; passes `Set-Cookie` back):
@@ -158,7 +168,14 @@ Public endpoints (via gateway), all behavior/messages copied from the monolith:
 - `POST /api/auth/verify-email`, `POST /api/auth/reset-password`,
   `POST /api/auth/forgot-password`, `POST /api/auth/resend-verification` —
   logic, transactions, anti-enumeration and messages identical to monolith;
-  emails via notification-service.
+  emails via notification-service. reset-password additionally bumps
+  `sessionVersion` (signs out all devices).
+- `POST /api/auth/change-password` — session required; verifies the current
+  password (bcrypt), validates the new one with the shared registration
+  password rule, updates the hash, consumes outstanding reset tokens, bumps
+  `sessionVersion` and re-issues the requester's cookie.
+- `POST /api/auth/logout-all` — session required; bumps `sessionVersion`
+  (revoking every device) and re-issues the requester's cookie → `{ ok: true }`.
 - `POST /api/favorites/:id` — 401 w/o session; S2S provider existence check
   (404 "Provider not found"); upsert → `{ favorited: true }`.
 - `DELETE /api/favorites/:id` — deleteMany → `{ favorited: false }`.
@@ -169,6 +186,8 @@ Public endpoints (via gateway), all behavior/messages copied from the monolith:
 Internal: `GET /internal/users?ids=a,b,c` →
 `{ users: [{id,name,email,phone,emailVerified}] }`;
 `PATCH /internal/users/:id` `{ name?, phone? }` (profile sync);
+`GET /internal/users/:id/session-version` → `{ v: number | null }` (gateway
+revocation check; null = user gone);
 `GET /internal/users/count` (unused today, cheap);
 `POST /internal/users/:id/delete-compensation` is NOT needed — register
 compensation is a local delete.
