@@ -13,6 +13,7 @@ import {
   sendInquiryEmail,
   type RatingEntry,
 } from "../lib/clients";
+import { slPhone } from "../lib/field-rules";
 import { normalizeListQuery } from "../lib/query";
 import { averageResponseMs } from "../lib/response-time";
 import { sortProviders, type Sortable } from "../lib/sort";
@@ -271,7 +272,7 @@ providersRoutes.get("/api/providers/:id/card", async (c) => {
 
 const inquirySchema = z.object({
   name: z.string().min(2).max(80),
-  phone: z.string().min(9).max(15),
+  phone: slPhone,
   email: z.string().email().optional().or(z.literal("")),
   message: z.string().min(10).max(2000),
 });

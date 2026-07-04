@@ -5,6 +5,14 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
 import {
+  categoryEnum,
+  districtEnum,
+  optionalSlPhone,
+  optionalWebUrl,
+  priceRupees,
+  slPhone,
+} from "../lib/field-rules";
+import {
   fetchEmailVerified,
   fetchOpenJobsCount,
   fetchRatings,
@@ -68,21 +76,21 @@ providerDashboardRoutes.get("/api/provider/dashboard", async (c) => {
 
 const profileSchema = z.object({
   name: z.string().min(2).max(80),
-  phone: z.string().min(9).max(15),
-  category: z.string().min(1),
+  phone: slPhone,
+  category: categoryEnum,
   headline: z.string().min(5).max(120),
   bio: z.string().min(20).max(2000),
-  district: z.string().min(1),
+  district: districtEnum,
   city: z.string().min(1).max(60),
   experience: z.number().int().min(0).max(60),
   available: z.boolean(),
-  whatsapp: z.string().max(15).optional().or(z.literal("")),
-  phone2: z.string().max(15).optional().or(z.literal("")),
-  facebook: z.string().max(200).optional().or(z.literal("")),
-  instagram: z.string().max(200).optional().or(z.literal("")),
-  tiktok: z.string().max(200).optional().or(z.literal("")),
-  youtube: z.string().max(200).optional().or(z.literal("")),
-  website: z.string().max(200).optional().or(z.literal("")),
+  whatsapp: optionalSlPhone,
+  phone2: optionalSlPhone,
+  facebook: optionalWebUrl,
+  instagram: optionalWebUrl,
+  tiktok: optionalWebUrl,
+  youtube: optionalWebUrl,
+  website: optionalWebUrl,
 });
 
 providerDashboardRoutes.put("/api/provider/profile", async (c) => {
@@ -124,7 +132,7 @@ providerDashboardRoutes.put("/api/provider/profile", async (c) => {
 const serviceSchema = z.object({
   title: z.string().min(2).max(100),
   description: z.string().max(500).optional().or(z.literal("")),
-  price: z.number().positive(),
+  price: priceRupees,
   priceType: z.enum(["HOURLY", "DAILY", "FIXED", "VISIT"]),
 });
 
