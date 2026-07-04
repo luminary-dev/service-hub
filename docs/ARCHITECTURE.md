@@ -110,7 +110,12 @@ the product today (admin suspends/verifies; deletes are per-review/photo).
 
 ## Uploads
 
-`storeImage(file, prefix)` logic moves into provider- and review-service:
+`storeImage(file, prefix)` (provider- and review-service) decodes and
+re-encodes every upload with sharp before storing: non-images and formats
+outside JPEG/PNG/WebP are rejected with 400 regardless of the claimed
+content-type, ALL metadata (EXIF GPS etc.) is stripped, the EXIF orientation
+is baked in first, and the re-encoded content decides the stored extension.
+Storage backend:
 Vercel Blob when `BLOB_READ_WRITE_TOKEN` is set (absolute URL stored),
 otherwise local disk under `$UPLOAD_DIR/<prefix>/<uuid>.<ext>` with the URL
 stored as `/api/files/<service>/<prefix>/<uuid>.<ext>`. Each uploading service

@@ -21,6 +21,7 @@ import {
 import { getCurrentProvider } from "../lib/provider-auth";
 import {
   ALLOWED_IMAGE_TYPES,
+  InvalidImageError,
   MAX_UPLOAD_SIZE,
   removeStoredFile,
   storeImage,
@@ -229,7 +230,13 @@ providerDashboardRoutes.post("/api/provider/photos", async (c) => {
     return c.json({ error: "Image must be under 5MB" }, 400);
   }
 
-  const url = await storeImage(file, "uploads");
+  let url: string;
+  try {
+    url = await storeImage(file, "uploads");
+  } catch (e) {
+    if (e instanceof InvalidImageError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
 
   if (kind === "avatar") {
     await db.provider.update({
@@ -360,7 +367,13 @@ providerDashboardRoutes.post("/api/provider/verification", async (c) => {
     where: { providerId: provider.id },
   });
   for (const { kind, file } of uploads) {
-    const url = await storeImage(file, "verification");
+    let url: string;
+    try {
+      url = await storeImage(file, "verification");
+    } catch (e) {
+      if (e instanceof InvalidImageError) return c.json({ error: e.message }, 400);
+      throw e;
+    }
     await db.verificationDocument.create({
       data: { providerId: provider.id, kind, url },
     });
