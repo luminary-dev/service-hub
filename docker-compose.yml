@@ -146,6 +146,8 @@ services:
       GATEWAY_URL: http://api-gateway:4000
       AUTH_SECRET: ${AUTH_SECRET:-dev-only-secret}
       NEXT_PUBLIC_SITE_URL: ${WEB_ORIGIN:-http://localhost:3000}
+      # Chat assistant (#11); unset disables the widget's endpoint (503).
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     ports:
       - "3000:3000"
     depends_on:
