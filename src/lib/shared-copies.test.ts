@@ -36,6 +36,7 @@ const IDENTICAL: Record<string, string[]> = {
     svc("review-service", "http.ts"),
     svc("job-service", "http.ts"),
     svc("notification-service", "http.ts"),
+    svc("chat-service", "http.ts"),
   ],
   "logging.ts": [
     svc("identity-service", "logging.ts"),
@@ -43,6 +44,8 @@ const IDENTICAL: Record<string, string[]> = {
     svc("review-service", "logging.ts"),
     svc("job-service", "logging.ts"),
     svc("notification-service", "logging.ts"),
+    svc("media-service", "logging.ts"),
+    svc("chat-service", "logging.ts"),
     svc("api-gateway", "logging.ts"),
   ],
   "storage.ts (media client)": [

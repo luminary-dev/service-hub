@@ -93,6 +93,8 @@ through internal HTTP endpoints.
 | `RESEND_API_KEY`, `EMAIL_FROM` | notification (console fallback when unset) |
 | `BLOB_READ_WRITE_TOKEN` | provider, review (uploads; local-disk fallback) |
 | `MEDIA_DIR` | media (local upload root, default `./data`; per-namespace subdirs) |
+| `ANTHROPIC_API_KEY` | chat (LLM assistant; unset → 503) |
+| `CHAT_SERVICE_URL`, `MEDIA_SERVICE_URL` | callers of those peers (+ web for chat) |
 | `WEB_ORIGIN` | gateway (fallback for `x-origin`) |
 | `GATEWAY_URL` | web (runtime `/api/*` proxy target in `src/proxy.ts` + server-side fetches; read per request, never baked into the build/image) |
 
@@ -501,9 +503,13 @@ console log with `delivered: false`.
 
 ## Chat assistant (#11)
 
-`POST /agent/chat` is served by the WEB APP (deliberately outside the
-gateway-proxied `/api/*` prefix): a streaming Claude (`claude-opus-4-8`)
-concierge with two tools — `search_providers` (gateway browse) and
+`POST /agent/chat` is a thin WEB-APP proxy (deliberately outside the
+gateway-proxied `/api/*` prefix — the gateway buffers, a direct stream does
+not) that forwards to **chat-service** (:4007), which holds the
+`ANTHROPIC_API_KEY` and runs a streaming Claude (`claude-opus-4-8`) tool
+loop. chat-service is organised around personas (a system prompt + tool set +
+runner; the marketplace concierge ships today, adding one is a registry
+entry). The marketplace persona has two tools — `search_providers` (gateway browse) and
 `create_inquiry` (the same public endpoint the form uses, with
 `source: "chat-agent"` attribution, the caller's cookie forwarded so
 signed-in inquiries get a userId, and the real client IP forwarded for rate

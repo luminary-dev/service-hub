@@ -8,6 +8,7 @@ x-service-env: &service-env
   JOB_SERVICE_URL: http://job-service:4004
   NOTIFICATION_SERVICE_URL: http://notification-service:4005
   MEDIA_SERVICE_URL: http://media-service:4006
+  CHAT_SERVICE_URL: http://chat-service:4007
 
 services:
   postgres:
@@ -117,6 +118,18 @@ services:
       - review_uploads:/app/data/review
     healthcheck: *node-healthcheck
 
+  chat-service:
+    build: ./services/chat-service
+    environment:
+      <<: *service-env
+      PORT: 4007
+      GATEWAY_URL: http://api-gateway:4000
+      # Holds the LLM credential (isolated from the web runtime); unset → 503.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ports:
+      - "4007:4007"
+    healthcheck: *node-healthcheck
+
   redis:
     image: redis:7-alpine
     healthcheck:
@@ -163,12 +176,16 @@ services:
       GATEWAY_URL: http://api-gateway:4000
       AUTH_SECRET: ${AUTH_SECRET:-dev-only-secret}
       NEXT_PUBLIC_SITE_URL: ${WEB_ORIGIN:-http://localhost:3000}
-      # Chat assistant (#11); unset disables the widget's endpoint (503).
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # The web app proxies /agent/chat to chat-service (which holds the LLM
+      # key); it needs the URL + internal secret to reach that internal service.
+      CHAT_SERVICE_URL: http://chat-service:4007
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-dev-internal-secret}
     ports:
       - "3000:3000"
     depends_on:
       api-gateway:
+        condition: service_healthy
+      chat-service:
         condition: service_healthy
 
 volumes:
