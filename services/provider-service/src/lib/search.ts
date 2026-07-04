@@ -49,7 +49,14 @@ export type BrowseFilters = {
 // The full listing where-clause (minus the rating filter, which is applied
 // after S2S rating hydration — ratings are derived data owned by
 // review-service, consistent with the existing in-memory ranking approach).
-export function buildBrowseWhere(f: BrowseFilters): Prisma.ProviderWhereInput {
+// `now` is injectable for tests; availableOnly matches the effective
+// availability rule in lib/availability.ts: available AND (awayUntil is null
+// OR awayUntil <= now) — a provider away until a future date (#49) is
+// unavailable. The away OR lives under AND so it can't clobber the search OR.
+export function buildBrowseWhere(
+  f: BrowseFilters,
+  now: Date = new Date()
+): Prisma.ProviderWhereInput {
   const price: Prisma.FloatFilter = {
     ...(f.priceMin != null ? { gte: f.priceMin } : {}),
     ...(f.priceMax != null ? { lte: f.priceMax } : {}),
@@ -58,7 +65,12 @@ export function buildBrowseWhere(f: BrowseFilters): Prisma.ProviderWhereInput {
     suspended: false,
     ...(f.category ? { category: f.category } : {}),
     ...(f.district ? { district: f.district } : {}),
-    ...(f.availableOnly ? { available: true } : {}),
+    ...(f.availableOnly
+      ? {
+          available: true,
+          AND: [{ OR: [{ awayUntil: null }, { awayUntil: { lte: now } }] }],
+        }
+      : {}),
     ...(f.priceMin != null || f.priceMax != null
       ? { services: { some: { price } } }
       : {}),
