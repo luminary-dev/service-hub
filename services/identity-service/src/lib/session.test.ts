@@ -18,12 +18,14 @@ describe("session JWT", () => {
       userId: "user_1",
       role: "PROVIDER",
       name: "Nuwan Perera",
+      sv: 3,
     });
     const { payload, protectedHeader } = await jwtVerify(token, secret);
     expect(protectedHeader.alg).toBe("HS256");
     expect(payload.userId).toBe("user_1");
     expect(payload.role).toBe("PROVIDER");
     expect(payload.name).toBe("Nuwan Perera");
+    expect(payload.sv).toBe(3);
   });
 
   it("sets a 7-day expiry", async () => {
@@ -31,6 +33,7 @@ describe("session JWT", () => {
       userId: "u",
       role: "CUSTOMER",
       name: "C",
+      sv: 0,
     });
     const { payload } = await jwtVerify(token, secret);
     expect(payload.iat).toBeTypeOf("number");
@@ -39,7 +42,7 @@ describe("session JWT", () => {
   });
 
   it("rejects tokens signed with a different secret", async () => {
-    const token = await signSession({ userId: "u", role: "CUSTOMER", name: "C" });
+    const token = await signSession({ userId: "u", role: "CUSTOMER", name: "C", sv: 0 });
     await expect(
       jwtVerify(token, new TextEncoder().encode("some-other-secret"))
     ).rejects.toThrow();

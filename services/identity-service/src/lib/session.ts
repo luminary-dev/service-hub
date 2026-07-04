@@ -19,6 +19,9 @@ export type SessionPayload = {
   userId: string;
   role: string;
   name: string;
+  // User.sessionVersion at mint time. Verifiers reject tokens minted before
+  // the user's current version (revocation on password change / logout-all).
+  sv: number;
 };
 
 export async function signSession(payload: SessionPayload): Promise<string> {

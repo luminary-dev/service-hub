@@ -29,6 +29,16 @@ internalUsersRoutes.get("/", async (c) => {
   return c.json({ users });
 });
 
+// GET /internal/users/:id/session-version — gateway revocation check: the
+// current sessionVersion for a user, null when the user no longer exists.
+internalUsersRoutes.get("/:id/session-version", async (c) => {
+  const user = await db.user.findUnique({
+    where: { id: c.req.param("id") },
+    select: { sessionVersion: true },
+  });
+  return c.json({ v: user?.sessionVersion ?? null });
+});
+
 // GET /internal/users/count — unused today, kept cheap per the architecture.
 internalUsersRoutes.get("/count", async (c) => {
   const count = await db.user.count();
