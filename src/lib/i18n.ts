@@ -157,6 +157,7 @@ const en = {
   },
   card: {
     available: "Available",
+    awayUntil: (date: string) => `Away until ${date}`,
     yrs: (n: number) => `${n}+ yrs`,
     noReviews: "No reviews yet",
     save: "Save",
@@ -313,6 +314,7 @@ const en = {
   profile: {
     available: "Available for work",
     unavailable: "Currently unavailable",
+    awayUntil: (date: string) => `Away until ${date}`,
     exp: (n: number) => `${n} year${n === 1 ? "" : "s"} experience`,
     reviewsShort: (n: number) => `(${n} review${n === 1 ? "" : "s"})`,
     about: "About",
@@ -513,6 +515,10 @@ const en = {
     profile: {
       availableTitle: "Available for work",
       availableHint: "Shown as a badge on your profile",
+      awayUntilTitle: "Away until",
+      awayUntilHint:
+        "Going on leave? Set a return date — your profile shows as away until then, and flips back automatically.",
+      awayUntilClear: "Clear",
       fullName: "Full name",
       phone: "Phone number",
       category: "Category",
@@ -796,6 +802,7 @@ const si: Dict = {
   },
   card: {
     available: "සූදානම්",
+    awayUntil: (date: string) => `${date} දක්වා නිවාඩුවේ`,
     yrs: (n: number) => `අවු ${n}+`,
     noReviews: "සමාලෝචන නැත",
     save: "සුරකින්න",
@@ -950,6 +957,7 @@ const si: Dict = {
   profile: {
     available: "වැඩට සූදානම්",
     unavailable: "දැනට ලබාගත නොහැක",
+    awayUntil: (date: string) => `${date} දක්වා නිවාඩුවේ`,
     exp: (n: number) => `අවුරුදු ${n}ක පළපුරුද්ද`,
     reviewsShort: (n: number) => `(සමාලෝචන ${n})`,
     about: "පිළිබඳව",
@@ -1150,6 +1158,10 @@ const si: Dict = {
     profile: {
       availableTitle: "වැඩට සූදානම්",
       availableHint: "ඔබේ පැතිකඩෙහි ලාංඡනයක් ලෙස පෙන්වයි",
+      awayUntilTitle: "නිවාඩු අවසන් දිනය",
+      awayUntilHint:
+        "නිවාඩු යනවාද? නැවත පැමිණෙන දිනය සකසන්න — එතෙක් ඔබේ පැතිකඩ නිවාඩුවේ ලෙස පෙන්වා, පසුව ස්වයංක්‍රීයව යථා තත්ත්වයට පත් වේ.",
+      awayUntilClear: "ඉවත් කරන්න",
       fullName: "සම්පූර්ණ නම",
       phone: "දුරකථන අංකය",
       category: "ක්ෂේත්‍රය",

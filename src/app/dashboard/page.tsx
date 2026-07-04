@@ -26,6 +26,7 @@ type DashboardProvider = {
   city: string;
   experience: number;
   available: boolean;
+  awayUntil: string | null;
   verificationStatus: string;
   avatarUrl: string | null;
   whatsapp: string | null;
@@ -148,6 +149,7 @@ export default async function DashboardPage({
           city: provider.city,
           experience: provider.experience,
           available: provider.available,
+          awayUntil: provider.awayUntil,
           avatarUrl: provider.avatarUrl,
           whatsapp: provider.whatsapp ?? "",
           phone2: provider.phone2 ?? "",

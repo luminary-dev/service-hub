@@ -261,7 +261,11 @@ Public (all monolith semantics preserved; `name` fields come from denormalized
 - `GET /api/providers` — query `q, category, district, sort, page, pageSize
   (default 12, max 24), ids, take, priceMin, priceMax (integer rupees; a
   provider matches when ANY service price is in range), ratingMin (1..5),
-  availableOnly=1`. Filters `suspended=false`, search across
+  availableOnly=1`. `availableOnly` filters on EFFECTIVE availability
+  (`lib/availability.ts`: `available && (awayUntil == null || awayUntil <=
+  now)`) — a provider away until a future date (#49) is excluded via the
+  where clause, and flips back automatically once the date passes.
+  Filters `suspended=false`, search across
   headline/bio/city/contactName/services.title (insensitive `contains`,
   backed by pg_trgm GIN indexes — migration `search_trgm`; a tsvector
   upgrade can layer on later). `q` is also resolved against the Category
@@ -277,9 +281,12 @@ Public (all monolith semantics preserved; `name` fields come from denormalized
   experience/newest — then paginates. Returns
   `{ providers: ProviderCardDTO[], total, page, pageSize }`.
   `ProviderCardDTO = { id, userId, name, category, headline, district, city,
-  experience, available, verificationStatus, verifiedAt, createdAt, avatarUrl,
-  coverPhoto, photos: [{url,caption}](first), services: [{id,title,price,
-  priceType}](cheapest), fromPrice, fromPriceType, rating, reviewCount }`.
+  experience, available, awayUntil, verificationStatus, verifiedAt, createdAt,
+  avatarUrl, coverPhoto, photos: [{url,caption}](first), services: [{id,title,
+  price,priceType}](cheapest), fromPrice, fromPriceType, rating, reviewCount }`.
+  `available` in card/detail/full payloads is the effective value (away
+  providers report `false`); the raw `awayUntil` rides along so the web can
+  render a localized "Away until {date}" chip.
   `ids=` returns those providers (suspended excluded) unsorted-by-input-order
   preserved — used by the account/favorites page.
 - `GET /api/providers/ids` — `{ providers: [{id, updatedAt}] }` non-suspended
@@ -321,7 +328,10 @@ Public (all monolith semantics preserved; `name` fields come from denormalized
   excludeCustomerId=`).
   `PUT /api/provider/profile` — same tightened field rules as registration
   (shared `lib/field-rules.ts`; phones normalized to E.164 BEFORE both the
-  local write and the S2S sync); category checked post-parse against the
+  local write and the S2S sync); accepts optional `awayUntil` (#49: ISO date
+  string or null to clear; must parse and be at most one year out — stored
+  alongside `available`, the away window only affects public reads);
+  category checked post-parse against the
   local Category table (60s cache, static fallback; inactive slugs stay
   valid so deactivation never blocks a profile save); updates provider +
   contactName/contactPhone, then S2S `PATCH identity /internal/users/:userId`

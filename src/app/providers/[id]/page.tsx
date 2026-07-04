@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { FaLocationDot } from "react-icons/fa6";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
-import { formatLKR } from "@/lib/format";
+import { formatDate, formatLKR } from "@/lib/format";
 import {
   dict,
   categoryLabelLoc,
@@ -47,7 +47,10 @@ type FullProvider = {
   district: string;
   city: string;
   experience: number;
+  // `available` is the EFFECTIVE availability (the service folds the away
+  // window in); `awayUntil` is set while the provider is on leave (#49).
   available: boolean;
+  awayUntil: string | null;
   suspended: boolean;
   verificationStatus: string;
   avatarUrl: string | null;
@@ -159,7 +162,15 @@ export default async function ProviderProfilePage({
                   {provider.verificationStatus === "VERIFIED" && (
                     <VerifiedBadge label={t.card.verified} size="md" />
                   )}
-                  {provider.available ? (
+                  {provider.awayUntil &&
+                  new Date(provider.awayUntil) > new Date() ? (
+                    <span className="chip bg-amber-50 text-amber-700 ring-1 ring-amber-200">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                      {t.profile.awayUntil(
+                        formatDate(provider.awayUntil, locale)
+                      )}
+                    </span>
+                  ) : provider.available ? (
                     <span className="chip bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">
                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                       {t.profile.available}

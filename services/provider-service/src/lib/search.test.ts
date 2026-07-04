@@ -93,9 +93,17 @@ describe("buildBrowseWhere", () => {
     });
   });
 
-  it("adds available: true only when availableOnly is set", () => {
-    expect(buildBrowseWhere({ availableOnly: true }).available).toBe(true);
-    expect(buildBrowseWhere({ availableOnly: false }).available).toBeUndefined();
+  it("adds the availability clauses only when availableOnly is set", () => {
+    const now = new Date("2026-07-05T12:00:00Z");
+    const where = buildBrowseWhere({ availableOnly: true }, now);
+    expect(where.available).toBe(true);
+    // Away mode (#49): a provider away until a future date must be excluded.
+    expect(where.AND).toEqual([
+      { OR: [{ awayUntil: null }, { awayUntil: { lte: now } }] },
+    ]);
+    const off = buildBrowseWhere({ availableOnly: false }, now);
+    expect(off.available).toBeUndefined();
+    expect(off.AND).toBeUndefined();
   });
 
   it("merges the search OR with the exact filters", () => {
@@ -109,5 +117,16 @@ describe("buildBrowseWhere", () => {
     expect(where.district).toBe("Colombo");
     expect(where.available).toBe(true);
     expect(where.OR).toContainEqual({ category: { in: ["mechanic"] } });
+  });
+
+  it("keeps the away filter and the search OR from clobbering each other", () => {
+    const now = new Date("2026-07-05T12:00:00Z");
+    const where = buildBrowseWhere({ q: "wiring", availableOnly: true }, now);
+    expect(where.OR).toContainEqual({
+      headline: { contains: "wiring", mode: "insensitive" },
+    });
+    expect(where.AND).toEqual([
+      { OR: [{ awayUntil: null }, { awayUntil: { lte: now } }] },
+    ]);
   });
 });

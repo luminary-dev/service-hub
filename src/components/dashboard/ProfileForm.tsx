@@ -13,6 +13,13 @@ import { useLocale, useT } from "../I18nProvider";
 import { useToast } from "../ToastProvider";
 import type { DashboardData } from "./DashboardTabs";
 
+// Away-until picker bounds (#49), fixed per page load (render must stay pure):
+// today .. one year out, mirroring the server-side validation.
+const AWAY_UNTIL_MIN = new Date().toISOString().slice(0, 10);
+const AWAY_UNTIL_MAX = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+  .toISOString()
+  .slice(0, 10);
+
 export default function ProfileForm({
   data,
   categories = STATIC_CATEGORY_OPTIONS,
@@ -33,6 +40,8 @@ export default function ProfileForm({
     city: data.city,
     experience: String(data.experience),
     available: data.available,
+    // Away mode (#49): the date input works in local yyyy-mm-dd.
+    awayUntil: data.awayUntil ? data.awayUntil.slice(0, 10) : "",
     whatsapp: data.whatsapp,
     phone2: data.phone2,
     facebook: data.facebook,
@@ -60,6 +69,8 @@ export default function ProfileForm({
       body: JSON.stringify({
         ...form,
         experience: Number(form.experience) || 0,
+        // Empty input means "not away" — send an explicit null to clear it.
+        awayUntil: form.awayUntil || null,
       }),
     });
     setLoading(false);
@@ -90,6 +101,35 @@ export default function ProfileForm({
           className="h-5 w-5 cursor-pointer accent-brand-700"
         />
       </label>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-ink-50 px-4 py-3">
+        <span>
+          <span className="block text-sm font-medium text-ink-800">
+            {p.awayUntilTitle}
+          </span>
+          <span className="block text-xs text-ink-500">{p.awayUntilHint}</span>
+        </span>
+        <span className="flex items-center gap-2">
+          <input
+            type="date"
+            value={form.awayUntil}
+            min={AWAY_UNTIL_MIN}
+            max={AWAY_UNTIL_MAX}
+            onChange={(e) => set("awayUntil", e.target.value)}
+            className="input w-auto"
+            aria-label={p.awayUntilTitle}
+          />
+          {form.awayUntil && (
+            <button
+              type="button"
+              onClick={() => set("awayUntil", "")}
+              className="text-sm font-medium text-ink-500 hover:text-ink-800"
+            >
+              {p.awayUntilClear}
+            </button>
+          )}
+        </span>
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
