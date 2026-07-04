@@ -1,5 +1,6 @@
 // S2S helpers against provider-service.
 import { s2s } from "./http";
+import { log } from "./log";
 
 const PROVIDER_SERVICE_URL =
   process.env.PROVIDER_SERVICE_URL ?? "http://localhost:4002";
@@ -19,7 +20,7 @@ export async function getProviderIdByUser(
     const data = (await res.json()) as { provider: { id: string } | null };
     return data.provider?.id ?? null;
   } catch (e) {
-    console.error("[providers] by-user lookup failed", e);
+    log.error("by-user lookup failed", { context: "providers", err: e });
     return null;
   }
 }

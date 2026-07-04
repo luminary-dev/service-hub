@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
 import { getAuth, getLocale, getOrigin, s2s } from "../lib/http";
+import { log } from "../lib/log";
 import { jobSchema, jobResponseSchema } from "../lib/job-schema";
 import { categoryValidator } from "../lib/categories";
 
@@ -38,7 +39,7 @@ async function fetchUsers(
     };
     for (const u of data.users) map.set(u.id, { name: u.name, email: u.email });
   } catch (e) {
-    console.error("[jobs] user hydration failed", e);
+    log.error("user hydration failed", { context: "jobs", err: e });
   }
   return map;
 }
@@ -60,7 +61,7 @@ async function fetchProviders(
       map.set(p.id, { contactName: p.contactName, contactPhone: p.contactPhone });
     }
   } catch (e) {
-    console.error("[jobs] provider hydration failed", e);
+    log.error("provider hydration failed", { context: "jobs", err: e });
   }
   return map;
 }
@@ -113,7 +114,7 @@ jobs.get("/board", async (c) => {
   try {
     provider = await getProviderByUser(auth.userId);
   } catch (e) {
-    console.error("[jobs] provider gate failed", e);
+    log.error("provider gate failed", { context: "jobs", err: e });
     return c.json({ error: "Upstream service unavailable" }, 502);
   }
   if (!provider) {
@@ -234,7 +235,7 @@ jobs.post("/:id/responses", async (c) => {
   try {
     provider = await getProviderByUser(auth.userId);
   } catch (e) {
-    console.error("[job-response] provider gate failed", e);
+    log.error("provider gate failed", { context: "job-response", err: e });
     return c.json({ error: "Upstream service unavailable" }, 502);
   }
   if (!provider) {
@@ -293,7 +294,7 @@ jobs.post("/:id/responses", async (c) => {
       });
     }
   } catch (e) {
-    console.error("[job-response] notification failed", e);
+    log.error("notification failed", { context: "job-response", err: e });
   }
 
   return c.json({ ok: true });

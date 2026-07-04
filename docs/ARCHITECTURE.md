@@ -37,6 +37,16 @@ through internal HTTP endpoints.
   `prisma/migrations/` (baseline `0_init`); dev databases created before
   the baseline run `scripts/baseline-migrations.sh` once.
   See `services/identity-service/` for the reference scaffold.
+- **Logging**: structured JSON on stdout, one line per event —
+  `{ level, time, service, msg, ...fields }` via the canonical
+  `src/lib/logging.ts` (identical copy in every service incl. the gateway;
+  each service instantiates it in `src/lib/log.ts`). The request middleware
+  logs one line per request (`requestId`, `method`, `path`, `status`,
+  `durationMs`); `/healthz` polling is never logged. The gateway generates
+  `x-request-id` (client-sent values are stripped — it's on the trusted
+  `GATEWAY_HEADERS` list) and propagates it upstream so one id follows a
+  request across services; services log the id they receive. Errors go
+  through `log.error(msg, { context, err })` — no bare `console.error`.
 - **Error shape**: `{ "error": string }` with the exact monolith status codes
   and messages listed per endpoint below. Success shapes also match the
   monolith exactly.

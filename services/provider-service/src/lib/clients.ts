@@ -2,6 +2,7 @@
 // hydration degrades gracefully (per the shared conventions) — a failing peer
 // must never take down a provider page.
 import { s2s } from "./http";
+import { log } from "./log";
 
 const IDENTITY_URL = process.env.IDENTITY_SERVICE_URL ?? "http://localhost:4001";
 const REVIEW_URL = process.env.REVIEW_SERVICE_URL ?? "http://localhost:4003";
@@ -121,7 +122,7 @@ export async function sendInquiryEmail(args: {
       body: JSON.stringify(args),
     });
   } catch (e) {
-    console.error("[inquiry] notification failed", e);
+    log.error("notification failed", { context: "inquiry", err: e });
   }
 }
 

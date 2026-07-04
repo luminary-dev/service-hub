@@ -2,6 +2,7 @@
 // S2S to notification-service instead of calling Resend directly.
 import { db } from "../db";
 import { s2s } from "./http";
+import { log } from "./log";
 import { createToken, VERIFY_TOKEN_TTL_MS, RESET_TOKEN_TTL_MS } from "./tokens";
 
 const NOTIFICATION_SERVICE_URL =
@@ -65,6 +66,6 @@ export async function sendPasswordResetEmail(
   try {
     await sendEmail("/internal/email/password-reset", { to: email, url, locale });
   } catch (e) {
-    console.error("[forgot-password] email send failed", e);
+    log.error("email send failed", { context: "forgot-password", err: e });
   }
 }
