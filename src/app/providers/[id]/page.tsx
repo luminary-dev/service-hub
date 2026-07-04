@@ -19,6 +19,7 @@ import InquiryForm from "@/components/InquiryForm";
 import ReviewSection from "@/components/ReviewSection";
 import ContactLinks from "@/components/ContactLinks";
 import FavoriteButton from "@/components/FavoriteButton";
+import ShareButton from "@/components/ShareButton";
 import VerifiedBadge from "@/components/VerifiedBadge";
 
 export const dynamic = "force-dynamic";
@@ -198,13 +199,21 @@ export default async function ProviderProfilePage({
               </div>
             </div>
             <div className="flex flex-col items-start gap-3 sm:items-end">
-              {canFavorite && (
-                <FavoriteButton
-                  providerId={provider.id}
-                  initialFavorited={favorited}
-                  variant="inline"
+              <div className="flex flex-wrap items-center gap-2">
+                {canFavorite && (
+                  <FavoriteButton
+                    providerId={provider.id}
+                    initialFavorited={favorited}
+                    variant="inline"
+                  />
+                )}
+                <ShareButton
+                  title={`${provider.user.name} — ${categoryLabelLoc(
+                    provider.category,
+                    locale
+                  )}`}
                 />
-              )}
+              </div>
               <ContactLinks
                 phone={provider.user.phone}
                 whatsapp={provider.whatsapp}
