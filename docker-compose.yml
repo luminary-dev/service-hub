@@ -140,9 +140,9 @@ services:
   web:
     build:
       context: .
-      args:
-        GATEWAY_URL: http://api-gateway:4000
     environment:
+      # Read at request time by src/proxy.ts (and by server-side fetches) —
+      # not baked into the image, so it can change without a rebuild.
       GATEWAY_URL: http://api-gateway:4000
       AUTH_SECRET: ${AUTH_SECRET:-dev-only-secret}
       NEXT_PUBLIC_SITE_URL: ${WEB_ORIGIN:-http://localhost:3000}
