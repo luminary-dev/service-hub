@@ -61,8 +61,11 @@ export default function JobPostForm({
   return (
     <form onSubmit={submit} className="card space-y-4 p-6">
       <div>
-        <label className="label">{t.jobTitle}</label>
+        <label className="label" htmlFor="job-jobTitle">
+          {t.jobTitle}
+        </label>
         <input
+          id="job-jobTitle"
           className="input"
           value={form.title}
           onChange={(e) => set("title", e.target.value)}
@@ -74,8 +77,11 @@ export default function JobPostForm({
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="label">{t.category}</label>
+          <label className="label" htmlFor="job-category">
+            {t.category}
+          </label>
           <select
+            id="job-category"
             className="input"
             value={form.category}
             onChange={(e) => set("category", e.target.value)}
@@ -90,8 +96,11 @@ export default function JobPostForm({
           </select>
         </div>
         <div>
-          <label className="label">{t.district}</label>
+          <label className="label" htmlFor="job-district">
+            {t.district}
+          </label>
           <select
+            id="job-district"
             className="input"
             value={form.district}
             onChange={(e) => set("district", e.target.value)}
@@ -107,8 +116,11 @@ export default function JobPostForm({
         </div>
       </div>
       <div>
-        <label className="label">{t.description}</label>
+        <label className="label" htmlFor="job-description">
+          {t.description}
+        </label>
         <textarea
+          id="job-description"
           className="input min-h-32 resize-y"
           value={form.description}
           onChange={(e) => set("description", e.target.value)}
@@ -119,8 +131,11 @@ export default function JobPostForm({
         />
       </div>
       <div>
-        <label className="label">{t.budget}</label>
+        <label className="label" htmlFor="job-budget">
+          {t.budget}
+        </label>
         <input
+          id="job-budget"
           className="input"
           type="number"
           min={100}
@@ -130,7 +145,11 @@ export default function JobPostForm({
         />
         <p className="mt-1 text-xs text-ink-500">{t.budgetOptional}</p>
       </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && (
+        <p role="alert" className="text-sm text-red-600">
+          {error}
+        </p>
+      )}
       <button type="submit" disabled={loading} className="btn-primary">
         {loading ? t.posting : t.post}
       </button>

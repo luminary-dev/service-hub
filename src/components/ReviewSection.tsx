@@ -114,8 +114,16 @@ export default function ReviewSection({
 
       {showForm && (
         <form onSubmit={submit} className="mt-4 rounded-xl bg-ink-50 p-4">
-          <label className="label">{t.reviews.rating}</label>
-          <div className="flex gap-1">
+          {/* The star picker is a button group, so it is named with
+              aria-labelledby rather than an orphaned <label>. */}
+          <span className="label" id="review-rating-label">
+            {t.reviews.rating}
+          </span>
+          <div
+            role="group"
+            aria-labelledby="review-rating-label"
+            className="flex gap-1"
+          >
             {[1, 2, 3, 4, 5].map((i) => (
               <button
                 key={i}
@@ -123,9 +131,12 @@ export default function ReviewSection({
                 onClick={() => setRating(i)}
                 onMouseEnter={() => setHover(i)}
                 onMouseLeave={() => setHover(0)}
+                aria-label={t.reviews.starLabel(i)}
+                aria-pressed={rating === i}
                 className="transition hover:scale-110"
               >
                 <FaStar
+                  aria-hidden
                   className={`h-6 w-6 ${
                     i <= (hover || rating) ? "text-amber-400" : "text-ink-300"
                   }`}
@@ -133,8 +144,11 @@ export default function ReviewSection({
               </button>
             ))}
           </div>
-          <label className="label mt-3">{t.reviews.yourReview}</label>
+          <label className="label mt-3" htmlFor="review-comment">
+            {t.reviews.yourReview}
+          </label>
           <textarea
+            id="review-comment"
             className="input min-h-24 resize-y"
             value={comment}
             onChange={(e) => setComment(e.target.value)}
@@ -168,20 +182,28 @@ export default function ReviewSection({
             </div>
           )}
 
-          <label className="label mt-3">{t.reviews.addPhotos}</label>
+          <label className="label mt-3" htmlFor="review-photos">
+            {t.reviews.addPhotos}
+          </label>
           <input
+            id="review-photos"
             ref={fileRef}
             type="file"
             accept="image/jpeg,image/png,image/webp"
             multiple
             disabled={slotsLeft <= 0}
+            aria-describedby="review-photos-hint"
             className="input"
           />
-          <p className="mt-1 text-xs text-ink-500">
+          <p id="review-photos-hint" className="mt-1 text-xs text-ink-500">
             {t.reviews.photosHint(slotsLeft)}
           </p>
 
-          {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+          {error && (
+            <p role="alert" className="mt-2 text-sm text-red-600">
+              {error}
+            </p>
+          )}
           <div className="mt-3 flex gap-2">
             <button type="submit" disabled={loading} className="btn-primary">
               {loading ? t.reviews.saving : t.reviews.submit}
@@ -211,7 +233,10 @@ export default function ReviewSection({
                       {r.userName}
                     </p>
                     <div className="flex items-center gap-2">
-                      <Stars rating={r.rating} />
+                      <Stars
+                        rating={r.rating}
+                        label={t.a11y.rated(r.rating.toFixed(1))}
+                      />
                       <span className="text-xs text-ink-500">
                         {formatDate(r.createdAt, locale)}
                       </span>
@@ -236,11 +261,12 @@ export default function ReviewSection({
                       href={ph.url}
                       target="_blank"
                       rel="noopener noreferrer"
+                      // Image-only link: the alt text is the link's name.
                       className="block overflow-hidden rounded-lg border border-ink-200"
                     >
                       <Image
                         src={ph.url}
-                        alt=""
+                        alt={t.profile.viewPhoto}
                         width={96}
                         height={96}
                         unoptimized={isSvg(ph.url)}

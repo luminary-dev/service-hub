@@ -51,8 +51,11 @@ export default function ForgotPasswordPage() {
 
       <form onSubmit={submit} className="card mt-8 space-y-4 p-6">
         <div>
-          <label className="label">{t.forgot.email}</label>
+          <label className="label" htmlFor="forgot-email">
+            {t.forgot.email}
+          </label>
           <input
+            id="forgot-email"
             className="input"
             type="email"
             value={email}

@@ -89,8 +89,11 @@ export default function VerificationSection({
 
       <form onSubmit={submit} className="mt-4 grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="label">{t.nicLabel}</label>
+          <label className="label" htmlFor="vs-nicLabel">
+            {t.nicLabel}
+          </label>
           <input
+            id="vs-nicLabel"
             ref={nicRef}
             type="file"
             accept="image/jpeg,image/png,image/webp"
@@ -98,8 +101,11 @@ export default function VerificationSection({
           />
         </div>
         <div>
-          <label className="label">{t.businessLabel}</label>
+          <label className="label" htmlFor="vs-businessLabel">
+            {t.businessLabel}
+          </label>
           <input
+            id="vs-businessLabel"
             ref={bizRef}
             type="file"
             accept="image/jpeg,image/png,image/webp"
@@ -108,13 +114,17 @@ export default function VerificationSection({
         </div>
         <div className="sm:col-span-2">
           <p className="text-xs text-ink-500">{t.privacyHint}</p>
-          {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-          <button
-            type="submit"
-            disabled={loading}
-            className="btn-primary mt-3"
-          >
-            {loading ? t.submitting : status === "REJECTED" ? t.resubmit : t.submit}
+          {error && (
+            <p role="alert" className="mt-2 text-sm text-red-600">
+              {error}
+            </p>
+          )}
+          <button type="submit" disabled={loading} className="btn-primary mt-3">
+            {loading
+              ? t.submitting
+              : status === "REJECTED"
+                ? t.resubmit
+                : t.submit}
           </button>
         </div>
       </form>

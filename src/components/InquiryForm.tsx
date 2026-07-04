@@ -63,8 +63,11 @@ export default function InquiryForm({
 
       <div className="mt-4 space-y-3">
         <div>
-          <label className="label">{t.inquiry.name}</label>
+          <label className="label" htmlFor="inquiry-name">
+            {t.inquiry.name}
+          </label>
           <input
+            id="inquiry-name"
             className="input"
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -73,8 +76,11 @@ export default function InquiryForm({
           />
         </div>
         <div>
-          <label className="label">{t.inquiry.phone}</label>
+          <label className="label" htmlFor="inquiry-phone">
+            {t.inquiry.phone}
+          </label>
           <input
+            id="inquiry-phone"
             className="input"
             type="tel"
             placeholder="07X XXX XXXX"
@@ -85,11 +91,12 @@ export default function InquiryForm({
           />
         </div>
         <div>
-          <label className="label">
+          <label className="label" htmlFor="inquiry-email">
             {t.inquiry.email}{" "}
             <span className="text-ink-500">{t.inquiry.optional}</span>
           </label>
           <input
+            id="inquiry-email"
             className="input"
             type="email"
             value={email}
@@ -97,8 +104,11 @@ export default function InquiryForm({
           />
         </div>
         <div>
-          <label className="label">{t.inquiry.message}</label>
+          <label className="label" htmlFor="inquiry-message">
+            {t.inquiry.message}
+          </label>
           <textarea
+            id="inquiry-message"
             className="input min-h-28 resize-y"
             placeholder={t.inquiry.messagePh}
             value={message}
@@ -109,7 +119,11 @@ export default function InquiryForm({
         </div>
       </div>
 
-      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      {error && (
+        <p role="alert" className="mt-3 text-sm text-red-600">
+          {error}
+        </p>
+      )}
 
       <button type="submit" disabled={loading} className="btn-primary mt-4 w-full">
         <FaRegPaperPlane className="h-3.5 w-3.5" />

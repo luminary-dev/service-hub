@@ -85,9 +85,11 @@ export default function FilterBar({
       >
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <input
+            type="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder={t.browse.searchPh}
+            aria-label={t.browse.searchPh}
             className="input sm:flex-1"
           />
           <select

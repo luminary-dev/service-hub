@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useLocale } from "./I18nProvider";
+import { useLocale, useT } from "./I18nProvider";
 import type { Locale } from "@/lib/i18n";
 
 function writeLocaleCookie(next: Locale) {
@@ -10,6 +10,7 @@ function writeLocaleCookie(next: Locale) {
 
 export default function LanguageToggle() {
   const locale = useLocale();
+  const t = useT();
   const router = useRouter();
 
   function setLocale(next: Locale) {
@@ -22,7 +23,7 @@ export default function LanguageToggle() {
     <div
       className="flex items-center rounded-full border border-ink-200 bg-ink-100 p-0.5"
       role="group"
-      aria-label="Language"
+      aria-label={t.nav.language}
     >
       {(
         [
@@ -32,6 +33,7 @@ export default function LanguageToggle() {
       ).map(([value, label]) => (
         <button
           key={value}
+          type="button"
           onClick={() => setLocale(value)}
           aria-pressed={locale === value}
           className={`cursor-pointer rounded-full px-2.5 py-1 text-xs font-semibold transition-[background-color,color] duration-200 ease-snap ${

@@ -101,7 +101,11 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
   }
 
   if (error) {
-    return <p className="text-sm text-red-600">{t.messages.loadFailed}</p>;
+    return (
+      <p role="alert" className="text-sm text-red-600">
+        {t.messages.loadFailed}
+      </p>
+    );
   }
   if (!thread) {
     return (
@@ -125,16 +129,20 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
         </h2>
       </div>
 
-      <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
+      <div
+        role="log"
+        aria-label={t.messages.threadWith(counterpart)}
+        className="flex-1 space-y-3 overflow-y-auto px-5 py-4"
+      >
         <div className="rounded-xl bg-ink-50 px-4 py-3 text-sm text-ink-600">
-          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-ink-400">
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-ink-500">
             {t.messages.original} · {formatDate(thread.inquiry.createdAt, locale)}
           </p>
           <p className="whitespace-pre-line">{thread.inquiry.message}</p>
         </div>
 
         {thread.messages.length === 0 && (
-          <p className="py-6 text-center text-sm text-ink-400">
+          <p className="py-6 text-center text-sm text-ink-500">
             {t.messages.empty}
           </p>
         )}
@@ -146,13 +154,13 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
               <div
                 className={
                   mine
-                    ? "max-w-[80%] rounded-2xl rounded-br-sm bg-brand-600 px-4 py-2.5 text-sm text-white"
+                    ? "max-w-[80%] rounded-2xl rounded-br-sm bg-brand-600 px-4 py-2.5 text-sm text-white dark:text-ink-50"
                     : "max-w-[80%] rounded-2xl rounded-bl-sm bg-ink-100 px-4 py-2.5 text-sm text-ink-800"
                 }
               >
                 <p className="whitespace-pre-line break-words">{m.body}</p>
                 <p
-                  className={`mt-1 text-[11px] ${mine ? "text-white/70" : "text-ink-400"}`}
+                  className={`mt-1 text-[11px] ${mine ? "text-white/80 dark:text-ink-50/80" : "text-ink-500"}`}
                 >
                   {mine ? t.messages.you : counterpart} ·{" "}
                   {formatDate(m.createdAt, locale, {
@@ -183,7 +191,9 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
         </button>
       </form>
       {sendError && (
-        <p className="px-4 pb-3 text-sm text-red-600">{t.messages.sendFailed}</p>
+        <p role="alert" className="px-4 pb-3 text-sm text-red-600">
+          {t.messages.sendFailed}
+        </p>
       )}
     </div>
   );

@@ -65,7 +65,7 @@ export default function ProviderRegisterForm({
 
   function setService(i: number, field: keyof ServiceInput, value: string) {
     setServices((list) =>
-      list.map((s, idx) => (idx === i ? { ...s, [field]: value } : s))
+      list.map((s, idx) => (idx === i ? { ...s, [field]: value } : s)),
     );
   }
 
@@ -184,8 +184,11 @@ export default function ProviderRegisterForm({
         {step === 0 && (
           <div className="space-y-4">
             <div>
-              <label className="label">{r.fullName}</label>
+              <label className="label" htmlFor="pr-name">
+                {r.fullName}
+              </label>
               <input
+                id="pr-name"
                 className="input"
                 value={form.name}
                 onChange={(e) => set("name", e.target.value)}
@@ -193,8 +196,11 @@ export default function ProviderRegisterForm({
               />
             </div>
             <div>
-              <label className="label">{r.email}</label>
+              <label className="label" htmlFor="pr-email">
+                {r.email}
+              </label>
               <input
+                id="pr-email"
                 className="input"
                 type="email"
                 value={form.email}
@@ -203,8 +209,11 @@ export default function ProviderRegisterForm({
               />
             </div>
             <div>
-              <label className="label">{r.phone}</label>
+              <label className="label" htmlFor="pr-phone">
+                {r.phone}
+              </label>
               <input
+                id="pr-phone"
                 className="input"
                 type="tel"
                 placeholder="07X XXX XXXX"
@@ -214,8 +223,11 @@ export default function ProviderRegisterForm({
               <p className="mt-1 text-xs text-ink-500">{r.phoneHint}</p>
             </div>
             <div>
-              <label className="label">{r.password}</label>
+              <label className="label" htmlFor="pr-password">
+                {r.password}
+              </label>
               <input
+                id="pr-password"
                 className="input"
                 type="password"
                 value={form.password}
@@ -229,12 +241,22 @@ export default function ProviderRegisterForm({
         {step === 1 && (
           <div className="space-y-4">
             <div>
-              <label className="label">{r.serviceQuestion}</label>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {/* The category picker is a group of toggle buttons, not a
+                  single field — a <label> has nothing to point at, so the
+                  group is named via aria-labelledby instead. */}
+              <span className="label" id="pr-category-label">
+                {r.serviceQuestion}
+              </span>
+              <div
+                role="group"
+                aria-labelledby="pr-category-label"
+                className="grid grid-cols-2 gap-2 sm:grid-cols-3"
+              >
                 {categories.map((c) => (
                   <button
                     key={c.slug}
                     type="button"
+                    aria-pressed={form.category === c.slug}
                     onClick={() => set("category", c.slug)}
                     className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm transition ${
                       form.category === c.slug
@@ -256,8 +278,11 @@ export default function ProviderRegisterForm({
               </div>
             </div>
             <div>
-              <label className="label">{r.headline}</label>
+              <label className="label" htmlFor="pr-headline">
+                {r.headline}
+              </label>
               <input
+                id="pr-headline"
                 className="input"
                 value={form.headline}
                 onChange={(e) => set("headline", e.target.value)}
@@ -266,8 +291,11 @@ export default function ProviderRegisterForm({
               />
             </div>
             <div>
-              <label className="label">{r.about}</label>
+              <label className="label" htmlFor="pr-bio">
+                {r.about}
+              </label>
               <textarea
+                id="pr-bio"
                 className="input min-h-32 resize-y"
                 value={form.bio}
                 onChange={(e) => set("bio", e.target.value)}
@@ -276,8 +304,11 @@ export default function ProviderRegisterForm({
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
               <div>
-                <label className="label">{r.district}</label>
+                <label className="label" htmlFor="pr-district">
+                  {r.district}
+                </label>
                 <select
+                  id="pr-district"
                   className="input"
                   value={form.district}
                   onChange={(e) => set("district", e.target.value)}
@@ -291,8 +322,11 @@ export default function ProviderRegisterForm({
                 </select>
               </div>
               <div>
-                <label className="label">{r.townCity}</label>
+                <label className="label" htmlFor="pr-city">
+                  {r.townCity}
+                </label>
                 <input
+                  id="pr-city"
                   className="input"
                   value={form.city}
                   onChange={(e) => set("city", e.target.value)}
@@ -300,8 +334,11 @@ export default function ProviderRegisterForm({
                 />
               </div>
               <div>
-                <label className="label">{r.experience}</label>
+                <label className="label" htmlFor="pr-experience">
+                  {r.experience}
+                </label>
                 <input
+                  id="pr-experience"
                   className="input"
                   type="number"
                   min={0}
@@ -319,8 +356,11 @@ export default function ProviderRegisterForm({
             <p className="text-sm text-ink-500">{r.contactOptional}</p>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="label">{r.whatsapp}</label>
+                <label className="label" htmlFor="pr-whatsapp">
+                  {r.whatsapp}
+                </label>
                 <input
+                  id="pr-whatsapp"
                   className="input"
                   type="tel"
                   placeholder="94771234567"
@@ -329,8 +369,11 @@ export default function ProviderRegisterForm({
                 />
               </div>
               <div>
-                <label className="label">{r.altPhone}</label>
+                <label className="label" htmlFor="pr-phone2">
+                  {r.altPhone}
+                </label>
                 <input
+                  id="pr-phone2"
                   className="input"
                   type="tel"
                   value={form.phone2}
@@ -338,8 +381,11 @@ export default function ProviderRegisterForm({
                 />
               </div>
               <div>
-                <label className="label">{r.facebook}</label>
+                <label className="label" htmlFor="pr-facebook">
+                  {r.facebook}
+                </label>
                 <input
+                  id="pr-facebook"
                   className="input"
                   placeholder="facebook.com/yourpage"
                   value={form.facebook}
@@ -347,8 +393,11 @@ export default function ProviderRegisterForm({
                 />
               </div>
               <div>
-                <label className="label">{r.instagram}</label>
+                <label className="label" htmlFor="pr-instagram">
+                  {r.instagram}
+                </label>
                 <input
+                  id="pr-instagram"
                   className="input"
                   placeholder="instagram.com/yourprofile"
                   value={form.instagram}
@@ -356,8 +405,11 @@ export default function ProviderRegisterForm({
                 />
               </div>
               <div>
-                <label className="label">{r.tiktok}</label>
+                <label className="label" htmlFor="pr-tiktok">
+                  {r.tiktok}
+                </label>
                 <input
+                  id="pr-tiktok"
                   className="input"
                   placeholder="tiktok.com/@you"
                   value={form.tiktok}
@@ -365,8 +417,11 @@ export default function ProviderRegisterForm({
                 />
               </div>
               <div>
-                <label className="label">{r.youtube}</label>
+                <label className="label" htmlFor="pr-youtube">
+                  {r.youtube}
+                </label>
                 <input
+                  id="pr-youtube"
                   className="input"
                   placeholder="youtube.com/@yourchannel"
                   value={form.youtube}
@@ -374,8 +429,11 @@ export default function ProviderRegisterForm({
                 />
               </div>
               <div className="sm:col-span-2">
-                <label className="label">{r.website}</label>
+                <label className="label" htmlFor="pr-website">
+                  {r.website}
+                </label>
                 <input
+                  id="pr-website"
                   className="input"
                   placeholder="www.yoursite.lk"
                   value={form.website}
@@ -399,7 +457,9 @@ export default function ProviderRegisterForm({
                     <button
                       type="button"
                       onClick={() =>
-                        setServices((list) => list.filter((_, idx) => idx !== i))
+                        setServices((list) =>
+                          list.filter((_, idx) => idx !== i),
+                        )
                       }
                       className="text-xs font-medium text-red-500 hover:text-red-600"
                     >
@@ -411,12 +471,14 @@ export default function ProviderRegisterForm({
                   <input
                     className="input"
                     placeholder={r.serviceTitlePh}
+                    aria-label={r.serviceTitlePh}
                     value={s.title}
                     onChange={(e) => setService(i, "title", e.target.value)}
                   />
                   <input
                     className="input"
                     placeholder={r.serviceDescPh}
+                    aria-label={r.serviceDescPh}
                     value={s.description}
                     onChange={(e) =>
                       setService(i, "description", e.target.value)
@@ -429,12 +491,14 @@ export default function ProviderRegisterForm({
                         type="number"
                         min={1}
                         placeholder={r.pricePh}
+                        aria-label={r.pricePh}
                         value={s.price}
                         onChange={(e) => setService(i, "price", e.target.value)}
                       />
                     </div>
                     <select
                       className="input w-36"
+                      aria-label={r.serviceN(i + 1)}
                       value={s.priceType}
                       onChange={(e) =>
                         setService(i, "priceType", e.target.value)
@@ -453,7 +517,9 @@ export default function ProviderRegisterForm({
             {services.length < 20 && (
               <button
                 type="button"
-                onClick={() => setServices((list) => [...list, { ...emptyService }])}
+                onClick={() =>
+                  setServices((list) => [...list, { ...emptyService }])
+                }
                 className="btn-secondary w-full"
               >
                 {r.addAnother}
@@ -462,7 +528,11 @@ export default function ProviderRegisterForm({
           </div>
         )}
 
-        {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+        {error && (
+          <p role="alert" className="mt-4 text-sm text-red-600">
+            {error}
+          </p>
+        )}
 
         <div className="mt-6 flex items-center justify-between">
           {step > 0 ? (

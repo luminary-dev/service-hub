@@ -292,6 +292,7 @@ export default function PhotosManager({
         <input
           className="input mt-4 w-full"
           placeholder={ph.captionPh}
+          aria-label={ph.captionPh}
           value={caption}
           onChange={(e) => setCaption(e.target.value)}
           maxLength={120}
@@ -379,6 +380,7 @@ export default function PhotosManager({
                 {(u.status === "uploading" || u.status === "queued") && (
                   <div
                     role="progressbar"
+                    aria-label={u.file.name}
                     aria-valuenow={u.progress}
                     aria-valuemin={0}
                     aria-valuemax={100}

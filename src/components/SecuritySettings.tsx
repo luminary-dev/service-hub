@@ -99,8 +99,11 @@ export default function SecuritySettings() {
           {t.security.changeTitle}
         </h2>
         <div>
-          <label className="label">{t.security.current}</label>
+          <label className="label" htmlFor="current-password">
+            {t.security.current}
+          </label>
           <input
+            id="current-password"
             className="input"
             type="password"
             value={current}
@@ -110,8 +113,11 @@ export default function SecuritySettings() {
           />
         </div>
         <div>
-          <label className="label">{t.security.newPassword}</label>
+          <label className="label" htmlFor="new-password">
+            {t.security.newPassword}
+          </label>
           <input
+            id="new-password"
             className="input"
             type="password"
             value={next}
@@ -123,8 +129,11 @@ export default function SecuritySettings() {
           />
         </div>
         <div>
-          <label className="label">{t.security.confirm}</label>
+          <label className="label" htmlFor="confirm-password">
+            {t.security.confirm}
+          </label>
           <input
+            id="confirm-password"
             className="input"
             type="password"
             value={confirm}
@@ -133,9 +142,19 @@ export default function SecuritySettings() {
             minLength={6}
             maxLength={100}
             autoComplete="new-password"
+            aria-invalid={changeError ? true : undefined}
+            aria-describedby={changeError ? "change-password-error" : undefined}
           />
         </div>
-        {changeError && <p className="text-sm text-red-600">{changeError}</p>}
+        {changeError && (
+          <p
+            id="change-password-error"
+            role="alert"
+            className="text-sm text-red-600"
+          >
+            {changeError}
+          </p>
+        )}
         <button type="submit" disabled={changing} className="btn-primary">
           {changing ? t.security.changing : t.security.change}
         </button>
@@ -147,7 +166,9 @@ export default function SecuritySettings() {
         </h2>
         <p className="mt-1 text-sm text-ink-500">{t.security.logoutAllBody}</p>
         {logoutError && (
-          <p className="mt-3 text-sm text-red-600">{logoutError}</p>
+          <p role="alert" className="mt-3 text-sm text-red-600">
+            {logoutError}
+          </p>
         )}
         <button
           type="button"
@@ -168,17 +189,29 @@ export default function SecuritySettings() {
         </h2>
         <p className="mt-1 text-sm text-ink-500">{t.security.deleteBody}</p>
         <div className="mt-4">
-          <label className="label">{t.security.deletePassword}</label>
+          <label className="label" htmlFor="delete-password">
+            {t.security.deletePassword}
+          </label>
           <input
+            id="delete-password"
             className="input"
             type="password"
             value={deletePassword}
             onChange={(e) => setDeletePassword(e.target.value)}
             required
             autoComplete="current-password"
+            aria-describedby={deleteError ? "delete-account-error" : undefined}
           />
         </div>
-        {deleteError && <p className="mt-3 text-sm text-red-600">{deleteError}</p>}
+        {deleteError && (
+          <p
+            id="delete-account-error"
+            role="alert"
+            className="mt-3 text-sm text-red-600"
+          >
+            {deleteError}
+          </p>
+        )}
         <button
           type="submit"
           disabled={deleting || deletePassword.length === 0}
