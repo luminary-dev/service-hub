@@ -79,6 +79,9 @@ model WorkPhoto {
   provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
   url        String
   caption    String?
+  // Moderation soft delete: set by admin removal, cleared by restore. Public
+  // queries filter it; owner deletes and account erasure stay hard.
+  deletedAt  DateTime?
   createdAt  DateTime @default(now())
 
   @@index([providerId])

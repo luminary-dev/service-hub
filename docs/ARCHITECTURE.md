@@ -279,7 +279,8 @@ Public (all monolith semantics preserved; `name` fields come from denormalized
   `PATCH /api/admin/providers/:id` — verify/unverify/suspend/unsuspend.
   `PATCH /api/admin/verifications/:id` — approve/reject →
   `{ status: "VERIFIED"|"REJECTED" }`.
-  `DELETE /api/admin/photos/:id`.
+  `DELETE /api/admin/photos/:id` (SOFT delete — reversible via
+  `PATCH /api/admin/photos/:id/restore`; owner deletes stay hard).
 - `GET /files/*` — serves `$UPLOAD_DIR` files.
 
 Internal: `POST /internal/providers` (register orchestration; creates
@@ -302,7 +303,9 @@ contactPhone, suspended}] }` (job-service hydration),
   `reviews`; messages identical → `{ ok: true }`.
 - `DELETE /api/reviews/photos/:id` — owner-or-admin (401/403/404), deletes
   file best-effort.
-- `DELETE /api/admin/reviews/:id` — ADMIN only (403) → `{ ok: true }`.
+- `DELETE /api/admin/reviews/:id` — ADMIN only (403); SOFT delete (sets
+  `deletedAt`; row/photos/files survive) → `{ ok: true }`.
+- `PATCH /api/admin/reviews/:id/restore` — ADMIN only; clears `deletedAt`.
 - `GET /files/*`.
 
 Internal: `GET /internal/ratings?providerIds=` → `{ ratings: { [providerId]:

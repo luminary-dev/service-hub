@@ -6,7 +6,6 @@ import type { Context } from "hono";
 import { db } from "../db";
 import { getAuth } from "../lib/http";
 import { fetchProviderReviews, fetchRatings } from "../lib/clients";
-import { removeStoredFile } from "../lib/storage";
 
 export const adminRoutes = new Hono();
 
@@ -56,7 +55,8 @@ adminRoutes.get("/api/admin/providers/:id", async (c) => {
     return c.json({ error: "Provider not found" }, 404);
   }
 
-  const { reviews } = await fetchProviderReviews(id);
+  // Moderation view: include soft-deleted reviews so admins can restore.
+  const { reviews } = await fetchProviderReviews(id, { includeDeleted: true });
   return c.json({
     provider: {
       ...provider,
@@ -171,8 +171,23 @@ adminRoutes.delete("/api/admin/photos/:id", async (c) => {
     return c.json({ error: "Photo not found" }, 404);
   }
 
-  await db.workPhoto.delete({ where: { id } });
-  await removeStoredFile(photo.url);
+  // Moderation removal is a SOFT delete (#32): row and file survive so the
+  // action is reversible below. Owner deletes and account erasure stay hard.
+  await db.workPhoto.update({
+    where: { id },
+    data: { deletedAt: new Date() },
+  });
 
+  return c.json({ ok: true });
+});
+
+adminRoutes.patch("/api/admin/photos/:id/restore", async (c) => {
+  if (!isAdmin(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+  await db.workPhoto.updateMany({
+    where: { id: c.req.param("id") },
+    data: { deletedAt: null },
+  });
   return c.json({ ok: true });
 });
