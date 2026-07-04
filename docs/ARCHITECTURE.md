@@ -14,7 +14,9 @@ server components ── GET ─────────────────
                                    ├── provider-service     (:4002)  provider_db
                                    ├── review-service       (:4003)  review_db
                                    ├── job-service          (:4004)  job_db
-                                   └── notification-service (:4005)  (no db)
+                                   ├── notification-service (:4005)  (no db)
+                                   ├── media-service        (:4006)  (no db — upload bytes + sharp)
+                                   └── chat-service         (:4007)  (no db — Claude assistant)
 ```
 
 Each service owns its database (separate Postgres databases on one local
@@ -91,7 +93,7 @@ through internal HTTP endpoints.
 | `INTERNAL_API_SECRET` | all services + gateway |
 | `IDENTITY_SERVICE_URL`, `PROVIDER_SERVICE_URL`, `REVIEW_SERVICE_URL`, `JOB_SERVICE_URL`, `NOTIFICATION_SERVICE_URL`, `MEDIA_SERVICE_URL` | gateway + any service that calls that peer |
 | `RESEND_API_KEY`, `EMAIL_FROM` | notification (console fallback when unset) |
-| `BLOB_READ_WRITE_TOKEN` | provider, review (uploads; local-disk fallback) |
+| `BLOB_READ_WRITE_TOKEN` | media (uploads; local-disk fallback under `$MEDIA_DIR`) |
 | `MEDIA_DIR` | media (local upload root, default `./data`; per-namespace subdirs) |
 | `ANTHROPIC_API_KEY` | chat (LLM assistant; unset → 503) |
 | `CHAT_SERVICE_URL`, `MEDIA_SERVICE_URL` | callers of those peers (+ web for chat) |
@@ -182,8 +184,9 @@ Public entry. Responsibilities:
    - `/api/admin/*` (providers, photos, verifications, reports) → provider
    - `/api/photos/:id/report` → provider (work-photo abuse reports)
    - `/api/jobs*` → job
-   - `/api/files/provider/*` → provider `/files/*`; `/api/files/review/*` →
-     review `/files/*`
+   - `/api/files/provider/*` and `/api/files/review/*` → media
+     `/files/<namespace>/*` (the gateway supplies the internal secret so the
+     browser can load images)
    - anything else → `404 { error: "Not found" }`. Never forwards `/internal/*`.
 
 ## identity-service (:4001)
@@ -388,7 +391,9 @@ Public (all monolith semantics preserved; `name` fields come from denormalized
   target summary from local tables (provider name / photo url + owner; null
   when the target was hard-deleted). `PATCH /api/admin/reports/:id`
   `{ status: "RESOLVED"|"DISMISSED" }` → `{ ok: true }`.
-- `GET /files/*` — serves `$UPLOAD_DIR` files.
+
+Photo bytes live in media-service; work-photo/avatar URLs resolve through the
+gateway at `/api/files/provider/*`. provider no longer serves files itself.
 
 Internal: `GET /internal/categories` → `{ categories: [...] }` (every
 category, inactive included with its `active` flag — identity- and
@@ -428,7 +433,9 @@ contactPhone, suspended}] }` (job-service hydration),
   the review-report moderation queue, same shape/semantics as
   provider-service's `/api/admin/reports` (target summary = rating, comment,
   providerId, removed flag for soft-deleted reviews).
-- `GET /files/*`.
+
+Review-photo bytes live in media-service; URLs resolve through the gateway at
+`/api/files/review/*`. review no longer serves files itself.
 
 Internal: `GET /internal/ratings?providerIds=` → `{ ratings: { [providerId]:
 { rating, count } } }`; `GET /internal/by-provider/:id?take&cursor` → reviews
@@ -460,9 +467,11 @@ Internal: `GET /internal/jobs/count?category&district&excludeCustomerId` →
 `{ count }`.
 
 Maintenance: provider and review each expose
-`POST /internal/maintenance/sweep-orphans` → `{ scanned, removed }` — removes
-stored upload files no DB row references (24h grace window protects in-flight
-uploads); run from ops tooling with the internal secret.
+`POST /internal/maintenance/sweep-orphans` → `{ scanned, removed }` — they
+collect the URLs still referenced by their rows and hand them to media-service's
+`/internal/media/sweep`, which deletes the unreferenced files under that
+namespace (24h grace window protects in-flight uploads); run from ops tooling
+with the internal secret.
 
 Erase endpoints (account deletion, all idempotent no-op-200 for unknown users):
 provider `POST /internal/users/:id/erase` (Provider + cascades + upload files
