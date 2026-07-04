@@ -19,6 +19,7 @@ import InquiryForm from "@/components/InquiryForm";
 import ReviewSection from "@/components/ReviewSection";
 import ContactLinks from "@/components/ContactLinks";
 import FavoriteButton from "@/components/FavoriteButton";
+import ReportButton from "@/components/ReportButton";
 import ShareButton from "@/components/ShareButton";
 import VerifiedBadge from "@/components/VerifiedBadge";
 
@@ -224,6 +225,14 @@ export default async function ProviderProfilePage({
                     locale
                   )}`}
                 />
+                {!isOwner && (
+                  <ReportButton
+                    endpoint={`/api/providers/${provider.id}/report`}
+                    label={t.report.reportProvider}
+                    variant="chip"
+                    showLabel={false}
+                  />
+                )}
               </div>
               <ContactLinks
                 phone={provider.user.phone}

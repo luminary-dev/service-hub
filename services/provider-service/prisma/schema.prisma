@@ -106,6 +106,30 @@ model WorkPhoto {
   @@index([providerId])
 }
 
+// Abuse reports (#50) on content this service owns (providers and work
+// photos). Each content-owning service keeps the reports on its own content —
+// review-service has the same-shaped model for reviews. reporterId references
+// a User owned by identity-service (plain string, nullable — anonymous
+// visitors can report). No FK to the target either: a report must survive its
+// target being deleted so admins can still see what happened.
+model Report {
+  id         String  @id @default(cuid())
+  // "PROVIDER" | "WORK_PHOTO"
+  targetType String
+  targetId   String
+  reporterId String?
+  // "spam" | "scam" | "offensive" | "fake" | "other" (zod-validated)
+  reason     String
+  details    String?
+  // "OPEN" | "RESOLVED" | "DISMISSED"
+  status     String   @default("OPEN")
+  createdAt  DateTime @default(now())
+
+  // Admin queue reads by status; duplicate-protection looks up by target.
+  @@index([status])
+  @@index([targetType, targetId])
+}
+
 // userId references a User owned by identity-service (plain string, nullable —
 // anonymous inquiries are allowed).
 model Inquiry {
