@@ -17,10 +17,25 @@ export default function ChatAssistant() {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const wasOpen = useRef(false);
 
   useEffect(() => {
     if (open) bottomRef.current?.scrollIntoView({ block: "end" });
   }, [messages, open, busy]);
+
+  // Focus management: the message box gets focus when the panel opens; the
+  // launcher gets it back when the panel closes (Escape or toggle).
+  useEffect(() => {
+    if (open) {
+      wasOpen.current = true;
+      inputRef.current?.focus();
+    } else if (wasOpen.current) {
+      wasOpen.current = false;
+      toggleRef.current?.focus();
+    }
+  }, [open]);
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
@@ -80,11 +95,12 @@ export default function ChatAssistant() {
   return (
     <>
       <button
+        ref={toggleRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        aria-label={t.assistant.open}
-        className="fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-brand-600 text-white shadow-lg transition hover:bg-brand-700"
+        aria-label={open ? t.assistant.close : t.assistant.open}
+        className="fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-brand-600 text-white shadow-lg transition hover:bg-brand-700 dark:text-ink-50"
       >
         {open ? <FaXmark className="h-6 w-6" /> : <FaCommentDots className="h-6 w-6" />}
       </button>
@@ -94,13 +110,24 @@ export default function ChatAssistant() {
           className="fixed bottom-24 right-5 z-40 flex h-[28rem] w-[min(24rem,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-2xl border border-ink-100 bg-white shadow-2xl dark:border-ink-200 dark:bg-ink-50"
           role="dialog"
           aria-label={t.assistant.title}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setOpen(false);
+          }}
         >
           <div className="border-b border-ink-100 bg-brand-600 px-4 py-3 dark:border-ink-200">
-            <p className="font-semibold text-white">{t.assistant.title}</p>
-            <p className="text-xs text-white/80">{t.assistant.subtitle}</p>
+            <p className="font-semibold text-white dark:text-ink-50">
+              {t.assistant.title}
+            </p>
+            <p className="text-xs text-white/80 dark:text-ink-50/80">
+              {t.assistant.subtitle}
+            </p>
           </div>
 
-          <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
+          <div
+            role="log"
+            aria-label={t.assistant.title}
+            className="flex-1 space-y-3 overflow-y-auto px-4 py-3"
+          >
             {messages.length === 0 && (
               <p className="rounded-2xl rounded-bl-sm bg-ink-100 px-4 py-2.5 text-sm text-ink-800">
                 {t.assistant.greeting}
@@ -114,7 +141,7 @@ export default function ChatAssistant() {
                 <p
                   className={
                     m.role === "user"
-                      ? "max-w-[85%] whitespace-pre-line break-words rounded-2xl rounded-br-sm bg-brand-600 px-4 py-2.5 text-sm text-white"
+                      ? "max-w-[85%] whitespace-pre-line break-words rounded-2xl rounded-br-sm bg-brand-600 px-4 py-2.5 text-sm text-white dark:text-ink-50"
                       : "max-w-[85%] whitespace-pre-line break-words rounded-2xl rounded-bl-sm bg-ink-100 px-4 py-2.5 text-sm text-ink-800"
                   }
                 >
@@ -123,13 +150,16 @@ export default function ChatAssistant() {
               </div>
             ))}
             {failed && (
-              <p className="text-center text-xs text-red-600">{t.assistant.error}</p>
+              <p role="alert" className="text-center text-xs text-red-600">
+                {t.assistant.error}
+              </p>
             )}
             <div ref={bottomRef} />
           </div>
 
           <form onSubmit={send} className="flex gap-2 border-t border-ink-100 p-3 dark:border-ink-200">
             <input
+              ref={inputRef}
               className="input flex-1 !py-2 text-sm"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}

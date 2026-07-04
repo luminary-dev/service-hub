@@ -54,7 +54,11 @@ export default function ServicesManager({
   }
 
   async function save() {
-    if (draft.title.trim().length < 2 || !draft.price || Number(draft.price) <= 0) {
+    if (
+      draft.title.trim().length < 2 ||
+      !draft.price ||
+      Number(draft.price) <= 0
+    ) {
       setError(s2.titlePriceRequired);
       return;
     }
@@ -87,8 +91,8 @@ export default function ServicesManager({
           : list.map((s) =>
               s.id === editing
                 ? { ...service, description: service.description ?? "" }
-                : s
-            )
+                : s,
+            ),
       );
       setEditing(null);
       router.refresh();
@@ -121,7 +125,11 @@ export default function ServicesManager({
         </button>
       </div>
 
-      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      {error && (
+        <p role="alert" className="mt-3 text-sm text-red-600">
+          {error}
+        </p>
+      )}
 
       {editing !== null && (
         <div className="mt-4 rounded-xl bg-ink-50 p-4">
@@ -129,12 +137,14 @@ export default function ServicesManager({
             <input
               className="input"
               placeholder={s2.titlePh}
+              aria-label={s2.titlePh}
               value={draft.title}
               onChange={(e) => setDraft({ ...draft, title: e.target.value })}
             />
             <input
               className="input"
               placeholder={s2.descPh}
+              aria-label={s2.descPh}
               value={draft.description}
               onChange={(e) =>
                 setDraft({ ...draft, description: e.target.value })
@@ -146,11 +156,13 @@ export default function ServicesManager({
                 type="number"
                 min={1}
                 placeholder={s2.pricePh}
+                aria-label={s2.pricePh}
                 value={draft.price}
                 onChange={(e) => setDraft({ ...draft, price: e.target.value })}
               />
               <select
                 className="input w-36"
+                aria-label={s2.pricePh}
                 value={draft.priceType}
                 onChange={(e) =>
                   setDraft({ ...draft, priceType: e.target.value })

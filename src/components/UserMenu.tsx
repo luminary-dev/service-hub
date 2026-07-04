@@ -14,6 +14,7 @@ export default function UserMenu({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const router = useRouter();
   const t = useT();
 
@@ -42,9 +43,23 @@ export default function UserMenu({
     .toUpperCase();
 
   return (
-    <div className="relative" ref={ref}>
+    <div
+      className="relative"
+      ref={ref}
+      // Escape closes the dropdown and returns focus to the trigger.
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && open) {
+          setOpen(false);
+          triggerRef.current?.focus();
+        }
+      }}
+    >
       <button
+        ref={triggerRef}
+        type="button"
         onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="true"
         className="flex items-center gap-2 rounded-xl px-2 py-1.5 transition hover:bg-ink-100"
       >
         <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-800">
@@ -54,6 +69,7 @@ export default function UserMenu({
           {name.split(" ")[0]}
         </span>
         <svg
+          aria-hidden
           className={`h-4 w-4 text-ink-500 transition ${open ? "rotate-180" : ""}`}
           fill="none"
           viewBox="0 0 24 24"
@@ -103,6 +119,7 @@ export default function UserMenu({
             {t.nav.find}
           </Link>
           <button
+            type="button"
             onClick={logout}
             className="block w-full cursor-pointer px-4 py-2.5 text-left text-sm text-red-600 transition hover:bg-red-50"
           >

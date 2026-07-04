@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { FaBars, FaXmark } from "react-icons/fa6";
 import { useT } from "./I18nProvider";
 import LanguageToggle from "./LanguageToggle";
@@ -20,6 +20,7 @@ export default function MobileMenu({
   theme: Theme;
 }) {
   const [open, setOpen] = useState(false);
+  const toggleRef = useRef<HTMLButtonElement>(null);
   const pathname = usePathname();
   const router = useRouter();
   const t = useT();
@@ -45,8 +46,19 @@ export default function MobileMenu({
     "block rounded-xl px-4 py-2.5 text-sm font-medium text-ink-700 transition hover:bg-ink-100 hover:text-ink-900";
 
   return (
-    <div className="md:hidden">
+    <div
+      className="md:hidden"
+      // Escape closes the menu from anywhere inside it and puts focus back
+      // on the toggle, so keyboard users are not stranded mid-menu.
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && open) {
+          setOpen(false);
+          toggleRef.current?.focus();
+        }
+      }}
+    >
       <button
+        ref={toggleRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FaFlag, FaXmark } from "react-icons/fa6";
 import { useT } from "./I18nProvider";
 import { useToast } from "./ToastProvider";
@@ -17,7 +17,7 @@ const TRIGGER_STYLES = {
   // Matches ShareButton on the profile header.
   chip: "inline-flex cursor-pointer items-center gap-2 rounded-full border border-ink-300 bg-white px-4 py-2 text-sm font-semibold text-ink-800 transition-[border-color,background-color] duration-200 ease-snap hover:border-red-300 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2",
   // Quiet inline action, e.g. under each review.
-  text: "inline-flex cursor-pointer items-center gap-1.5 text-xs font-medium text-ink-400 transition hover:text-red-600",
+  text: "inline-flex cursor-pointer items-center gap-1.5 text-xs font-medium text-ink-500 transition hover:text-red-600",
   // Light-on-dark, for the photo lightbox.
   overlay:
     "inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-black/40 px-3 py-1.5 text-xs font-medium text-white/80 transition hover:text-white",
@@ -38,8 +38,24 @@ export default function ReportButton({
   const [reason, setReason] = useState<(typeof REASONS)[number]>("spam");
   const [details, setDetails] = useState("");
   const [loading, setLoading] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const reasonRef = useRef<HTMLSelectElement>(null);
+  const wasOpen = useRef(false);
   const t = useT();
   const toast = useToast();
+
+  // Focus management for the modal: move focus to the first field when it
+  // opens, and hand it back to the trigger when it closes (skipping the
+  // initial mount so page load never steals focus).
+  useEffect(() => {
+    if (open) {
+      wasOpen.current = true;
+      reasonRef.current?.focus();
+    } else if (wasOpen.current) {
+      wasOpen.current = false;
+      triggerRef.current?.focus();
+    }
+  }, [open]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -66,6 +82,7 @@ export default function ReportButton({
   return (
     <>
       <button
+        ref={triggerRef}
         type="button"
         aria-label={label}
         // stopPropagation: inside the photo lightbox a plain click closes the
@@ -88,6 +105,14 @@ export default function ReportButton({
             e.stopPropagation();
             setOpen(false);
           }}
+          // stopPropagation: inside the photo lightbox Escape must close the
+          // report modal only, not the lightbox behind it.
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.stopPropagation();
+              setOpen(false);
+            }
+          }}
           onTouchStart={(e) => e.stopPropagation()}
           onTouchEnd={(e) => e.stopPropagation()}
         >
@@ -104,7 +129,7 @@ export default function ReportButton({
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label={t.report.cancel}
-                className="cursor-pointer text-ink-400 transition hover:text-ink-700"
+                className="cursor-pointer text-ink-500 transition hover:text-ink-700"
               >
                 <FaXmark className="h-4 w-4" />
               </button>
@@ -116,6 +141,7 @@ export default function ReportButton({
                 {t.report.reason}
               </label>
               <select
+                ref={reasonRef}
                 id="report-reason"
                 className="input"
                 value={reason}

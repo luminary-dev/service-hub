@@ -49,8 +49,11 @@ export default function CustomerRegisterPage() {
 
       <form onSubmit={submit} className="card mt-8 space-y-4 p-6">
         <div>
-          <label className="label">{t.custReg.fullName}</label>
+          <label className="label" htmlFor="reg-name">
+            {t.custReg.fullName}
+          </label>
           <input
+            id="reg-name"
             className="input"
             value={form.name}
             onChange={(e) => set("name", e.target.value)}
@@ -59,8 +62,11 @@ export default function CustomerRegisterPage() {
           />
         </div>
         <div>
-          <label className="label">{t.custReg.email}</label>
+          <label className="label" htmlFor="reg-email">
+            {t.custReg.email}
+          </label>
           <input
+            id="reg-email"
             className="input"
             type="email"
             value={form.email}
@@ -70,8 +76,11 @@ export default function CustomerRegisterPage() {
           />
         </div>
         <div>
-          <label className="label">{t.custReg.phone}</label>
+          <label className="label" htmlFor="reg-phone">
+            {t.custReg.phone}
+          </label>
           <input
+            id="reg-phone"
             className="input"
             type="tel"
             placeholder="07X XXX XXXX"
@@ -82,8 +91,11 @@ export default function CustomerRegisterPage() {
           />
         </div>
         <div>
-          <label className="label">{t.custReg.password}</label>
+          <label className="label" htmlFor="reg-password">
+            {t.custReg.password}
+          </label>
           <input
+            id="reg-password"
             className="input"
             type="password"
             value={form.password}
@@ -91,10 +103,17 @@ export default function CustomerRegisterPage() {
             required
             minLength={6}
             autoComplete="new-password"
+            aria-describedby="reg-password-hint"
           />
-          <p className="mt-1 text-xs text-ink-500">{t.custReg.passwordHint}</p>
+          <p id="reg-password-hint" className="mt-1 text-xs text-ink-500">
+            {t.custReg.passwordHint}
+          </p>
         </div>
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && (
+          <p role="alert" className="text-sm text-red-600">
+            {error}
+          </p>
+        )}
         <button type="submit" disabled={loading} className="btn-primary w-full">
           {loading ? t.custReg.creating : t.custReg.create}
         </button>

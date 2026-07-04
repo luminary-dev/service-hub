@@ -63,8 +63,11 @@ function ResetForm() {
 
       <form onSubmit={submit} className="card mt-8 space-y-4 p-6">
         <div>
-          <label className="label">{t.reset.password}</label>
+          <label className="label" htmlFor="reset-password">
+            {t.reset.password}
+          </label>
           <input
+            id="reset-password"
             className="input"
             type="password"
             value={password}

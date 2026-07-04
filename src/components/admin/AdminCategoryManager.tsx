@@ -103,7 +103,13 @@ export default function AdminCategoryManager({
     }).catch(() => null);
     setPending(false);
     if (res && res.ok) {
-      setAddForm({ slug: "", labelEn: "", labelSi: "", icon: "", sortOrder: "" });
+      setAddForm({
+        slug: "",
+        labelEn: "",
+        labelSi: "",
+        icon: "",
+        sortOrder: "",
+      });
       router.refresh();
     } else {
       const d = await res?.json().catch(() => ({}));
@@ -127,8 +133,11 @@ export default function AdminCategoryManager({
               {editing === c.slug ? (
                 <div className="flex flex-1 flex-wrap items-end gap-3">
                   <div>
-                    <label className="label">{t.catLabelEn}</label>
+                    <label className="label" htmlFor="cat-catLabelEn">
+                      {t.catLabelEn}
+                    </label>
                     <input
+                      id="cat-catLabelEn"
                       className="input"
                       value={edit.labelEn}
                       onChange={(e) =>
@@ -137,8 +146,11 @@ export default function AdminCategoryManager({
                     />
                   </div>
                   <div>
-                    <label className="label">{t.catLabelSi}</label>
+                    <label className="label" htmlFor="cat-catLabelSi">
+                      {t.catLabelSi}
+                    </label>
                     <input
+                      id="cat-catLabelSi"
                       className="input"
                       value={edit.labelSi}
                       onChange={(e) =>
@@ -147,8 +159,11 @@ export default function AdminCategoryManager({
                     />
                   </div>
                   <div>
-                    <label className="label">{t.catIcon}</label>
+                    <label className="label" htmlFor="cat-catIcon">
+                      {t.catIcon}
+                    </label>
                     <input
+                      id="cat-catIcon"
                       className="input w-36"
                       value={edit.icon}
                       onChange={(e) =>
@@ -157,8 +172,11 @@ export default function AdminCategoryManager({
                     />
                   </div>
                   <div>
-                    <label className="label">{t.catSortOrder}</label>
+                    <label className="label" htmlFor="cat-catSortOrder">
+                      {t.catSortOrder}
+                    </label>
                     <input
+                      id="cat-catSortOrder"
                       className="input w-24"
                       type="number"
                       min={0}
@@ -242,8 +260,11 @@ export default function AdminCategoryManager({
         <h2 className="font-semibold text-ink-900">{t.catAddTitle}</h2>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="label">{t.catSlug}</label>
+            <label className="label" htmlFor="cat-catSlug">
+              {t.catSlug}
+            </label>
             <input
+              id="cat-catSlug"
               className="input"
               value={addForm.slug}
               onChange={(e) =>
@@ -256,8 +277,11 @@ export default function AdminCategoryManager({
             <p className="mt-1 text-xs text-ink-500">{t.catSlugHint}</p>
           </div>
           <div>
-            <label className="label">{t.catIcon}</label>
+            <label className="label" htmlFor="cat-catIcon-1">
+              {t.catIcon}
+            </label>
             <input
+              id="cat-catIcon-1"
               className="input"
               value={addForm.icon}
               onChange={(e) =>
@@ -267,8 +291,11 @@ export default function AdminCategoryManager({
             />
           </div>
           <div>
-            <label className="label">{t.catLabelEn}</label>
+            <label className="label" htmlFor="cat-catLabelEn-1">
+              {t.catLabelEn}
+            </label>
             <input
+              id="cat-catLabelEn-1"
               className="input"
               value={addForm.labelEn}
               onChange={(e) =>
@@ -278,8 +305,11 @@ export default function AdminCategoryManager({
             />
           </div>
           <div>
-            <label className="label">{t.catLabelSi}</label>
+            <label className="label" htmlFor="cat-catLabelSi-1">
+              {t.catLabelSi}
+            </label>
             <input
+              id="cat-catLabelSi-1"
               className="input"
               value={addForm.labelSi}
               onChange={(e) =>
@@ -289,8 +319,11 @@ export default function AdminCategoryManager({
             />
           </div>
           <div>
-            <label className="label">{t.catSortOrder}</label>
+            <label className="label" htmlFor="cat-catSortOrder-1">
+              {t.catSortOrder}
+            </label>
             <input
+              id="cat-catSortOrder-1"
               className="input w-32"
               type="number"
               min={0}

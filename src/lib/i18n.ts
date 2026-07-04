@@ -23,9 +23,14 @@ const en = {
     openMenu: "Open menu",
     closeMenu: "Close menu",
     theme: "Theme",
+    language: "Language",
     themeLight: "Light theme",
     themeDark: "Dark theme",
     themeSystem: "System theme",
+  },
+  a11y: {
+    skipToContent: "Skip to main content",
+    rated: (rating: string) => `Rated ${rating} out of 5`,
   },
   jobs: {
     postTitle: "Post a job",
@@ -232,6 +237,7 @@ const en = {
     placeholder: "Describe your job…",
     send: "Send",
     open: "Chat with the assistant",
+    close: "Close the assistant chat",
     error: "Something went wrong. Please try again.",
   },
   errors: {
@@ -356,6 +362,11 @@ const en = {
     shareError: "Could not copy the link.",
     prevPhoto: "Previous photo",
     nextPhoto: "Next photo",
+    viewPhoto: "View photo",
+    viewPhotoCaption: (caption: string) => `View photo: ${caption}`,
+    workPhoto: "Work photo",
+    photoViewer: "Photo viewer",
+    closePhoto: "Close photo viewer",
   },
   toast: {
     favAdded: "Saved to your list.",
@@ -400,6 +411,7 @@ const en = {
         : "You've added the maximum of 3 photos.",
     tooManyPhotos: (max: number) => `A review can have at most ${max} photos.`,
     removePhoto: "Remove photo",
+    starLabel: (n: number) => `${n} star${n === 1 ? "" : "s"}`,
   },
   report: {
     reportProvider: "Report this provider",
@@ -711,9 +723,14 @@ const si: Dict = {
     openMenu: "මෙනුව විවෘත කරන්න",
     closeMenu: "මෙනුව වසන්න",
     theme: "තේමාව",
+    language: "භාෂාව",
     themeLight: "ලා තේමාව",
     themeDark: "අඳුරු තේමාව",
     themeSystem: "පද්ධති තේමාව",
+  },
+  a11y: {
+    skipToContent: "ප්‍රධාන අන්තර්ගතයට යන්න",
+    rated: (rating: string) => `5න් ${rating}ක ඇගයීම`,
   },
   jobs: {
     postTitle: "රැකියාවක් පළ කරන්න",
@@ -922,6 +939,7 @@ const si: Dict = {
     placeholder: "ඔබේ කාර්යය විස්තර කරන්න…",
     send: "යවන්න",
     open: "සහායක සමඟ කතා කරන්න",
+    close: "සහායක කතාබහ වසන්න",
     error: "යමක් වැරදුණා. නැවත උත්සාහ කරන්න.",
   },
   errors: {
@@ -1044,6 +1062,11 @@ const si: Dict = {
     shareError: "සබැඳිය පිටපත් කළ නොහැකි විය.",
     prevPhoto: "පෙර ඡායාරූපය",
     nextPhoto: "ඊළඟ ඡායාරූපය",
+    viewPhoto: "ඡායාරූපය බලන්න",
+    viewPhotoCaption: (caption: string) => `ඡායාරූපය බලන්න: ${caption}`,
+    workPhoto: "වැඩ ඡායාරූපය",
+    photoViewer: "ඡායාරූප දර්ශකය",
+    closePhoto: "ඡායාරූප දර්ශකය වසන්න",
   },
   toast: {
     favAdded: "ඔබේ ලැයිස්තුවට සුරකින ලදී.",
@@ -1088,6 +1111,7 @@ const si: Dict = {
         : "ඔබ උපරිම ඡායාරූප 3 එක් කර ඇත.",
     tooManyPhotos: (max: number) => `සමාලෝචනයකට උපරිම ඡායාරූප ${max}ක් තිබිය හැක.`,
     removePhoto: "ඡායාරූපය ඉවත් කරන්න",
+    starLabel: (n: number) => `තරු ${n}`,
   },
   report: {
     reportProvider: "මෙම වෘත්තිකයා වාර්තා කරන්න",

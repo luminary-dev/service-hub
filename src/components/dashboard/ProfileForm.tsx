@@ -90,9 +90,7 @@ export default function ProfileForm({
           <span className="block text-sm font-medium text-ink-800">
             {p.availableTitle}
           </span>
-          <span className="block text-xs text-ink-500">
-            {p.availableHint}
-          </span>
+          <span className="block text-xs text-ink-500">{p.availableHint}</span>
         </span>
         <input
           type="checkbox"
@@ -133,8 +131,11 @@ export default function ProfileForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="label">{p.fullName}</label>
+          <label className="label" htmlFor="pf-fullName">
+            {p.fullName}
+          </label>
           <input
+            id="pf-fullName"
             className="input"
             value={form.name}
             onChange={(e) => set("name", e.target.value)}
@@ -143,8 +144,11 @@ export default function ProfileForm({
           />
         </div>
         <div>
-          <label className="label">{p.phone}</label>
+          <label className="label" htmlFor="pf-phone">
+            {p.phone}
+          </label>
           <input
+            id="pf-phone"
             className="input"
             type="tel"
             value={form.phone}
@@ -154,8 +158,11 @@ export default function ProfileForm({
           />
         </div>
         <div>
-          <label className="label">{p.category}</label>
+          <label className="label" htmlFor="pf-category">
+            {p.category}
+          </label>
           <select
+            id="pf-category"
             className="input"
             value={form.category}
             onChange={(e) => set("category", e.target.value)}
@@ -173,8 +180,11 @@ export default function ProfileForm({
           </select>
         </div>
         <div>
-          <label className="label">{p.experience}</label>
+          <label className="label" htmlFor="pf-experience">
+            {p.experience}
+          </label>
           <input
+            id="pf-experience"
             className="input"
             type="number"
             min={0}
@@ -184,8 +194,11 @@ export default function ProfileForm({
           />
         </div>
         <div>
-          <label className="label">{p.district}</label>
+          <label className="label" htmlFor="pf-district">
+            {p.district}
+          </label>
           <select
+            id="pf-district"
             className="input"
             value={form.district}
             onChange={(e) => set("district", e.target.value)}
@@ -198,8 +211,11 @@ export default function ProfileForm({
           </select>
         </div>
         <div>
-          <label className="label">{p.townCity}</label>
+          <label className="label" htmlFor="pf-townCity">
+            {p.townCity}
+          </label>
           <input
+            id="pf-townCity"
             className="input"
             value={form.city}
             onChange={(e) => set("city", e.target.value)}
@@ -209,8 +225,11 @@ export default function ProfileForm({
       </div>
 
       <div>
-        <label className="label">{p.headline}</label>
+        <label className="label" htmlFor="pf-headline">
+          {p.headline}
+        </label>
         <input
+          id="pf-headline"
           className="input"
           value={form.headline}
           onChange={(e) => set("headline", e.target.value)}
@@ -220,8 +239,11 @@ export default function ProfileForm({
         />
       </div>
       <div>
-        <label className="label">{p.about}</label>
+        <label className="label" htmlFor="pf-about">
+          {p.about}
+        </label>
         <textarea
+          id="pf-about"
           className="input min-h-32 resize-y"
           value={form.bio}
           onChange={(e) => set("bio", e.target.value)}
@@ -236,8 +258,11 @@ export default function ProfileForm({
         </h3>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="label">{p.whatsapp}</label>
+            <label className="label" htmlFor="pf-whatsapp">
+              {p.whatsapp}
+            </label>
             <input
+              id="pf-whatsapp"
               className="input"
               value={form.whatsapp}
               onChange={(e) => set("whatsapp", e.target.value)}
@@ -245,48 +270,66 @@ export default function ProfileForm({
             />
           </div>
           <div>
-            <label className="label">{p.altPhone}</label>
+            <label className="label" htmlFor="pf-altPhone">
+              {p.altPhone}
+            </label>
             <input
+              id="pf-altPhone"
               className="input"
               value={form.phone2}
               onChange={(e) => set("phone2", e.target.value)}
             />
           </div>
           <div>
-            <label className="label">{p.facebook}</label>
+            <label className="label" htmlFor="pf-facebook">
+              {p.facebook}
+            </label>
             <input
+              id="pf-facebook"
               className="input"
               value={form.facebook}
               onChange={(e) => set("facebook", e.target.value)}
             />
           </div>
           <div>
-            <label className="label">{p.instagram}</label>
+            <label className="label" htmlFor="pf-instagram">
+              {p.instagram}
+            </label>
             <input
+              id="pf-instagram"
               className="input"
               value={form.instagram}
               onChange={(e) => set("instagram", e.target.value)}
             />
           </div>
           <div>
-            <label className="label">{p.tiktok}</label>
+            <label className="label" htmlFor="pf-tiktok">
+              {p.tiktok}
+            </label>
             <input
+              id="pf-tiktok"
               className="input"
               value={form.tiktok}
               onChange={(e) => set("tiktok", e.target.value)}
             />
           </div>
           <div>
-            <label className="label">{p.youtube}</label>
+            <label className="label" htmlFor="pf-youtube">
+              {p.youtube}
+            </label>
             <input
+              id="pf-youtube"
               className="input"
               value={form.youtube}
               onChange={(e) => set("youtube", e.target.value)}
             />
           </div>
           <div className="sm:col-span-2">
-            <label className="label">{p.website}</label>
+            <label className="label" htmlFor="pf-website">
+              {p.website}
+            </label>
             <input
+              id="pf-website"
               className="input"
               value={form.website}
               onChange={(e) => set("website", e.target.value)}
@@ -295,7 +338,11 @@ export default function ProfileForm({
         </div>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && (
+        <p role="alert" className="text-sm text-red-600">
+          {error}
+        </p>
+      )}
 
       <button type="submit" disabled={loading} className="btn-primary">
         {loading ? p.saving : p.save}

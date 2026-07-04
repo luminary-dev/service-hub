@@ -16,7 +16,25 @@ const SWIPE_THRESHOLD = 40;
 export default function PhotoGallery({ photos }: { photos: Photo[] }) {
   const [active, setActive] = useState<number | null>(null);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const wasOpen = useRef(false);
   const t = useT();
+  const isOpen = active !== null;
+
+  // Focus management for the lightbox: focus the close button when it opens
+  // and give focus back to the thumbnail that opened it when it closes.
+  // Keyed on open/closed (not the photo index) so prev/next don't yank focus.
+  useEffect(() => {
+    if (isOpen) {
+      wasOpen.current = true;
+      closeRef.current?.focus();
+    } else if (wasOpen.current) {
+      wasOpen.current = false;
+      openerRef.current?.focus();
+      openerRef.current = null;
+    }
+  }, [isOpen]);
 
   function showPrev() {
     setActive((a) => ((a ?? 0) - 1 + photos.length) % photos.length);
@@ -61,13 +79,21 @@ export default function PhotoGallery({ photos }: { photos: Photo[] }) {
         {photos.map((p, i) => (
           <button
             key={p.id}
-            onClick={() => setActive(i)}
-            aria-label={p.caption ? `View photo: ${p.caption}` : "View photo"}
+            type="button"
+            onClick={(e) => {
+              openerRef.current = e.currentTarget;
+              setActive(i);
+            }}
+            aria-label={
+              p.caption
+                ? t.profile.viewPhotoCaption(p.caption)
+                : t.profile.viewPhoto
+            }
             className="group relative aspect-square cursor-pointer overflow-hidden rounded-xl bg-ink-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
           >
             <Image
               src={p.url}
-              alt={p.caption ?? "Work photo"}
+              alt={p.caption ?? t.profile.workPhoto}
               fill
               sizes="(min-width: 640px) 33vw, 50vw"
               unoptimized={isSvg(p.url)}
@@ -84,13 +110,18 @@ export default function PhotoGallery({ photos }: { photos: Photo[] }) {
 
       {active !== null && photos[active] && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={t.profile.photoViewer}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
           onClick={() => setActive(null)}
           onTouchStart={onTouchStart}
           onTouchEnd={onTouchEnd}
         >
           <button
-            aria-label="Close photo viewer"
+            ref={closeRef}
+            type="button"
+            aria-label={t.profile.closePhoto}
             className="absolute right-5 top-5 cursor-pointer text-white/70 transition hover:text-white"
             onClick={() => setActive(null)}
           >
@@ -99,6 +130,7 @@ export default function PhotoGallery({ photos }: { photos: Photo[] }) {
           {photos.length > 1 && (
             <>
               <button
+                type="button"
                 aria-label={t.profile.prevPhoto}
                 className="absolute left-2 z-10 flex h-11 w-11 cursor-pointer items-center justify-center rounded-full bg-black/40 text-white/80 transition hover:text-white sm:left-4 sm:h-auto sm:w-auto sm:bg-transparent"
                 onClick={(e) => {
@@ -109,6 +141,7 @@ export default function PhotoGallery({ photos }: { photos: Photo[] }) {
                 <FaChevronLeft className="h-6 w-6 sm:h-8 sm:w-8" />
               </button>
               <button
+                type="button"
                 aria-label={t.profile.nextPhoto}
                 className="absolute right-2 z-10 flex h-11 w-11 cursor-pointer items-center justify-center rounded-full bg-black/40 text-white/80 transition hover:text-white sm:right-4 sm:h-auto sm:w-auto sm:bg-transparent"
                 onClick={(e) => {
@@ -127,7 +160,7 @@ export default function PhotoGallery({ photos }: { photos: Photo[] }) {
             <div className="relative h-[80vh] w-full">
               <Image
                 src={photos[active].url}
-                alt={photos[active].caption ?? "Work photo"}
+                alt={photos[active].caption ?? t.profile.workPhoto}
                 fill
                 sizes="100vw"
                 unoptimized={isSvg(photos[active].url)}

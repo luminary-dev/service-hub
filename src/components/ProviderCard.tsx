@@ -138,7 +138,7 @@ export default function ProviderCard({
         <div className="mt-4 flex items-center justify-between border-t border-ink-100 pt-3">
           {p.rating !== null ? (
             <span className="flex items-center gap-1.5 text-sm">
-              <Stars rating={p.rating} />
+              <Stars rating={p.rating} label={t.a11y.rated(p.rating.toFixed(1))} />
               <span className="font-medium text-ink-700">
                 {p.rating.toFixed(1)}
               </span>

@@ -28,9 +28,11 @@ export default function SearchBar() {
       className="flex flex-col gap-2 rounded-2xl border border-ink-300 bg-surface p-2 transition-[border-color] duration-200 ease-snap focus-within:border-brand-500 sm:flex-row sm:items-center"
     >
       <input
+        type="search"
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder={t.search.placeholder}
+        aria-label={t.search.placeholder}
         className="min-w-0 flex-1 rounded-xl px-4 py-2.5 text-sm text-ink-900 placeholder:text-ink-500 focus:outline-none"
       />
       <select

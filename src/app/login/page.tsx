@@ -42,8 +42,11 @@ export default function LoginPage() {
 
       <form onSubmit={submit} className="card mt-8 space-y-4 p-6">
         <div>
-          <label className="label">{t.login.email}</label>
+          <label className="label" htmlFor="login-email">
+            {t.login.email}
+          </label>
           <input
+            id="login-email"
             className="input"
             type="email"
             value={email}
@@ -54,7 +57,9 @@ export default function LoginPage() {
         </div>
         <div>
           <div className="mb-1.5 flex items-center justify-between">
-            <label className="label mb-0">{t.login.password}</label>
+            <label className="label mb-0" htmlFor="login-password">
+              {t.login.password}
+            </label>
             <Link
               href="/forgot-password"
               className="text-xs font-medium text-brand-600 hover:text-brand-700"
@@ -63,15 +68,21 @@ export default function LoginPage() {
             </Link>
           </div>
           <input
+            id="login-password"
             className="input"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
             autoComplete="current-password"
+            aria-describedby={error ? "login-error" : undefined}
           />
         </div>
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && (
+          <p id="login-error" role="alert" className="text-sm text-red-600">
+            {error}
+          </p>
+        )}
         <button type="submit" disabled={loading} className="btn-primary w-full">
           {loading ? t.login.signingIn : t.login.signIn}
         </button>

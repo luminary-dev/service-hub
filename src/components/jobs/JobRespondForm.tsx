@@ -45,11 +45,16 @@ export default function JobRespondForm({ jobId }: { jobId: string }) {
         value={message}
         onChange={(e) => setMessage(e.target.value)}
         placeholder={t.respondPh}
+        aria-label={t.respondPh}
         required
         minLength={10}
         maxLength={1000}
       />
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {error && (
+        <p role="alert" className="mt-2 text-sm text-red-600">
+          {error}
+        </p>
+      )}
       <button type="submit" disabled={loading} className="btn-primary mt-2">
         {loading ? t.sending : t.sendResponse}
       </button>
