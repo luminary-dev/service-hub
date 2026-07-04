@@ -23,6 +23,14 @@ export default function LanguageToggle() {
     writeLocaleCookie(next);
     const current = pathname + window.location.search;
     const target = localizedHref(current, next);
+    // Only ever navigate to a same-origin absolute path. pathname is
+    // router-provided, but window.location.search is attacker-controllable —
+    // reject anything that isn't a single-slash-rooted path (blocks
+    // protocol-relative "//host" and any scheme reaching location.assign).
+    if (!/^\/(?!\/)/.test(target)) {
+      router.refresh();
+      return;
+    }
     if (target === current) {
       router.refresh();
     } else {
