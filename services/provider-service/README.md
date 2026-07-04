@@ -29,7 +29,11 @@ Public (via gateway):
 | GET | `/api/providers/:id/card` | OG-image payload (name, category, location, rating, verification) |
 | POST | `/api/providers/:id/inquiries` | Create an inquiry (optional session) |
 | GET | `/api/stats` | `{ providerCount, reviewCount }` |
-| GET | `/files/*` | Serves local uploads from `$UPLOAD_DIR` |
+
+Photo/avatar bytes are owned by **media-service**; their URLs resolve through
+the gateway at `/api/files/provider/*`. This service no longer serves files or
+touches disk directly — multipart uploads are forwarded to media-service over
+S2S (`lib/storage.ts`).
 
 Provider dashboard (requires a PROVIDER session owning a provider, else 401):
 
@@ -78,8 +82,7 @@ required).
 | `IDENTITY_SERVICE_URL` | `http://localhost:4001` | profile sync, emailVerified |
 | `REVIEW_SERVICE_URL` | `http://localhost:4003` | ratings, reviews, counts |
 | `JOB_SERVICE_URL` | `http://localhost:4004` | dashboard open-jobs badge |
-| `UPLOAD_DIR` | `./data/uploads` | local upload storage |
-| `BLOB_READ_WRITE_TOKEN` | — | Vercel Blob uploads (local disk when unset) |
+| `MEDIA_SERVICE_URL` | `http://localhost:4006` | image upload/serve/sweep (S2S) |
 
 ## Run
 
