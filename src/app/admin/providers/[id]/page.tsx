@@ -10,6 +10,8 @@ import Stars from "@/components/Stars";
 import AdminProviderActions from "@/components/admin/AdminProviderActions";
 import AdminDeleteButton from "@/components/admin/AdminDeleteButton";
 
+// Caching (#57): admin-only moderation view; edits must be visible on the
+// next request — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
 
 // Moderation payload as served by `GET /api/admin/providers/:id` on the

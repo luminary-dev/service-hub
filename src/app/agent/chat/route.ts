@@ -8,6 +8,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { cookies, headers } from "next/headers";
 
+// Caching (#57): per-user streaming chat — never cache this route.
 export const dynamic = "force-dynamic";
 
 const GATEWAY_URL = process.env.GATEWAY_URL ?? "http://localhost:4000";

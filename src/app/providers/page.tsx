@@ -10,8 +10,12 @@ import CategoryIcon from "@/components/CategoryIcon";
 import FilterBar from "@/components/FilterBar";
 import Link from "next/link";
 
-export const dynamic = "force-dynamic";
-
+// Caching (#57): public-but-fresh. No force-dynamic — the page renders per
+// request (searchParams + locale/session cookies), but the search results
+// come from the Data Cache with a 60-second revalidate. The full query
+// string is part of the fetch URL, so every filter/sort/page combination is
+// its own cache entry; new/edited profiles show up in browse within a
+// minute, which is plenty for a directory listing.
 const PAGE_SIZE = 12;
 
 // Shown as suggestions when a search or filter combination yields no results.
@@ -73,8 +77,8 @@ export default async function ProvidersPage({
       total: number;
       page: number;
       pageSize: number;
-    }>(`/api/providers?${query.toString()}`),
-    fetchCategoryOptions(),
+    }>(`/api/providers?${query.toString()}`, { revalidate: 60 }),
+    fetchCategoryOptions({ revalidate: 300 }),
   ]);
 
   const results = listing?.providers ?? [];

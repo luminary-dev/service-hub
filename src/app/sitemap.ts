@@ -2,8 +2,12 @@ import type { MetadataRoute } from "next";
 import { CATEGORIES } from "@/lib/constants";
 import { SITE_URL } from "@/lib/site";
 
-// Rendered on-request (queries the gateway); not prerendered at build.
-export const dynamic = "force-dynamic";
+// Caching (#57): public-and-stable. Crawlers don't need a fresher-than-hourly
+// sitemap, so the route is ISR with a 1-hour revalidate instead of querying
+// the gateway on every hit. The build-time prerender runs without a gateway
+// and serves the static entries only; the first runtime revalidation fills
+// in the provider URLs.
+export const revalidate = 3600;
 
 const GATEWAY_URL = process.env.GATEWAY_URL ?? "http://localhost:4000";
 
@@ -14,7 +18,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   let providers: { id: string; updatedAt: string }[] = [];
   try {
     const res = await fetch(`${GATEWAY_URL}/api/providers/ids`, {
-      cache: "no-store",
+      next: { revalidate: 3600 },
     });
     if (res.ok) {
       const data = (await res.json()) as {

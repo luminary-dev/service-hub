@@ -1,12 +1,14 @@
 import { fetchCategoryOptions } from "@/lib/categories-server";
 import ProviderRegisterForm from "./ProviderRegisterForm";
 
-export const dynamic = "force-dynamic";
-
 // Server wrapper: category options come from provider-service's managed list
 // (static fallback inside fetchCategoryOptions); the multi-step form itself
 // is a client component.
+//
+// Caching (#57): public-and-stable. The only data here is the category list,
+// which changes rarely — serve it from the Data Cache with a 5-minute
+// revalidate instead of force-dynamic + no-store.
 export default async function ProviderRegisterPage() {
-  const categories = await fetchCategoryOptions();
+  const categories = await fetchCategoryOptions({ revalidate: 300 });
   return <ProviderRegisterForm categories={categories} />;
 }

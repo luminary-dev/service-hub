@@ -11,6 +11,8 @@ import DashboardTabs from "@/components/dashboard/DashboardTabs";
 import EmailVerifyBanner from "@/components/EmailVerifyBanner";
 import VerificationSection from "@/components/dashboard/VerificationSection";
 
+// Caching (#57): session-gated and must reflect the user's own writes
+// immediately — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
 
 // Dashboard payload as served by `GET /api/provider/dashboard` on the

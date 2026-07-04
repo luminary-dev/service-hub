@@ -5,6 +5,8 @@ import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
 
+// Caching (#57): admin-only moderation view; edits must be visible on the
+// next request — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
 
 export default async function AdminHomePage() {

@@ -9,6 +9,8 @@ import { dict, categoryLabelLoc, districtLabelLoc } from "@/lib/i18n";
 import JobRespondForm from "@/components/jobs/JobRespondForm";
 import JobStatusToggle from "@/components/jobs/JobStatusToggle";
 
+// Caching (#57): session-gated and must reflect the user's own writes
+// immediately — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
 
 // Job payloads as served by the gateway. Board jobs come with the customer
