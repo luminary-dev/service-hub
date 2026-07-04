@@ -46,6 +46,7 @@ jobs:
           - job-service
           - notification-service
           - media-service
+          - chat-service
           - api-gateway
         check: [typecheck, test, build]
     defaults:
