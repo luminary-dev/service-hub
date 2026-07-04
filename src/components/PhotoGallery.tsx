@@ -1,14 +1,46 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FaChevronLeft, FaChevronRight, FaXmark } from "react-icons/fa6";
 import { isSvg } from "@/lib/image";
+import { useT } from "./I18nProvider";
 
 type Photo = { id: string; url: string; caption: string | null };
 
+// Minimum horizontal travel (px) for a touch to count as a swipe rather than
+// a tap; it must also be more horizontal than vertical.
+const SWIPE_THRESHOLD = 40;
+
 export default function PhotoGallery({ photos }: { photos: Photo[] }) {
   const [active, setActive] = useState<number | null>(null);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const t = useT();
+
+  function showPrev() {
+    setActive((a) => ((a ?? 0) - 1 + photos.length) % photos.length);
+  }
+
+  function showNext() {
+    setActive((a) => ((a ?? 0) + 1) % photos.length);
+  }
+
+  function onTouchStart(e: React.TouchEvent) {
+    const touch = e.touches[0];
+    touchStart.current = { x: touch.clientX, y: touch.clientY };
+  }
+
+  function onTouchEnd(e: React.TouchEvent) {
+    const start = touchStart.current;
+    touchStart.current = null;
+    if (!start || photos.length < 2) return;
+    const touch = e.changedTouches[0];
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+    if (Math.abs(dx) < SWIPE_THRESHOLD || Math.abs(dx) <= Math.abs(dy)) return;
+    if (dx < 0) showNext();
+    else showPrev();
+  }
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -53,6 +85,8 @@ export default function PhotoGallery({ photos }: { photos: Photo[] }) {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
           onClick={() => setActive(null)}
+          onTouchStart={onTouchStart}
+          onTouchEnd={onTouchEnd}
         >
           <button
             aria-label="Close photo viewer"
@@ -64,24 +98,24 @@ export default function PhotoGallery({ photos }: { photos: Photo[] }) {
           {photos.length > 1 && (
             <>
               <button
-                aria-label="Previous photo"
-                className="absolute left-4 cursor-pointer text-white/70 transition hover:text-white"
+                aria-label={t.profile.prevPhoto}
+                className="absolute left-2 z-10 flex h-11 w-11 cursor-pointer items-center justify-center rounded-full bg-black/40 text-white/80 transition hover:text-white sm:left-4 sm:h-auto sm:w-auto sm:bg-transparent"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setActive((active - 1 + photos.length) % photos.length);
+                  showPrev();
                 }}
               >
-                <FaChevronLeft className="h-8 w-8" />
+                <FaChevronLeft className="h-6 w-6 sm:h-8 sm:w-8" />
               </button>
               <button
-                aria-label="Next photo"
-                className="absolute right-4 cursor-pointer text-white/70 transition hover:text-white"
+                aria-label={t.profile.nextPhoto}
+                className="absolute right-2 z-10 flex h-11 w-11 cursor-pointer items-center justify-center rounded-full bg-black/40 text-white/80 transition hover:text-white sm:right-4 sm:h-auto sm:w-auto sm:bg-transparent"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setActive((active + 1) % photos.length);
+                  showNext();
                 }}
               >
-                <FaChevronRight className="h-8 w-8" />
+                <FaChevronRight className="h-6 w-6 sm:h-8 sm:w-8" />
               </button>
             </>
           )}
