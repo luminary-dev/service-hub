@@ -3,6 +3,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
+import { sweepOrphans } from "../lib/orphans";
 import { removeStoredFile } from "../lib/storage";
 
 export const internalRoutes = new Hono();
@@ -168,6 +169,27 @@ internalRoutes.post("/internal/users/:id/erase", async (c) => {
   await db.inquiry.deleteMany({ where: { userId } });
 
   return c.json({ ok: true });
+});
+
+// Periodic maintenance (#36): remove stored upload files no database row
+// references any more. Grace window protects in-flight uploads; run it from
+// ops tooling (cron/curl with the internal secret).
+internalRoutes.post("/internal/maintenance/sweep-orphans", async (c) => {
+  const [photos, docs, avatars] = await Promise.all([
+    db.workPhoto.findMany({ select: { url: true } }),
+    db.verificationDocument.findMany({ select: { url: true } }),
+    db.provider.findMany({
+      where: { avatarUrl: { not: null } },
+      select: { avatarUrl: true },
+    }),
+  ]);
+  const referenced = new Set<string>([
+    ...photos.map((p) => p.url),
+    ...docs.map((d) => d.url),
+    ...avatars.map((a) => a.avatarUrl as string),
+  ]);
+  const result = await sweepOrphans(referenced);
+  return c.json(result);
 });
 
 // Existence/suspended check (favorites, reviews). Always 200 — the caller

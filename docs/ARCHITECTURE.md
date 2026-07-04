@@ -333,6 +333,11 @@ names (S2S identity batch) and photos, plus `nextCursor`;
 Internal: `GET /internal/jobs/count?category&district&excludeCustomerId` →
 `{ count }`.
 
+Maintenance: provider and review each expose
+`POST /internal/maintenance/sweep-orphans` → `{ scanned, removed }` — removes
+stored upload files no DB row references (24h grace window protects in-flight
+uploads); run from ops tooling with the internal secret.
+
 Erase endpoints (account deletion, all idempotent no-op-200 for unknown users):
 provider `POST /internal/users/:id/erase` (Provider + cascades + upload files
 + the user's inquiries elsewhere), review `POST /internal/users/:id/erase`
