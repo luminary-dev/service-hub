@@ -98,6 +98,10 @@ model WorkPhoto {
   provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
   url        String
   caption    String?
+  // Manual gallery position (PATCH /api/provider/photos/order writes the
+  // array index). Photo queries order by sortOrder asc, createdAt desc, so
+  // fresh uploads (sortOrder 0) surface first until the provider reorders.
+  sortOrder  Int      @default(0)
   // Moderation soft delete: set by admin removal, cleared by restore. Public
   // queries filter it; owner deletes and account erasure stay hard.
   deletedAt  DateTime?

@@ -296,7 +296,8 @@ Public (all monolith semantics preserved; `name` fields come from denormalized
   found").
 - `GET /api/providers/:id/full` — page payload: provider + contact
   `{name, phone, email}` + services (price asc) + first 50 photos
-  (createdAt desc, `photosTotal` alongside) + first page of reviews (S2S
+  (sortOrder asc then createdAt desc — the provider's manual order,
+  `photosTotal` alongside) + first page of reviews (S2S
   `review /internal/by-provider/:id`, hydrated reviewer names + photos;
   `reviewsTake`/`reviewsCursor` thread through, `reviewsNextCursor` returned)
   + `favorited` (S2S identity if `x-user-id`). Suspended → 404 unless
@@ -339,8 +340,19 @@ Public (all monolith semantics preserved; `name` fields come from denormalized
   `POST /api/provider/services`, `PUT|DELETE /api/provider/services/:id` —
   ownership checks, messages identical.
   `POST /api/provider/photos` (multipart; `kind=avatar` → avatarUrl update,
-  else WorkPhoto; 5MB/type checks, messages identical),
+  else WorkPhoto; 5MB/type checks, messages identical; the web dashboard
+  multi-uploads by looping this endpoint — one XHR per file for real progress
+  events, at most 2 in flight since sharp re-encodes server-side).
+  `PATCH /api/provider/photos/order` `{ ids: string[] }` — persists the
+  drag-to-reorder: sets `WorkPhoto.sortOrder` to each id's index in the
+  array; ids not owned by the caller are ignored (a stale/hostile payload
+  can't touch other providers' photos), own photos missing from the payload
+  keep their old sortOrder → `{ ok: true }`.
   `DELETE /api/provider/photos/:id`.
+  Photo ordering everywhere (dashboard list, public `/full` gallery, card
+  `coverPhoto`, legacy detail) is `sortOrder asc, createdAt desc` — the
+  provider's manual order; new uploads default to sortOrder 0 so they
+  surface first (and become the cover) until reordered.
   `GET /api/provider/inquiries`, `PATCH /api/provider/inquiries/:id`
   (status NEW|RESPONDED|CLOSED).
   `POST /api/provider/verification` — multipart nic/business docs,
