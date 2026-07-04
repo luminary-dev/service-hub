@@ -9,6 +9,7 @@ import Stars from "./Stars";
 import Avatar from "./Avatar";
 import { isSvg } from "@/lib/image";
 import { useLocale, useT } from "./I18nProvider";
+import { useToast } from "./ToastProvider";
 import { formatDate } from "@/lib/format";
 
 type ReviewPhoto = { id: string; url: string };
@@ -46,6 +47,7 @@ export default function ReviewSection({
   const fileRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const t = useT();
+  const toast = useToast();
   const locale = useLocale();
 
   const existingCount = myReview?.photos.length ?? 0;
@@ -73,6 +75,7 @@ export default function ReviewSection({
     if (res.ok) {
       setShowForm(false);
       if (fileRef.current) fileRef.current.value = "";
+      toast.success(t.toast.reviewSaved);
       router.refresh();
     } else {
       const data = await res.json().catch(() => ({}));

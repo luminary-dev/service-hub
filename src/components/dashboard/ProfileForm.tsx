@@ -5,6 +5,7 @@ import { useState } from "react";
 import { CATEGORIES, DISTRICTS } from "@/lib/constants";
 import { categoryLabelLoc, districtLabelLoc } from "@/lib/i18n";
 import { useLocale, useT } from "../I18nProvider";
+import { useToast } from "../ToastProvider";
 import type { DashboardData } from "./DashboardTabs";
 
 export default function ProfileForm({ data }: { data: DashboardData }) {
@@ -30,9 +31,8 @@ export default function ProfileForm({ data }: { data: DashboardData }) {
     website: data.website,
   });
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(
-    null
-  );
+  const [error, setError] = useState("");
+  const toast = useToast();
   const router = useRouter();
 
   function set(field: string, value: string | boolean) {
@@ -42,7 +42,7 @@ export default function ProfileForm({ data }: { data: DashboardData }) {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setMessage(null);
+    setError("");
     const res = await fetch("/api/provider/profile", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -53,11 +53,11 @@ export default function ProfileForm({ data }: { data: DashboardData }) {
     });
     setLoading(false);
     if (res.ok) {
-      setMessage({ ok: true, text: p.saved });
+      toast.success(p.saved);
       router.refresh();
     } else {
       const d = await res.json().catch(() => ({}));
-      setMessage({ ok: false, text: d.error ?? p.saveError });
+      setError(d.error ?? p.saveError);
     }
   }
 
@@ -239,13 +239,7 @@ export default function ProfileForm({ data }: { data: DashboardData }) {
         </div>
       </div>
 
-      {message && (
-        <p
-          className={`text-sm ${message.ok ? "text-brand-700" : "text-red-600"}`}
-        >
-          {message.text}
-        </p>
-      )}
+      {error && <p className="text-sm text-red-600">{error}</p>}
 
       <button type="submit" disabled={loading} className="btn-primary">
         {loading ? p.saving : p.save}

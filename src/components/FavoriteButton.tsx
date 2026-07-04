@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { FaHeart, FaRegHeart } from "react-icons/fa6";
 import { useT } from "./I18nProvider";
+import { useToast } from "./ToastProvider";
 
 export default function FavoriteButton({
   providerId,
@@ -17,6 +18,7 @@ export default function FavoriteButton({
   const [favorited, setFavorited] = useState(initialFavorited);
   const [pending, setPending] = useState(false);
   const t = useT();
+  const toast = useToast();
   const router = useRouter();
 
   async function toggle(e: React.MouseEvent) {
@@ -35,8 +37,10 @@ export default function FavoriteButton({
 
     if (!res || !res.ok) {
       setFavorited(!next); // revert on failure
+      toast.error(t.toast.favError);
       return;
     }
+    toast.success(next ? t.toast.favAdded : t.toast.favRemoved);
     // Keep the account page / server-rendered favourited state in sync.
     router.refresh();
   }
