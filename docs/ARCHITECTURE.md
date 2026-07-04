@@ -225,7 +225,9 @@ Public (all monolith semantics preserved; `name` fields come from denormalized
 - `GET /api/providers/:id/card` — OG-image payload `{ name, category, city,
   district, suspended, rating, reviewCount, verificationStatus }`.
 - `POST /api/providers/:id/inquiries` — optional session; zod rules and
-  messages from monolith → `{ inquiry }`.
+  messages from monolith → `{ inquiry }`. Afterwards emails the provider
+  (denormalized `contactEmail`, S2S notification `/internal/email/inquiry`,
+  best-effort).
 - `GET /api/stats` — `{ providerCount, reviewCount }` (S2S review
   `/internal/count`).
 - Dashboard (all require a provider owned by `x-user-id`, else 401):
@@ -308,7 +310,9 @@ Internal: `GET /internal/jobs/count?category&district&excludeCustomerId` →
 Internal-only: `POST /internal/email/verify` `{ to, url, locale }`,
 `POST /internal/email/password-reset` `{ to, url, locale }`,
 `POST /internal/email/job-response` `{ to, url, providerName, jobTitle,
-locale }` → `{ ok, delivered }`. Templates (en/si subjects + HTML) ported
+locale }`,
+`POST /internal/email/inquiry` `{ to, url, customerName, locale }` →
+`{ ok, delivered }`. Templates (en/si subjects + HTML) ported
 verbatim from `src/lib/email.ts`; Resend when `RESEND_API_KEY` set, otherwise
 console log with `delivered: false`.
 

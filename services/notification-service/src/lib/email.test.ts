@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { jobResponseEmail, passwordResetEmail, verifyEmail } from "./email";
+import { inquiryEmail, jobResponseEmail, passwordResetEmail, verifyEmail } from "./email";
 
 describe("verifyEmail", () => {
   it("renders the English template by default", () => {
@@ -71,5 +71,24 @@ describe("jobResponseEmail", () => {
     );
     expect(html).toContain(">ප්‍රතිචාරය බලන්න</a>");
     expect(html).toContain('href="https://baas.lk/jobs"');
+  });
+});
+
+describe("inquiryEmail", () => {
+  it("renders the English template by default", () => {
+    const { subject, html } = inquiryEmail("https://baas.lk/dashboard", "Dilani Fernando");
+    expect(subject).toBe("New inquiry from Dilani Fernando");
+    expect(html).toContain("You have a new inquiry");
+    expect(html).toContain("Dilani Fernando sent you an inquiry through your Baas.lk profile.");
+    expect(html).toContain(">View inquiry</a>");
+    expect(html).toContain('href="https://baas.lk/dashboard"');
+  });
+
+  it("renders the Sinhala template", () => {
+    const { subject, html } = inquiryEmail("https://baas.lk/dashboard", "Dilani Fernando", "si");
+    expect(subject).toBe("Dilani Fernando ඔබට නව විමසීමක් එවා ඇත");
+    expect(html).toContain("ඔබට නව විමසීමක්");
+    expect(html).toContain(">විමසීම බලන්න</a>");
+    expect(html).toContain('href="https://baas.lk/dashboard"');
   });
 });

@@ -90,6 +90,27 @@ export function verifyEmail(url: string, locale: Locale = "en") {
   };
 }
 
+export function inquiryEmail(
+  url: string,
+  customerName: string,
+  locale: Locale = "en"
+) {
+  const si = locale === "si";
+  return {
+    subject: si
+      ? `${customerName} ඔබට නව විමසීමක් එවා ඇත`
+      : `New inquiry from ${customerName}`,
+    html: layout(
+      si ? "ඔබට නව විමසීමක්" : "You have a new inquiry",
+      si
+        ? `${customerName} ඔබේ Baas.lk පැතිකඩ හරහා විමසීමක් එවා ඇත. ඔවුන්ගේ පණිවිඩය සහ සම්බන්ධතා විස්තර බැලීමට ඔබේ උපකරණ පුවරුවට පිවිසෙන්න.`
+        : `${customerName} sent you an inquiry through your Baas.lk profile. Log in to your dashboard to view their message and contact details.`,
+      si ? "විමසීම බලන්න" : "View inquiry",
+      url
+    ),
+  };
+}
+
 export function jobResponseEmail(
   url: string,
   providerName: string,
