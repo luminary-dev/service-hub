@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useT } from "./I18nProvider";
 import { localizedHref } from "@/lib/links";
 import type { Locale } from "@/lib/i18n";
@@ -14,6 +14,7 @@ export default function LanguageToggle() {
   const t = useT();
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   function setLocale(next: Locale) {
     if (next === locale) return;
@@ -21,16 +22,14 @@ export default function LanguageToggle() {
     // and for unprefixed URLs; the /si URL prefix is what makes localized
     // pages indexable and shareable (#67).
     writeLocaleCookie(next);
-    const current = pathname + window.location.search;
+    // Both parts are safe by construction: pathname is router-provided and
+    // always rooted, and useSearchParams().toString() is a percent-encoded
+    // query serialization that cannot carry a scheme or host. So the target
+    // is always a same-origin path — no attacker-controlled window.location
+    // read reaches location.assign.
+    const query = searchParams.toString();
+    const current = pathname + (query ? `?${query}` : "");
     const target = localizedHref(current, next);
-    // Only ever navigate to a same-origin absolute path. pathname is
-    // router-provided, but window.location.search is attacker-controllable —
-    // reject anything that isn't a single-slash-rooted path (blocks
-    // protocol-relative "//host" and any scheme reaching location.assign).
-    if (!/^\/(?!\/)/.test(target)) {
-      router.refresh();
-      return;
-    }
     if (target === current) {
       router.refresh();
     } else {
