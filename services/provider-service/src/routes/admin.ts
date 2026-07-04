@@ -191,3 +191,104 @@ adminRoutes.patch("/api/admin/photos/:id/restore", async (c) => {
   });
   return c.json({ ok: true });
 });
+
+// ---------------------------------------------------------------------------
+// Category management (#135/#60). No hard delete: deactivating hides a
+// category from the public list while existing providers keep the slug.
+// ---------------------------------------------------------------------------
+
+const categorySlug = z
+  .string()
+  .regex(/^[a-z0-9-]{2,40}$/, "Slug must be 2-40 lowercase letters, digits or dashes");
+
+const categoryCreateSchema = z.object({
+  slug: categorySlug,
+  labelEn: z.string().trim().min(1, "English label is required").max(80),
+  labelSi: z.string().trim().min(1, "Sinhala label is required").max(80),
+  icon: z.string().trim().max(60).optional().or(z.literal("")).nullish(),
+  active: z.boolean().optional(),
+  sortOrder: z.number().int().min(0).max(100_000).optional(),
+});
+
+const categoryUpdateSchema = z
+  .object({
+    labelEn: z.string().trim().min(1, "English label is required").max(80),
+    labelSi: z.string().trim().min(1, "Sinhala label is required").max(80),
+    icon: z.string().trim().max(60).or(z.literal("")).nullable(),
+    active: z.boolean(),
+    sortOrder: z.number().int().min(0).max(100_000),
+  })
+  .partial();
+
+// Management list: every category, inactive included.
+adminRoutes.get("/api/admin/categories", async (c) => {
+  if (!isAdmin(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+  const categories = await db.category.findMany({
+    orderBy: [{ sortOrder: "asc" }, { labelEn: "asc" }],
+  });
+  return c.json({ categories });
+});
+
+adminRoutes.post("/api/admin/categories", async (c) => {
+  if (!isAdmin(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = categoryCreateSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0]?.message ?? "Invalid input" }, 400);
+  }
+
+  const existing = await db.category.findUnique({
+    where: { slug: parsed.data.slug },
+  });
+  if (existing) {
+    return c.json({ error: "A category with this slug already exists" }, 409);
+  }
+
+  const category = await db.category.create({
+    data: {
+      slug: parsed.data.slug,
+      labelEn: parsed.data.labelEn,
+      labelSi: parsed.data.labelSi,
+      icon: parsed.data.icon || null,
+      active: parsed.data.active ?? true,
+      sortOrder: parsed.data.sortOrder ?? 0,
+    },
+  });
+  return c.json({ category });
+});
+
+adminRoutes.patch("/api/admin/categories/:slug", async (c) => {
+  if (!isAdmin(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const slug = c.req.param("slug");
+  const category = await db.category.findUnique({ where: { slug } });
+  if (!category) {
+    return c.json({ error: "Category not found" }, 404);
+  }
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = categoryUpdateSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0]?.message ?? "Invalid input" }, 400);
+  }
+
+  const data = parsed.data;
+  const updated = await db.category.update({
+    where: { slug },
+    data: {
+      ...(data.labelEn !== undefined ? { labelEn: data.labelEn } : {}),
+      ...(data.labelSi !== undefined ? { labelSi: data.labelSi } : {}),
+      ...(data.icon !== undefined ? { icon: data.icon || null } : {}),
+      ...(data.active !== undefined ? { active: data.active } : {}),
+      ...(data.sortOrder !== undefined ? { sortOrder: data.sortOrder } : {}),
+    },
+  });
+  return c.json({ category: updated });
+});

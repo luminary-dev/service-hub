@@ -5,13 +5,13 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
 import {
-  categoryEnum,
   districtEnum,
   optionalSlPhone,
   optionalWebUrl,
   priceRupees,
   slPhone,
 } from "../lib/field-rules";
+import { categoryValidator } from "../lib/categories";
 import {
   fetchEmailVerified,
   fetchOpenJobsCount,
@@ -78,7 +78,9 @@ providerDashboardRoutes.get("/api/provider/dashboard", async (c) => {
 const profileSchema = z.object({
   name: z.string().min(2).max(80),
   phone: slPhone,
-  category: categoryEnum,
+  // Category membership is checked against the Category table after parsing —
+  // zod schemas are sync, and the list is now data, not code.
+  category: z.string().min(1).max(40),
   headline: z.string().min(5).max(120),
   bio: z.string().min(20).max(2000),
   district: districtEnum,
@@ -104,6 +106,9 @@ providerDashboardRoutes.put("/api/provider/profile", async (c) => {
   const parsed = profileSchema.safeParse(body);
   if (!parsed.success) {
     return c.json({ error: parsed.error.issues[0]?.message ?? "Invalid input" }, 400);
+  }
+  if (!(await categoryValidator.isValidCategory(parsed.data.category))) {
+    return c.json({ error: "Invalid category" }, 400);
   }
   const { name, phone, ...profile } = parsed.data;
 

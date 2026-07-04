@@ -4,6 +4,30 @@ const { PrismaPg } = require("@prisma/adapter-pg");
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const db = new PrismaClient({ adapter });
 
+// Managed categories (#135/#60). Slugs are the canonical list from the old
+// src/lib/constants.ts copies; English labels come from the web constants,
+// Sinhala labels from the web i18n dict, and `icon` is the react-icons
+// identifier the web maps each slug to. sortOrder is spaced by 10 so admins
+// can slot new categories in between.
+const CATEGORIES = [
+  { slug: "mechanic", labelEn: "Mechanic", labelSi: "රථ කාර්මික", icon: "FaWrench" },
+  { slug: "electrician", labelEn: "Electrician", labelSi: "විදුලි කාර්මික", icon: "FaBolt" },
+  { slug: "plumber", labelEn: "Plumber", labelSi: "ජලනළ කාර්මික", icon: "FaShower" },
+  { slug: "carpenter", labelEn: "Carpenter", labelSi: "වඩු කාර්මික", icon: "FaHammer" },
+  { slug: "mason", labelEn: "Mason", labelSi: "පෙදරේරු", icon: "FaTrowel" },
+  { slug: "painter", labelEn: "Painter", labelSi: "තීන්ත ආලේපක", icon: "FaPaintRoller" },
+  { slug: "garden-designer", labelEn: "Garden Designer", labelSi: "උද්‍යාන නිර්මාණකරු", icon: "FaLeaf" },
+  { slug: "ac-repair", labelEn: "AC Repair", labelSi: "A/C අලුත්වැඩියා", icon: "FaSnowflake" },
+  { slug: "appliance-repair", labelEn: "Appliance Repair", labelSi: "ගෘහ උපකරණ අලුත්වැඩියා", icon: "FaPlug" },
+  { slug: "welder", labelEn: "Welder", labelSi: "වෙල්ඩින් කාර්මික", icon: "FaFire" },
+  { slug: "roofer", labelEn: "Roofer", labelSi: "වහල කාර්මික", icon: "FaHouseChimney" },
+  { slug: "tile-layer", labelEn: "Tile Layer", labelSi: "ටයිල් කාර්මික", icon: "FaBorderAll" },
+  { slug: "cctv-security", labelEn: "CCTV & Security", labelSi: "CCTV සහ ආරක්ෂණ", icon: "FaVideo" },
+  { slug: "pest-control", labelEn: "Pest Control", labelSi: "පළිබෝධ පාලනය", icon: "FaBug" },
+  { slug: "cleaning", labelEn: "Cleaning", labelSi: "පිරිසිදු කිරීම", icon: "FaBroom" },
+  { slug: "movers", labelEn: "Movers", labelSi: "බඩු ප්‍රවාහනය", icon: "FaTruck" },
+].map((c, i) => ({ ...c, active: true, sortOrder: (i + 1) * 10 }));
+
 // Deterministic IDs so cross-service references line up with the
 // identity-service seed (user_*) and the review/job seeds (prov_*).
 // Photo URLs keep the monolith form — the seed SVGs live in the web app's
@@ -142,6 +166,15 @@ const PROVIDERS = [
 ];
 
 async function main() {
+  // Upserts keep the seed idempotent without wiping admin-added categories.
+  for (const cat of CATEGORIES) {
+    await db.category.upsert({
+      where: { slug: cat.slug },
+      update: cat,
+      create: cat,
+    });
+  }
+
   await db.inquiry.deleteMany();
   await db.verificationDocument.deleteMany();
   await db.workPhoto.deleteMany();
@@ -190,7 +223,9 @@ async function main() {
     },
   });
 
-  console.log(`Seeded ${PROVIDERS.length} providers with services, photos and 1 inquiry.`);
+  console.log(
+    `Seeded ${CATEGORIES.length} categories and ${PROVIDERS.length} providers with services, photos and 1 inquiry.`
+  );
 }
 
 main()
