@@ -164,10 +164,21 @@ const en = {
     verified: "Verified",
   },
   account: {
-    title: "Saved professionals",
-    subtitle: "Providers you've shortlisted.",
+    title: "My account",
+    subtitle: "Your saved professionals, inquiries and reviews.",
+    savedTitle: "Saved professionals",
     empty: "You haven't saved any professionals yet.",
     emptyCta: "Browse professionals",
+    inquiriesTitle: "My inquiries",
+    inquiriesEmpty:
+      "You haven't sent any inquiries yet. Contact a professional from their profile and it will show up here.",
+    statusNew: "Sent",
+    statusResponded: "Responded",
+    statusClosed: "Closed",
+    reviewsTitle: "My reviews",
+    reviewsEmpty:
+      "You haven't written any reviews yet. Share your experience after your next job.",
+    verifiedReview: "Verified",
   },
   security: {
     link: "Account security",
@@ -750,10 +761,21 @@ const si: Dict = {
     verified: "සත්‍යාපිතයි",
   },
   account: {
-    title: "සුරකින ලද වෘත්තිකයන්",
-    subtitle: "ඔබ තෝරාගත් වෘත්තිකයන්.",
+    title: "මගේ ගිණුම",
+    subtitle: "ඔබ සුරකින ලද වෘත්තිකයන්, විමසීම් සහ සමාලෝචන.",
+    savedTitle: "සුරකින ලද වෘත්තිකයන්",
     empty: "ඔබ තවම කිසිම වෘත්තිකයෙක් සුරකා නැත.",
     emptyCta: "වෘත්තිකයන් බලන්න",
+    inquiriesTitle: "මගේ විමසීම්",
+    inquiriesEmpty:
+      "ඔබ තවම විමසුමක් යවා නැත. වෘත්තිකයෙකුගේ පැතිකඩෙන් සම්බන්ධ වූ විට එය මෙහි දිස්වේ.",
+    statusNew: "යවා ඇත",
+    statusResponded: "පිළිතුරු දී ඇත",
+    statusClosed: "වසා ඇත",
+    reviewsTitle: "මගේ සමාලෝචන",
+    reviewsEmpty:
+      "ඔබ තවම සමාලෝචනයක් ලියා නැත. ඊළඟ වැඩෙන් පසු ඔබේ අත්දැකීම බෙදාගන්න.",
+    verifiedReview: "සත්‍යාපිතයි",
   },
   security: {
     link: "ගිණුම් ආරක්ෂාව",
