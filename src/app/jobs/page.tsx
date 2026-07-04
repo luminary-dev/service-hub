@@ -4,6 +4,7 @@ import { FaPhone, FaPlus } from "react-icons/fa6";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
+import { formatDate, formatNumber } from "@/lib/format";
 import { dict, categoryLabelLoc, districtLabelLoc } from "@/lib/i18n";
 import JobRespondForm from "@/components/jobs/JobRespondForm";
 import JobStatusToggle from "@/components/jobs/JobStatusToggle";
@@ -41,14 +42,6 @@ type MyJob = {
     provider: { id: string; name: string; phone: string | null };
   }[];
 };
-
-function fmtDate(d: string) {
-  return new Date(d).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
 
 export default async function JobsPage() {
   const session = await getSession();
@@ -110,12 +103,12 @@ export default async function JobsPage() {
                     <h2 className="font-semibold text-ink-900">{job.title}</h2>
                     {job.budget != null && (
                       <span className="chip bg-brand-50 text-brand-700">
-                        {t.budgetTag(job.budget.toLocaleString("en-LK"))}
+                        {t.budgetTag(formatNumber(job.budget, locale))}
                       </span>
                     )}
                   </div>
                   <p className="mt-1 text-xs text-ink-500">
-                    {job.customer.name} · {t.postedOn} {fmtDate(job.createdAt)}
+                    {job.customer.name} · {t.postedOn} {formatDate(job.createdAt, locale)}
                   </p>
                   <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-ink-600">
                     {job.description}

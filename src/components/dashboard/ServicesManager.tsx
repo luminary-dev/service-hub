@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { PRICE_TYPES, formatLKR } from "@/lib/constants";
+import { PRICE_TYPES } from "@/lib/constants";
+import { formatLKR } from "@/lib/format";
 import { priceTypeLabelLoc } from "@/lib/i18n";
 import { useLocale, useT } from "../I18nProvider";
 import type { ServiceItem } from "./DashboardTabs";
@@ -186,7 +187,7 @@ export default function ServicesManager({
                 <p className="mt-0.5 text-sm text-ink-500">{s.description}</p>
               )}
               <p className="mt-1 text-sm font-semibold text-brand-700">
-                {formatLKR(s.price)}{" "}
+                {formatLKR(s.price, locale)}{" "}
                 <span className="font-normal text-ink-500">
                   · {priceTypeLabelLoc(s.priceType, locale)}
                 </span>

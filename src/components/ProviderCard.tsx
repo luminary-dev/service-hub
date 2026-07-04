@@ -6,7 +6,7 @@ import Avatar from "./Avatar";
 import CategoryIcon from "./CategoryIcon";
 import FavoriteButton from "./FavoriteButton";
 import { isSvg } from "@/lib/image";
-import { formatLKR } from "@/lib/constants";
+import { formatLKR } from "@/lib/format";
 import {
   dict,
   categoryLabelLoc,
@@ -136,7 +136,7 @@ export default function ProviderCard({
           )}
           {p.fromPrice !== null && (
             <span className="text-sm font-semibold tabular-nums text-brand-700">
-              {formatLKR(p.fromPrice)}
+              {formatLKR(p.fromPrice, locale)}
               {p.fromPriceType && (
                 <span className="font-normal text-ink-500">
                   {" "}

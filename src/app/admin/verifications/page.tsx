@@ -3,6 +3,7 @@ import { FaFileLines, FaShieldHalved } from "react-icons/fa6";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
+import { formatDate } from "@/lib/format";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
 import Avatar from "@/components/Avatar";
 import VerificationActions from "@/components/admin/VerificationActions";
@@ -60,11 +61,7 @@ export default async function AdminVerificationsPage() {
                     </p>
                     <p className="mt-1 text-xs text-ink-500">
                       {t.admin.submitted}:{" "}
-                      {new Date(p.updatedAt).toLocaleDateString("en-GB", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      })}
+                      {formatDate(p.updatedAt, locale)}
                     </p>
                   </div>
                 </div>

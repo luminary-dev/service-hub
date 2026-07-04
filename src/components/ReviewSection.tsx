@@ -8,7 +8,8 @@ import { FaStar, FaXmark } from "react-icons/fa6";
 import Stars from "./Stars";
 import Avatar from "./Avatar";
 import { isSvg } from "@/lib/image";
-import { useT } from "./I18nProvider";
+import { useLocale, useT } from "./I18nProvider";
+import { formatDate } from "@/lib/format";
 
 type ReviewPhoto = { id: string; url: string };
 
@@ -45,6 +46,7 @@ export default function ReviewSection({
   const fileRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const t = useT();
+  const locale = useLocale();
 
   const existingCount = myReview?.photos.length ?? 0;
   const slotsLeft = MAX_PHOTOS - existingCount;
@@ -206,11 +208,7 @@ export default function ReviewSection({
                   <div className="flex items-center gap-2">
                     <Stars rating={r.rating} />
                     <span className="text-xs text-ink-500">
-                      {new Date(r.createdAt).toLocaleDateString("en-GB", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      })}
+                      {formatDate(r.createdAt, locale)}
                     </span>
                   </div>
                 </div>

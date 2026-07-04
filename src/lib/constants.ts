@@ -69,6 +69,3 @@ export function priceTypeLabel(value: string) {
   return PRICE_TYPES.find((p) => p.value === value)?.label ?? value;
 }
 
-export function formatLKR(amount: number) {
-  return `Rs. ${amount.toLocaleString("en-LK")}`;
-}

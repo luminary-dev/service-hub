@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { FaLocationDot } from "react-icons/fa6";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
-import { formatLKR } from "@/lib/constants";
+import { formatLKR } from "@/lib/format";
 import {
   dict,
   categoryLabelLoc,
@@ -261,7 +261,7 @@ export default async function ProviderProfilePage({
                       </div>
                       <p className="shrink-0 text-right">
                         <span className="font-semibold tabular-nums text-brand-700">
-                          {formatLKR(s.price)}
+                          {formatLKR(s.price, locale)}
                         </span>
                         <span className="block text-xs text-ink-500">
                           {priceTypeLabelLoc(s.priceType, locale)}
