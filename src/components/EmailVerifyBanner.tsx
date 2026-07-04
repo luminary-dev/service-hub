@@ -32,7 +32,7 @@ export default function EmailVerifyBanner() {
         <button
           onClick={resend}
           disabled={state === "sending"}
-          className="cursor-pointer rounded-full border border-amber-300 bg-white px-4 py-1.5 text-sm font-semibold text-amber-900 transition hover:bg-amber-100 disabled:opacity-50"
+          className="cursor-pointer rounded-full border border-amber-300 bg-surface px-4 py-1.5 text-sm font-semibold text-amber-900 transition hover:bg-amber-100 disabled:opacity-50"
         >
           {state === "sending"
             ? t.verify.bannerSending

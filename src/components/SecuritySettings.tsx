@@ -182,7 +182,7 @@ export default function SecuritySettings() {
         <button
           type="submit"
           disabled={deleting || deletePassword.length === 0}
-          className="mt-4 rounded-full bg-red-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50"
+          className="mt-4 rounded-full bg-red-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-red-700 dark:hover:bg-red-600/85 disabled:opacity-50"
         >
           {deleting ? t.security.deleting : t.security.delete}
         </button>

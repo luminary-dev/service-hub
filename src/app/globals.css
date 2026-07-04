@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Class-based dark mode: the `dark` class is set on <html> by the server
+   layout (explicit `theme` cookie) or by the inline no-flash script in
+   <head> (system preference when no cookie is set). */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* Optional Sinhala font: drop FMBindumathi.woff2 (or .ttf) into public/fonts/
    and it takes over Sinhala text. Must be a Unicode-encoded version — the
    legacy FM-Bindumathi has no Sinhala Unicode glyphs and will not render.
@@ -34,10 +39,82 @@
   --color-ink-700: oklch(0.38 0.012 55);
   --color-ink-800: oklch(0.28 0.01 50);
   --color-ink-900: oklch(0.2 0.01 45);
+  --color-surface: oklch(1 0 0);
   --font-sans: var(--font-poppins), "FM Bindumathi", var(--font-sinhala),
     ui-sans-serif, system-ui, sans-serif;
   --ease-snap: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-flow: cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+/* Dark theme: the components are written against the semantic ink/brand/
+   surface tokens, so the theme flips at the token layer. The ink ramp
+   inverts (ink-50 stays "page background", ink-900 stays "primary text"),
+   `surface` swaps white cards for a raised dark surface, and the brand ramp
+   is re-tuned per role: tints (50–200) become deep warm fills, text shades
+   (600/800/900) become light, and solid fills (700) become a bright orange
+   that carries dark text (see `dark:text-ink-50` at the call sites).
+   The handful of Tailwind status shades in use (emerald/amber/red chips,
+   banners and toasts) are re-mapped the same way so per-component dark:
+   overrides stay rare. */
+:root {
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
+
+  --color-surface: oklch(0.22 0.008 48);
+  --color-ink-50: oklch(0.165 0.006 45);
+  --color-ink-100: oklch(0.26 0.008 48);
+  --color-ink-200: oklch(0.31 0.009 50);
+  --color-ink-300: oklch(0.38 0.01 52);
+  --color-ink-400: oklch(0.52 0.01 60);
+  --color-ink-500: oklch(0.66 0.01 70);
+  --color-ink-600: oklch(0.74 0.009 75);
+  --color-ink-700: oklch(0.81 0.007 80);
+  --color-ink-800: oklch(0.88 0.005 85);
+  --color-ink-900: oklch(0.94 0.004 90);
+
+  --color-brand-50: oklch(0.25 0.05 38);
+  --color-brand-100: oklch(0.31 0.065 38);
+  --color-brand-200: oklch(0.38 0.08 37);
+  --color-brand-300: oklch(0.5 0.11 37);
+  --color-brand-400: oklch(0.62 0.14 36);
+  --color-brand-500: oklch(0.68 0.15 35);
+  --color-brand-600: oklch(0.74 0.145 40);
+  --color-brand-700: oklch(0.7 0.15 36);
+  --color-brand-800: oklch(0.77 0.13 42);
+  --color-brand-900: oklch(0.88 0.06 45);
+
+  --color-emerald-50: oklch(0.26 0.04 163);
+  --color-emerald-100: oklch(0.32 0.06 162);
+  --color-emerald-200: oklch(0.4 0.08 162);
+  --color-emerald-300: oklch(0.5 0.1 162);
+  --color-emerald-400: oklch(0.55 0.12 162);
+  --color-emerald-700: oklch(0.78 0.14 162);
+
+  --color-amber-50: oklch(0.26 0.05 80);
+  --color-amber-100: oklch(0.32 0.07 80);
+  --color-amber-200: oklch(0.42 0.09 80);
+  --color-amber-300: oklch(0.5 0.11 80);
+  --color-amber-600: oklch(0.75 0.15 75);
+  --color-amber-700: oklch(0.8 0.14 78);
+  --color-amber-900: oklch(0.9 0.08 85);
+
+  --color-red-50: oklch(0.23 0.06 25);
+  --color-red-100: oklch(0.3 0.09 25);
+  --color-red-200: oklch(0.38 0.11 25);
+  --color-red-300: oklch(0.46 0.14 25);
+  --color-red-400: oklch(0.55 0.19 26);
+  --color-red-500: oklch(0.66 0.2 25);
+  --color-red-600: oklch(0.6 0.21 26);
+  --color-red-700: oklch(0.72 0.17 25);
+}
+
+/* Focus rings with ring-offset-2 default the offset colour to white; keep
+   the halo matched to the page background in dark mode. */
+.dark * {
+  --tw-ring-offset-color: var(--color-ink-50);
 }
 
 body {
@@ -89,7 +166,7 @@ p {
 
 @layer components {
   .input {
-    @apply w-full rounded-xl border border-ink-300 bg-white px-4 py-2.5 text-sm text-ink-900 placeholder:text-ink-500 outline-none transition-[border-color,box-shadow] duration-200 ease-snap focus:border-brand-500 focus:ring-2 focus:ring-brand-200;
+    @apply w-full rounded-xl border border-ink-300 bg-surface px-4 py-2.5 text-sm text-ink-900 placeholder:text-ink-500 outline-none transition-[border-color,box-shadow] duration-200 ease-snap focus:border-brand-500 focus:ring-2 focus:ring-brand-200;
   }
 
   .label {
@@ -97,11 +174,11 @@ p {
   }
 
   .btn-primary {
-    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-full bg-brand-700 px-5 py-2.5 text-sm font-semibold text-white transition-[background-color,transform] duration-200 ease-snap hover:bg-brand-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-full bg-brand-700 px-5 py-2.5 text-sm font-semibold text-white transition-[background-color,transform] dark:text-ink-50 duration-200 ease-snap hover:bg-brand-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .btn-secondary {
-    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-full border border-ink-300 bg-white px-5 py-2.5 text-sm font-semibold text-ink-800 transition-[border-color,background-color,transform] duration-200 ease-snap hover:border-ink-400 hover:bg-ink-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-300 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-full border border-ink-300 bg-surface px-5 py-2.5 text-sm font-semibold text-ink-800 transition-[border-color,background-color,transform] duration-200 ease-snap hover:border-ink-400 hover:bg-ink-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-300 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .btn-ghost {
@@ -109,7 +186,7 @@ p {
   }
 
   .card {
-    @apply rounded-2xl border border-ink-200 bg-white;
+    @apply rounded-2xl border border-ink-200 bg-surface;
   }
 
   .chip {

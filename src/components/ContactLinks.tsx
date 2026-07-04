@@ -32,9 +32,9 @@ export default function ContactLinks(props: {
       icon: FaInstagram,
       bg: "bg-gradient-to-tr from-amber-500 via-pink-600 to-purple-600",
     },
-    { label: "TikTok", value: props.tiktok, icon: FaTiktok, bg: "bg-ink-900" },
+    { label: "TikTok", value: props.tiktok, icon: FaTiktok, bg: "bg-black dark:bg-ink-100" },
     { label: "YouTube", value: props.youtube, icon: FaYoutube, bg: "bg-red-600" },
-    { label: "Website", value: props.website, icon: FaGlobe, bg: "bg-ink-600" },
+    { label: "Website", value: props.website, icon: FaGlobe, bg: "bg-ink-600 dark:bg-ink-300" },
   ].filter((s) => s.value);
 
   return (

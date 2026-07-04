@@ -3,7 +3,7 @@
 export default function LoadingProviderProfile() {
   return (
     <div className="animate-pulse">
-      <div className="border-b border-ink-200 bg-white">
+      <div className="border-b border-ink-200 bg-surface">
         <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex items-start gap-5">

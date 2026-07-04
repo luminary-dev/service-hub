@@ -143,7 +143,7 @@ export default async function ProvidersPage({
               <Link
                 key={slug}
                 href={`/providers?category=${slug}`}
-                className="chip border border-ink-200 bg-white !px-3 !py-1.5 text-ink-700 transition-[border-color,color] duration-200 ease-snap hover:border-brand-400 hover:text-brand-700"
+                className="chip border border-ink-200 bg-surface !px-3 !py-1.5 text-ink-700 transition-[border-color,color] duration-200 ease-snap hover:border-brand-400 hover:text-brand-700"
               >
                 <CategoryIcon slug={slug} className="h-3.5 w-3.5" />
                 {categoryLabelLoc(slug, locale)}

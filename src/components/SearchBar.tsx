@@ -25,7 +25,7 @@ export default function SearchBar() {
   return (
     <form
       onSubmit={submit}
-      className="flex flex-col gap-2 rounded-2xl border border-ink-300 bg-white p-2 transition-[border-color] duration-200 ease-snap focus-within:border-brand-500 sm:flex-row sm:items-center"
+      className="flex flex-col gap-2 rounded-2xl border border-ink-300 bg-surface p-2 transition-[border-color] duration-200 ease-snap focus-within:border-brand-500 sm:flex-row sm:items-center"
     >
       <input
         value={q}

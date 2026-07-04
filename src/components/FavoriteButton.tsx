@@ -54,7 +54,7 @@ export default function FavoriteButton({
         onClick={toggle}
         aria-pressed={favorited}
         aria-label={label}
-        className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-ink-300 bg-white px-4 py-2 text-sm font-semibold text-ink-800 transition-[border-color,background-color] duration-200 ease-snap hover:border-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 disabled:opacity-60"
+        className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-ink-300 bg-surface px-4 py-2 text-sm font-semibold text-ink-800 transition-[border-color,background-color] duration-200 ease-snap hover:border-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 disabled:opacity-60"
         disabled={pending}
       >
         {favorited ? (
@@ -73,7 +73,7 @@ export default function FavoriteButton({
       onClick={toggle}
       aria-pressed={favorited}
       aria-label={label}
-      className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white/95 text-ink-600 shadow-sm backdrop-blur transition-[transform,color] duration-200 ease-snap hover:scale-105 hover:text-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 disabled:opacity-60"
+      className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white/95 text-ink-600 shadow-sm backdrop-blur dark:bg-ink-50/90 transition-[transform,color] duration-200 ease-snap hover:scale-105 hover:text-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 disabled:opacity-60"
       disabled={pending}
     >
       {favorited ? (

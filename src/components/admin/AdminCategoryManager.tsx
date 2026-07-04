@@ -215,7 +215,7 @@ export default function AdminCategoryManager({
                     <button
                       onClick={() => startEdit(c)}
                       disabled={pending}
-                      className="cursor-pointer rounded-full border border-ink-300 bg-white px-3 py-1.5 text-xs font-semibold text-ink-800 transition hover:border-brand-400 hover:text-brand-700 disabled:opacity-60"
+                      className="cursor-pointer rounded-full border border-ink-300 bg-surface px-3 py-1.5 text-xs font-semibold text-ink-800 transition hover:border-brand-400 hover:text-brand-700 disabled:opacity-60"
                     >
                       {t.catEdit}
                     </button>
@@ -224,8 +224,8 @@ export default function AdminCategoryManager({
                       disabled={pending}
                       className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-60 ${
                         c.active
-                          ? "border-red-300 bg-white text-red-600 hover:bg-red-50"
-                          : "border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-50"
+                          ? "border-red-300 bg-surface text-red-600 hover:bg-red-50"
+                          : "border-emerald-300 bg-surface text-emerald-700 hover:bg-emerald-50"
                       }`}
                     >
                       {c.active ? t.catDeactivate : t.catActivate}

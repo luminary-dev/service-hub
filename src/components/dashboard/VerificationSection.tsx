@@ -76,7 +76,7 @@ export default function VerificationSection({
 
   // NONE or REJECTED — show the submit form.
   return (
-    <div className="mb-6 rounded-2xl border border-ink-200 bg-white p-5">
+    <div className="mb-6 rounded-2xl border border-ink-200 bg-surface p-5">
       <div className="flex items-center gap-2">
         <FaShieldHalved className="h-5 w-5 text-brand-600" />
         <h2 className="font-semibold text-ink-900">{t.title}</h2>

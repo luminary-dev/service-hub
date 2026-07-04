@@ -6,13 +6,18 @@ import { useState } from "react";
 import { FaBars, FaXmark } from "react-icons/fa6";
 import { useT } from "./I18nProvider";
 import LanguageToggle from "./LanguageToggle";
+import ThemeToggle from "./ThemeToggle";
+import type { Theme } from "@/lib/theme";
 
 // Hamburger menu for small screens. Mirrors the desktop nav links plus the
-// auth actions and language toggle; the server Navbar passes the session down.
+// auth actions and language/theme toggles; the server Navbar passes the
+// session and cookie-derived theme down.
 export default function MobileMenu({
   session,
+  theme,
 }: {
   session: { role: string } | null;
+  theme: Theme;
 }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
@@ -55,7 +60,7 @@ export default function MobileMenu({
       {open && (
         <nav
           id="mobile-menu"
-          className="absolute inset-x-0 top-16 border-b border-ink-200 bg-white p-3 shadow-lg"
+          className="absolute inset-x-0 top-16 border-b border-ink-200 bg-surface p-3 shadow-lg"
         >
           <Link href="/providers" onClick={close} className={itemClass}>
             {t.nav.find}
@@ -103,8 +108,9 @@ export default function MobileMenu({
               </Link>
             </>
           )}
-          <div className="mt-2 flex border-t border-ink-100 px-4 pt-3 pb-1">
+          <div className="mt-2 flex items-center gap-3 border-t border-ink-100 px-4 pt-3 pb-1">
             <LanguageToggle />
+            <ThemeToggle initialTheme={theme} />
           </div>
         </nav>
       )}

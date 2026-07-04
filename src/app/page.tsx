@@ -37,7 +37,7 @@ export default async function HomePage() {
 
   return (
     <div>
-      <section className="border-b border-ink-200 bg-white">
+      <section className="border-b border-ink-200 bg-surface">
         <div className="mx-auto grid max-w-6xl gap-12 px-4 py-16 sm:px-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-center lg:py-24">
           <div>
             <h1 className="rise text-4xl font-semibold leading-[1.15] tracking-tight text-ink-900 sm:text-5xl">
@@ -61,7 +61,7 @@ export default async function HomePage() {
                   <Link
                     key={q}
                     href={`/providers?q=${encodeURIComponent(q)}`}
-                    className="rounded-full border border-ink-200 bg-white px-3 py-1 font-medium text-ink-600 transition-[border-color,color] duration-200 ease-snap hover:border-brand-400 hover:text-brand-700"
+                    className="rounded-full border border-ink-200 bg-surface px-3 py-1 font-medium text-ink-600 transition-[border-color,color] duration-200 ease-snap hover:border-brand-400 hover:text-brand-700"
                   >
                     {label}
                   </Link>
@@ -112,7 +112,7 @@ export default async function HomePage() {
                 </span>
               </div>
               <div className="mt-3 flex gap-2">
-                <span className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-brand-700 py-1.5 text-xs font-semibold text-white">
+                <span className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-brand-700 py-1.5 text-xs font-semibold text-white dark:text-ink-50">
                   <FaPhone className="h-3 w-3" /> {t.home.cardCall}
                 </span>
                 <span className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-[#25D366] py-1.5 text-xs font-semibold text-white">
@@ -134,7 +134,7 @@ export default async function HomePage() {
             </div>
 
             <div
-              className="rise absolute -top-6 right-4 flex rotate-2 items-center gap-2 rounded-full border border-ink-200 bg-white py-2 pl-3 pr-4"
+              className="rise absolute -top-6 right-4 flex rotate-2 items-center gap-2 rounded-full border border-ink-200 bg-surface py-2 pl-3 pr-4"
               style={{ "--rise-index": 5 } as React.CSSProperties}
             >
               <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
@@ -166,7 +166,7 @@ export default async function HomePage() {
             <Link
               key={c.slug}
               href={`/providers?category=${c.slug}`}
-              className="inline-flex items-center gap-2 rounded-full border border-ink-200 bg-white px-4 py-2.5 text-sm font-medium text-ink-700 transition-[border-color,background-color,color,transform] duration-200 ease-snap hover:border-brand-400 hover:bg-brand-50 hover:text-brand-800 active:scale-[0.97]"
+              className="inline-flex items-center gap-2 rounded-full border border-ink-200 bg-surface px-4 py-2.5 text-sm font-medium text-ink-700 transition-[border-color,background-color,color,transform] duration-200 ease-snap hover:border-brand-400 hover:bg-brand-50 hover:text-brand-800 active:scale-[0.97]"
             >
               <c.icon className="h-4 w-4 text-brand-600" />
               {categoryLabelLoc(c.slug, locale)}
@@ -176,7 +176,7 @@ export default async function HomePage() {
       </section>
 
       {featured.length > 0 && (
-        <section className="border-y border-ink-200 bg-white">
+        <section className="border-y border-ink-200 bg-surface">
           <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
@@ -235,26 +235,26 @@ export default async function HomePage() {
         </ol>
       </section>
 
-      <section className="bg-brand-700">
+      <section className="bg-brand-700 dark:bg-brand-50">
         <div className="mx-auto grid max-w-6xl items-center gap-8 px-4 py-16 sm:px-6 lg:grid-cols-[1.2fr_0.8fr]">
           <div>
             <h2 className="text-3xl font-semibold tracking-tight text-white">
               {t.home.ctaHeading}
             </h2>
-            <p className="mt-3 max-w-[55ch] leading-relaxed text-brand-100">
+            <p className="mt-3 max-w-[55ch] leading-relaxed text-brand-100 dark:text-brand-900">
               {t.home.ctaBody}
             </p>
           </div>
           <div className="flex flex-wrap gap-3 lg:justify-end">
             <Link
               href="/register/provider"
-              className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-brand-800 transition-[background-color,transform] duration-200 ease-snap hover:bg-brand-50 active:scale-[0.97]"
+              className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-brand-800 transition-[background-color,transform] duration-200 ease-snap hover:bg-brand-50 active:scale-[0.97] dark:bg-brand-700 dark:text-ink-50 dark:hover:bg-brand-800"
             >
               {t.home.ctaCreate}
             </Link>
             <Link
               href="/providers"
-              className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-full border border-brand-400 px-6 py-3 text-sm font-semibold text-white transition-[border-color,background-color,transform] duration-200 ease-snap hover:border-brand-300 hover:bg-brand-600 active:scale-[0.97]"
+              className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-full border border-brand-400 px-6 py-3 text-sm font-semibold text-white transition-[border-color,background-color,transform] duration-200 ease-snap hover:border-brand-300 hover:bg-brand-600 active:scale-[0.97] dark:hover:bg-white/10"
             >
               {t.home.ctaSee}
             </Link>

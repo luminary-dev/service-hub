@@ -19,7 +19,7 @@ export default async function RegisterChoicePage() {
       <div className="mt-10 grid gap-6 sm:grid-cols-2">
         <Link
           href="/register/provider"
-          className="group rounded-2xl bg-brand-700 p-8 transition-[background-color,transform] duration-200 ease-snap hover:bg-brand-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 active:scale-[0.99]"
+          className="group rounded-2xl bg-brand-700 p-8 transition-[background-color,transform] duration-200 ease-snap hover:bg-brand-800 dark:bg-brand-50 dark:hover:bg-brand-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 active:scale-[0.99]"
         >
           <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 text-white">
             <FaScrewdriverWrench className="h-6 w-6" />
@@ -27,7 +27,7 @@ export default async function RegisterChoicePage() {
           <h2 className="mt-4 text-xl font-semibold text-white">
             {t.choose.offerTitle}
           </h2>
-          <p className="mt-2 text-sm leading-relaxed text-brand-100">
+          <p className="mt-2 text-sm leading-relaxed text-brand-100 dark:text-brand-900">
             {t.choose.offerBody}
           </p>
           <span className="mt-4 inline-block text-sm font-semibold text-white">

@@ -21,7 +21,7 @@ export default function LoadingProviders() {
             <div className="h-36 bg-ink-100" />
             <div className="p-4">
               <div className="flex items-start gap-3">
-                <div className="-mt-9 h-14 w-14 rounded-full border-4 border-white bg-ink-200" />
+                <div className="-mt-9 h-14 w-14 rounded-full border-4 border-surface bg-ink-200" />
                 <div className="min-w-0 flex-1 pt-1">
                   <div className="h-4 w-32 rounded bg-ink-200" />
                   <div className="mt-2 h-3 w-40 rounded bg-ink-100" />
