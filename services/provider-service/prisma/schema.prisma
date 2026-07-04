@@ -42,6 +42,12 @@ model Provider {
   photos           WorkPhoto[]
   inquiries        Inquiry[]
   verificationDocs VerificationDocument[]
+
+  // Browse filters (category alone uses the leftmost prefix) and newest-first
+  // ranking; district-only browsing is a separate path.
+  @@index([category, district])
+  @@index([district])
+  @@index([createdAt])
 }
 
 model VerificationDocument {
@@ -63,6 +69,8 @@ model Service {
   description String?
   price       Float
   priceType   String   @default("FIXED")
+
+  @@index([providerId])
 }
 
 model WorkPhoto {
@@ -72,6 +80,8 @@ model WorkPhoto {
   url        String
   caption    String?
   createdAt  DateTime @default(now())
+
+  @@index([providerId])
 }
 
 // userId references a User owned by identity-service (plain string, nullable —
@@ -87,4 +97,6 @@ model Inquiry {
   message    String
   status     String   @default("NEW")
   createdAt  DateTime @default(now())
+
+  @@index([providerId])
 }
