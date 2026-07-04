@@ -5,12 +5,23 @@ import { getLocale } from "@/lib/locale";
 import { normalizeSort } from "@/lib/sort-keys";
 import { getSession } from "@/lib/auth";
 import ProviderCard, { ProviderCardDTO } from "@/components/ProviderCard";
+import CategoryIcon from "@/components/CategoryIcon";
 import FilterBar from "@/components/FilterBar";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 12;
+
+// Shown as suggestions when a search or filter combination yields no results.
+const POPULAR_CATEGORIES = [
+  "electrician",
+  "plumber",
+  "mechanic",
+  "ac-repair",
+  "painter",
+  "cleaning",
+] as const;
 
 export default async function ProvidersPage({
   searchParams,
@@ -80,7 +91,7 @@ export default async function ProvidersPage({
       </div>
 
       {results.length === 0 ? (
-        <div className="card mt-8 flex flex-col items-center px-6 py-20 text-center">
+        <div className="card mt-8 flex flex-col items-center px-6 py-16 text-center">
           <FaMagnifyingGlass className="h-12 w-12 text-ink-300" />
           <h2 className="mt-4 text-lg font-semibold text-ink-900">
             {t.browse.emptyTitle}
@@ -91,6 +102,21 @@ export default async function ProvidersPage({
           <Link href="/providers" className="btn-secondary mt-6">
             {t.browse.clear}
           </Link>
+          <p className="mt-8 text-sm font-medium text-ink-700">
+            {t.browse.emptyPopular}
+          </p>
+          <div className="mt-3 flex max-w-lg flex-wrap justify-center gap-2">
+            {POPULAR_CATEGORIES.map((slug) => (
+              <Link
+                key={slug}
+                href={`/providers?category=${slug}`}
+                className="chip border border-ink-200 bg-white !px-3 !py-1.5 text-ink-700 transition-[border-color,color] duration-200 ease-snap hover:border-brand-400 hover:text-brand-700"
+              >
+                <CategoryIcon slug={slug} className="h-3.5 w-3.5" />
+                {categoryLabelLoc(slug, locale)}
+              </Link>
+            ))}
+          </div>
         </div>
       ) : (
         <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
