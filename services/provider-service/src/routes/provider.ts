@@ -19,6 +19,7 @@ import {
   syncIdentityProfile,
 } from "../lib/clients";
 import { getCurrentProvider } from "../lib/provider-auth";
+import { unreadCounts } from "./messages";
 import {
   ALLOWED_IMAGE_TYPES,
   InvalidImageError,
@@ -355,8 +356,11 @@ providerDashboardRoutes.get("/api/provider/inquiries", async (c) => {
     where: { providerId: provider.id },
     orderBy: { createdAt: "desc" },
   });
+  const unread = await unreadCounts(inquiries, "PROVIDER");
 
-  return c.json({ inquiries });
+  return c.json({
+    inquiries: inquiries.map((i) => ({ ...i, unreadCount: unread[i.id] ?? 0 })),
+  });
 });
 
 const inquiryStatusSchema = z.object({

@@ -317,6 +317,15 @@ Public (all monolith semantics preserved; `name` fields come from denormalized
   their existing OPEN report instead of creating another; anonymous duplicates
   are allowed (the gateway "report" rate budget is the backstop) →
   `{ ok: true }`.
+- `GET|POST /api/inquiries/:id/messages` — inquiry message thread (#13):
+  session required; only the inquiry's customer (signed-in inquiries) or the
+  receiving provider resolve a party — everyone else gets an id-hiding 404.
+  GET marks the caller's side read and supports `?after=<ISO>` incremental
+  polling; POST (1–2000 chars) from the provider on a NEW inquiry flips it to
+  RESPONDED with the once-only respondedAt stamp. Both inquiry lists carry
+  `unreadCount` (messages from the other side newer than the caller's marker).
+  Inquiry also gained `source` (attribution, e.g. "chat-agent") and per-party
+  lastRead columns.
 - `GET /api/account/inquiries` — session required (401); the caller's sent
   inquiries newest-first (cap 50), each hydrated with the provider's
   `{ id, name, category, suspended }` in a single local query (inquiries and

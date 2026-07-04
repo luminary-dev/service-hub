@@ -6,6 +6,7 @@
 import { Hono } from "hono";
 import { db } from "../db";
 import { getAuth } from "../lib/http";
+import { unreadCounts } from "./messages";
 
 const MAX_ACCOUNT_INQUIRIES = 50;
 
@@ -36,6 +37,8 @@ accountRoutes.get("/api/account/inquiries", async (c) => {
     },
   });
 
+  const unread = await unreadCounts(rows, "CUSTOMER");
+
   return c.json({
     inquiries: rows.map((i) => ({
       id: i.id,
@@ -43,6 +46,7 @@ accountRoutes.get("/api/account/inquiries", async (c) => {
       status: i.status,
       createdAt: i.createdAt,
       respondedAt: i.respondedAt,
+      unreadCount: unread[i.id] ?? 0,
       provider: {
         id: i.provider.id,
         name: i.provider.contactName,

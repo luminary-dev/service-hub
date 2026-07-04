@@ -18,6 +18,7 @@ type AccountInquiry = {
   status: string;
   createdAt: string;
   respondedAt: string | null;
+  unreadCount: number;
   provider: { id: string; name: string; category: string; suspended: boolean };
 };
 
@@ -168,6 +169,19 @@ export default async function AccountPage() {
                   <p className="mt-3 line-clamp-2 whitespace-pre-line text-sm leading-relaxed text-ink-600">
                     {i.message}
                   </p>
+                  <div className="mt-3 flex items-center gap-2">
+                    <Link
+                      href={`/account/inquiries/${i.id}`}
+                      className="text-sm font-medium text-brand-600 hover:text-brand-700"
+                    >
+                      {t.messages.open}
+                    </Link>
+                    {i.unreadCount > 0 && (
+                      <span className="chip bg-brand-600 text-white">
+                        {t.messages.unread(i.unreadCount)}
+                      </span>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>

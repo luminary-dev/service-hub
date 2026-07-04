@@ -27,6 +27,7 @@ export type InquiryItem = {
   message: string;
   status: string;
   createdAt: string;
+  unreadCount?: number;
 };
 
 export type DashboardData = {
