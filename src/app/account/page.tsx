@@ -39,10 +39,17 @@ export default async function AccountPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      <h1 className="text-3xl font-semibold tracking-tight text-ink-900">
-        {t.account.title}
-      </h1>
-      <p className="mt-1 text-ink-600">{t.account.subtitle}</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight text-ink-900">
+            {t.account.title}
+          </h1>
+          <p className="mt-1 text-ink-600">{t.account.subtitle}</p>
+        </div>
+        <Link href="/account/security" className="btn-secondary shrink-0">
+          {t.security.link}
+        </Link>
+      </div>
 
       {results.length === 0 ? (
         <div className="card mt-8 flex flex-col items-center px-6 py-20 text-center">
