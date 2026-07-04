@@ -36,7 +36,7 @@ export default function LanguageToggle() {
           aria-pressed={locale === value}
           className={`cursor-pointer rounded-full px-2.5 py-1 text-xs font-semibold transition-[background-color,color] duration-200 ease-snap ${
             locale === value
-              ? "bg-white text-ink-900 shadow-sm"
+              ? "bg-white text-ink-900 shadow-sm dark:bg-ink-300"
               : "text-ink-500 hover:text-ink-800"
           }`}
         >

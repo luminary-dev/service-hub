@@ -84,13 +84,13 @@ export default function ProviderCard({
           </div>
         )}
         {p.available && (
-          <span className="chip absolute bottom-3 right-3 bg-white/95 text-emerald-700">
+          <span className="chip absolute bottom-3 right-3 bg-white/95 text-emerald-700 dark:bg-ink-50/90">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
             {t.card.available}
           </span>
         )}
         {p.experience > 0 && (
-          <span className="chip absolute left-3 top-3 bg-ink-900/75 text-white">
+          <span className="chip absolute left-3 top-3 bg-black/70 text-white">
             {t.card.yrs(p.experience)}
           </span>
         )}
@@ -98,7 +98,7 @@ export default function ProviderCard({
 
       <div className="p-4">
         <div className="flex items-start gap-3">
-          <div className="-mt-9 rounded-full border-4 border-white">
+          <div className="-mt-9 rounded-full border-4 border-surface">
             <Avatar name={p.name} url={p.avatarUrl} size={56} />
           </div>
           <div className="min-w-0 flex-1 pt-1">

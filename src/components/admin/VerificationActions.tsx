@@ -36,7 +36,7 @@ export default function VerificationActions({
       <button
         onClick={() => act("reject")}
         disabled={pending}
-        className="cursor-pointer rounded-full border border-ink-300 bg-white px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-60"
+        className="cursor-pointer rounded-full border border-ink-300 bg-surface px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-60"
       >
         {t.reject}
       </button>

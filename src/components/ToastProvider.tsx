@@ -67,7 +67,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           <div
             key={toast.id}
             role="status"
-            className="rise pointer-events-auto flex max-w-full items-center gap-2.5 rounded-full bg-ink-900 py-2.5 pl-4 pr-2.5 text-sm font-medium text-white shadow-lg"
+            className="rise pointer-events-auto flex max-w-full items-center gap-2.5 rounded-full bg-ink-900 py-2.5 pl-4 pr-2.5 text-sm font-medium text-white shadow-lg dark:text-ink-50"
           >
             {toast.variant === "success" ? (
               <FaCircleCheck className="h-4 w-4 shrink-0 text-emerald-400" />
@@ -79,7 +79,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               type="button"
               onClick={() => dismiss(toast.id)}
               aria-label={t.toast.dismiss}
-              className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-white"
+              className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-white dark:text-ink-50/60 dark:hover:bg-ink-50/10 dark:hover:text-ink-50"
             >
               <FaXmark className="h-3.5 w-3.5" />
             </button>

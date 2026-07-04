@@ -158,7 +158,7 @@ export default function ReviewSection({
                     type="button"
                     onClick={() => removePhoto(ph.id)}
                     aria-label={t.reviews.removePhoto}
-                    className="absolute -right-1.5 -top-1.5 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-ink-900 text-white"
+                    className="absolute -right-1.5 -top-1.5 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-ink-900 text-white dark:text-ink-50"
                   >
                     <FaXmark className="h-3 w-3" />
                   </button>

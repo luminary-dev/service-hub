@@ -1,23 +1,29 @@
 import Link from "next/link";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
+import { getTheme } from "@/lib/theme";
 import { dict } from "@/lib/i18n";
 import UserMenu from "./UserMenu";
 import LanguageToggle from "./LanguageToggle";
+import ThemeToggle from "./ThemeToggle";
 import MobileMenu from "./MobileMenu";
 
 export default async function Navbar() {
-  const [session, locale] = await Promise.all([getSession(), getLocale()]);
+  const [session, locale, theme] = await Promise.all([
+    getSession(),
+    getLocale(),
+    getTheme(),
+  ]);
   const t = dict[locale];
 
   return (
-    <header className="sticky top-0 z-40 border-b border-ink-200 bg-white/85 backdrop-blur-lg">
+    <header className="sticky top-0 z-40 border-b border-ink-200 bg-surface/85 backdrop-blur-lg">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
         <Link
           href="/"
           className="flex items-center gap-2.5 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
         >
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-700 text-sm font-bold text-white">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-700 text-sm font-bold text-white dark:text-ink-50">
             B
           </span>
           <span className="text-lg font-semibold tracking-tight text-ink-900">
@@ -41,7 +47,8 @@ export default async function Navbar() {
         </nav>
 
         <div className="flex items-center gap-2">
-          <div className="hidden md:block">
+          <div className="hidden items-center gap-2 md:flex">
+            <ThemeToggle initialTheme={theme} />
             <LanguageToggle />
           </div>
           {session ? (
@@ -61,6 +68,7 @@ export default async function Navbar() {
           )}
           <MobileMenu
             session={session ? { role: session.role } : null}
+            theme={theme}
           />
         </div>
       </div>

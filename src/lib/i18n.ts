@@ -22,6 +22,10 @@ const en = {
     signOut: "Sign out",
     openMenu: "Open menu",
     closeMenu: "Close menu",
+    theme: "Theme",
+    themeLight: "Light theme",
+    themeDark: "Dark theme",
+    themeSystem: "System theme",
   },
   jobs: {
     postTitle: "Post a job",
@@ -617,6 +621,10 @@ const si: Dict = {
     signOut: "ඉවත් වන්න",
     openMenu: "මෙනුව විවෘත කරන්න",
     closeMenu: "මෙනුව වසන්න",
+    theme: "තේමාව",
+    themeLight: "ලා තේමාව",
+    themeDark: "අඳුරු තේමාව",
+    themeSystem: "පද්ධති තේමාව",
   },
   jobs: {
     postTitle: "රැකියාවක් පළ කරන්න",

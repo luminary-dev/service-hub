@@ -129,13 +129,13 @@ export default function DashboardTabs({
             onClick={() => setTab(t)}
             className={`flex-1 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition ${
               tab === t
-                ? "bg-white text-ink-900 shadow-sm"
+                ? "bg-white text-ink-900 shadow-sm dark:bg-ink-300"
                 : "text-ink-500 hover:text-ink-800"
             }`}
           >
             {tabLabels[t]}
             {t === "Inquiries" && data.stats.newInquiries > 0 && (
-              <span className="ml-1.5 rounded-full bg-brand-600 px-1.5 py-0.5 text-xs font-semibold text-white">
+              <span className="ml-1.5 rounded-full bg-brand-600 px-1.5 py-0.5 text-xs font-semibold text-white dark:text-ink-50">
                 {data.stats.newInquiries}
               </span>
             )}

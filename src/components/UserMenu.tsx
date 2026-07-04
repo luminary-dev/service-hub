@@ -69,7 +69,7 @@ export default function UserMenu({
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-48 overflow-hidden rounded-xl border border-ink-200 bg-white py-1 shadow-lg">
+        <div className="absolute right-0 mt-2 w-48 overflow-hidden rounded-xl border border-ink-200 bg-surface py-1 shadow-lg">
           {role === "PROVIDER" && (
             <Link
               href="/dashboard"
