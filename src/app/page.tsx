@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import {
   FaArrowRight,
@@ -9,10 +10,16 @@ import {
 import { apiJson } from "@/lib/api";
 import { CATEGORIES } from "@/lib/constants";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
-import { getLocale } from "@/lib/locale";
+import { languageAlternates, localizedHref } from "@/lib/links";
+import { getLocale, getUrlLocale } from "@/lib/locale";
 import { getSession } from "@/lib/auth";
 import ProviderCard, { ProviderCardDTO } from "@/components/ProviderCard";
 import SearchBar from "@/components/SearchBar";
+
+// hreflang pair (#67): en at the root, si at /si, each its own canonical.
+export async function generateMetadata(): Promise<Metadata> {
+  return { alternates: languageAlternates("/", await getUrlLocale()) };
+}
 
 // Caching (#57): public-and-stable. No force-dynamic — the page still
 // renders per request (locale/session cookies below), but the hero stats and
@@ -66,7 +73,10 @@ export default async function HomePage() {
                 {t.home.popularChips.map(([label, q]) => (
                   <Link
                     key={q}
-                    href={`/providers?q=${encodeURIComponent(q)}`}
+                    href={localizedHref(
+                      `/providers?q=${encodeURIComponent(q)}`,
+                      locale,
+                    )}
                     className="rounded-full border border-ink-200 bg-surface px-3 py-1 font-medium text-ink-600 transition-[border-color,color] duration-200 ease-snap hover:border-brand-400 hover:text-brand-700"
                   >
                     {label}
@@ -160,7 +170,7 @@ export default async function HomePage() {
             {t.home.catHeading}
           </h2>
           <Link
-            href="/providers"
+            href={localizedHref("/providers", locale)}
             className="group inline-flex items-center gap-1.5 text-sm font-semibold text-brand-700 hover:text-brand-800"
           >
             {t.home.viewAll}
@@ -171,7 +181,7 @@ export default async function HomePage() {
           {CATEGORIES.map((c) => (
             <Link
               key={c.slug}
-              href={`/providers?category=${c.slug}`}
+              href={localizedHref(`/providers?category=${c.slug}`, locale)}
               className="inline-flex items-center gap-2 rounded-full border border-ink-200 bg-surface px-4 py-2.5 text-sm font-medium text-ink-700 transition-[border-color,background-color,color,transform] duration-200 ease-snap hover:border-brand-400 hover:bg-brand-50 hover:text-brand-800 active:scale-[0.97]"
             >
               <c.icon className="h-4 w-4 text-brand-600" />
@@ -220,7 +230,7 @@ export default async function HomePage() {
           <p className="mt-4 max-w-[52ch] leading-relaxed text-ink-600">
             {t.home.trustBody}
           </p>
-          <Link href="/providers" className="btn-primary mt-7">
+          <Link href={localizedHref("/providers", locale)} className="btn-primary mt-7">
             {t.home.trustCta}
           </Link>
         </div>
@@ -259,7 +269,7 @@ export default async function HomePage() {
               {t.home.ctaCreate}
             </Link>
             <Link
-              href="/providers"
+              href={localizedHref("/providers", locale)}
               className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-full border border-brand-400 px-6 py-3 text-sm font-semibold text-white transition-[border-color,background-color,transform] duration-200 ease-snap hover:border-brand-300 hover:bg-brand-600 active:scale-[0.97] dark:hover:bg-white/10"
             >
               {t.home.ctaSee}

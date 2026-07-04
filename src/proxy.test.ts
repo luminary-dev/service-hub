@@ -53,13 +53,60 @@ describe("proxy", () => {
     expect(getRewrittenUrl(response)).toBe("http://localhost:4000/api/auth/me");
   });
 
-  it("only matches /api/*", () => {
+  it("only matches /api/* and /si paths", () => {
     expect(
       unstable_doesMiddlewareMatch({ config, url: "/api/providers" }),
+    ).toBe(true);
+    expect(unstable_doesMiddlewareMatch({ config, url: "/si" })).toBe(true);
+    expect(
+      unstable_doesMiddlewareMatch({ config, url: "/si/providers" }),
     ).toBe(true);
     expect(unstable_doesMiddlewareMatch({ config, url: "/" })).toBe(false);
     expect(
       unstable_doesMiddlewareMatch({ config, url: "/dashboard" }),
     ).toBe(false);
+    expect(
+      unstable_doesMiddlewareMatch({ config, url: "/sinhala-page" }),
+    ).toBe(false);
+  });
+
+  describe("/si locale prefix (#67)", () => {
+    it("rewrites /si to the root with an x-locale: si request header", () => {
+      const response = proxy(new NextRequest("http://localhost:3000/si"));
+      expect(isRewrite(response)).toBe(true);
+      expect(getRewrittenUrl(response)).toBe("http://localhost:3000/");
+      expect(response.headers.get("x-middleware-request-x-locale")).toBe("si");
+    });
+
+    it("strips the /si prefix and keeps the rest of the path and query", () => {
+      const response = proxy(
+        new NextRequest(
+          "http://localhost:3000/si/providers?category=plumber&page=2",
+        ),
+      );
+      expect(getRewrittenUrl(response)).toBe(
+        "http://localhost:3000/providers?category=plumber&page=2",
+      );
+      expect(response.headers.get("x-middleware-request-x-locale")).toBe("si");
+    });
+
+    it("overrides a spoofed incoming x-locale header", () => {
+      const response = proxy(
+        new NextRequest("http://localhost:3000/si/providers", {
+          headers: { "x-locale": "en" },
+        }),
+      );
+      expect(response.headers.get("x-middleware-request-x-locale")).toBe("si");
+    });
+
+    it("does not send /si pages to the gateway", () => {
+      process.env.GATEWAY_URL = "http://api-gateway:4000";
+      const response = proxy(
+        new NextRequest("http://localhost:3000/si/providers/123"),
+      );
+      expect(getRewrittenUrl(response)).toBe(
+        "http://localhost:3000/providers/123",
+      );
+    });
   });
 });

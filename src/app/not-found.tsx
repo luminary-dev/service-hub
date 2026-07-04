@@ -2,6 +2,7 @@ import Link from "next/link";
 import { FaCompass } from "react-icons/fa6";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
+import { localizedHref } from "@/lib/links";
 
 export default async function NotFound() {
   const locale = await getLocale();
@@ -15,10 +16,10 @@ export default async function NotFound() {
       </h1>
       <p className="mt-2 text-ink-500">{t.errors.notFoundBody}</p>
       <div className="mt-8 flex gap-3">
-        <Link href="/" className="btn-primary">
+        <Link href={localizedHref("/", locale)} className="btn-primary">
           {t.errors.goHome}
         </Link>
-        <Link href="/providers" className="btn-secondary">
+        <Link href={localizedHref("/providers", locale)} className="btn-secondary">
           {t.errors.browse}
         </Link>
       </div>

@@ -3,6 +3,7 @@ import { FaHeart } from "react-icons/fa6";
 import { CATEGORIES } from "@/lib/constants";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
+import { localizedHref } from "@/lib/links";
 
 export default async function Footer() {
   const locale = await getLocale();
@@ -34,7 +35,7 @@ export default async function Footer() {
               {CATEGORIES.slice(0, 6).map((c) => (
                 <li key={c.slug}>
                   <Link
-                    href={`/providers?category=${c.slug}`}
+                    href={localizedHref(`/providers?category=${c.slug}`, locale)}
                     className="text-sm text-ink-600 transition-colors duration-200 hover:text-brand-700"
                   >
                     {categoryLabelLoc(c.slug, locale)}
@@ -83,7 +84,7 @@ export default async function Footer() {
             <ul className="mt-3 space-y-2">
               <li>
                 <Link
-                  href="/providers"
+                  href={localizedHref("/providers", locale)}
                   className="text-sm text-ink-600 transition-colors duration-200 hover:text-brand-700"
                 >
                   {t.footer.browse}

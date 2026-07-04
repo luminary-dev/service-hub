@@ -10,7 +10,8 @@ import {
   districtLabelLoc,
   priceTypeLabelLoc,
 } from "@/lib/i18n";
-import { getLocale } from "@/lib/locale";
+import { languageAlternates } from "@/lib/links";
+import { getLocale, getUrlLocale } from "@/lib/locale";
 import Avatar from "@/components/Avatar";
 import CategoryIcon from "@/components/CategoryIcon";
 import Stars from "@/components/Stars";
@@ -109,6 +110,11 @@ export async function generateMetadata({
   return {
     title,
     description,
+    // hreflang pair (#67): en at /providers/:id, si at /si/providers/:id.
+    alternates: languageAlternates(
+      `/providers/${encodeURIComponent(id)}`,
+      await getUrlLocale(),
+    ),
     openGraph: { title, description, type: "profile" },
     twitter: { card: "summary_large_image", title, description },
   };

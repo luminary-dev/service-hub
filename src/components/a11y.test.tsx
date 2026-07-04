@@ -29,6 +29,7 @@ import ProviderRegisterForm from "@/app/register/provider/ProviderRegisterForm";
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
   usePathname: () => "/",
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 const t = dict.en;

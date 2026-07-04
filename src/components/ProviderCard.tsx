@@ -14,6 +14,7 @@ import {
   priceTypeLabelLoc,
   type Locale,
 } from "@/lib/i18n";
+import { localizedHref } from "@/lib/links";
 
 // Card payload as served by `GET /api/providers` on the gateway
 // (provider-service's ProviderCardDTO). Dates arrive as ISO strings; rating
@@ -68,7 +69,7 @@ export default function ProviderCard({
         </div>
       )}
       <Link
-        href={`/providers/${p.id}`}
+        href={localizedHref(`/providers/${p.id}`, locale)}
         className="card group block overflow-hidden transition-[border-color,transform] duration-200 ease-snap hover:-translate-y-1 hover:border-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 active:scale-[0.99]"
       >
         <div className="relative h-36 bg-ink-100">
