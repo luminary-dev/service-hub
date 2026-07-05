@@ -88,7 +88,13 @@ export default function ReviewSection({
     const res = await fetch(`/api/reviews/photos/${photoId}`, {
       method: "DELETE",
     }).catch(() => null);
-    if (res && res.ok) router.refresh();
+    if (res && res.ok) {
+      setError("");
+      router.refresh();
+    } else {
+      const data = res ? await res.json().catch(() => ({})) : {};
+      setError(data.error ?? t.reviews.error);
+    }
   }
 
   return (
@@ -133,7 +139,7 @@ export default function ReviewSection({
                 onMouseLeave={() => setHover(0)}
                 aria-label={t.reviews.starLabel(i)}
                 aria-pressed={rating === i}
-                className="transition hover:scale-110"
+                className="cursor-pointer rounded transition hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
               >
                 <FaStar
                   aria-hidden

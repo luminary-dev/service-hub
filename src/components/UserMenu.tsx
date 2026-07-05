@@ -13,6 +13,7 @@ export default function UserMenu({
   role: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const router = useRouter();
@@ -29,10 +30,16 @@ export default function UserMenu({
   }, []);
 
   async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    setOpen(false);
-    router.push("/");
-    router.refresh();
+    if (signingOut) return; // guard against a double-tap firing two POSTs
+    setSigningOut(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+      setOpen(false);
+      router.push("/");
+      router.refresh();
+    } catch {
+      setSigningOut(false);
+    }
   }
 
   const initials = name
@@ -59,8 +66,7 @@ export default function UserMenu({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        aria-haspopup="true"
-        className="flex items-center gap-2 rounded-xl px-2 py-1.5 transition hover:bg-ink-100"
+        className="flex items-center gap-2 rounded-xl px-2 py-1.5 transition hover:bg-ink-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
       >
         <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-800">
           {initials}
@@ -90,7 +96,7 @@ export default function UserMenu({
             <Link
               href="/dashboard"
               onClick={() => setOpen(false)}
-              className="block px-4 py-2.5 text-sm text-ink-700 transition hover:bg-ink-50"
+              className="block px-4 py-2.5 text-sm text-ink-700 transition hover:bg-ink-100"
             >
               {t.nav.dashboard}
             </Link>
@@ -99,7 +105,7 @@ export default function UserMenu({
             <Link
               href="/admin"
               onClick={() => setOpen(false)}
-              className="block px-4 py-2.5 text-sm text-ink-700 transition hover:bg-ink-50"
+              className="block px-4 py-2.5 text-sm text-ink-700 transition hover:bg-ink-100"
             >
               {t.nav.admin}
             </Link>
@@ -107,21 +113,22 @@ export default function UserMenu({
           <Link
             href="/account"
             onClick={() => setOpen(false)}
-            className="block px-4 py-2.5 text-sm text-ink-700 transition hover:bg-ink-50"
+            className="block px-4 py-2.5 text-sm text-ink-700 transition hover:bg-ink-100"
           >
             {t.nav.saved}
           </Link>
           <Link
             href="/providers"
             onClick={() => setOpen(false)}
-            className="block px-4 py-2.5 text-sm text-ink-700 transition hover:bg-ink-50"
+            className="block px-4 py-2.5 text-sm text-ink-700 transition hover:bg-ink-100"
           >
             {t.nav.find}
           </Link>
           <button
             type="button"
             onClick={logout}
-            className="block w-full cursor-pointer px-4 py-2.5 text-left text-sm text-red-600 transition hover:bg-red-50"
+            disabled={signingOut}
+            className="block w-full cursor-pointer px-4 py-2.5 text-left text-sm text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-red-950"
           >
             {t.nav.signOut}
           </button>

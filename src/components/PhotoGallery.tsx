@@ -6,6 +6,7 @@ import { FaChevronLeft, FaChevronRight, FaXmark } from "react-icons/fa6";
 import { isSvg } from "@/lib/image";
 import { useT } from "./I18nProvider";
 import ReportButton from "./ReportButton";
+import { useFocusTrap } from "./useFocusTrap";
 
 type Photo = { id: string; url: string; caption: string | null };
 
@@ -17,10 +18,12 @@ export default function PhotoGallery({ photos }: { photos: Photo[] }) {
   const [active, setActive] = useState<number | null>(null);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
   const wasOpen = useRef(false);
   const t = useT();
   const isOpen = active !== null;
+  useFocusTrap(dialogRef, isOpen);
 
   // Focus management for the lightbox: focus the close button when it opens
   // and give focus back to the thumbnail that opened it when it closes.
@@ -110,6 +113,7 @@ export default function PhotoGallery({ photos }: { photos: Photo[] }) {
 
       {active !== null && photos[active] && (
         <div
+          ref={dialogRef}
           role="dialog"
           aria-modal="true"
           aria-label={t.profile.photoViewer}

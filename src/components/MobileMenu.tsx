@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FaBars, FaXmark } from "react-icons/fa6";
 import { useLocale, useT } from "./I18nProvider";
 import { localizedHref } from "@/lib/links";
@@ -21,7 +21,9 @@ export default function MobileMenu({
   theme: Theme;
 }) {
   const [open, setOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
   const router = useRouter();
   const t = useT();
@@ -36,11 +38,29 @@ export default function MobileMenu({
     setOpen(false);
   }
 
+  // Close on a click outside the menu (parity with UserMenu), only while open.
+  useEffect(() => {
+    if (!open) return;
+    function onClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [open]);
+
   async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    setOpen(false);
-    router.push("/");
-    router.refresh();
+    if (signingOut) return; // guard against a double-tap firing two POSTs
+    setSigningOut(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+      setOpen(false);
+      router.push("/");
+      router.refresh();
+    } catch {
+      setSigningOut(false);
+    }
   }
 
   const close = () => setOpen(false);
@@ -50,6 +70,7 @@ export default function MobileMenu({
   return (
     <div
       className="md:hidden"
+      ref={menuRef}
       // Escape closes the menu from anywhere inside it and puts focus back
       // on the toggle, so keyboard users are not stranded mid-menu.
       onKeyDown={(e) => {
@@ -104,7 +125,8 @@ export default function MobileMenu({
               <button
                 type="button"
                 onClick={logout}
-                className="block w-full cursor-pointer rounded-xl px-4 py-2.5 text-left text-sm font-medium text-red-600 transition hover:bg-red-50"
+                disabled={signingOut}
+                className="block w-full cursor-pointer rounded-xl px-4 py-2.5 text-left text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-red-950"
               >
                 {t.nav.signOut}
               </button>

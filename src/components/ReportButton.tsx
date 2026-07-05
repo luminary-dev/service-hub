@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { FaFlag, FaXmark } from "react-icons/fa6";
 import { useT } from "./I18nProvider";
 import { useToast } from "./ToastProvider";
+import { useFocusTrap } from "./useFocusTrap";
 
 // Report abusive content (#50): a small trigger that opens a modal with a
 // reason select and optional details, then POSTs to the given report endpoint
@@ -35,6 +36,8 @@ export default function ReportButton({
   showLabel?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, open);
   const [reason, setReason] = useState<(typeof REASONS)[number]>("spam");
   const [details, setDetails] = useState("");
   const [loading, setLoading] = useState(false);
@@ -117,6 +120,7 @@ export default function ReportButton({
           onTouchEnd={(e) => e.stopPropagation()}
         >
           <div
+            ref={dialogRef}
             role="dialog"
             aria-modal="true"
             aria-label={label}
