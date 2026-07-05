@@ -250,6 +250,19 @@ jobs.post("/:id/responses", async (c) => {
   if (!job) {
     return c.json({ error: "Job not found" }, 404);
   }
+  // Enforce the same scoping the board query applies (category + district +
+  // not-own-job). Without this a provider who obtains a job id can respond to
+  // jobs outside their trade/area, or to their own posting — bypassing the
+  // board and enabling cross-scope response spam.
+  if (job.customerId === auth.userId) {
+    return c.json({ error: "You cannot respond to your own job" }, 400);
+  }
+  if (job.category !== provider.category || job.district !== provider.district) {
+    return c.json(
+      { error: "This job is outside your category or district" },
+      403
+    );
+  }
   if (job.status !== "OPEN") {
     return c.json({ error: "This job is closed" }, 400);
   }

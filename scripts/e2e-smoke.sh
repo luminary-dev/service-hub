@@ -101,6 +101,18 @@ check "dashboard payload" "$(req prov GET "/api/provider/dashboard" | jq -r '.pr
 check "dashboard page renders" "$(req prov GET "/dashboard")" "Baas"
 
 check "job mine shows response" "$(req cust GET "/api/jobs/mine" | jq -r '(.jobs // []) | map(select(.id=="'"$JOB_ID"'")) | .[0].responses | length')" "1"
+
+# Response scoping (must mirror the board query): out-of-category/district and
+# own-job responses are rejected even with a valid job id.
+OTHER_JOB=$(req cust POST "/api/jobs" -H 'content-type: application/json' \
+  -d '{"category":"plumber","district":"Kandy","title":"E2E out-of-scope job","description":"A plumbing job in Kandy that nuwan the Colombo mechanic must not answer."}' | jq -r '.id')
+check "out-of-scope respond blocked" "$(req prov POST "/api/jobs/$OTHER_JOB/responses" -H 'content-type: application/json' \
+  -d '{"message":"I should not be allowed to respond to this."}' | jq -r '.error')" "outside your category or district"
+NUWAN_JOB=$(req prov POST "/api/jobs" -H 'content-type: application/json' \
+  -d '{"category":"mechanic","district":"Colombo","title":"E2E own job","description":"A job posted by nuwan who then must not be able to respond to it."}' | jq -r '.id')
+check "own-job respond blocked" "$(req prov POST "/api/jobs/$NUWAN_JOB/responses" -H 'content-type: application/json' \
+  -d '{"message":"Responding to my own job should fail."}' | jq -r '.error')" "You cannot respond to your own job"
+
 check "job close" "$(req cust PATCH "/api/jobs/$JOB_ID" -H 'content-type: application/json' -d '{"status":"CLOSED"}' | jq -r '.ok')" "true"
 
 echo "== Provider registration orchestration =="
@@ -120,6 +132,11 @@ check "admin providers list" "$(req admin GET "/api/admin/providers" | jq -r '.p
 check "admin suspend" "$(req admin PATCH "/api/admin/providers/$NEW_PROV_ID" -H 'content-type: application/json' \
   -d '{"action":"suspend"}' | jq -r '.ok')" "true"
 check "suspended hidden from search" "$(req anon GET "/api/providers?q=$RUN_TAG" | jq -r '.total')" "0"
+# Suspended profiles must 404 on the legacy detail endpoint (PII leak) and
+# reject new reviews — not just drop out of search.
+check "suspended provider detail 404" "$(req anon GET "/api/providers/$NEW_PROV_ID" | jq -r '.error')" "Provider not found"
+check "review on suspended blocked" "$(req cust POST "/api/providers/$NEW_PROV_ID/reviews" \
+  -F rating=5 -F comment='E2E must be rejected on a suspended provider' | jq -r '.error')" "Provider not found"
 check "admin unsuspend" "$(req admin PATCH "/api/admin/providers/$NEW_PROV_ID" -H 'content-type: application/json' \
   -d '{"action":"unsuspend"}' | jq -r '.ok')" "true"
 check "admin verify" "$(req admin PATCH "/api/admin/providers/$NEW_PROV_ID" -H 'content-type: application/json' \
