@@ -143,9 +143,12 @@ authRoutes.post("/login", async (c) => {
   }
 
   // Locked accounts get the same 401 as a wrong password (no enumeration),
-  // and the password is not even checked — a correct guess during the window
-  // must not be observable.
+  // and a correct guess during the window must not be observable. Run a
+  // bcrypt compare anyway so the locked branch costs the same as the
+  // unknown-email and wrong-password branches — otherwise the faster
+  // no-hash reply leaks that the account exists and is locked.
   if (isLockedOut(user.lockedUntil)) {
+    await bcrypt.compare(parsed.data.password, user.passwordHash);
     return c.json({ error: "Invalid email or password" }, 401);
   }
 
@@ -424,7 +427,18 @@ authRoutes.post("/forgot-password", async (c) => {
     where: { email: parsed.data.email },
   });
   if (user) {
-    await sendPasswordResetEmail(user.id, user.email, getOrigin(c), getLocale(c));
+    // Fire-and-forget: awaiting the token writes + email round-trip only for
+    // registered emails makes the response measurably slower for them, which
+    // re-opens the account enumeration the uniform response is meant to close.
+    // Errors are logged, never surfaced (the response is identical regardless).
+    void sendPasswordResetEmail(
+      user.id,
+      user.email,
+      getOrigin(c),
+      getLocale(c)
+    ).catch((e) =>
+      log.error("password reset send failed", { context: "auth", err: e })
+    );
   }
 
   return c.json({ ok: true });

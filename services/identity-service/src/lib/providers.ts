@@ -25,14 +25,20 @@ export async function getProviderIdByUser(
   }
 }
 
-// Existence check for favorites. Returns true/false, or throws on transport
-// failure (callers translate that into 502).
+// Existence check for favorites. Only a 404 means "no such provider"; any
+// other non-ok status is an upstream failure and must throw so the caller
+// returns 502 (writes fail loudly) rather than a misleading 404 that silently
+// drops the favorite when provider-service is merely degraded.
 export async function providerExists(providerId: string): Promise<boolean> {
   const res = await s2s(
     PROVIDER_SERVICE_URL,
     `/internal/providers/${encodeURIComponent(providerId)}/summary`
   );
-  return res.ok;
+  if (res.status === 404) return false;
+  if (!res.ok) {
+    throw new Error(`provider summary lookup failed: ${res.status}`);
+  }
+  return true;
 }
 
 export type ProviderRegistration = {
