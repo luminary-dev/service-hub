@@ -436,27 +436,32 @@ providerDashboardRoutes.post("/api/provider/verification", async (c) => {
     );
   }
 
-  // Replace any previous submission's documents.
-  await db.verificationDocument.deleteMany({
-    where: { providerId: provider.id },
-  });
+  // Upload every document to media FIRST, so a media failure (service down, or
+  // a payload media re-rejects) can't destroy the provider's previous
+  // submission — the delete + recreate only runs once all uploads succeed.
+  const stored: { kind: (typeof uploads)[number]["kind"]; url: string }[] = [];
   for (const { kind, file } of uploads) {
-    let url: string;
     try {
-      url = await storeImage("provider", file, "verification");
+      stored.push({ kind, url: await storeImage("provider", file, "verification") });
     } catch (e) {
       if (e instanceof InvalidImageError) return c.json({ error: e.message }, 400);
       throw e;
     }
-    await db.verificationDocument.create({
-      data: { providerId: provider.id, kind, url },
-    });
   }
 
-  await db.provider.update({
-    where: { id: provider.id },
-    data: { verificationStatus: "PENDING", verifiedAt: null },
-  });
+  // Swap the document set and advance status atomically.
+  await db.$transaction([
+    db.verificationDocument.deleteMany({ where: { providerId: provider.id } }),
+    ...stored.map((s) =>
+      db.verificationDocument.create({
+        data: { providerId: provider.id, kind: s.kind, url: s.url },
+      })
+    ),
+    db.provider.update({
+      where: { id: provider.id },
+      data: { verificationStatus: "PENDING", verifiedAt: null },
+    }),
+  ]);
 
   return c.json({ status: "PENDING" });
 });

@@ -2,10 +2,16 @@
 // middleware). Never routed by the gateway.
 import { Hono } from "hono";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { db } from "../db";
 import { removeStoredFile, sweepMedia } from "../lib/storage";
 
 export const internalRoutes = new Hono();
+
+// Bound on how many ids a batch lookup will accept, so a caller (or attacker)
+// can't force a single giant IN (...) clause. Comfortably above realistic
+// favorite / job-response fan-out.
+const MAX_BATCH_IDS = 500;
 
 const optionalText = (max: number) =>
   z.string().max(max).optional().or(z.literal("")).nullish();
@@ -61,37 +67,49 @@ internalRoutes.post("/internal/providers", async (c) => {
   }
   const data = parsed.data;
 
-  const provider = await db.provider.create({
-    data: {
-      userId: data.userId,
-      contactName: data.name,
-      contactEmail: data.email,
-      contactPhone: data.phone || null,
-      category: data.category,
-      headline: data.headline,
-      bio: data.bio,
-      district: data.district,
-      city: data.city,
-      experience: data.experience,
-      whatsapp: data.whatsapp || null,
-      phone2: data.phone2 || null,
-      facebook: data.facebook || null,
-      instagram: data.instagram || null,
-      tiktok: data.tiktok || null,
-      youtube: data.youtube || null,
-      website: data.website || null,
-      services: {
-        create: data.services.map((s) => ({
-          title: s.title,
-          description: s.description || null,
-          price: s.price,
-          priceType: s.priceType,
-        })),
+  try {
+    const provider = await db.provider.create({
+      data: {
+        userId: data.userId,
+        contactName: data.name,
+        contactEmail: data.email,
+        contactPhone: data.phone || null,
+        category: data.category,
+        headline: data.headline,
+        bio: data.bio,
+        district: data.district,
+        city: data.city,
+        experience: data.experience,
+        whatsapp: data.whatsapp || null,
+        phone2: data.phone2 || null,
+        facebook: data.facebook || null,
+        instagram: data.instagram || null,
+        tiktok: data.tiktok || null,
+        youtube: data.youtube || null,
+        website: data.website || null,
+        services: {
+          create: data.services.map((s) => ({
+            title: s.title,
+            description: s.description || null,
+            price: s.price,
+            priceType: s.priceType,
+          })),
+        },
       },
-    },
-  });
-
-  return c.json({ id: provider.id });
+    });
+    return c.json({ id: provider.id });
+  } catch (e) {
+    // userId is unique: a retried/concurrent registration for the same user
+    // must be idempotent, not an unhandled 500. Return the existing id.
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      const existing = await db.provider.findUnique({
+        where: { userId: data.userId },
+        select: { id: true },
+      });
+      if (existing) return c.json({ id: existing.id });
+    }
+    throw e;
+  }
 });
 
 // Login / job-board gate: the provider owned by a user, if any.
@@ -116,7 +134,8 @@ internalRoutes.get("/internal/providers", async (c) => {
   const ids = idsParam
     .split(",")
     .map((s) => s.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .slice(0, MAX_BATCH_IDS);
   const providers = ids.length
     ? await db.provider.findMany({
         where: { id: { in: ids } },
