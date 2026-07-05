@@ -288,6 +288,7 @@ const en = {
     verificationsDesc: "Review submitted documents.",
     providersTitle: "Providers",
     providersSubtitle: "Verify, suspend, or open a provider to moderate content.",
+    providersEmpty: "No providers yet.",
     verify: "Verify",
     unverify: "Unverify",
     suspend: "Suspend",
@@ -988,6 +989,7 @@ const si: Dict = {
     providersTitle: "වෘත්තිකයන්",
     providersSubtitle:
       "සත්‍යාපනය, අත්හිටුවීම, හෝ අන්තර්ගතය පාලනයට වෘත්තිකයෙක් විවෘත කරන්න.",
+    providersEmpty: "තවම වෘත්තිකයන් නැත.",
     verify: "සත්‍යාපනය",
     unverify: "සත්‍යාපනය ඉවත්",
     suspend: "අත්හිටුවන්න",

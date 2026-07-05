@@ -43,6 +43,11 @@ export default async function AdminProvidersPage() {
       </h1>
       <p className="mt-1 text-ink-600">{t.providersSubtitle}</p>
 
+      {providers.length === 0 ? (
+        <div className="card mt-8 px-6 py-16 text-center text-sm text-ink-500">
+          {t.providersEmpty}
+        </div>
+      ) : (
       <ul className="mt-8 space-y-3">
         {providers.map((p) => (
           <li
@@ -98,6 +103,7 @@ export default async function AdminProvidersPage() {
           </li>
         ))}
       </ul>
+      )}
     </div>
   );
 }
