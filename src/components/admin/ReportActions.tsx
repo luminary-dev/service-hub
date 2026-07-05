@@ -28,14 +28,14 @@ export default function ReportActions({ endpoint }: { endpoint: string }) {
       <button
         onClick={() => act("RESOLVED")}
         disabled={pending}
-        className="cursor-pointer rounded-full border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-60"
+        className="cursor-pointer rounded-full border border-emerald-300 bg-surface px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50 dark:hover:bg-emerald-950 disabled:opacity-60"
       >
         {t.resolve}
       </button>
       <button
         onClick={() => act("DISMISSED")}
         disabled={pending}
-        className="cursor-pointer rounded-full border border-ink-300 bg-white px-3 py-1.5 text-xs font-semibold text-ink-600 transition hover:border-ink-400 disabled:opacity-60"
+        className="cursor-pointer rounded-full border border-ink-300 bg-surface px-3 py-1.5 text-xs font-semibold text-ink-600 transition hover:border-ink-400 disabled:opacity-60"
       >
         {t.dismissReport}
       </button>

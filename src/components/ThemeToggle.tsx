@@ -23,8 +23,17 @@ function applyTheme(next: Theme) {
   document.documentElement.classList.toggle("dark", dark);
 }
 
-// Sun / moon / system segmented control, styled after LanguageToggle. The
-// server (Navbar) passes the cookie-derived theme so SSR and hydration agree.
+// The single button cycles through these in order.
+const ORDER: Theme[] = ["light", "dark", "system"];
+const ICONS: Record<Theme, IconType> = {
+  light: FaSun,
+  dark: FaMoon,
+  system: FaCircleHalfStroke,
+};
+
+// One icon button that shows the current mode and cycles light → dark → system
+// on click (was a 3-segment control — see #204 discussion). The server (Navbar)
+// passes the cookie-derived theme so SSR and hydration agree.
 export default function ThemeToggle({ initialTheme }: { initialTheme: Theme }) {
   const router = useRouter();
   const t = useT();
@@ -39,43 +48,34 @@ export default function ThemeToggle({ initialTheme }: { initialTheme: Theme }) {
     setThemeState(initialTheme);
   }
 
-  function setTheme(next: Theme) {
-    if (next === theme) return;
+  const labels: Record<Theme, string> = {
+    light: t.nav.themeLight,
+    dark: t.nav.themeDark,
+    system: t.nav.themeSystem,
+  };
+
+  function cycle() {
+    const next = ORDER[(ORDER.indexOf(theme) + 1) % ORDER.length];
     setThemeState(next);
     writeThemeCookie(next);
     applyTheme(next);
     router.refresh();
   }
 
-  const options: [Theme, IconType, string][] = [
-    ["light", FaSun, t.nav.themeLight],
-    ["dark", FaMoon, t.nav.themeDark],
-    ["system", FaCircleHalfStroke, t.nav.themeSystem],
-  ];
+  const Icon = ICONS[theme];
+  // Announces the current mode (updates as it cycles) so AT users hear the
+  // state; the button role conveys it's actionable.
+  const label = `${t.nav.theme}: ${labels[theme]}`;
 
   return (
-    <div
-      className="flex items-center rounded-full border border-ink-200 bg-ink-100 p-0.5"
-      role="group"
-      aria-label={t.nav.theme}
+    <button
+      type="button"
+      onClick={cycle}
+      aria-label={label}
+      title={label}
+      className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-ink-200 bg-ink-100 text-ink-600 transition-[background-color,color] duration-200 ease-snap hover:bg-ink-200 hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 dark:text-ink-300"
     >
-      {options.map(([value, Icon, label]) => (
-        <button
-          key={value}
-          type="button"
-          onClick={() => setTheme(value)}
-          aria-pressed={theme === value}
-          aria-label={label}
-          title={label}
-          className={`flex h-6 w-7 cursor-pointer items-center justify-center rounded-full transition-[background-color,color] duration-200 ease-snap ${
-            theme === value
-              ? "bg-white text-ink-900 shadow-sm dark:bg-ink-300"
-              : "text-ink-500 hover:text-ink-800"
-          }`}
-        >
-          <Icon aria-hidden className="h-3.5 w-3.5" />
-        </button>
-      ))}
-    </div>
+      <Icon aria-hidden className="h-4 w-4" />
+    </button>
   );
 }

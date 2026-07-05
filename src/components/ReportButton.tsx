@@ -15,7 +15,7 @@ const MAX_DETAILS = 500;
 
 const TRIGGER_STYLES = {
   // Matches ShareButton on the profile header.
-  chip: "inline-flex cursor-pointer items-center gap-2 rounded-full border border-ink-300 bg-white px-4 py-2 text-sm font-semibold text-ink-800 transition-[border-color,background-color] duration-200 ease-snap hover:border-red-300 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2",
+  chip: "inline-flex cursor-pointer items-center gap-2 rounded-full border border-ink-300 bg-surface px-4 py-2 text-sm font-semibold text-ink-800 transition-[border-color,background-color] duration-200 ease-snap hover:border-red-300 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2",
   // Quiet inline action, e.g. under each review.
   text: "inline-flex cursor-pointer items-center gap-1.5 text-xs font-medium text-ink-500 transition hover:text-red-600",
   // Light-on-dark, for the photo lightbox.
@@ -120,7 +120,7 @@ export default function ReportButton({
             role="dialog"
             aria-modal="true"
             aria-label={label}
-            className="card w-full max-w-md bg-white p-6"
+            className="card w-full max-w-md p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4">
