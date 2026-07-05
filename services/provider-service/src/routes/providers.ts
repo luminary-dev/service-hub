@@ -106,7 +106,8 @@ providersRoutes.get("/api/providers", async (c) => {
     const ids = query.ids
       .split(",")
       .map((s) => s.trim())
-      .filter(Boolean);
+      .filter(Boolean)
+      .slice(0, 500); // bound the IN (...) clause — favorites lists are small
     const rows = ids.length
       ? await db.provider.findMany({
           where: { id: { in: ids }, suspended: false },

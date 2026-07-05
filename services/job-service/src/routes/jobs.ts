@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { db } from "../db";
 import { getAuth, getLocale, getOrigin, s2s } from "../lib/http";
 import { log } from "../lib/log";
@@ -282,13 +283,23 @@ jobs.post("/:id/responses", async (c) => {
     return c.json({ error: "You've already responded to this job" }, 400);
   }
 
-  await db.jobResponse.create({
-    data: {
-      jobRequestId: id,
-      providerId: provider.id,
-      message: parsed.data.message,
-    },
-  });
+  try {
+    await db.jobResponse.create({
+      data: {
+        jobRequestId: id,
+        providerId: provider.id,
+        message: parsed.data.message,
+      },
+    });
+  } catch (e) {
+    // (jobRequestId, providerId) is unique: a concurrent double-submit that
+    // races past the check above hits the constraint — return the same 400 as
+    // the check, not an unhandled 500.
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      return c.json({ error: "You've already responded to this job" }, 400);
+    }
+    throw e;
+  }
 
   // Best-effort notification to the customer — never fail the response on this.
   try {
