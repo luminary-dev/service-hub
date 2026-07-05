@@ -25,13 +25,42 @@ export async function sendMail({ to, subject, html }: SendArgs) {
   return { delivered: true as const };
 }
 
+// Escape untrusted values before embedding them in the HTML email body.
+// Inquiry submitter names, provider display names and job titles are all
+// user-controlled and reach these templates verbatim — without this they can
+// inject markup/phishing anchors into a legitimate Baas.lk email.
+export function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// The action URL is derived from the gateway's x-origin header; validate the
+// scheme (defence-in-depth against a spoofed/poisoned origin) and entity-encode
+// it so it cannot break out of the href attribute.
+function safeUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    if (u.protocol === "http:" || u.protocol === "https:") return escapeHtml(url);
+  } catch {
+    // fall through
+  }
+  return "#";
+}
+
+// `heading`/`body` are composed from static template strings plus values that
+// callers MUST pre-escape (see escapeHtml). `url` is made safe here.
 function layout(heading: string, body: string, buttonLabel: string, url: string) {
+  const href = safeUrl(url);
   return `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#0f172a">
   <div style="font-size:20px;font-weight:700;margin-bottom:16px">Baas<span style="color:#8f3a1c">.lk</span></div>
   <h1 style="font-size:18px;margin:0 0 12px">${heading}</h1>
   <p style="font-size:14px;line-height:1.6;color:#475569;margin:0 0 20px">${body}</p>
-  <a href="${url}" style="display:inline-block;background:#8f3a1c;color:#fff;text-decoration:none;font-weight:600;font-size:14px;padding:10px 20px;border-radius:9999px">${buttonLabel}</a>
-  <p style="font-size:12px;color:#94a3b8;margin:24px 0 0;line-height:1.6">If the button does not work, copy this link into your browser:<br>${url}</p>
+  <a href="${href}" style="display:inline-block;background:#8f3a1c;color:#fff;text-decoration:none;font-weight:600;font-size:14px;padding:10px 20px;border-radius:9999px">${buttonLabel}</a>
+  <p style="font-size:12px;color:#94a3b8;margin:24px 0 0;line-height:1.6">If the button does not work, copy this link into your browser:<br>${href}</p>
 </div>`;
 }
 
@@ -96,6 +125,9 @@ export function inquiryEmail(
   locale: Locale = "en"
 ) {
   const si = locale === "si";
+  // Subject is a plain-text header (Resend JSON API) — keep it raw; the HTML
+  // body must use the escaped name.
+  const name = escapeHtml(customerName);
   return {
     subject: si
       ? `${customerName} ඔබට නව විමසීමක් එවා ඇත`
@@ -103,8 +135,8 @@ export function inquiryEmail(
     html: layout(
       si ? "ඔබට නව විමසීමක්" : "You have a new inquiry",
       si
-        ? `${customerName} ඔබේ Baas.lk පැතිකඩ හරහා විමසීමක් එවා ඇත. ඔවුන්ගේ පණිවිඩය සහ සම්බන්ධතා විස්තර බැලීමට ඔබේ උපකරණ පුවරුවට පිවිසෙන්න.`
-        : `${customerName} sent you an inquiry through your Baas.lk profile. Log in to your dashboard to view their message and contact details.`,
+        ? `${name} ඔබේ Baas.lk පැතිකඩ හරහා විමසීමක් එවා ඇත. ඔවුන්ගේ පණිවිඩය සහ සම්බන්ධතා විස්තර බැලීමට ඔබේ උපකරණ පුවරුවට පිවිසෙන්න.`
+        : `${name} sent you an inquiry through your Baas.lk profile. Log in to your dashboard to view their message and contact details.`,
       si ? "විමසීම බලන්න" : "View inquiry",
       url
     ),
@@ -118,6 +150,8 @@ export function jobResponseEmail(
   locale: Locale = "en"
 ) {
   const si = locale === "si";
+  const name = escapeHtml(providerName);
+  const title = escapeHtml(jobTitle);
   return {
     subject: si
       ? `${providerName} ඔබේ රැකියාවට ප්‍රතිචාර දැක්වීය`
@@ -125,8 +159,8 @@ export function jobResponseEmail(
     html: layout(
       si ? "ඔබේ රැකියාවට නව ප්‍රතිචාරයක්" : "New response to your job",
       si
-        ? `${providerName} ඔබේ "${jobTitle}" රැකියාවට ප්‍රතිචාර දැක්වීය. ඔවුන්ගේ පණිවිඩය සහ සම්බන්ධතා විස්තර බලන්න.`
-        : `${providerName} responded to your job "${jobTitle}". View their message and contact details.`,
+        ? `${name} ඔබේ "${title}" රැකියාවට ප්‍රතිචාර දැක්වීය. ඔවුන්ගේ පණිවිඩය සහ සම්බන්ධතා විස්තර බලන්න.`
+        : `${name} responded to your job "${title}". View their message and contact details.`,
       si ? "ප්‍රතිචාරය බලන්න" : "View response",
       url
     ),

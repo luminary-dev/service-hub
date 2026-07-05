@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inquiryEmail, jobResponseEmail, passwordResetEmail, verifyEmail } from "./email";
+import { escapeHtml, inquiryEmail, jobResponseEmail, passwordResetEmail, verifyEmail } from "./email";
 
 describe("verifyEmail", () => {
   it("renders the English template by default", () => {
@@ -90,5 +90,46 @@ describe("inquiryEmail", () => {
     expect(html).toContain("ඔබට නව විමසීමක්");
     expect(html).toContain(">විමසීම බලන්න</a>");
     expect(html).toContain('href="https://baas.lk/dashboard"');
+  });
+});
+
+describe("HTML injection protection", () => {
+  it("escapes markup in the inquiry submitter name", () => {
+    const { html } = inquiryEmail(
+      "https://baas.lk/dashboard",
+      '<a href="https://phish.example">Confirm account</a>'
+    );
+    // The raw anchor must never reach the body.
+    expect(html).not.toContain('<a href="https://phish.example">Confirm account</a>');
+    expect(html).toContain("&lt;a href=&quot;https://phish.example&quot;&gt;Confirm account&lt;/a&gt;");
+  });
+
+  it("escapes markup in the provider name and job title", () => {
+    const { html } = jobResponseEmail(
+      "https://baas.lk/jobs",
+      "<img src=x onerror=alert(1)>",
+      "</p><script>steal()</script>"
+    );
+    expect(html).not.toContain("<img src=x onerror=alert(1)>");
+    expect(html).not.toContain("<script>steal()</script>");
+    expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    expect(html).toContain("&lt;script&gt;steal()&lt;/script&gt;");
+  });
+
+  it("neutralises a non-http action url", () => {
+    const { html } = passwordResetEmail("javascript:alert(document.cookie)");
+    expect(html).not.toContain("javascript:alert");
+    expect(html).toContain('href="#"');
+  });
+
+  it("entity-encodes a url that tries to break out of the href attribute", () => {
+    const { html } = verifyEmail('https://baas.lk/verify"><script>x</script>');
+    expect(html).not.toContain('"><script>x</script>');
+    // URL parsing keeps it an http(s) url; the quote/angle brackets are encoded.
+    expect(html).toContain("&quot;&gt;&lt;script&gt;");
+  });
+
+  it("escapeHtml handles all five entities", () => {
+    expect(escapeHtml(`&<>"'`)).toBe("&amp;&lt;&gt;&quot;&#39;");
   });
 });
