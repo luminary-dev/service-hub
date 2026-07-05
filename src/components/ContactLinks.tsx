@@ -50,7 +50,7 @@ export default function ContactLinks(props: {
             href={`https://wa.me/${props.whatsapp.replace(/[^0-9]/g, "")}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 rounded-xl bg-[#25D366] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95"
+            className="inline-flex items-center gap-2 rounded-full bg-[#25D366] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2"
           >
             <FaWhatsapp className="h-4 w-4" /> WhatsApp
           </a>
