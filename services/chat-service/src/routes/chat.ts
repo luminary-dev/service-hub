@@ -60,6 +60,7 @@ chatRoutes.post("/internal/chat/:persona/stream", async (c) => {
       const send = (event: Record<string, unknown>) =>
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
       try {
+        let stopReason: string | null = null;
         for (let loop = 0; loop < MAX_LOOPS; loop++) {
           const msgStream = anthropic.messages.stream({
             model: MODEL,
@@ -72,6 +73,7 @@ chatRoutes.post("/internal/chat/:persona/stream", async (c) => {
           });
           msgStream.on("text", (delta) => send({ type: "text", text: delta }));
           const message = await msgStream.finalMessage();
+          stopReason = message.stop_reason;
 
           if (message.stop_reason !== "tool_use") break;
 
@@ -95,6 +97,22 @@ chatRoutes.post("/internal/chat/:persona/stream", async (c) => {
             });
           }
           messages.push({ role: "user", content: results });
+        }
+        // If we hit MAX_LOOPS while the model still wanted to use tools, the
+        // last tool results were never answered — make one final pass with no
+        // tools so the user gets a closing message instead of silence.
+        if (stopReason === "tool_use") {
+          const closing = anthropic.messages.stream({
+            model: MODEL,
+            max_tokens: 4096,
+            thinking: { type: "adaptive" },
+            output_config: { effort: "low" },
+            system,
+            tools: [],
+            messages,
+          });
+          closing.on("text", (delta) => send({ type: "text", text: delta }));
+          await closing.finalMessage();
         }
         send({ type: "done" });
       } catch (e) {
