@@ -230,6 +230,12 @@ providersRoutes.get("/api/providers/:id", async (c) => {
   if (!provider) {
     return c.json({ error: "Provider not found" }, 404);
   }
+  // Suspended profiles are hidden from the public (same gate as /:id/full and
+  // the browse listing); without this, a suspended provider's full record —
+  // including contact PII — leaks to anyone holding the id.
+  if (provider.suspended && getAuth(c)?.role !== "ADMIN") {
+    return c.json({ error: "Provider not found" }, 404);
+  }
   return c.json({
     provider: {
       ...provider,
