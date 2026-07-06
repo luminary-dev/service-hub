@@ -291,8 +291,17 @@ p {
     @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium;
   }
 
-  /* Mono uppercase eyebrow label used above section headings. */
-  .eyebrow {
-    @apply font-mono text-xs font-semibold uppercase tracking-[0.08em] text-brand-700;
-  }
+}
+
+/* Mono uppercase eyebrow label used above section headings. Authored as
+   plain CSS (not @apply) so the arbitrary letter-spacing can't drop the
+   rule, and placed outside the components layer so a `text-*` utility on
+   the same element still overrides the default brand colour. */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-brand-700);
 }
