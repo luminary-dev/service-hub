@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-SERVICES=(identity-service provider-service review-service job-service notification-service api-gateway)
+SERVICES=(identity-service provider-service review-service job-service notification-service media-service chat-service api-gateway)
 DB_SERVICES=(identity-service provider-service review-service job-service)
 
 echo "==> Installing web app dependencies"
