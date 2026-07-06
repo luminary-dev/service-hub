@@ -46,11 +46,12 @@
   --color-ink-800: oklch(0.3 0.011 48);
   --color-ink-900: oklch(0.235 0.008 46);
   --color-surface: oklch(1 0 0);
-  --font-sans: var(--font-inter), "FM Bindumathi", var(--font-sinhala),
+  --font-sans: var(--font-hanken), "FM Bindumathi", var(--font-sinhala),
     ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-inter-tight), var(--font-inter), "FM Bindumathi",
-    var(--font-sinhala), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: ui-monospace, "SFMono-Regular", "Menlo", monospace;
+  --font-display: var(--font-space-grotesk), var(--font-hanken),
+    "FM Bindumathi", var(--font-sinhala), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-space-mono), ui-monospace, "SFMono-Regular", monospace;
+  --font-serif: var(--font-fraunces), Georgia, "Times New Roman", serif;
   --ease-snap: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-flow: cubic-bezier(0.77, 0, 0.175, 1);
 }
@@ -138,7 +139,7 @@ h2,
 h3 {
   text-wrap: balance;
   font-family: var(--font-display);
-  letter-spacing: -0.015em;
+  letter-spacing: -0.02em;
 }
 
 p {
@@ -147,6 +148,24 @@ p {
 
 ::selection {
   background: var(--color-brand-100);
+}
+
+/* Paper grain: a fixed fractal-noise wash over the whole page for a printed,
+   textured feel. Sits above content but is pointer-transparent and barely
+   visible; multiply in light, soft-light in dark so it reads on both. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.05;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.dark body::after {
+  opacity: 0.07;
+  mix-blend-mode: soft-light;
 }
 
 @keyframes rise {
@@ -297,13 +316,47 @@ p {
    plain CSS (not @apply) so the arbitrary letter-spacing can't drop the
    rule, and placed outside the components layer so a `text-*` utility on
    the same element still overrides the default brand colour. */
-/* Small uppercase label set above section headings. A clean, tracked sans
-   (not monospace) reads more professional than a mono eyebrow. */
 .eyebrow {
-  font-family: var(--font-sans);
+  font-family: var(--font-mono);
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   color: var(--color-brand-700);
+}
+
+/* ── Editorial accents ──────────────────────────────────────────────
+   A hand-drawn terracotta underline for the accented word in a headline.
+   Painted as a background so it sits behind the text and wraps naturally. */
+.squiggle {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='16' viewBox='0 0 120 16' fill='none' preserveAspectRatio='none'%3E%3Cpath d='M2 10C20 3 32 13 50 8s34-7 54 1 12 2 12 2' stroke='%23C05A38' stroke-width='3.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: 0 0.86em;
+  background-size: 100% 0.4em;
+  padding-bottom: 0.16em;
+}
+
+/* Magazine drop cap on the first letter of a lede paragraph. */
+.dropcap::first-letter {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  float: left;
+  font-size: 3.3em;
+  line-height: 0.72;
+  padding: 0.06em 0.1em 0 0;
+  color: var(--color-brand-700);
+}
+
+/* Hairline rule with the parchment ink colour. */
+.hairline {
+  border-color: var(--color-ink-300);
+}
+
+/* A big ghosted section numeral that bleeds behind the heading. */
+.ghost-number {
+  font-family: var(--font-serif);
+  font-weight: 900;
+  line-height: 0.8;
+  color: var(--color-ink-200);
+  letter-spacing: -0.04em;
 }
