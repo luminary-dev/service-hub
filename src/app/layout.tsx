@@ -3,6 +3,7 @@ import {
   Hanken_Grotesk,
   Space_Grotesk,
   Space_Mono,
+  Fraunces,
   Noto_Sans_Sinhala,
 } from "next/font/google";
 import "./globals.css";
@@ -49,6 +50,15 @@ const spaceMono = Space_Mono({
   display: "swap",
 });
 
+// High-contrast serif for editorial headlines and pull-quotes.
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "900"],
+  style: ["normal", "italic"],
+  display: "swap",
+});
+
 const notoSinhala = Noto_Sans_Sinhala({
   variable: "--font-sinhala",
   subsets: ["sinhala"],
@@ -87,7 +97,7 @@ export default async function RootLayout({
     <html
       lang={locale}
       suppressHydrationWarning
-      className={`${hanken.variable} ${spaceGrotesk.variable} ${spaceMono.variable} ${notoSinhala.variable} h-full antialiased${
+      className={`${hanken.variable} ${spaceGrotesk.variable} ${spaceMono.variable} ${fraunces.variable} ${notoSinhala.variable} h-full antialiased${
         theme === "dark" ? " dark" : ""
       }`}
     >
