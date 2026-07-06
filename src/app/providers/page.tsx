@@ -128,12 +128,13 @@ export default async function ProvidersPage({
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <div className="flex items-center gap-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em]">
-            <span className="text-brand-700">Nº&nbsp;00</span>
-            <span className="h-px w-8 bg-brand-300" />
+          <div className="flex items-center gap-2.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em]">
+            <span className="rounded-sm bg-brand-700 px-1.5 py-0.5 text-white dark:text-ink-50">
+              REG
+            </span>
             <span className="text-ink-500">{t.nav.find}</span>
           </div>
-          <h1 className="mt-3 font-serif text-4xl font-semibold tracking-tight text-ink-900 sm:text-5xl">
+          <h1 className="mt-3 text-4xl font-bold tracking-tight text-ink-900 sm:text-5xl">
             {category ? categoryLabelLoc(category, locale) : t.browse.title}
           </h1>
           <p className="mt-2 font-mono text-sm text-ink-500">

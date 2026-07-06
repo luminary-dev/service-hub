@@ -16,6 +16,21 @@ import {
 } from "@/lib/i18n";
 import { localizedHref } from "@/lib/links";
 
+// Real trade photography (public/images/workers) keyed by category slug —
+// used in place of the flat placeholder cover art when a provider hasn't
+// uploaded their own photo. Categories without a shot keep the placeholder.
+const TRADE_PHOTOS: Record<string, string> = {
+  mechanic: "/images/workers/mechanic.jpg",
+  electrician: "/images/workers/electrician.jpg",
+  plumber: "/images/workers/plumber.jpg",
+  carpenter: "/images/workers/carpenter.jpg",
+  mason: "/images/workers/mason.jpg",
+  painter: "/images/workers/painter.jpg",
+  welder: "/images/workers/welder.jpg",
+  "garden-designer": "/images/workers/garden-designer.jpg",
+  roofer: "/images/workers/roofer.jpg",
+};
+
 // Card payload as served by `GET /api/providers` on the gateway
 // (provider-service's ProviderCardDTO). Dates arrive as ISO strings; rating
 // and reviewCount come precomputed by review-service.
@@ -61,6 +76,12 @@ export default function ProviderCard({
   // Away mode (#49): a future awayUntil replaces the "Available" chip with a
   // localized "Away until {date}" chip; a past one is inert.
   const away = p.awayUntil !== null && new Date(p.awayUntil) > new Date();
+  // Prefer a real uploaded photo; otherwise fall back to trade photography,
+  // then to the generated placeholder cover.
+  const cover =
+    p.coverPhoto && !isSvg(p.coverPhoto)
+      ? p.coverPhoto
+      : TRADE_PHOTOS[p.category] ?? p.coverPhoto;
   return (
     <div className="relative">
       {showFavorite && (
@@ -74,13 +95,13 @@ export default function ProviderCard({
       >
         {/* ── Cover: catalogue "plate" with scrim, frame & overprints ── */}
         <div className="relative h-40 overflow-hidden bg-ink-100">
-          {p.coverPhoto ? (
+          {cover ? (
             <Image
-              src={p.coverPhoto}
+              src={cover}
               alt=""
               fill
               sizes="(min-width: 1024px) 384px, (min-width: 640px) 50vw, 100vw"
-              unoptimized={isSvg(p.coverPhoto)}
+              unoptimized={isSvg(cover)}
               className="object-cover transition-transform duration-500 ease-snap group-hover:scale-[1.06]"
             />
           ) : (
@@ -93,7 +114,7 @@ export default function ProviderCard({
           <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-black/10" />
 
           {/* category tag, overprinted like a magazine kicker */}
-          <span className="absolute left-3 top-3 rounded-full bg-black/40 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-white backdrop-blur-sm">
+          <span className="absolute left-3 top-3 rounded-sm bg-black/45 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-white backdrop-blur-sm">
             {categoryLabelLoc(p.category, locale)}
           </span>
 
@@ -127,7 +148,7 @@ export default function ProviderCard({
               <Avatar name={p.name} url={p.avatarUrl} size={56} />
             </div>
             <div className="min-w-0 flex-1 pt-1.5">
-              <h3 className="flex items-center gap-1.5 truncate font-serif text-lg font-semibold text-ink-900 transition-colors duration-200 group-hover:text-brand-700">
+              <h3 className="flex items-center gap-1.5 truncate font-display text-base font-semibold text-ink-900 transition-colors duration-200 group-hover:text-brand-700">
                 <span className="truncate">{p.name}</span>
                 {verified && (
                   <FaCircleCheck
@@ -162,7 +183,7 @@ export default function ProviderCard({
               <span className="text-sm text-ink-500">{t.card.noReviews}</span>
             )}
             {p.fromPrice !== null && (
-              <span className="rounded-md border border-brand-200 bg-brand-50 px-2.5 py-1 font-mono text-xs font-semibold tabular-nums text-brand-800">
+              <span className="rounded-sm border border-brand-200 bg-brand-50 px-2.5 py-1 font-mono text-xs font-semibold tabular-nums text-brand-800">
                 {formatLKR(p.fromPrice, locale)}
                 {p.fromPriceType && (
                   <span className="font-normal text-brand-700/70">
