@@ -1,5 +1,10 @@
 import type { Metadata } from "next";
-import { Poppins, Noto_Sans_Sinhala } from "next/font/google";
+import {
+  Hanken_Grotesk,
+  Space_Grotesk,
+  Space_Mono,
+  Noto_Sans_Sinhala,
+} from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -20,10 +25,27 @@ import { SITE_NAME, SITE_URL } from "@/lib/site";
 // the toggle clears the cookie back to "system" and calls router.refresh()).
 const THEME_SCRIPT = `(function(){try{var d=document.documentElement,m=window.matchMedia("(prefers-color-scheme: dark)");function a(){var c=document.cookie.match(/(?:^|; )theme=(dark|light)(?:;|$)/),v=c?c[1]==="dark":m.matches;if(d.classList.contains("dark")!==v)d.classList.toggle("dark",v)}a();m.addEventListener("change",a);new MutationObserver(a).observe(d,{attributes:true,attributeFilter:["class"]})}catch(e){}})()`;
 
-const poppins = Poppins({
-  variable: "--font-poppins",
+// Body / UI text.
+const hanken = Hanken_Grotesk({
+  variable: "--font-hanken",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
+
+// Display face for headings, logo and other high-impact type.
+const spaceGrotesk = Space_Grotesk({
+  variable: "--font-space-grotesk",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
+
+// Monospace accents: eyebrow labels, stats and ticker.
+const spaceMono = Space_Mono({
+  variable: "--font-space-mono",
+  subsets: ["latin"],
+  weight: ["400", "700"],
   display: "swap",
 });
 
@@ -65,7 +87,7 @@ export default async function RootLayout({
     <html
       lang={locale}
       suppressHydrationWarning
-      className={`${poppins.variable} ${notoSinhala.variable} h-full antialiased${
+      className={`${hanken.variable} ${spaceGrotesk.variable} ${spaceMono.variable} ${notoSinhala.variable} h-full antialiased${
         theme === "dark" ? " dark" : ""
       }`}
     >
