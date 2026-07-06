@@ -142,12 +142,12 @@ export default async function HomePage() {
           <figure className="relative">
             <div className="tech-corners relative aspect-[4/5] overflow-hidden border border-ink-300 bg-ink-100">
               <Image
-                src="/images/workers/hero-site.jpg"
-                alt="Sri Lankan coir-rope maker at his workshop"
+                src="/images/workers/hero-worker.jpg"
+                alt="A builder in safety gear holding a hammer"
                 fill
                 priority
                 sizes="(min-width: 1024px) 460px, 100vw"
-                className="kenburns object-cover"
+                className="kenburns object-cover object-center"
               />
               <div className="blueprint-grid pointer-events-none absolute inset-0 opacity-30 mix-blend-overlay" />
               <span className="absolute left-3 top-3 rounded-sm bg-brand-700 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-white dark:text-ink-50">
@@ -156,7 +156,7 @@ export default async function HomePage() {
             </div>
             <figcaption className="flex items-center justify-between border border-t-0 border-ink-300 bg-ink-100 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-500">
               <span>Fig.01</span>
-              <span>Coir rope · Sri Lanka</span>
+              <span>Certified builder · LK</span>
             </figcaption>
           </figure>
         </div>
