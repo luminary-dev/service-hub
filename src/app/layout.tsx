@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
 import {
-  Hanken_Grotesk,
-  Space_Grotesk,
-  Space_Mono,
-  Fraunces,
+  IBM_Plex_Sans,
+  IBM_Plex_Mono,
   Noto_Sans_Sinhala,
 } from "next/font/google";
 import "./globals.css";
@@ -26,36 +24,20 @@ import { SITE_NAME, SITE_URL } from "@/lib/site";
 // the toggle clears the cookie back to "system" and calls router.refresh()).
 const THEME_SCRIPT = `(function(){try{var d=document.documentElement,m=window.matchMedia("(prefers-color-scheme: dark)");function a(){var c=document.cookie.match(/(?:^|; )theme=(dark|light)(?:;|$)/),v=c?c[1]==="dark":m.matches;if(d.classList.contains("dark")!==v)d.classList.toggle("dark",v)}a();m.addEventListener("change",a);new MutationObserver(a).observe(d,{attributes:true,attributeFilter:["class"]})}catch(e){}})()`;
 
-// Body / UI text.
-const hanken = Hanken_Grotesk({
-  variable: "--font-hanken",
+// Body / UI + headings: IBM Plex Sans, the engineering-drawing sans that
+// anchors the blueprint/technical look.
+const plexSans = IBM_Plex_Sans({
+  variable: "--font-plex-sans",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
   display: "swap",
 });
 
-// Display face for headings, logo and other high-impact type.
-const spaceGrotesk = Space_Grotesk({
-  variable: "--font-space-grotesk",
+// IBM Plex Mono for spec labels, part numbers, coordinates and ticks.
+const plexMono = IBM_Plex_Mono({
+  variable: "--font-plex-mono",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
-  display: "swap",
-});
-
-// Monospace accents: eyebrow labels, stats and ticker.
-const spaceMono = Space_Mono({
-  variable: "--font-space-mono",
-  subsets: ["latin"],
-  weight: ["400", "700"],
-  display: "swap",
-});
-
-// High-contrast serif for editorial headlines and pull-quotes.
-const fraunces = Fraunces({
-  variable: "--font-fraunces",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "900"],
-  style: ["normal", "italic"],
   display: "swap",
 });
 
@@ -97,7 +79,7 @@ export default async function RootLayout({
     <html
       lang={locale}
       suppressHydrationWarning
-      className={`${hanken.variable} ${spaceGrotesk.variable} ${spaceMono.variable} ${fraunces.variable} ${notoSinhala.variable} h-full antialiased${
+      className={`${plexSans.variable} ${plexMono.variable} ${notoSinhala.variable} h-full antialiased${
         theme === "dark" ? " dark" : ""
       }`}
     >

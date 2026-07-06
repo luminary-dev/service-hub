@@ -19,39 +19,38 @@
 }
 
 @theme {
-  /* Brand — warm terracotta. 700 is the solid fill (buttons); 600 carries
-     links/icons; 800 is the darker hover / text-on-tint; 50–100 are the
-     soft clay tints used behind eyebrow chips and badges. */
-  --color-brand-50: oklch(0.938 0.024 46);
-  --color-brand-100: oklch(0.892 0.04 44);
-  --color-brand-200: oklch(0.83 0.062 42);
-  --color-brand-300: oklch(0.75 0.088 40);
-  --color-brand-400: oklch(0.672 0.112 39);
-  --color-brand-500: oklch(0.622 0.128 39);
-  --color-brand-600: oklch(0.59 0.135 39);
-  --color-brand-700: oklch(0.575 0.138 39);
-  --color-brand-800: oklch(0.485 0.128 37);
-  --color-brand-900: oklch(0.4 0.1 35);
-  /* Ink — warm greige neutrals. 50 is the cream page background, 200/300 are
-     the parchment borders, 500/600 the muted body copy, 900 the near-black
-     espresso used for primary text and the dark sections. */
-  --color-ink-50: oklch(0.975 0.006 74);
-  --color-ink-100: oklch(0.955 0.01 73);
-  --color-ink-200: oklch(0.906 0.013 72);
-  --color-ink-300: oklch(0.865 0.016 70);
-  --color-ink-400: oklch(0.72 0.016 64);
-  --color-ink-500: oklch(0.585 0.016 56);
-  --color-ink-600: oklch(0.46 0.014 52);
-  --color-ink-700: oklch(0.4 0.012 50);
-  --color-ink-800: oklch(0.3 0.011 48);
-  --color-ink-900: oklch(0.235 0.008 46);
+  /* Brand — safety orange (hi-vis). 700 is the solid fill (buttons); 600
+     carries links/icons; 800 is the darker hover / text-on-tint; 50–100 are
+     the soft tints behind spec chips and badges. */
+  --color-brand-50: oklch(0.958 0.028 58);
+  --color-brand-100: oklch(0.915 0.055 54);
+  --color-brand-200: oklch(0.84 0.1 50);
+  --color-brand-300: oklch(0.77 0.14 47);
+  --color-brand-400: oklch(0.715 0.17 45);
+  --color-brand-500: oklch(0.665 0.19 43);
+  --color-brand-600: oklch(0.63 0.192 42);
+  --color-brand-700: oklch(0.6 0.188 42);
+  --color-brand-800: oklch(0.5 0.155 41);
+  --color-brand-900: oklch(0.42 0.125 40);
+  /* Ink — cool steel / graphite neutrals. 50 is the light steel page
+     background, 200/300 the panel borders, 500/600 the muted body copy,
+     900 the graphite used for primary text and the dark technical sections. */
+  --color-ink-50: oklch(0.976 0.002 250);
+  --color-ink-100: oklch(0.955 0.004 250);
+  --color-ink-200: oklch(0.905 0.006 252);
+  --color-ink-300: oklch(0.858 0.008 254);
+  --color-ink-400: oklch(0.705 0.012 256);
+  --color-ink-500: oklch(0.565 0.014 258);
+  --color-ink-600: oklch(0.462 0.015 260);
+  --color-ink-700: oklch(0.382 0.016 262);
+  --color-ink-800: oklch(0.292 0.016 264);
+  --color-ink-900: oklch(0.215 0.015 265);
   --color-surface: oklch(1 0 0);
-  --font-sans: var(--font-hanken), "FM Bindumathi", var(--font-sinhala),
+  --font-sans: var(--font-plex-sans), "FM Bindumathi", var(--font-sinhala),
     ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-space-grotesk), var(--font-hanken),
-    "FM Bindumathi", var(--font-sinhala), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-space-mono), ui-monospace, "SFMono-Regular", monospace;
-  --font-serif: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  --font-display: var(--font-plex-sans), "FM Bindumathi", var(--font-sinhala),
+    ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", monospace;
   --ease-snap: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-flow: cubic-bezier(0.77, 0, 0.175, 1);
 }
@@ -73,28 +72,28 @@
 .dark {
   color-scheme: dark;
 
-  --color-surface: oklch(0.245 0.011 48);
-  --color-ink-50: oklch(0.175 0.008 46);
-  --color-ink-100: oklch(0.275 0.011 48);
-  --color-ink-200: oklch(0.33 0.012 50);
-  --color-ink-300: oklch(0.4 0.013 52);
-  --color-ink-400: oklch(0.53 0.012 58);
-  --color-ink-500: oklch(0.66 0.011 66);
-  --color-ink-600: oklch(0.75 0.01 72);
-  --color-ink-700: oklch(0.82 0.008 78);
-  --color-ink-800: oklch(0.89 0.006 82);
-  --color-ink-900: oklch(0.945 0.005 86);
+  --color-surface: oklch(0.255 0.014 262);
+  --color-ink-50: oklch(0.185 0.014 265);
+  --color-ink-100: oklch(0.285 0.015 264);
+  --color-ink-200: oklch(0.345 0.015 262);
+  --color-ink-300: oklch(0.41 0.015 260);
+  --color-ink-400: oklch(0.54 0.014 258);
+  --color-ink-500: oklch(0.66 0.013 256);
+  --color-ink-600: oklch(0.75 0.011 254);
+  --color-ink-700: oklch(0.825 0.009 252);
+  --color-ink-800: oklch(0.89 0.006 250);
+  --color-ink-900: oklch(0.95 0.004 250);
 
-  --color-brand-50: oklch(0.27 0.05 40);
-  --color-brand-100: oklch(0.33 0.066 40);
-  --color-brand-200: oklch(0.4 0.082 39);
-  --color-brand-300: oklch(0.52 0.11 38);
-  --color-brand-400: oklch(0.63 0.135 38);
-  --color-brand-500: oklch(0.69 0.145 38);
-  --color-brand-600: oklch(0.74 0.145 40);
-  --color-brand-700: oklch(0.7 0.15 39);
-  --color-brand-800: oklch(0.78 0.13 43);
-  --color-brand-900: oklch(0.88 0.06 46);
+  --color-brand-50: oklch(0.29 0.06 44);
+  --color-brand-100: oklch(0.35 0.08 43);
+  --color-brand-200: oklch(0.43 0.11 42);
+  --color-brand-300: oklch(0.55 0.15 42);
+  --color-brand-400: oklch(0.66 0.18 42);
+  --color-brand-500: oklch(0.72 0.19 44);
+  --color-brand-600: oklch(0.75 0.185 46);
+  --color-brand-700: oklch(0.72 0.19 44);
+  --color-brand-800: oklch(0.8 0.15 48);
+  --color-brand-900: oklch(0.89 0.08 52);
 
   --color-emerald-50: oklch(0.26 0.04 163);
   --color-emerald-100: oklch(0.32 0.06 162);
@@ -139,7 +138,7 @@ h2,
 h3 {
   text-wrap: balance;
   font-family: var(--font-display);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.012em;
 }
 
 p {
@@ -148,24 +147,6 @@ p {
 
 ::selection {
   background: var(--color-brand-100);
-}
-
-/* Paper grain: a fixed fractal-noise wash over the whole page for a printed,
-   textured feel. Sits above content but is pointer-transparent and barely
-   visible; multiply in light, soft-light in dark so it reads on both. */
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  pointer-events: none;
-  opacity: 0.05;
-  mix-blend-mode: multiply;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-}
-.dark body::after {
-  opacity: 0.07;
-  mix-blend-mode: soft-light;
 }
 
 @keyframes rise {
@@ -291,72 +272,94 @@ body::after {
   }
 
   .btn-primary {
-    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-brand-700 px-5 py-2.5 font-display text-sm font-semibold text-white transition-[background-color,transform,filter] dark:text-ink-50 duration-200 ease-snap hover:bg-brand-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-md bg-brand-700 px-5 py-2.5 font-display text-sm font-semibold text-white transition-[background-color,transform,filter] dark:text-ink-50 duration-200 ease-snap hover:bg-brand-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .btn-secondary {
-    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-ink-300 bg-surface px-5 py-2.5 font-display text-sm font-semibold text-ink-800 transition-[border-color,background-color,transform] duration-200 ease-snap hover:border-ink-400 hover:bg-ink-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-300 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-md border border-ink-300 bg-surface px-5 py-2.5 font-display text-sm font-semibold text-ink-800 transition-[border-color,background-color,transform] duration-200 ease-snap hover:border-ink-400 hover:bg-ink-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-300 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .btn-ghost {
-    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-ink-600 transition-[background-color,color,transform] duration-200 ease-snap hover:bg-ink-100 hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-300 active:scale-[0.97];
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium text-ink-600 transition-[background-color,color,transform] duration-200 ease-snap hover:bg-ink-100 hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-300 active:scale-[0.97];
   }
 
   .card {
-    @apply rounded-2xl border border-ink-200 bg-surface shadow-[0_1px_2px_rgba(34,29,24,0.05)];
+    @apply rounded-lg border border-ink-200 bg-surface shadow-[0_1px_2px_rgba(17,24,39,0.05)];
   }
 
   .chip {
     @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium;
   }
-
 }
 
-/* Mono uppercase eyebrow label used above section headings. Authored as
-   plain CSS (not @apply) so the arbitrary letter-spacing can't drop the
-   rule, and placed outside the components layer so a `text-*` utility on
-   the same element still overrides the default brand colour. */
+/* ── Blueprint / technical toolkit ─────────────────────────────────── */
+
+/* Mono uppercase spec label used above section headings and on tags. */
 .eyebrow {
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.14em;
   color: var(--color-brand-700);
 }
 
-/* ── Editorial accents ──────────────────────────────────────────────
-   A hand-drawn terracotta underline for the accented word in a headline.
-   Painted as a background so it sits behind the text and wraps naturally. */
-.squiggle {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='16' viewBox='0 0 120 16' fill='none' preserveAspectRatio='none'%3E%3Cpath d='M2 10C20 3 32 13 50 8s34-7 54 1 12 2 12 2' stroke='%23C05A38' stroke-width='3.5' stroke-linecap='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: 0 0.86em;
-  background-size: 100% 0.4em;
-  padding-bottom: 0.16em;
+/* Graph-paper background: a fine grid with a stronger major line every
+   5th cell, drawn from the steel ink colour so it reads as drafting paper. */
+.blueprint-grid {
+  --bp-minor: color-mix(in oklch, var(--color-ink-400), transparent 88%);
+  --bp-major: color-mix(in oklch, var(--color-ink-400), transparent 78%);
+  background-image: linear-gradient(
+      to right,
+      var(--bp-minor) 1px,
+      transparent 1px
+    ),
+    linear-gradient(to bottom, var(--bp-minor) 1px, transparent 1px),
+    linear-gradient(to right, var(--bp-major) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--bp-major) 1px, transparent 1px);
+  background-size:
+    24px 24px,
+    24px 24px,
+    120px 120px,
+    120px 120px;
 }
 
-/* Magazine drop cap on the first letter of a lede paragraph. */
-.dropcap::first-letter {
-  font-family: var(--font-serif);
-  font-weight: 600;
-  float: left;
-  font-size: 3.3em;
-  line-height: 0.72;
-  padding: 0.06em 0.1em 0 0;
-  color: var(--color-brand-700);
+/* Drafting corner brackets on a panel (top-left + bottom-right). */
+.tech-corners {
+  position: relative;
+}
+.tech-corners::before,
+.tech-corners::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-color: var(--color-brand-600);
+  pointer-events: none;
+}
+.tech-corners::before {
+  top: 9px;
+  left: 9px;
+  border-top: 2px solid;
+  border-left: 2px solid;
+}
+.tech-corners::after {
+  bottom: 9px;
+  right: 9px;
+  border-bottom: 2px solid;
+  border-right: 2px solid;
 }
 
-/* Hairline rule with the parchment ink colour. */
+/* Diagonal hazard/caution stripes for thin accent rails. */
+.hazard {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--color-brand-600) 0 12px,
+    var(--color-ink-900) 12px 24px
+  );
+}
+
+/* Hairline rule in the steel border colour. */
 .hairline {
   border-color: var(--color-ink-300);
-}
-
-/* A big ghosted section numeral that bleeds behind the heading. */
-.ghost-number {
-  font-family: var(--font-serif);
-  font-weight: 900;
-  line-height: 0.8;
-  color: var(--color-ink-200);
-  letter-spacing: -0.04em;
 }
