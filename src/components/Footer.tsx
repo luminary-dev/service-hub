@@ -10,15 +10,15 @@ export default async function Footer() {
   const t = dict[locale];
 
   return (
-    <footer className="border-t border-ink-200 bg-surface">
+    <footer className="border-t border-ink-200 bg-ink-100">
       <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <div className="flex items-center gap-2.5">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-700 text-sm font-bold text-white dark:text-ink-50">
+              <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-brand-700 font-display text-base font-bold text-white dark:text-ink-50">
                 B
               </span>
-              <span className="text-lg font-semibold tracking-tight text-ink-900">
+              <span className="font-display text-lg font-bold tracking-tight text-ink-900">
                 Baas<span className="text-brand-600">.lk</span>
               </span>
             </div>
@@ -28,7 +28,7 @@ export default async function Footer() {
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-ink-900">
+            <h3 className="eyebrow text-ink-500">
               {t.footer.popular}
             </h3>
             <ul className="mt-3 space-y-2">
@@ -46,7 +46,7 @@ export default async function Footer() {
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-ink-900">
+            <h3 className="eyebrow text-ink-500">
               {t.footer.forPros}
             </h3>
             <ul className="mt-3 space-y-2">
@@ -78,7 +78,7 @@ export default async function Footer() {
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-ink-900">
+            <h3 className="eyebrow text-ink-500">
               {t.footer.forCustomers}
             </h3>
             <ul className="mt-3 space-y-2">
