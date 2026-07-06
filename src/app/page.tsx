@@ -142,7 +142,7 @@ export default async function HomePage() {
           <figure className="relative">
             <div className="tech-corners relative aspect-[4/5] overflow-hidden border border-ink-300 bg-ink-100">
               <Image
-                src="/images/workers/hero-worker.jpg"
+                src="/images/workers/hero-worker2.jpg"
                 alt="A builder in safety gear holding a hammer"
                 fill
                 priority
