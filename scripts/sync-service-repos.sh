@@ -4,7 +4,11 @@
 # repos are read-only mirrors (deployable/buildable on their own), named
 # service-hub-<name> to keep them distinguishable from other apps in the org.
 #
-# Usage: ./scripts/sync-service-repos.sh [branch]   (default: main)
+# Run this from the monorepo's `prod` branch after a release, so the mirrors
+# reflect production. The [branch] arg is the MIRROR repo's target branch
+# (the mirrors keep their own `main`), not a monorepo branch.
+#
+# Usage: ./scripts/sync-service-repos.sh [mirror-branch]   (default: main)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
