@@ -116,7 +116,7 @@ export default function ProviderCard({
             <Avatar name={p.name} url={p.avatarUrl} size={56} />
           </div>
           <div className="min-w-0 flex-1 pt-1">
-            <h3 className="truncate font-serif text-lg font-semibold text-ink-900 transition-colors duration-200 group-hover:text-brand-700">
+            <h3 className="truncate font-display font-semibold text-ink-900 transition-colors duration-200 group-hover:text-brand-700">
               {p.name}
             </h3>
             <p className="text-xs text-ink-500">
