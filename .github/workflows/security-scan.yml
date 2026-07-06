@@ -2,9 +2,9 @@ name: Security scan
 
 on:
   push:
-    branches: [main]
+    branches: [dev, prod]
   pull_request:
-    branches: [main]
+    branches: [dev, prod]
   schedule:
     # Catch newly-disclosed advisories on existing deps even without commits.
     - cron: "0 6 * * 1" # Mondays 06:00 UTC
