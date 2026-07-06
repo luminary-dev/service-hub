@@ -6,7 +6,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* Optional Sinhala font: drop FMBindumathi.woff2 (or .ttf) into public/fonts/
-   and it takes over Sinhala text. Must be a Unicode-encoded version — the
+   and it takes over Sinhala text. Must be a Unicode-encoded version - the
    legacy FM-Bindumathi has no Sinhala Unicode glyphs and will not render.
    Falls back to Noto Sans Sinhala automatically if the file is missing. */
 @font-face {
@@ -19,8 +19,8 @@
 }
 
 @theme {
-  /* Brand — safety orange (hi-vis). 700 is the solid fill (buttons); 600
-     carries links/icons; 800 is the darker hover / text-on-tint; 50–100 are
+  /* Brand - safety orange (hi-vis). 700 is the solid fill (buttons); 600
+     carries links/icons; 800 is the darker hover / text-on-tint; 50-100 are
      the soft tints behind spec chips and badges. */
   --color-brand-50: oklch(0.958 0.028 58);
   --color-brand-100: oklch(0.915 0.055 54);
@@ -32,7 +32,7 @@
   --color-brand-700: oklch(0.6 0.188 42);
   --color-brand-800: oklch(0.5 0.155 41);
   --color-brand-900: oklch(0.42 0.125 40);
-  /* Ink — cool steel / graphite neutrals. 50 is the light steel page
+  /* Ink - cool steel / graphite neutrals. 50 is the light steel page
      background, 200/300 the panel borders, 500/600 the muted body copy,
      900 the graphite used for primary text and the dark technical sections. */
   --color-ink-50: oklch(0.976 0.002 250);
@@ -59,7 +59,7 @@
    surface tokens, so the theme flips at the token layer. The ink ramp
    inverts (ink-50 stays "page background", ink-900 stays "primary text"),
    `surface` swaps white cards for a raised dark surface, and the brand ramp
-   is re-tuned per role: tints (50–200) become deep warm fills, text shades
+   is re-tuned per role: tints (50-200) become deep warm fills, text shades
    (600/800/900) become light, and solid fills (700) become a bright orange
    that carries dark text (see `dark:text-ink-50` at the call sites).
    The handful of Tailwind status shades in use (emerald/amber/red chips,
@@ -165,7 +165,7 @@ p {
   animation-delay: calc(var(--rise-index, 0) * 60ms);
 }
 
-/* ── Home-hero motion ───────────────────────────────────────────────
+/* -- Home-hero motion -----------------------------------------------
    The hero cycles a rolling word, an orbiting ring of trade chips and a
    live activity ticker. Each has a paired class below; all pause under
    prefers-reduced-motion (see the guard at the end of this file). */
@@ -292,7 +292,7 @@ p {
   }
 }
 
-/* ── Blueprint / technical toolkit ─────────────────────────────────── */
+/* -- Blueprint / technical toolkit ----------------------------------- */
 
 /* Mono uppercase spec label used above section headings and on tags. */
 .eyebrow {
@@ -350,16 +350,133 @@ p {
   border-right: 2px solid;
 }
 
-/* Diagonal hazard/caution stripes for thin accent rails. */
+/* Diagonal hazard/caution stripes for thin accent rails - the stripes
+   creep to read as an active, working caution band. */
+@keyframes hazardMove {
+  to {
+    background-position: 68px 0;
+  }
+}
 .hazard {
   background-image: repeating-linear-gradient(
     -45deg,
     var(--color-brand-600) 0 12px,
     var(--color-ink-900) 12px 24px
   );
+  animation: hazardMove 1.6s linear infinite;
 }
 
 /* Hairline rule in the steel border colour. */
 .hairline {
   border-color: var(--color-ink-300);
+}
+
+/* -- Motion ---------------------------------------------------------
+   Scroll-reveal: the InView component toggles `.in` when the element
+   enters the viewport; the base state hides + offsets, `.in` settles it. */
+.reveal-js {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 0.6s var(--ease-snap),
+    transform 0.6s var(--ease-snap);
+}
+.reveal-js.in {
+  opacity: 1;
+  transform: none;
+}
+
+/* Staggered reveal for the direct children of a container. */
+.stagger > * {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 0.55s var(--ease-snap),
+    transform 0.55s var(--ease-snap);
+}
+.stagger.in > * {
+  opacity: 1;
+  transform: none;
+}
+.stagger.in > *:nth-child(1) {
+  transition-delay: 0s;
+}
+.stagger.in > *:nth-child(2) {
+  transition-delay: 0.05s;
+}
+.stagger.in > *:nth-child(3) {
+  transition-delay: 0.1s;
+}
+.stagger.in > *:nth-child(4) {
+  transition-delay: 0.15s;
+}
+.stagger.in > *:nth-child(5) {
+  transition-delay: 0.2s;
+}
+.stagger.in > *:nth-child(6) {
+  transition-delay: 0.25s;
+}
+.stagger.in > *:nth-child(7) {
+  transition-delay: 0.3s;
+}
+.stagger.in > *:nth-child(8) {
+  transition-delay: 0.35s;
+}
+.stagger.in > *:nth-child(9) {
+  transition-delay: 0.4s;
+}
+.stagger.in > *:nth-child(10) {
+  transition-delay: 0.45s;
+}
+.stagger.in > *:nth-child(n + 11) {
+  transition-delay: 0.5s;
+}
+
+/* Slow Ken-Burns push on hero / banner photography. */
+@keyframes kenburns {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.09);
+  }
+}
+.kenburns {
+  animation: kenburns 20s ease-in-out infinite alternate;
+}
+
+/* Horizontal scan line that sweeps a tile on hover (hidden at rest). */
+@keyframes scanX {
+  0% {
+    transform: translateX(-140%);
+    opacity: 0;
+  }
+  15%,
+  85% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(140%);
+    opacity: 0;
+  }
+}
+.scan-line {
+  opacity: 0;
+}
+.group:hover .scan-line {
+  animation: scanX 0.7s var(--ease-snap);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal-js,
+  .stagger > * {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  .hazard,
+  .kenburns,
+  .scan-line {
+    animation: none !important;
+  }
 }
