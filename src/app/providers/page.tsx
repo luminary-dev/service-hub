@@ -128,10 +128,10 @@ export default async function ProvidersPage({
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-ink-900">
+          <h1 className="text-4xl font-bold tracking-tight text-ink-900">
             {category ? categoryLabelLoc(category, locale) : t.browse.title}
           </h1>
-          <p className="mt-1 text-ink-600">
+          <p className="mt-2 font-mono text-sm text-ink-500">
             {t.browse.found(total, district || null)}
           </p>
         </div>
