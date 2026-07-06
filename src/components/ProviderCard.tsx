@@ -70,7 +70,7 @@ export default function ProviderCard({
       )}
       <Link
         href={localizedHref(`/providers/${p.id}`, locale)}
-        className="card group block overflow-hidden transition-[border-color,transform] duration-200 ease-snap hover:-translate-y-1 hover:border-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 active:scale-[0.99]"
+        className="card group block overflow-hidden transition-[border-color,transform,box-shadow] duration-200 ease-snap hover:-translate-y-1 hover:border-brand-400 hover:shadow-[0_14px_34px_rgba(34,29,24,0.10)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 active:scale-[0.99]"
       >
         <div className="relative h-36 bg-ink-100">
         {p.coverPhoto ? (
@@ -116,14 +116,8 @@ export default function ProviderCard({
             <Avatar name={p.name} url={p.avatarUrl} size={56} />
           </div>
           <div className="min-w-0 flex-1 pt-1">
-            <h3 className="flex items-center gap-1 truncate font-semibold text-ink-900 transition-colors duration-200 group-hover:text-brand-700">
-              <span className="truncate">{p.name}</span>
-              {verified && (
-                <FaCircleCheck
-                  className="h-3.5 w-3.5 shrink-0 text-brand-600"
-                  title={t.card.verified}
-                />
-              )}
+            <h3 className="truncate font-display font-semibold text-ink-900 transition-colors duration-200 group-hover:text-brand-700">
+              {p.name}
             </h3>
             <p className="text-xs text-ink-500">
               {categoryLabelLoc(p.category, locale)} · {p.city},{" "}
@@ -131,6 +125,13 @@ export default function ProviderCard({
             </p>
           </div>
         </div>
+
+        {verified && (
+          <span className="mt-3 inline-flex items-center gap-1.5 self-start rounded-full bg-brand-50 px-2.5 py-1 text-[11.5px] font-semibold text-brand-800">
+            <FaCircleCheck className="h-3.5 w-3.5 shrink-0 text-brand-700" />
+            {t.card.verified}
+          </span>
+        )}
 
         <p className="mt-3 line-clamp-2 text-sm leading-relaxed text-ink-600">
           {p.headline}
