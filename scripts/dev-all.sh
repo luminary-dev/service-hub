@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the full stack in dev mode: Postgres (docker) + all six services + web.
+# Run the full stack in dev mode: Postgres (docker) + all eight services + web.
 # Ctrl-C stops everything.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -13,7 +13,15 @@ docker compose up -d postgres
 export AUTH_SECRET="${AUTH_SECRET:-dev-only-secret}"
 export GATEWAY_URL="${GATEWAY_URL:-http://localhost:4000}"
 
-SERVICES=(identity-service provider-service review-service job-service notification-service api-gateway)
+# chat-service needs the Claude key. Pick it up from the shell or the gitignored
+# root .env so the secret isn't duplicated into a service .env. Empty is fine —
+# the assistant just returns 503 (disabled) in dev.
+if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -f .env ]; then
+  ANTHROPIC_API_KEY="$(grep -E '^ANTHROPIC_API_KEY=' .env | tail -1 | cut -d= -f2-)"
+fi
+export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
+
+SERVICES=(identity-service provider-service review-service job-service notification-service media-service chat-service api-gateway)
 
 pids=()
 cleanup() {
