@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { DISTRICTS, PRICE_TYPES } from "@/lib/constants";
@@ -151,36 +152,97 @@ export default function ProviderRegisterForm({
     }
   }
 
+  const pct = Math.round(((step + 1) / STEPS.length) * 100);
+
   return (
-    <div className="mx-auto max-w-2xl px-4 py-12 sm:px-6">
-      <h1 className="text-2xl font-bold tracking-tight text-ink-900">
-        {r.title}
-      </h1>
-      <p className="mt-1 text-sm text-ink-500">{r.subtitle}</p>
+    <div className="blueprint-grid">
+      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-12 sm:px-6 lg:grid-cols-[minmax(0,320px)_1fr] lg:gap-12">
+        {/* Spec sidebar */}
+        <aside className="lg:sticky lg:top-24 lg:self-start">
+          <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-700">
+            FORM-01 / PROVIDER
+          </div>
+          <h1 className="mt-3 text-3xl font-bold tracking-tight text-ink-900">
+            {r.title}
+          </h1>
+          <p className="mt-2 text-sm text-ink-600">{r.subtitle}</p>
 
-      <ol className="mt-8 flex items-center gap-2">
-        {STEPS.map((label, i) => (
-          <li key={label} className="flex flex-1 flex-col gap-1.5">
+          {/* Completion gauge */}
+          <div className="mt-7">
+            <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.12em] text-ink-400">
+              <span>{r.stepOf(step + 1, STEPS.length, STEPS[step])}</span>
+              <span className="text-brand-700">{pct}%</span>
+            </div>
+            <div className="mt-1.5 h-2 w-full overflow-hidden rounded-sm border border-ink-300 bg-ink-100">
+              <div
+                className="h-full bg-brand-600 transition-[width] duration-500 ease-snap"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Wiring-diagram stepper */}
+          <ol className="relative mt-8 ml-3 space-y-6 border-l-2 border-ink-200 pl-7">
             <span
-              className={`h-1.5 rounded-full transition ${
-                i <= step ? "bg-brand-600" : "bg-ink-200"
-              }`}
+              className="absolute -left-[2px] top-0 w-[2px] bg-brand-600 transition-[height] duration-500 ease-snap"
+              style={{ height: `${(step / (STEPS.length - 1)) * 100}%` }}
+              aria-hidden
             />
-            <span
-              className={`hidden text-xs font-medium sm:block ${
-                i <= step ? "text-brand-700" : "text-ink-500"
-              }`}
-            >
-              {label}
-            </span>
-          </li>
-        ))}
-      </ol>
-      <p className="mt-2 text-sm font-medium text-ink-700 sm:hidden">
-        {r.stepOf(step + 1, STEPS.length, STEPS[step])}
-      </p>
+            {STEPS.map((label, i) => {
+              const done = i < step;
+              const active = i === step;
+              return (
+                <li key={label} className="relative">
+                  <span
+                    className={`absolute -left-[38px] flex h-7 w-7 items-center justify-center rounded-sm border-2 font-mono text-[10px] font-bold transition ${
+                      done
+                        ? "border-brand-600 bg-brand-600 text-white dark:text-ink-50"
+                        : active
+                          ? "border-brand-600 bg-surface text-brand-700"
+                          : "border-ink-300 bg-surface text-ink-400"
+                    }`}
+                  >
+                    {done ? "✓" : String(i + 1).padStart(2, "0")}
+                  </span>
+                  <span
+                    className={`block text-sm font-semibold ${
+                      active || done ? "text-ink-900" : "text-ink-500"
+                    }`}
+                  >
+                    {label}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
 
-      <div className="card mt-6 p-6">
+          {/* Worker photo */}
+          <figure className="tech-corners relative mt-8 hidden aspect-[4/3] overflow-hidden border border-ink-300 lg:block">
+            <Image
+              src="/images/workers/electrician.jpg"
+              alt="A tradesperson at work in Sri Lanka"
+              fill
+              sizes="320px"
+              className="object-cover"
+            />
+            <div className="blueprint-grid pointer-events-none absolute inset-0 opacity-25 mix-blend-overlay" />
+            <span className="absolute left-2 top-2 rounded-sm bg-brand-700 px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-white dark:text-ink-50">
+              Registry
+            </span>
+          </figure>
+        </aside>
+
+        {/* Form panel */}
+        <div>
+          <div className="tech-corners overflow-hidden rounded-lg border border-ink-300 bg-surface">
+            <div className="flex items-center justify-between border-b border-ink-200 bg-ink-100 px-5 py-3 font-mono text-[11px] uppercase tracking-[0.12em]">
+              <span className="font-bold tabular-nums text-ink-700">
+                {String(step + 1).padStart(2, "0")} /{" "}
+                {String(STEPS.length).padStart(2, "0")}
+              </span>
+              <span className="text-brand-700">{STEPS[step]}</span>
+            </div>
+            <div className="p-6">
         {step === 0 && (
           <div className="space-y-4">
             <div>
@@ -258,18 +320,18 @@ export default function ProviderRegisterForm({
                     type="button"
                     aria-pressed={form.category === c.slug}
                     onClick={() => set("category", c.slug)}
-                    className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm transition ${
+                    className={`flex items-center gap-2 rounded-sm border px-3 py-2.5 text-left text-sm transition ${
                       form.category === c.slug
-                        ? "border-brand-500 bg-brand-50 font-medium text-brand-800"
-                        : "border-ink-200 text-ink-600 hover:border-ink-300"
+                        ? "border-brand-600 bg-brand-600 font-semibold text-white dark:text-ink-50"
+                        : "border-ink-300 text-ink-600 hover:border-brand-400 hover:bg-brand-50"
                     }`}
                   >
                     <CategoryIcon
                       slug={c.slug}
                       className={`h-4 w-4 shrink-0 ${
                         form.category === c.slug
-                          ? "text-brand-600"
-                          : "text-ink-500"
+                          ? "text-white dark:text-ink-50"
+                          : "text-brand-600"
                       }`}
                     />
                     {categoryOptionLabel(c, locale)}
@@ -448,9 +510,9 @@ export default function ProviderRegisterForm({
           <div className="space-y-4">
             <p className="text-sm text-ink-500">{r.servicesIntro}</p>
             {services.map((s, i) => (
-              <div key={i} className="rounded-xl border border-ink-200 p-4">
+              <div key={i} className="rounded-sm border border-ink-300 bg-ink-50 p-4">
                 <div className="flex items-start justify-between gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-ink-500">
+                  <span className="rounded-sm bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-ink-600">
                     {r.serviceN(i + 1)}
                   </span>
                   {services.length > 1 && (
@@ -563,18 +625,21 @@ export default function ProviderRegisterForm({
               {loading ? r.creating : r.create}
             </button>
           )}
+            </div>
+            </div>
+          </div>
+
+          <p className="mt-6 text-center text-sm text-ink-500">
+            {r.alreadyHave}{" "}
+            <Link
+              href="/login"
+              className="font-semibold text-brand-600 hover:text-brand-700"
+            >
+              {r.signIn}
+            </Link>
+          </p>
         </div>
       </div>
-
-      <p className="mt-6 text-center text-sm text-ink-500">
-        {r.alreadyHave}{" "}
-        <Link
-          href="/login"
-          className="font-semibold text-brand-600 hover:text-brand-700"
-        >
-          {r.signIn}
-        </Link>
-      </p>
     </div>
   );
 }
