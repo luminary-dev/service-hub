@@ -16,7 +16,7 @@ import {
 } from "@/lib/i18n";
 import { localizedHref } from "@/lib/links";
 
-// Real trade photography (public/images/workers) keyed by category slug —
+// Real trade photography (public/images/workers) keyed by category slug -
 // used in place of the flat placeholder cover art when a provider hasn't
 // uploaded their own photo. Categories without a shot keep the placeholder.
 const TRADE_PHOTOS: Record<string, string> = {
@@ -93,7 +93,7 @@ export default function ProviderCard({
         href={localizedHref(`/providers/${p.id}`, locale)}
         className="card group block overflow-hidden transition-[border-color,transform,box-shadow] duration-200 ease-snap hover:-translate-y-1 hover:border-brand-400 hover:shadow-[0_16px_40px_rgba(34,29,24,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 active:scale-[0.99]"
       >
-        {/* ── Cover: catalogue "plate" with scrim, frame & overprints ── */}
+        {/* -- Cover: catalogue "plate" with scrim, frame & overprints -- */}
         <div className="relative h-40 overflow-hidden bg-ink-100">
           {cover ? (
             <Image
@@ -141,7 +141,7 @@ export default function ProviderCard({
           )}
         </div>
 
-        {/* ── Body ── */}
+        {/* -- Body -- */}
         <div className="p-4">
           <div className="flex items-start gap-3">
             <div className="-mt-10 rounded-full border-4 border-surface shadow-[0_4px_12px_rgba(34,29,24,0.12)]">

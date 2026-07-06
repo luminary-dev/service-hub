@@ -12,7 +12,7 @@ import CategoryIcon from "@/components/CategoryIcon";
 import FilterBar from "@/components/FilterBar";
 import Link from "next/link";
 
-// Caching (#57): public-but-fresh. No force-dynamic — the page renders per
+// Caching (#57): public-but-fresh. No force-dynamic - the page renders per
 // request (searchParams + locale/session cookies), but the search results
 // come from the Data Cache with a 60-second revalidate. The full query
 // string is part of the fetch URL, so every filter/sort/page combination is
@@ -30,7 +30,7 @@ const POPULAR_CATEGORIES = [
   "cleaning",
 ] as const;
 
-// Keep only digit strings in the URL/state for the rupee inputs — the service
+// Keep only digit strings in the URL/state for the rupee inputs - the service
 // does the authoritative normalization (normalizeListQuery).
 function numericParam(v: string | string[] | undefined): string {
   return typeof v === "string" && /^\d+$/.test(v.trim()) ? v.trim() : "";
@@ -76,7 +76,7 @@ export default async function ProvidersPage({
   const district = typeof params.district === "string" ? params.district : "";
   const sort = normalizeSort(params.sort);
   const page = Math.max(1, Number(params.page) || 1);
-  // Advanced filters (#47) — shareable via the URL like every other filter.
+  // Advanced filters (#47) - shareable via the URL like every other filter.
   const priceMin = numericParam(params.priceMin);
   const priceMax = numericParam(params.priceMax);
   const ratingMin = numericParam(params.ratingMin);
