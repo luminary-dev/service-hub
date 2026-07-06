@@ -1,17 +1,17 @@
 -- DropIndex
-DROP INDEX "Provider_bio_trgm_idx";
+DROP INDEX IF EXISTS "Provider_bio_trgm_idx";
 
 -- DropIndex
-DROP INDEX "Provider_city_trgm_idx";
+DROP INDEX IF EXISTS "Provider_city_trgm_idx";
 
 -- DropIndex
-DROP INDEX "Provider_contactName_trgm_idx";
+DROP INDEX IF EXISTS "Provider_contactName_trgm_idx";
 
 -- DropIndex
-DROP INDEX "Provider_headline_trgm_idx";
+DROP INDEX IF EXISTS "Provider_headline_trgm_idx";
 
 -- DropIndex
-DROP INDEX "Service_title_trgm_idx";
+DROP INDEX IF EXISTS "Service_title_trgm_idx";
 
 -- AlterTable
 ALTER TABLE "Inquiry" ADD COLUMN     "customerLastReadAt" TIMESTAMP(3),
