@@ -127,6 +127,10 @@ model Report {
   details    String?
   // "OPEN" | "RESOLVED" | "DISMISSED"
   status     String   @default("OPEN")
+  // "USER" | "SYSTEM" (#232): USER reports come from the public report flow
+  // above; SYSTEM reports are auto-created by POST /api/admin/flagging/run
+  // when a provider crosses a report-count or rating threshold.
+  source     String   @default("USER")
   createdAt  DateTime @default(now())
 
   // Admin queue reads by status; duplicate-protection looks up by target.
