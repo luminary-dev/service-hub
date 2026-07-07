@@ -5,14 +5,14 @@
 | Data | Where it lives | Covered by |
 | --- | --- | --- |
 | identity_db, provider_db, review_db, job_db | compose `postgres` (one cluster) | `scripts/backup-dbs.sh` (logical `pg_dump -Fc` per DB) |
-| Uploaded images | `provider_uploads` / `review_uploads` volumes (or Vercel Blob when `BLOB_READ_WRITE_TOKEN` is set) | volume tar (below); Blob is durable managed storage |
+| Uploaded images | `provider_uploads` / `review_uploads` volumes (or Cloudflare R2 when the `R2_*` vars are set) | volume tar (below); R2 is durable managed storage |
 | Redis rate-limit windows | `redis` | deliberately NOT backed up — ephemeral by design |
 
 ## Policy
 
 - **Cadence**: daily `./scripts/backup-dbs.sh` (cron on the production host once #110 lands).
 - **Retention**: newest 14 snapshots locally (`RETENTION` env overrides).
-- **Offsite**: copy each snapshot directory to object storage — blocked on a bucket decision (Cloudflare R2 / S3 / B2, see the third-party tracker). One-liner once it exists: `rclone copy backups/<stamp> remote:baas-backups/<stamp>`.
+- **Offsite**: copy each snapshot directory to object storage (Cloudflare R2 — same account as uploads). One-liner: `rclone copy backups/<stamp> remote:baas-backups/<stamp>`.
 - **Restore drills**: restore the newest snapshot into scratch databases quarterly and row-count the main tables (this exact procedure was executed when the tooling shipped).
 
 ## Restore runbook
@@ -35,4 +35,4 @@ docker run --rm -v service-hub_provider_uploads:/data -v "$PWD/backups":/out alp
   tar czf /out/<stamp>/provider_uploads.tgz -C /data .
 ```
 
-(Repeat for `review_uploads`.) When `BLOB_READ_WRITE_TOKEN` is set, uploads are in Vercel Blob and need no self-managed backup.
+(Repeat for `review_uploads`.) When the `R2_*` vars are set, uploads live in Cloudflare R2 (durable managed storage) and need no self-managed backup.

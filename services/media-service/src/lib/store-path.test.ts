@@ -6,7 +6,7 @@ import {
   InvalidPrefixError,
 } from "./media";
 
-// The store path joins `prefix` into the on-disk directory and the Blob key,
+// The store path joins `prefix` into the on-disk directory and the R2 key,
 // so these guards run BEFORE any image processing or file write — a bad
 // namespace/prefix must never reach the filesystem.
 describe("storeFile input guards", () => {

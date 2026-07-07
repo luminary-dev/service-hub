@@ -11,9 +11,8 @@ import type { NextConfig } from "next";
 //   Production builds never include it.
 // - style-src keeps 'unsafe-inline' for Tailwind, next/font, and the inline
 //   style attributes used for gradients / --rise-index vars.
-// - img-src allows the Vercel Blob host (work photos/avatars served directly
-//   to the browser for unoptimized/SVG cases) plus data:/blob: (upload
-//   previews). Uploads served via /api/files/* are same-origin ('self').
+// - img-src is 'self' (uploads are served same-origin via /api/files/*, backed
+//   by R2 or local disk) plus data:/blob: for client-side upload previews.
 // No Report-Only copy is kept: we never had report-uri/report-to collection
 // infrastructure, so a shadow header would report to nowhere.
 const isDev = process.env.NODE_ENV !== "production";
@@ -22,9 +21,9 @@ const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://*.public.blob.vercel-storage.com",
+  "img-src 'self' data: blob:",
   "font-src 'self'",
-  "connect-src 'self' https://*.public.blob.vercel-storage.com",
+  "connect-src 'self'",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
@@ -43,15 +42,6 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  images: {
-    remotePatterns: [
-      // Vercel Blob public store (work photos & avatars in production)
-      {
-        protocol: "https",
-        hostname: "**.public.blob.vercel-storage.com",
-      },
-    ],
-  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

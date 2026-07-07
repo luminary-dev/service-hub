@@ -6,7 +6,6 @@
 import { mkdir, writeFile, unlink, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
-import { put, del, list } from "@vercel/blob";
 import sharp from "sharp";
 import { r2Enabled, r2Put, r2Delete, r2List } from "./r2";
 
@@ -32,10 +31,10 @@ const MEDIA_DIR = process.env.MEDIA_DIR ?? "./data";
 const NAMESPACES = new Set(["provider", "review"]);
 
 // A prefix is a single path segment chosen by the calling service ("uploads",
-// "reviews"). It is joined into the on-disk path and the Blob key, so it must
-// not be able to contain path separators or `..` — otherwise a caller that
+// "reviews"). It is joined into the on-disk path and the R2 object key, so it
+// must not be able to contain path separators or `..` — otherwise a caller that
 // derives the prefix from user input could write outside the namespace root
-// (local) or escape the per-namespace key scoping the sweep relies on (Blob).
+// (local) or escape the per-namespace key scoping the sweep relies on (R2).
 const PREFIX_RE = /^[a-zA-Z0-9_-]+$/;
 
 export function isKnownNamespace(namespace: string): boolean {
@@ -83,8 +82,8 @@ function nsDir(namespace: string): string {
   return path.join(MEDIA_DIR, namespace);
 }
 
-// Processes and stores an upload, returning the URL to persist: an absolute
-// Vercel Blob URL in production, else a gateway-served /api/files/... path.
+// Processes and stores an upload, returning the gateway-served /api/files/...
+// path to persist (backed by R2 or local disk).
 export async function storeFile(
   namespace: string,
   prefix: string,
@@ -106,22 +105,14 @@ export async function storeFile(
     await r2Put(key, data, MIME[ext] ?? "application/octet-stream");
     return `/api/files/${key}`;
   }
-  if (process.env.BLOB_READ_WRITE_TOKEN) {
-    // Namespaced key so the per-namespace sweep can scope safely on a shared
-    // Blob store.
-    const blob = await put(`${namespace}/${prefix}/${filename}`, data, {
-      access: "public",
-    });
-    return blob.url;
-  }
   const dir = path.join(nsDir(namespace), prefix);
   await mkdir(dir, { recursive: true });
   await writeFile(path.join(dir, filename), data);
   return `/api/files/${namespace}/${prefix}/${filename}`;
 }
 
-// Best-effort deletion (errors swallowed) — resolves a local /api/files/...
-// URL back to disk, or dels a Blob URL.
+// Best-effort deletion (errors swallowed) — deletes the object from R2 or the
+// file from local disk, resolved from the stored /api/files/... URL.
 export async function deleteFile(url: string): Promise<void> {
   try {
     const m = /^\/api\/files\/([a-z]+)\/(.+)$/.exec(url);
@@ -132,10 +123,6 @@ export async function deleteFile(url: string): Promise<void> {
       }
       const target = resolveFilePath(m[1], m[2]);
       if (target) await unlink(target);
-      return;
-    }
-    if (url.startsWith("http") && process.env.BLOB_READ_WRITE_TOKEN) {
-      await del(url);
     }
   } catch {
     // best-effort
@@ -209,19 +196,6 @@ async function listLocal(namespace: string): Promise<StoredFile[]> {
   return files;
 }
 
-async function listBlob(namespace: string): Promise<StoredFile[]> {
-  const files: StoredFile[] = [];
-  let cursor: string | undefined;
-  do {
-    const page = await list({ cursor, prefix: `${namespace}/` });
-    for (const b of page.blobs) {
-      files.push({ key: b.url, url: b.url, modifiedAt: new Date(b.uploadedAt) });
-    }
-    cursor = page.hasMore ? page.cursor : undefined;
-  } while (cursor);
-  return files;
-}
-
 // Removes stored files in a namespace that no DB row references. The caller
 // (which owns the rows) supplies the referenced URL set; this service owns
 // the store, so it lists and deletes. Removal is best-effort per file.
@@ -234,7 +208,6 @@ export async function sweep(
     throw new InvalidNamespaceError(`unknown namespace: ${namespace}`);
   }
   const useR2 = r2Enabled();
-  const useBlob = !useR2 && Boolean(process.env.BLOB_READ_WRITE_TOKEN);
   let files: StoredFile[];
   if (useR2) {
     // key IS the storage key; url mirrors the stored /api/files/... form so it
@@ -244,8 +217,6 @@ export async function sweep(
       url: `/api/files/${o.key}`,
       modifiedAt: o.modifiedAt,
     }));
-  } else if (useBlob) {
-    files = await listBlob(namespace);
   } else {
     files = await listLocal(namespace);
   }
@@ -255,8 +226,6 @@ export async function sweep(
     try {
       if (useR2) {
         await r2Delete(f.key);
-      } else if (useBlob) {
-        await del(f.url);
       } else {
         await unlink(f.key);
       }

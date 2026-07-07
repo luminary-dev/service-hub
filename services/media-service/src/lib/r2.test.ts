@@ -10,7 +10,7 @@ const KEYS = [
 
 afterEach(() => KEYS.forEach((k) => delete process.env[k]));
 
-// r2Enabled gates the whole backend selection (R2 > Blob > local), so it must
+// r2Enabled gates the whole backend selection (R2 > local), so it must
 // only report true when the config is COMPLETE — a partial config has to fall
 // back safely rather than half-initialise an S3 client.
 describe("r2Enabled", () => {
