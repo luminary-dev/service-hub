@@ -8,6 +8,10 @@ import { dict } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
 import Stars from "@/components/Stars";
 import ReportActions from "@/components/admin/ReportActions";
+import ReportsFilterBar, {
+  type StatusFilter,
+  type TargetTypeFilter,
+} from "@/components/admin/ReportsFilterBar";
 
 // Caching (#57): admin-only moderation view; edits must be visible on the
 // next request — stays fully dynamic (no-store).
@@ -27,6 +31,11 @@ type ReportBase = {
   details: string | null;
   status: "OPEN" | "RESOLVED" | "DISMISSED";
   createdAt: string;
+  // Resolution audit trail (#223): stamped when the report is resolved or
+  // dismissed; null while OPEN (and for pre-existing rows closed before the
+  // audit trail shipped).
+  resolvedBy: string | null;
+  resolvedAt: string | null;
 };
 
 type ProviderReport = ReportBase & {
@@ -54,15 +63,45 @@ type Row =
   | (ProviderReport & { source: "provider" })
   | (ReviewReport & { source: "review" });
 
-export default async function AdminReportsPage() {
+const TARGET_TYPES: TargetTypeFilter[] = ["PROVIDER", "WORK_PHOTO", "REVIEW"];
+const STATUSES: StatusFilter[] = ["OPEN", "RESOLVED", "DISMISSED"];
+
+export default async function AdminReportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   const session = await getSession();
   if (!session) redirect("/login");
   if (session.role !== "ADMIN") redirect("/");
 
+  const params = await searchParams;
+  const targetType: TargetTypeFilter = TARGET_TYPES.includes(
+    params.targetType as TargetTypeFilter
+  )
+    ? (params.targetType as TargetTypeFilter)
+    : "";
+  const status: StatusFilter = STATUSES.includes(params.status as StatusFilter)
+    ? (params.status as StatusFilter)
+    : "";
+
+  // Filtering (#223): both underlying queues accept the same `targetType`/
+  // `status` params and apply them independently before this page merges
+  // their results — a queue whose owner doesn't match the target type
+  // filter (e.g. REVIEW at provider-service) just returns an empty list.
+  const query = new URLSearchParams();
+  if (targetType) query.set("targetType", targetType);
+  if (status) query.set("status", status);
+  const qs = query.toString();
+
   const [locale, providerData, reviewData] = await Promise.all([
     getLocale(),
-    apiJson<{ reports: ProviderReport[] }>("/api/admin/reports"),
-    apiJson<{ reports: ReviewReport[] }>("/api/admin/review-reports"),
+    apiJson<{ reports: ProviderReport[] }>(
+      `/api/admin/reports${qs ? `?${qs}` : ""}`
+    ),
+    apiJson<{ reports: ReviewReport[] }>(
+      `/api/admin/review-reports${qs ? `?${qs}` : ""}`
+    ),
   ]);
   const t = dict[locale].admin;
   const tr = dict[locale].report;
@@ -98,6 +137,10 @@ export default async function AdminReportsPage() {
         {t.reportsTitle}
       </h1>
       <p className="mt-1 text-ink-600">{t.reportsSubtitle}</p>
+
+      <div className="mt-6">
+        <ReportsFilterBar targetType={targetType} status={status} />
+      </div>
 
       {rows.length === 0 ? (
         <p className="mt-8 text-sm text-ink-500">{t.reportsEmpty}</p>
@@ -139,6 +182,14 @@ export default async function AdminReportsPage() {
                     {formatDate(r.createdAt, locale)} · {t.reportedBy}{" "}
                     {r.reporterId ?? t.reportAnonymous}
                   </p>
+                  {r.status !== "OPEN" && r.resolvedBy && r.resolvedAt && (
+                    <p className="mt-1 text-xs text-ink-500">
+                      {t.reportResolvedMeta(
+                        r.resolvedBy,
+                        formatDate(r.resolvedAt, locale)
+                      )}
+                    </p>
+                  )}
                 </div>
                 {r.status === "OPEN" && (
                   <ReportActions

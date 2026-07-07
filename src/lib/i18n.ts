@@ -346,6 +346,13 @@ const en = {
     reportTargetGone: "This content no longer exists.",
     reportContentRemoved: "Removed",
     viewProvider: "View provider",
+    // Filtering (#223)
+    reportsFilterTypeLabel: "Target type",
+    reportsFilterStatusLabel: "Status",
+    reportsFilterAllTypes: "All types",
+    reportsFilterAllStatuses: "All statuses",
+    // Resolution audit trail (#223)
+    reportResolvedMeta: (who: string, when: string) => `Handled by ${who} on ${when}`,
   },
   profile: {
     available: "Available for work",
@@ -1048,6 +1055,13 @@ const si: Dict = {
     reportTargetGone: "මෙම අන්තර්ගතය තවදුරටත් නොපවතී.",
     reportContentRemoved: "ඉවත් කර ඇත",
     viewProvider: "වෘත්තිකයා බලන්න",
+    // Filtering (#223)
+    reportsFilterTypeLabel: "ඉලක්ක වර්ගය",
+    reportsFilterStatusLabel: "තත්ත්වය",
+    reportsFilterAllTypes: "සියලුම වර්ග",
+    reportsFilterAllStatuses: "සියලුම තත්ත්ව",
+    // Resolution audit trail (#223)
+    reportResolvedMeta: (who: string, when: string) => `${who} විසින් ${when} දින හසුරුවන ලදී`,
   },
   profile: {
     available: "වැඩට සූදානම්",
