@@ -109,7 +109,7 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
   }
   if (!thread) {
     return (
-      <div className="card animate-pulse p-6">
+      <div className="tech-corners animate-pulse rounded-lg border border-ink-300 bg-surface p-6">
         <div className="h-4 w-1/3 rounded bg-ink-100" />
         <div className="mt-4 h-16 rounded bg-ink-100" />
       </div>
@@ -122,9 +122,10 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
       : thread.inquiry.customerName;
 
   return (
-    <div className="card flex min-h-[50vh] flex-col p-0">
-      <div className="border-b border-ink-100 px-5 py-4 dark:border-ink-200">
-        <h2 className="font-semibold text-ink-900">
+    <div className="tech-corners flex min-h-[50vh] flex-col overflow-hidden rounded-lg border border-ink-300 bg-surface">
+      <div className="flex items-center gap-2 border-b border-ink-200 bg-ink-100 px-5 py-3">
+        <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-brand-600" />
+        <h2 className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-700">
           {t.messages.threadWith(counterpart)}
         </h2>
       </div>
@@ -134,8 +135,8 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
         aria-label={t.messages.threadWith(counterpart)}
         className="flex-1 space-y-3 overflow-y-auto px-5 py-4"
       >
-        <div className="rounded-xl bg-ink-50 px-4 py-3 text-sm text-ink-600">
-          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-ink-500">
+        <div className="rounded-sm border border-ink-300 bg-ink-50 px-4 py-3 text-sm text-ink-600">
+          <p className="mb-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-brand-700">
             {t.messages.original} · {formatDate(thread.inquiry.createdAt, locale)}
           </p>
           <p className="whitespace-pre-line">{thread.inquiry.message}</p>
@@ -160,7 +161,7 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
               >
                 <p className="whitespace-pre-line break-words">{m.body}</p>
                 <p
-                  className={`mt-1 text-[11px] ${mine ? "text-white/80 dark:text-ink-50/80" : "text-ink-500"}`}
+                  className={`mt-1 font-mono text-[11px] tabular-nums ${mine ? "text-white/80 dark:text-ink-50/80" : "text-ink-500"}`}
                 >
                   {mine ? t.messages.you : counterpart} ·{" "}
                   {formatDate(m.createdAt, locale, {
@@ -177,7 +178,7 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
         <div ref={bottomRef} />
       </div>
 
-      <form onSubmit={send} className="flex gap-2 border-t border-ink-100 p-4 dark:border-ink-200">
+      <form onSubmit={send} className="flex gap-2 border-t border-ink-200 bg-ink-50 p-4">
         <input
           className="input flex-1"
           value={draft}

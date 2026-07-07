@@ -6,8 +6,8 @@ import { getAuth, getLocale, getOrigin, s2s } from "../lib/http";
 import { log } from "../lib/log";
 import { jobSchema, jobResponseSchema } from "../lib/job-schema";
 import { categoryValidator } from "../lib/categories";
+import { fetchUsers, fetchProviders } from "../lib/hydrate";
 
-const IDENTITY_URL = process.env.IDENTITY_SERVICE_URL ?? "http://localhost:4001";
 const PROVIDER_URL = process.env.PROVIDER_SERVICE_URL ?? "http://localhost:4002";
 const NOTIFICATION_URL = process.env.NOTIFICATION_SERVICE_URL ?? "http://localhost:4005";
 
@@ -23,48 +23,6 @@ async function getProviderByUser(userId: string): Promise<ProviderByUser | null>
   }
   const data = (await res.json()) as { provider: ProviderByUser | null };
   return data.provider;
-}
-
-// Batch user hydration from identity-service. Degrades gracefully: on any
-// failure returns an empty map and callers fall back to "Unknown".
-async function fetchUsers(
-  ids: string[]
-): Promise<Map<string, { name: string; email: string }>> {
-  const map = new Map<string, { name: string; email: string }>();
-  if (ids.length === 0) return map;
-  try {
-    const res = await s2s(IDENTITY_URL, `/internal/users?ids=${ids.join(",")}`);
-    if (!res.ok) return map;
-    const data = (await res.json()) as {
-      users: { id: string; name: string; email: string }[];
-    };
-    for (const u of data.users) map.set(u.id, { name: u.name, email: u.email });
-  } catch (e) {
-    log.error("user hydration failed", { context: "jobs", err: e });
-  }
-  return map;
-}
-
-// Batch provider hydration from provider-service (contact name/phone for the
-// "my jobs" responses list). Degrades gracefully like fetchUsers.
-async function fetchProviders(
-  ids: string[]
-): Promise<Map<string, { contactName: string | null; contactPhone: string | null }>> {
-  const map = new Map<string, { contactName: string | null; contactPhone: string | null }>();
-  if (ids.length === 0) return map;
-  try {
-    const res = await s2s(PROVIDER_URL, `/internal/providers?ids=${ids.join(",")}`);
-    if (!res.ok) return map;
-    const data = (await res.json()) as {
-      providers: { id: string; contactName: string | null; contactPhone: string | null }[];
-    };
-    for (const p of data.providers) {
-      map.set(p.id, { contactName: p.contactName, contactPhone: p.contactPhone });
-    }
-  } catch (e) {
-    log.error("provider hydration failed", { context: "jobs", err: e });
-  }
-  return map;
 }
 
 export const jobs = new Hono();
