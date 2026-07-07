@@ -7,6 +7,7 @@ import { formatDate } from "@/lib/format";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
 import Avatar from "@/components/Avatar";
 import VerificationActions from "@/components/admin/VerificationActions";
+import MarkQueueViewed from "@/components/admin/MarkQueueViewed";
 
 // Caching (#57): admin-only moderation view; edits must be visible on the
 // next request — stays fully dynamic (no-store).
@@ -38,6 +39,7 @@ export default async function AdminVerificationsPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
+      <MarkQueueViewed queue="verifications" count={pending.length} />
       <h1 className="flex items-center gap-2 text-3xl font-semibold tracking-tight text-ink-900">
         <FaShieldHalved className="h-6 w-6 text-brand-600" />
         {t.admin.title}

@@ -8,6 +8,7 @@ import { dict } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
 import Stars from "@/components/Stars";
 import ReportActions from "@/components/admin/ReportActions";
+import MarkQueueViewed from "@/components/admin/MarkQueueViewed";
 
 // Caching (#57): admin-only moderation view; edits must be visible on the
 // next request — stays fully dynamic (no-store).
@@ -92,8 +93,11 @@ export default async function AdminReportsPage() {
   const reasonLabel = (reason: string) =>
     reason in tr.reasons ? tr.reasons[reason as keyof typeof tr.reasons] : reason;
 
+  const openCount = rows.filter((r) => r.status === "OPEN").length;
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+      <MarkQueueViewed queue="reports" count={openCount} />
       <h1 className="text-3xl font-semibold tracking-tight text-ink-900">
         {t.reportsTitle}
       </h1>

@@ -346,6 +346,10 @@ const en = {
     reportTargetGone: "This content no longer exists.",
     reportContentRemoved: "Removed",
     viewProvider: "View provider",
+    // Notification badges on the admin hub cards (#233).
+    notificationsNewAria: (n: number) =>
+      `${n} new since you last checked`,
+    notificationsCountAria: (n: number) => `${n} pending`,
   },
   profile: {
     available: "Available for work",
@@ -1048,6 +1052,9 @@ const si: Dict = {
     reportTargetGone: "මෙම අන්තර්ගතය තවදුරටත් නොපවතී.",
     reportContentRemoved: "ඉවත් කර ඇත",
     viewProvider: "වෘත්තිකයා බලන්න",
+    notificationsNewAria: (n: number) =>
+      `ඔබ අවසන් වරට පරීක්ෂා කළ දා සිට නව ${n}ක්`,
+    notificationsCountAria: (n: number) => `පොරොත්තුවෙන් ${n}`,
   },
   profile: {
     available: "වැඩට සූදානම්",

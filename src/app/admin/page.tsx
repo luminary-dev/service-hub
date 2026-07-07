@@ -1,13 +1,24 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { FaFlag, FaShieldHalved, FaTags, FaUsers } from "@/components/icons";
+import { FaFlag, FaShieldHalved, FaTags, FaUsers, type IconType } from "@/components/icons";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
+import NotificationBadge from "@/components/admin/NotificationBadge";
+import type { NotificationQueue } from "@/lib/adminNotifications";
 
 // Caching (#57): admin-only moderation view; edits must be visible on the
 // next request — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
+
+type Card = {
+  href: string;
+  icon: IconType;
+  title: string;
+  desc: string;
+  // Which queue's notification badge (#233) to show on this card, if any.
+  badgeQueue?: NotificationQueue;
+};
 
 export default async function AdminHomePage() {
   const session = await getSession();
@@ -16,7 +27,7 @@ export default async function AdminHomePage() {
 
   const t = dict[await getLocale()].admin;
 
-  const cards = [
+  const cards: Card[] = [
     {
       href: "/admin/providers",
       icon: FaUsers,
@@ -28,6 +39,7 @@ export default async function AdminHomePage() {
       icon: FaShieldHalved,
       title: t.verificationsLink,
       desc: t.verificationsDesc,
+      badgeQueue: "verifications",
     },
     {
       href: "/admin/categories",
@@ -40,6 +52,7 @@ export default async function AdminHomePage() {
       icon: FaFlag,
       title: t.reportsLink,
       desc: t.reportsDesc,
+      badgeQueue: "reports",
     },
   ];
 
@@ -60,8 +73,9 @@ export default async function AdminHomePage() {
             <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
               <c.icon className="h-5 w-5" />
             </span>
-            <h2 className="mt-4 font-semibold text-ink-900 group-hover:text-brand-700">
+            <h2 className="mt-4 flex items-center font-semibold text-ink-900 group-hover:text-brand-700">
               {c.title}
+              {c.badgeQueue && <NotificationBadge queue={c.badgeQueue} />}
             </h2>
             <p className="mt-1 text-sm text-ink-600">{c.desc}</p>
           </Link>
