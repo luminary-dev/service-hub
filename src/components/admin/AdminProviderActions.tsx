@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { hasSuperAdminAccess } from "@/lib/roles";
 import { useT } from "../I18nProvider";
 import { useToast } from "../ToastProvider";
 
@@ -16,17 +17,24 @@ export default function AdminProviderActions({
   providerId,
   verified,
   suspended,
+  role,
 }: {
   providerId: string;
   verified: boolean;
   suspended: boolean;
+  role: string;
 }) {
   const [pending, setPending] = useState(false);
   const t = useT();
   const toast = useToast();
   const router = useRouter();
+  // Verify/suspend affect a provider's public visibility — treated as a
+  // SUPERADMIN-only action alongside delete and category edits (#226).
+  // SUPPORT gets read access plus report resolve/dismiss only.
+  const allowed = hasSuperAdminAccess(role);
 
   async function act(action: keyof typeof ACTION_MESSAGES) {
+    if (!allowed) return;
     setPending(true);
     const res = await fetch(`/api/admin/providers/${providerId}`, {
       method: "PATCH",
@@ -47,14 +55,16 @@ export default function AdminProviderActions({
     <div className="flex flex-wrap gap-2">
       <button
         onClick={() => act(verified ? "unverify" : "verify")}
-        disabled={pending}
+        disabled={pending || !allowed}
+        title={allowed ? undefined : t.admin.insufficientPermissions}
         className="cursor-pointer rounded-sm border border-ink-300 bg-surface px-3 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-800 transition-[border-color,color,background-color] duration-200 ease-snap hover:border-brand-400 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {verified ? t.admin.unverify : t.admin.verify}
       </button>
       <button
         onClick={() => act(suspended ? "unsuspend" : "suspend")}
-        disabled={pending}
+        disabled={pending || !allowed}
+        title={allowed ? undefined : t.admin.insufficientPermissions}
         className={`cursor-pointer rounded-sm border px-3 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider transition-[border-color,color,background-color] duration-200 ease-snap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60 ${
           suspended
             ? "border-emerald-300 bg-surface text-emerald-700 hover:bg-emerald-50 focus-visible:ring-emerald-400"

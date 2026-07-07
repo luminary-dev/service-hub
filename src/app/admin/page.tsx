@@ -3,12 +3,14 @@ import { redirect } from "next/navigation";
 import {
   FaArrowRight,
   FaBriefcase,
+  FaFileLines,
   FaFlag,
   FaShieldHalved,
   FaTags,
   FaUsers,
 } from "@/components/icons";
 import { getSession } from "@/lib/auth";
+import { isAdminRole } from "@/lib/roles";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
 import { apiJson } from "@/lib/api";
@@ -52,7 +54,7 @@ type SignupStats = {
 export default async function AdminHomePage() {
   const session = await getSession();
   if (!session) redirect("/login");
-  if (session.role !== "ADMIN") redirect("/");
+  if (!isAdminRole(session.role)) redirect("/");
 
   const [locale, providerStats, reviewStats, signupStats] = await Promise.all([
     getLocale(),
@@ -104,6 +106,12 @@ export default async function AdminHomePage() {
       icon: FaBriefcase,
       title: t.jobsLink,
       desc: t.jobsDesc,
+    },
+    {
+      href: "/admin/billing",
+      icon: FaFileLines,
+      title: t.billingLink,
+      desc: t.billingDesc,
     },
   ];
 

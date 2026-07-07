@@ -430,6 +430,15 @@ const en = {
     jobDescription: "Description",
     jobResponseFrom: "From",
     jobView: "View",
+    // Bulk actions (#231)
+    clearSelection: "Clear",
+    bulkSuspend: "Suspend selected",
+    bulkUnsuspend: "Unsuspend selected",
+    bulkResolve: "Resolve selected",
+    bulkDismiss: "Dismiss selected",
+    // Tiered admin roles (#226): shown wherever a SUPPORT-tier admin hits
+    // an action gated to SUPERADMIN (delete, category edits, verify/suspend).
+    insufficientPermissions: "Insufficient permissions",
     // Filtering (#223)
     reportsFilterTypeLabel: "Target type",
     reportsFilterStatusLabel: "Status",
@@ -437,6 +446,28 @@ const en = {
     reportsFilterAllStatuses: "All statuses",
     // Resolution audit trail (#223)
     reportResolvedMeta: (who: string, when: string) => `Handled by ${who} on ${when}`,
+    // Billing (#221): flat 10% commission v1 default, not a finalized
+    // pricing decision.
+    billingLink: "Billing",
+    billingDesc: "Commission transactions on completed jobs.",
+    billingTitle: "Billing",
+    billingSubtitle:
+      "Commission transactions on completed jobs (flat 10% default). Mark transactions paid once settled, or refunded.",
+    billingTotalCommission: "Total commission",
+    billingPendingCommission: "Pending",
+    billingPaidCommission: "Paid",
+    billingFilterAll: "All",
+    billingEmpty: "No transactions yet.",
+    billingJobUnknown: "Job no longer exists",
+    billingProvider: "Provider",
+    billingProviderUnknown: "Unknown",
+    billingAmount: "Amount",
+    billingCommission: "Commission",
+    pendingPaymentTag: "Pending",
+    paidTag: "Paid",
+    refundedTag: "Refunded",
+    markPaid: "Mark paid",
+    markRefunded: "Mark refunded",
   },
   profile: {
     available: "Available for work",
@@ -1241,6 +1272,13 @@ const si: Dict = {
     jobDescription: "විස්තරය",
     jobResponseFrom: "වෙතින්",
     jobView: "බලන්න",
+    // Bulk actions (#231)
+    clearSelection: "හිස් කරන්න",
+    bulkSuspend: "තෝරාගත් ඒවා අත්හිටුවන්න",
+    bulkUnsuspend: "තෝරාගත් ඒවා නැවත සක්‍රිය කරන්න",
+    bulkResolve: "තෝරාගත් ඒවා විසඳන්න",
+    bulkDismiss: "තෝරාගත් ඒවා ඉවත ලන්න",
+    insufficientPermissions: "ප්‍රමාණවත් අවසර නැත",
     // Filtering (#223)
     reportsFilterTypeLabel: "ඉලක්ක වර්ගය",
     reportsFilterStatusLabel: "තත්ත්වය",
@@ -1248,6 +1286,26 @@ const si: Dict = {
     reportsFilterAllStatuses: "සියලුම තත්ත්ව",
     // Resolution audit trail (#223)
     reportResolvedMeta: (who: string, when: string) => `${who} විසින් ${when} දින හසුරුවන ලදී`,
+    billingLink: "බිල්පත්",
+    billingDesc: "සම්පූර්ණ කළ රැකියා පිළිබඳ කොමිස් ගනුදෙනු.",
+    billingTitle: "බිල්පත්",
+    billingSubtitle:
+      "සම්පූර්ණ කළ රැකියා පිළිබඳ කොමිස් ගනුදෙනු (පෙරනිමි 10%). ගෙවූ පසු ගනුදෙනුව ගෙවා ඇති බව සලකුණු කරන්න, නැතහොත් ආපසු ගෙවීමක් ලෙස සලකුණු කරන්න.",
+    billingTotalCommission: "මුළු කොමිස්",
+    billingPendingCommission: "පොරොත්තුවෙන්",
+    billingPaidCommission: "ගෙවා ඇත",
+    billingFilterAll: "සියල්ල",
+    billingEmpty: "තවම ගනුදෙනු නැත.",
+    billingJobUnknown: "රැකියාව තවදුරටත් නොපවතී",
+    billingProvider: "වෘත්තිකයා",
+    billingProviderUnknown: "නොදනී",
+    billingAmount: "මුදල",
+    billingCommission: "කොමිස්",
+    pendingPaymentTag: "පොරොත්තුවෙන්",
+    paidTag: "ගෙවා ඇත",
+    refundedTag: "ආපසු ගෙවා ඇත",
+    markPaid: "ගෙවූ බව සලකුණු කරන්න",
+    markRefunded: "ආපසු ගෙවූ බව සලකුණු කරන්න",
   },
   profile: {
     available: "වැඩට සූදානම්",

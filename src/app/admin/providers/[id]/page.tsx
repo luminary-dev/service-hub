@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
+import { isAdminRole } from "@/lib/roles";
 import { getLocale } from "@/lib/locale";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
 import { qualityChipClasses } from "@/lib/quality";
@@ -51,7 +52,7 @@ export default async function AdminProviderModeratePage({
 }) {
   const session = await getSession();
   if (!session) redirect("/login");
-  if (session.role !== "ADMIN") redirect("/");
+  if (!isAdminRole(session.role)) redirect("/");
 
   const { id } = await params;
   const [locale, data] = await Promise.all([
@@ -127,6 +128,7 @@ export default async function AdminProviderModeratePage({
             providerId={provider.id}
             verified={provider.verificationStatus === "VERIFIED"}
             suspended={provider.suspended}
+            role={session.role}
           />
         </div>
       </PageHeader>
@@ -166,7 +168,10 @@ export default async function AdminProviderModeratePage({
                     </div>
                     <p className="mt-1 text-sm text-ink-600">{r.comment}</p>
                   </div>
-                  <AdminDeleteButton endpoint={`/api/admin/reviews/${r.id}`} />
+                  <AdminDeleteButton
+                    endpoint={`/api/admin/reviews/${r.id}`}
+                    role={session.role}
+                  />
                 </li>
               ))}
             </InView>
@@ -206,7 +211,10 @@ export default async function AdminProviderModeratePage({
                     <span className="truncate font-mono text-[10px] uppercase tracking-wider text-ink-500">
                       {ph.caption ?? "—"}
                     </span>
-                    <AdminDeleteButton endpoint={`/api/admin/photos/${ph.id}`} />
+                    <AdminDeleteButton
+                      endpoint={`/api/admin/photos/${ph.id}`}
+                      role={session.role}
+                    />
                   </div>
                 </div>
               ))}
