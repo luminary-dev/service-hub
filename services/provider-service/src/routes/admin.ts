@@ -6,6 +6,7 @@ import type { Context } from "hono";
 import { db } from "../db";
 import { getAuth } from "../lib/http";
 import { fetchProviderReviews, fetchRatings } from "../lib/clients";
+import { computeQualityScore } from "../lib/quality-score";
 
 export const adminRoutes = new Hono();
 
@@ -25,16 +26,44 @@ adminRoutes.get("/api/admin/providers", async (c) => {
     orderBy: { createdAt: "desc" },
     include: { _count: { select: { photos: true } } },
   });
-  const ratings = await fetchRatings(rows.map((p) => p.id));
+  const providerIds = rows.map((p) => p.id);
+  const [ratings, openReportRows] = await Promise.all([
+    fetchRatings(providerIds),
+    providerIds.length
+      ? db.report.groupBy({
+          by: ["targetId"],
+          where: {
+            targetType: "PROVIDER",
+            targetId: { in: providerIds },
+            status: "OPEN",
+          },
+          _count: { _all: true },
+        })
+      : [],
+  ]);
+  const openReportCounts: Record<string, number> = {};
+  for (const r of openReportRows) openReportCounts[r.targetId] = r._count._all;
 
-  const providers = rows.map(({ _count, ...p }) => ({
-    ...p,
-    user: { name: p.contactName, email: p.contactEmail },
-    _count: {
-      reviews: ratings[p.id]?.count ?? 0,
-      photos: _count.photos,
-    },
-  }));
+  const providers = rows.map(({ _count, ...p }) => {
+    const rating = ratings[p.id]?.rating ?? 0;
+    const reviewCount = ratings[p.id]?.count ?? 0;
+    const openReportCount = openReportCounts[p.id] ?? 0;
+    return {
+      ...p,
+      user: { name: p.contactName, email: p.contactEmail },
+      _count: {
+        reviews: reviewCount,
+        photos: _count.photos,
+      },
+      // Quality signal (#229): see lib/quality-score.ts for the formula.
+      quality: {
+        ...computeQualityScore({ rating, reviewCount, openReportCount }),
+        rating,
+        reviewCount,
+        openReportCount,
+      },
+    };
+  });
 
   return c.json({ providers });
 });
@@ -56,12 +85,27 @@ adminRoutes.get("/api/admin/providers/:id", async (c) => {
   }
 
   // Moderation view: include soft-deleted reviews so admins can restore.
-  const { reviews } = await fetchProviderReviews(id, { includeDeleted: true });
+  const [{ reviews }, ratings, openReportCount] = await Promise.all([
+    fetchProviderReviews(id, { includeDeleted: true }),
+    fetchRatings([id]),
+    db.report.count({
+      where: { targetType: "PROVIDER", targetId: id, status: "OPEN" },
+    }),
+  ]);
+  const rating = ratings[id]?.rating ?? 0;
+  const reviewCount = ratings[id]?.count ?? 0;
   return c.json({
     provider: {
       ...provider,
       user: { name: provider.contactName, email: provider.contactEmail },
       reviews,
+      // Quality signal (#229): see lib/quality-score.ts for the formula.
+      quality: {
+        ...computeQualityScore({ rating, reviewCount, openReportCount }),
+        rating,
+        reviewCount,
+        openReportCount,
+      },
     },
   });
 });
@@ -129,7 +173,13 @@ adminRoutes.patch("/api/admin/providers/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-const verificationActionSchema = z.object({ action: z.enum(["approve", "reject"]) });
+// `reason` is only meaningful on reject — an admin note that gets stored on
+// the provider so they know what to fix on resubmission. Optional: existing
+// callers that don't send it keep working unchanged.
+const verificationActionSchema = z.object({
+  action: z.enum(["approve", "reject"]),
+  reason: z.string().trim().max(1000).optional(),
+});
 
 adminRoutes.patch("/api/admin/verifications/:id", async (c) => {
   if (!isAdmin(c)) {
@@ -154,10 +204,46 @@ adminRoutes.patch("/api/admin/verifications/:id", async (c) => {
     data: {
       verificationStatus: approved ? "VERIFIED" : "REJECTED",
       verifiedAt: approved ? new Date() : null,
+      rejectionReason: approved ? null : parsed.data.reason || null,
     },
   });
 
   return c.json({ status: approved ? "VERIFIED" : "REJECTED" });
+});
+
+// Bulk approve/reject across the pending queue (#225). Only rows still
+// PENDING are touched — an id that's already been actioned (e.g. by another
+// admin, or from a stale client selection) is silently skipped rather than
+// re-flipping its status.
+const verificationBulkSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(200),
+  action: z.enum(["approve", "reject"]),
+  reason: z.string().trim().max(1000).optional(),
+});
+
+adminRoutes.patch("/api/admin/verifications", async (c) => {
+  if (!isAdmin(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = verificationBulkSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid input" }, 400);
+  }
+
+  const { ids, action, reason } = parsed.data;
+  const approved = action === "approve";
+  const { count } = await db.provider.updateMany({
+    where: { id: { in: ids }, verificationStatus: "PENDING" },
+    data: {
+      verificationStatus: approved ? "VERIFIED" : "REJECTED",
+      verifiedAt: approved ? new Date() : null,
+      rejectionReason: approved ? null : reason || null,
+    },
+  });
+
+  return c.json({ status: approved ? "VERIFIED" : "REJECTED", count });
 });
 
 adminRoutes.delete("/api/admin/photos/:id", async (c) => {

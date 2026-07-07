@@ -54,6 +54,12 @@ export default async function AdminHomePage() {
       desc: t.reportsDesc,
       badgeQueue: "reports",
     },
+    {
+      href: "/admin/jobs",
+      icon: FaBriefcase,
+      title: t.jobsLink,
+      desc: t.jobsDesc,
+    },
   ];
 
   return (
