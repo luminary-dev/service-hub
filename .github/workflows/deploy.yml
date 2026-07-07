@@ -14,6 +14,9 @@ concurrency:
   group: deploy-prod
   cancel-in-progress: false
 
+# Default-deny; each job opts into exactly the scopes it needs.
+permissions: {}
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -59,6 +62,8 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
+    # Deploys over SSH with its own secrets — it needs no GITHUB_TOKEN scope.
+    permissions: {}
     # Stays skipped until the production host (#110) is provisioned and this repo
     # variable is flipped on. Images are still published by the job above.
     if: ${{ vars.DEPLOY_ENABLED == 'true' }}
