@@ -5,7 +5,7 @@ const validCustomer = {
   role: "CUSTOMER",
   name: "Dilani Rajapaksa",
   email: "dilani@example.com",
-  password: "password123",
+  password: "example-passphrase",
   phone: "0711111111",
 };
 
@@ -13,7 +13,7 @@ const validProvider = {
   role: "PROVIDER",
   name: "Nuwan Perera",
   email: "nuwan@example.com",
-  password: "password123",
+  password: "example-passphrase",
   phone: "0771234501",
   category: "mechanic",
   headline: "Honest auto repairs",
@@ -37,9 +37,23 @@ describe("registerSchema — CUSTOMER", () => {
     ).toBe(false);
   });
 
-  it("rejects a password shorter than 6 characters", () => {
+  it("rejects a password shorter than 10 characters", () => {
     expect(
       registerSchema.safeParse({ ...validCustomer, password: "12345" }).success
+    ).toBe(false);
+    expect(
+      registerSchema.safeParse({ ...validCustomer, password: "short1!" }).success
+    ).toBe(false);
+  });
+
+  it("rejects a common / breached password even if long enough", () => {
+    expect(
+      registerSchema.safeParse({ ...validCustomer, password: "password123" })
+        .success
+    ).toBe(false);
+    expect(
+      registerSchema.safeParse({ ...validCustomer, password: "qwertyuiop" })
+        .success
     ).toBe(false);
   });
 

@@ -433,6 +433,13 @@ const en = {
     jobDescription: "Description",
     jobResponseFrom: "From",
     jobView: "View",
+    // Filtering (#223)
+    reportsFilterTypeLabel: "Target type",
+    reportsFilterStatusLabel: "Status",
+    reportsFilterAllTypes: "All types",
+    reportsFilterAllStatuses: "All statuses",
+    // Resolution audit trail (#223)
+    reportResolvedMeta: (who: string, when: string) => `Handled by ${who} on ${when}`,
   },
   profile: {
     available: "Available for work",
@@ -1240,6 +1247,13 @@ const si: Dict = {
     jobDescription: "විස්තරය",
     jobResponseFrom: "වෙතින්",
     jobView: "බලන්න",
+    // Filtering (#223)
+    reportsFilterTypeLabel: "ඉලක්ක වර්ගය",
+    reportsFilterStatusLabel: "තත්ත්වය",
+    reportsFilterAllTypes: "සියලුම වර්ග",
+    reportsFilterAllStatuses: "සියලුම තත්ත්ව",
+    // Resolution audit trail (#223)
+    reportResolvedMeta: (who: string, when: string) => `${who} විසින් ${when} දින හසුරුවන ලදී`,
   },
   profile: {
     available: "වැඩට සූදානම්",
