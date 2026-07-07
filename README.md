@@ -99,6 +99,6 @@ Each service is self-contained (own `package.json`, lockfile, Prisma schema, Doc
 ## Production notes
 
 - Set a strong shared `AUTH_SECRET` (identity signs; gateway + web verify) and a strong `INTERNAL_API_SECRET` (all services + gateway); never expose service ports publicly — only the gateway.
-- Uploads use Vercel Blob when `BLOB_READ_WRITE_TOKEN` is set; otherwise local disk served via the gateway (`/api/files/*`) — fine for a single node, use the Blob path when scaling out.
+- Uploads use Cloudflare R2 (S3-compatible, private bucket) when the four `R2_*` vars are set; otherwise local disk served via the gateway (`/api/files/*`) — fine for a single node, use R2 when scaling out.
 - **Email (password reset & verification) is NOT delivering to real users yet** — it needs a verified sending domain + `RESEND_API_KEY` on notification-service. See [docs/EMAIL_SETUP.md](docs/EMAIL_SETUP.md).
 - Rate limits are in-memory per gateway instance; move to Redis if you run multiple gateways.

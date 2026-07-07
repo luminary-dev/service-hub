@@ -7,10 +7,10 @@ describe("isSvg", () => {
     expect(isSvg("/uploads/x.SVG")).toBe(true);
   });
   it("ignores query strings", () => {
-    expect(isSvg("https://x.blob.vercel-storage.com/a.svg?v=2")).toBe(true);
+    expect(isSvg("/api/files/provider/uploads/a.svg?v=2")).toBe(true);
   });
   it("is false for raster formats", () => {
     expect(isSvg("/uploads/a.jpg")).toBe(false);
-    expect(isSvg("https://x.blob.vercel-storage.com/a.webp")).toBe(false);
+    expect(isSvg("/api/files/provider/uploads/a.webp")).toBe(false);
   });
 });

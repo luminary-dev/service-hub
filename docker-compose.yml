@@ -108,8 +108,7 @@ services:
       <<: *service-env
       PORT: 4006
       MEDIA_DIR: /app/data
-      BLOB_READ_WRITE_TOKEN: ${BLOB_READ_WRITE_TOKEN:-}
-      # Cloudflare R2 (S3-compatible) — takes precedence over Blob/local when set.
+      # Cloudflare R2 (S3-compatible) — takes precedence over local disk when set.
       R2_ENDPOINT: ${R2_ENDPOINT:-}
       R2_BUCKET: ${R2_BUCKET:-}
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}

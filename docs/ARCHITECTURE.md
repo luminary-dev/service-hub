@@ -93,7 +93,7 @@ through internal HTTP endpoints.
 | `INTERNAL_API_SECRET` | all services + gateway |
 | `IDENTITY_SERVICE_URL`, `PROVIDER_SERVICE_URL`, `REVIEW_SERVICE_URL`, `JOB_SERVICE_URL`, `NOTIFICATION_SERVICE_URL`, `MEDIA_SERVICE_URL` | gateway + any service that calls that peer |
 | `RESEND_API_KEY`, `EMAIL_FROM` | notification (console fallback when unset) |
-| `BLOB_READ_WRITE_TOKEN` | media (uploads; local-disk fallback under `$MEDIA_DIR`) |
+| `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | media (uploads → Cloudflare R2; all four unset → local disk under `$MEDIA_DIR`) |
 | `MEDIA_DIR` | media (local upload root, default `./data`; per-namespace subdirs) |
 | `ANTHROPIC_API_KEY` | chat (LLM assistant; unset → 503) |
 | `CHAT_SERVICE_URL`, `MEDIA_SERVICE_URL` | callers of those peers (+ web for chat) |
@@ -139,10 +139,12 @@ provider- and review-service call it over S2S via a thin identical
 **rows** stay with them (their FKs). Namespaces (`provider`, `review`) preserve
 the existing `/api/files/<namespace>/...` URL shape — the callers' original
 upload volumes are simply remounted into media, so no file or row migration is
-needed. Backend: Vercel Blob when `BLOB_READ_WRITE_TOKEN` is set, else local
-disk under `$MEDIA_DIR/<namespace>/`. media serves `GET /files/<namespace>/*`
-(public through the gateway; the gateway routes `/api/files/*` → media and
-supplies the internal secret). Limits unchanged: 5MB, jpeg/png/webp.
+needed. Backend: Cloudflare R2 (S3-compatible, private bucket) when the four
+`R2_*` vars are set, else local disk under `$MEDIA_DIR/<namespace>/`. media
+serves `GET /files/<namespace>/*` (public through the gateway; the gateway
+routes `/api/files/*` → media and supplies the internal secret) — R2 objects
+are streamed from the private bucket, so upload URLs stay same-origin either
+way. Limits unchanged: 5MB, jpeg/png/webp.
 
 ## api-gateway (:4000)
 

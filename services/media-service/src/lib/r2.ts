@@ -1,7 +1,7 @@
 // Cloudflare R2 backend (S3-compatible). We talk to R2 with the S3 client — no
 // AWS account or infrastructure is involved; R2 just speaks the S3 protocol.
 // Enabled only when all four R2_* vars are set; otherwise media falls back to
-// Vercel Blob or local disk. The bucket stays PRIVATE: objects are streamed
+// local disk. The bucket stays PRIVATE: objects are streamed
 // back through media-service's /files route, so URLs keep the /api/files/...
 // shape (no public bucket, no domain required).
 import {

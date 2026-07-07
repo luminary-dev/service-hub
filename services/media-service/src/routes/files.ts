@@ -1,7 +1,6 @@
 // Serves stored uploads (public through the gateway as /api/files/<namespace>/*).
 // Only the image extensions we store are served. Bytes come from R2 (private
-// bucket, streamed here) or local disk. In Vercel Blob mode these URLs are
-// absolute Vercel URLs and this route is unused.
+// bucket, streamed here) or local disk.
 import { Hono } from "hono";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
