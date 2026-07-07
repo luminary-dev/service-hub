@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { FaCircleCheck } from "react-icons/fa6";
+import { FaCircleCheck } from "@/components/icons";
 import Stars from "./Stars";
 import Avatar from "./Avatar";
 import CategoryIcon from "./CategoryIcon";
@@ -15,6 +15,21 @@ import {
   type Locale,
 } from "@/lib/i18n";
 import { localizedHref } from "@/lib/links";
+
+// Real trade photography (public/images/workers) keyed by category slug -
+// used in place of the flat placeholder cover art when a provider hasn't
+// uploaded their own photo. Categories without a shot keep the placeholder.
+const TRADE_PHOTOS: Record<string, string> = {
+  mechanic: "/images/workers/mechanic.jpg",
+  electrician: "/images/workers/electrician.jpg",
+  plumber: "/images/workers/plumber.jpg",
+  carpenter: "/images/workers/carpenter.jpg",
+  mason: "/images/workers/mason.jpg",
+  painter: "/images/workers/painter.jpg",
+  welder: "/images/workers/welder.jpg",
+  "garden-designer": "/images/workers/garden-designer.jpg",
+  roofer: "/images/workers/roofer.jpg",
+};
 
 // Card payload as served by `GET /api/providers` on the gateway
 // (provider-service's ProviderCardDTO). Dates arrive as ISO strings; rating
@@ -61,106 +76,125 @@ export default function ProviderCard({
   // Away mode (#49): a future awayUntil replaces the "Available" chip with a
   // localized "Away until {date}" chip; a past one is inert.
   const away = p.awayUntil !== null && new Date(p.awayUntil) > new Date();
+  // Prefer a real uploaded photo; otherwise fall back to trade photography,
+  // then to the generated placeholder cover.
+  const cover =
+    p.coverPhoto && !isSvg(p.coverPhoto)
+      ? p.coverPhoto
+      : TRADE_PHOTOS[p.category] ?? p.coverPhoto;
   return (
     <div className="relative">
       {showFavorite && (
-        <div className="absolute right-3 top-3 z-10">
+        <div className="absolute right-3 top-3 z-20">
           <FavoriteButton providerId={p.id} initialFavorited={favorited} />
         </div>
       )}
       <Link
         href={localizedHref(`/providers/${p.id}`, locale)}
-        className="card group block overflow-hidden transition-[border-color,transform] duration-200 ease-snap hover:-translate-y-1 hover:border-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 active:scale-[0.99]"
+        className="card group block overflow-hidden transition-[border-color,transform,box-shadow] duration-200 ease-snap hover:-translate-y-1 hover:border-brand-400 hover:shadow-[0_16px_40px_rgba(34,29,24,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 active:scale-[0.99]"
       >
-        <div className="relative h-36 bg-ink-100">
-        {p.coverPhoto ? (
-          <Image
-            src={p.coverPhoto}
-            alt=""
-            fill
-            sizes="(min-width: 1024px) 384px, (min-width: 640px) 50vw, 100vw"
-            unoptimized={isSvg(p.coverPhoto)}
-            className="object-cover"
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center">
-            <CategoryIcon
-              slug={p.category}
-              className="h-10 w-10 text-ink-300"
+        {/* -- Cover: catalogue "plate" with scrim, frame & overprints -- */}
+        <div className="relative h-40 overflow-hidden bg-ink-100">
+          {cover ? (
+            <Image
+              src={cover}
+              alt=""
+              fill
+              sizes="(min-width: 1024px) 384px, (min-width: 640px) 50vw, 100vw"
+              unoptimized={isSvg(cover)}
+              className="object-cover transition-transform duration-500 ease-snap group-hover:scale-[1.06]"
             />
-          </div>
-        )}
-        {away ? (
-          <span className="chip absolute bottom-3 right-3 bg-white/95 text-amber-700 dark:bg-ink-50/90">
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-            {t.card.awayUntil(formatDate(p.awayUntil!, locale))}
+          ) : (
+            <div className="flex h-full items-center justify-center bg-[repeating-linear-gradient(45deg,var(--color-ink-100),var(--color-ink-100)_11px,var(--color-ink-200)_11px,var(--color-ink-200)_22px)]">
+              <CategoryIcon slug={p.category} className="h-10 w-10 text-ink-400" />
+            </div>
+          )}
+          {/* legibility scrim + printed frame */}
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 via-black/0 to-black/15" />
+          <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-black/10" />
+
+          {/* category tag, overprinted like a magazine kicker */}
+          <span className="absolute left-3 top-3 rounded-sm bg-black/45 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-white backdrop-blur-sm">
+            {categoryLabelLoc(p.category, locale)}
           </span>
-        ) : (
-          p.available && (
-            <span className="chip absolute bottom-3 right-3 bg-white/95 text-emerald-700 dark:bg-ink-50/90">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              {t.card.available}
+
+          {/* experience "stamp" */}
+          {p.experience > 0 && (
+            <span className="absolute bottom-3 left-3 rounded-md bg-black/45 px-2 py-1 font-mono text-[10px] font-semibold tabular-nums text-white backdrop-blur-sm">
+              {t.card.yrs(p.experience)}
             </span>
-          )
-        )}
-        {p.experience > 0 && (
-          <span className="chip absolute left-3 top-3 bg-black/70 text-white">
-            {t.card.yrs(p.experience)}
-          </span>
-        )}
-        </div>
+          )}
 
-      <div className="p-4">
-        <div className="flex items-start gap-3">
-          <div className="-mt-9 rounded-full border-4 border-surface">
-            <Avatar name={p.name} url={p.avatarUrl} size={56} />
-          </div>
-          <div className="min-w-0 flex-1 pt-1">
-            <h3 className="flex items-center gap-1 truncate font-semibold text-ink-900 transition-colors duration-200 group-hover:text-brand-700">
-              <span className="truncate">{p.name}</span>
-              {verified && (
-                <FaCircleCheck
-                  className="h-3.5 w-3.5 shrink-0 text-brand-600"
-                  title={t.card.verified}
-                />
-              )}
-            </h3>
-            <p className="text-xs text-ink-500">
-              {categoryLabelLoc(p.category, locale)} · {p.city},{" "}
-              {districtLabelLoc(p.district, locale)}
-            </p>
-          </div>
-        </div>
-
-        <p className="mt-3 line-clamp-2 text-sm leading-relaxed text-ink-600">
-          {p.headline}
-        </p>
-
-        <div className="mt-4 flex items-center justify-between border-t border-ink-100 pt-3">
-          {p.rating !== null ? (
-            <span className="flex items-center gap-1.5 text-sm">
-              <Stars rating={p.rating} label={t.a11y.rated(p.rating.toFixed(1))} />
-              <span className="font-medium text-ink-700">
-                {p.rating.toFixed(1)}
-              </span>
-              <span className="text-ink-500">({p.reviewCount})</span>
+          {/* availability */}
+          {away ? (
+            <span className="chip absolute bottom-3 right-3 bg-white/95 text-amber-700 dark:bg-ink-50/90">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+              {t.card.awayUntil(formatDate(p.awayUntil!, locale))}
             </span>
           ) : (
-            <span className="text-sm text-ink-500">{t.card.noReviews}</span>
-          )}
-          {p.fromPrice !== null && (
-            <span className="text-sm font-semibold tabular-nums text-brand-700">
-              {formatLKR(p.fromPrice, locale)}
-              {p.fromPriceType && (
-                <span className="font-normal text-ink-500">
-                  {" "}
-                  · {priceTypeLabelLoc(p.fromPriceType, locale)}
-                </span>
-              )}
-            </span>
+            p.available && (
+              <span className="chip absolute bottom-3 right-3 bg-white/95 text-emerald-700 dark:bg-ink-50/90">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                {t.card.available}
+              </span>
+            )
           )}
         </div>
-      </div>
+
+        {/* -- Body -- */}
+        <div className="p-4">
+          <div className="flex items-start gap-3">
+            <div className="-mt-10 rounded-full border-4 border-surface shadow-[0_4px_12px_rgba(34,29,24,0.12)]">
+              <Avatar name={p.name} url={p.avatarUrl} size={56} />
+            </div>
+            <div className="min-w-0 flex-1 pt-1.5">
+              <h3 className="flex items-center gap-1.5 truncate font-display text-base font-semibold text-ink-900 transition-colors duration-200 group-hover:text-brand-700">
+                <span className="truncate">{p.name}</span>
+                {verified && (
+                  <FaCircleCheck
+                    className="h-4 w-4 shrink-0 text-brand-600"
+                    title={t.card.verified}
+                  />
+                )}
+              </h3>
+              <p className="mt-0.5 truncate font-mono text-[11px] uppercase tracking-wider text-ink-500">
+                {p.city} · {districtLabelLoc(p.district, locale)}
+              </p>
+            </div>
+          </div>
+
+          <p className="mt-3 line-clamp-2 text-sm leading-relaxed text-ink-600">
+            {p.headline}
+          </p>
+
+          <div className="mt-4 flex items-center justify-between border-t border-dashed border-ink-300 pt-3.5">
+            {p.rating !== null ? (
+              <span className="flex items-center gap-1.5 text-sm">
+                <Stars
+                  rating={p.rating}
+                  label={t.a11y.rated(p.rating.toFixed(1))}
+                />
+                <span className="font-semibold text-ink-800">
+                  {p.rating.toFixed(1)}
+                </span>
+                <span className="text-ink-500">({p.reviewCount})</span>
+              </span>
+            ) : (
+              <span className="text-sm text-ink-500">{t.card.noReviews}</span>
+            )}
+            {p.fromPrice !== null && (
+              <span className="rounded-sm border border-brand-200 bg-brand-50 px-2.5 py-1 font-mono text-xs font-semibold tabular-nums text-brand-800">
+                {formatLKR(p.fromPrice, locale)}
+                {p.fromPriceType && (
+                  <span className="font-normal text-brand-700/70">
+                    {" "}
+                    · {priceTypeLabelLoc(p.fromPriceType, locale)}
+                  </span>
+                )}
+              </span>
+            )}
+          </div>
+        </div>
       </Link>
     </div>
   );

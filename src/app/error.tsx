@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
-import { FaTriangleExclamation } from "react-icons/fa6";
+import { FaTriangleExclamation } from "@/components/icons";
 import { useT } from "@/components/I18nProvider";
 
 // Route error boundary: renders inside the root layout (navbar and i18n

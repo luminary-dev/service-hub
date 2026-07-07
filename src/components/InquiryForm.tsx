@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FaCircleCheck, FaRegPaperPlane } from "react-icons/fa6";
+import { FaCircleCheck, FaRegPaperPlane } from "@/components/icons";
 import { useT } from "./I18nProvider";
 
 export default function InquiryForm({

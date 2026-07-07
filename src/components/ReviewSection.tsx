@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
-import { FaStar, FaXmark } from "react-icons/fa6";
+import { FaStar, FaXmark } from "@/components/icons";
 import Stars from "./Stars";
 import Avatar from "./Avatar";
 import { isSvg } from "@/lib/image";

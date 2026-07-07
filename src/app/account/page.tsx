@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { FaInbox, FaRegHeart, FaRegStar } from "react-icons/fa6";
+import { FaInbox, FaRegHeart, FaRegStar } from "@/components/icons";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";

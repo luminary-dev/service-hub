@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { FaMagnifyingGlass } from "react-icons/fa6";
+import { FaMagnifyingGlass } from "@/components/icons";
 import { apiJson } from "@/lib/api";
 import { fetchCategoryOptions } from "@/lib/categories-server";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
@@ -10,9 +10,11 @@ import { getSession } from "@/lib/auth";
 import ProviderCard, { ProviderCardDTO } from "@/components/ProviderCard";
 import CategoryIcon from "@/components/CategoryIcon";
 import FilterBar from "@/components/FilterBar";
+import InView from "@/components/InView";
+import { DISTRICTS } from "@/lib/constants";
 import Link from "next/link";
 
-// Caching (#57): public-but-fresh. No force-dynamic — the page renders per
+// Caching (#57): public-but-fresh. No force-dynamic - the page renders per
 // request (searchParams + locale/session cookies), but the search results
 // come from the Data Cache with a 60-second revalidate. The full query
 // string is part of the fetch URL, so every filter/sort/page combination is
@@ -30,7 +32,7 @@ const POPULAR_CATEGORIES = [
   "cleaning",
 ] as const;
 
-// Keep only digit strings in the URL/state for the rupee inputs — the service
+// Keep only digit strings in the URL/state for the rupee inputs - the service
 // does the authoritative normalization (normalizeListQuery).
 function numericParam(v: string | string[] | undefined): string {
   return typeof v === "string" && /^\d+$/.test(v.trim()) ? v.trim() : "";
@@ -76,7 +78,7 @@ export default async function ProvidersPage({
   const district = typeof params.district === "string" ? params.district : "";
   const sort = normalizeSort(params.sort);
   const page = Math.max(1, Number(params.page) || 1);
-  // Advanced filters (#47) — shareable via the URL like every other filter.
+  // Advanced filters (#47) - shareable via the URL like every other filter.
   const priceMin = numericParam(params.priceMin);
   const priceMax = numericParam(params.priceMax);
   const ratingMin = numericParam(params.ratingMin);
@@ -124,20 +126,51 @@ export default async function ProvidersPage({
     return localizedHref(`/providers?${sp.toString()}`, locale);
   }
 
-  return (
-    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-ink-900">
-            {category ? categoryLabelLoc(category, locale) : t.browse.title}
-          </h1>
-          <p className="mt-1 text-ink-600">
-            {t.browse.found(total, district || null)}
-          </p>
-        </div>
-      </div>
+  const stats: [string, number][] = [
+    ["TOTAL", total],
+    ["TRADES", categories.length],
+    ["DISTRICTS", DISTRICTS.length],
+  ];
 
-      <div className="mt-6">
+  return (
+    <div>
+      {/* Registry header band */}
+      <section className="blueprint-grid border-b border-ink-300 bg-ink-50">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-end justify-between gap-8 px-4 py-10 sm:px-6">
+          <div>
+            <div className="flex items-center gap-2.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em]">
+              <span className="rounded-sm bg-brand-700 px-1.5 py-0.5 text-white dark:text-ink-50">
+                REG
+              </span>
+              <span className="text-ink-500">{t.nav.find}</span>
+            </div>
+            <h1 className="mt-3 text-4xl font-bold tracking-tight text-ink-900 sm:text-5xl">
+              {category ? categoryLabelLoc(category, locale) : t.browse.title}
+            </h1>
+            <p className="mt-2 flex items-center gap-2 font-mono text-sm text-ink-500">
+              <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-brand-600" />
+              {t.browse.found(total, district || null)}
+            </p>
+          </div>
+          <dl className="flex gap-3">
+            {stats.map(([label, n]) => (
+              <div
+                key={label}
+                className="tech-corners min-w-[92px] border border-ink-300 bg-surface px-4 py-3"
+              >
+                <dd className="font-mono text-2xl font-bold tabular-nums text-ink-900">
+                  {String(n).padStart(2, "0")}
+                </dd>
+                <dt className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-400">
+                  {label}
+                </dt>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </section>
+
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
         <FilterBar
           q={q}
           category={category}
@@ -149,7 +182,6 @@ export default async function ProvidersPage({
           availableOnly={availableOnly}
           categories={categories}
         />
-      </div>
 
       {results.length === 0 ? (
         <div className="card mt-8 flex flex-col items-center px-6 py-16 text-center">
@@ -180,7 +212,7 @@ export default async function ProvidersPage({
           </div>
         </div>
       ) : (
-        <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <InView stagger className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {results.map((p) => (
             <ProviderCard
               key={p.id}
@@ -190,7 +222,7 @@ export default async function ProvidersPage({
               favorited={favoriteIds.has(p.id)}
             />
           ))}
-        </div>
+        </InView>
       )}
 
       {totalPages > 1 && (
@@ -210,6 +242,7 @@ export default async function ProvidersPage({
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }

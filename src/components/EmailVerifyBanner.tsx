@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FaEnvelope } from "react-icons/fa6";
+import { FaEnvelope } from "@/components/icons";
 import { useT } from "./I18nProvider";
 
 export default function EmailVerifyBanner() {

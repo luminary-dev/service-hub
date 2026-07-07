@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FaCircleCheck, FaClock, FaShieldHalved } from "react-icons/fa6";
+import { FaCircleCheck, FaClock, FaShieldHalved } from "@/components/icons";
 import { useT } from "../I18nProvider";
 
 export default function VerificationSection({

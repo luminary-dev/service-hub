@@ -1,4 +1,4 @@
-import { FaCircleCheck } from "react-icons/fa6";
+import { FaCircleCheck } from "@/components/icons";
 
 export default function VerifiedBadge({
   label,

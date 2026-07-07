@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { FaCommentDots, FaPaperPlane, FaXmark } from "react-icons/fa6";
+import { FaCommentDots, FaPaperPlane, FaXmark } from "@/components/icons";
 import { useT } from "@/components/I18nProvider";
 
 type Msg = { role: "user" | "assistant"; content: string };

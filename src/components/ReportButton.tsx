@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { FaFlag, FaXmark } from "react-icons/fa6";
+import { FaFlag, FaXmark } from "@/components/icons";
 import { useT } from "./I18nProvider";
 import { useToast } from "./ToastProvider";
 import { useFocusTrap } from "./useFocusTrap";

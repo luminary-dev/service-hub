@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useT } from "@/components/I18nProvider";
+import PasswordInput from "@/components/PasswordInput";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -67,10 +68,8 @@ export default function LoginPage() {
               {t.login.forgot}
             </Link>
           </div>
-          <input
+          <PasswordInput
             id="login-password"
-            className="input"
-            type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required

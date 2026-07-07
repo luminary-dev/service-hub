@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
-import { Poppins, Noto_Sans_Sinhala } from "next/font/google";
+import {
+  IBM_Plex_Sans,
+  IBM_Plex_Mono,
+  Noto_Sans_Sinhala,
+} from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -12,16 +16,24 @@ import { dict } from "@/lib/i18n";
 import { SITE_NAME, SITE_URL } from "@/lib/site";
 
 // Runs synchronously in <head>, before first paint (see the Next.js
-// "preventing flash before hydration" guide). Keeps <html class="dark"> in
-// sync with the `theme` cookie, falling back to prefers-color-scheme when no
-// cookie is set (the "system" state). The matchMedia listener follows live
-// OS theme changes, and the MutationObserver re-asserts the class if a
-// server-driven React update rewrites the html className (e.g. right after
-// the toggle clears the cookie back to "system" and calls router.refresh()).
-const THEME_SCRIPT = `(function(){try{var d=document.documentElement,m=window.matchMedia("(prefers-color-scheme: dark)");function a(){var c=document.cookie.match(/(?:^|; )theme=(dark|light)(?:;|$)/),v=c?c[1]==="dark":m.matches;if(d.classList.contains("dark")!==v)d.classList.toggle("dark",v)}a();m.addEventListener("change",a);new MutationObserver(a).observe(d,{attributes:true,attributeFilter:["class"]})}catch(e){}})()`;
+// "preventing flash before hydration" guide). The theme is light by default
+// and only dark when the `theme=dark` cookie is set — the server already
+// renders the class from that cookie, so this just re-asserts it pre-paint as
+// a belt-and-suspenders against a stale cached document.
+const THEME_SCRIPT = `(function(){try{var d=document.documentElement,dark=/(?:^|; )theme=dark(?:;|$)/.test(document.cookie);if(d.classList.contains("dark")!==dark)d.classList.toggle("dark",dark)}catch(e){}})()`;
 
-const poppins = Poppins({
-  variable: "--font-poppins",
+// Body / UI + headings: IBM Plex Sans, the engineering-drawing sans that
+// anchors the blueprint/technical look.
+const plexSans = IBM_Plex_Sans({
+  variable: "--font-plex-sans",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
+
+// IBM Plex Mono for spec labels, part numbers, coordinates and ticks.
+const plexMono = IBM_Plex_Mono({
+  variable: "--font-plex-mono",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
   display: "swap",
@@ -65,12 +77,19 @@ export default async function RootLayout({
     <html
       lang={locale}
       suppressHydrationWarning
-      className={`${poppins.variable} ${notoSinhala.variable} h-full antialiased${
+      className={`${plexSans.variable} ${plexMono.variable} ${notoSinhala.variable} h-full antialiased${
         theme === "dark" ? " dark" : ""
       }`}
     >
       <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        {/* SSR-only, deterministic. suppressHydrationWarning because some
+            browser extensions rewrite inline <script> tags (swap the content
+            for an extension src) before React hydrates, which would otherwise
+            log a spurious mismatch here. */}
+        <script
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }}
+        />
       </head>
       <body className="flex min-h-screen flex-col">
         {/* First focusable element on every page: lets keyboard and screen

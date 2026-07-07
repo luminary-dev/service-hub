@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { FaCircleCheck } from "react-icons/fa6";
+import { FaCircleCheck } from "@/components/icons";
 import { useT } from "@/components/I18nProvider";
 
 export default function ForgotPasswordPage() {

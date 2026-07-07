@@ -1,4 +1,4 @@
-import type { IconType } from "react-icons";
+import type { IconType } from "@/components/icons";
 import {
   FaFacebookF,
   FaGlobe,
@@ -7,7 +7,7 @@ import {
   FaTiktok,
   FaWhatsapp,
   FaYoutube,
-} from "react-icons/fa6";
+} from "@/components/icons";
 
 function normalizeUrl(v: string) {
   return v.startsWith("http") ? v : `https://${v}`;

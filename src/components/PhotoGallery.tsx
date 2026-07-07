@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { FaChevronLeft, FaChevronRight, FaXmark } from "react-icons/fa6";
+import { FaChevronLeft, FaChevronRight, FaXmark } from "@/components/icons";
 import { isSvg } from "@/lib/image";
 import { useT } from "./I18nProvider";
 import ReportButton from "./ReportButton";

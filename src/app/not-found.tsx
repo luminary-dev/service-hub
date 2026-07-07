@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FaCompass } from "react-icons/fa6";
+import { FaCompass } from "@/components/icons";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
 import { localizedHref } from "@/lib/links";

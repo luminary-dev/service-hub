@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FaScrewdriverWrench, FaWrench } from "react-icons/fa6";
+import { FaScrewdriverWrench, FaWrench } from "@/components/icons";
 import {
   CATEGORIES,
   categoryIcon,

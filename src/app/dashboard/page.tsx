@@ -1,12 +1,12 @@
 import { redirect } from "next/navigation";
-import { FaArrowUpRightFromSquare, FaCircleCheck } from "react-icons/fa6";
+import { FaArrowUpRightFromSquare, FaCircleCheck } from "@/components/icons";
 import { apiJson } from "@/lib/api";
 import { fetchCategoryOptions } from "@/lib/categories-server";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
 import Link from "next/link";
-import { FaBriefcase } from "react-icons/fa6";
+import { FaBriefcase } from "@/components/icons";
 import DashboardTabs from "@/components/dashboard/DashboardTabs";
 import EmailVerifyBanner from "@/components/EmailVerifyBanner";
 import VerificationSection from "@/components/dashboard/VerificationSection";
