@@ -5,7 +5,12 @@ import { proxy } from "hono/proxy";
 import { log } from "./log";
 import { getRequestId } from "./logging";
 import { resolveRoute, serviceUrl } from "./routes";
-import { SESSION_COOKIE, verifySessionToken } from "./session";
+import {
+  IMPERSONATION_COOKIE,
+  SESSION_COOKIE,
+  verifyImpersonationToken,
+  verifySessionToken,
+} from "./session";
 import { sessionVersionOk } from "./session-version";
 
 // The gateway stamps this secret on every upstream request; if it silently fell
@@ -38,6 +43,7 @@ const GATEWAY_HEADERS = [
   "x-user-id",
   "x-user-role",
   "x-user-name",
+  "x-impersonated-by",
   "x-internal-secret",
   "x-locale",
   "x-origin",
@@ -69,16 +75,37 @@ export async function buildUpstreamHeaders(
   for (const name of GATEWAY_HEADERS) headers.delete(name);
   headers.set("host", upstreamHost);
 
-  // Verified session → identity headers. Invalid/absent/revoked → forwarded
-  // without them (services decide 401s); never an error here. Revocation:
-  // the token's sv must still match the user's current sessionVersion.
-  const token = getCookie(c, SESSION_COOKIE);
-  if (token) {
-    const session = await verifySessionToken(token);
-    if (session && (await sessionVersionOk(session.userId, session.sv))) {
-      headers.set("x-user-id", session.userId);
-      headers.set("x-user-role", session.role);
-      headers.set("x-user-name", encodeURIComponent(session.name));
+  // A valid impersonation_session cookie takes priority over sh_session: the
+  // admin's real cookie is left untouched (createImpersonationSession never
+  // sets/clears it), so once the short-lived impersonation cookie is gone
+  // (expiry or /api/admin/impersonate/end) requests fall straight back to the
+  // admin's own identity below, with nothing left to reconcile.
+  const impersonationToken = getCookie(c, IMPERSONATION_COOKIE);
+  const impersonation = impersonationToken
+    ? await verifyImpersonationToken(impersonationToken)
+    : null;
+
+  if (
+    impersonation &&
+    (await sessionVersionOk(impersonation.userId, impersonation.sv))
+  ) {
+    headers.set("x-user-id", impersonation.userId);
+    headers.set("x-user-role", impersonation.role);
+    headers.set("x-user-name", encodeURIComponent(impersonation.name));
+    headers.set("x-impersonated-by", impersonation.impersonatedBy);
+  } else {
+    // Verified session → identity headers. Invalid/absent/revoked →
+    // forwarded without them (services decide 401s); never an error here.
+    // Revocation: the token's sv must still match the user's current
+    // sessionVersion.
+    const token = getCookie(c, SESSION_COOKIE);
+    if (token) {
+      const session = await verifySessionToken(token);
+      if (session && (await sessionVersionOk(session.userId, session.sv))) {
+        headers.set("x-user-id", session.userId);
+        headers.set("x-user-role", session.role);
+        headers.set("x-user-name", encodeURIComponent(session.name));
+      }
     }
   }
 

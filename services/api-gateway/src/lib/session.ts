@@ -40,3 +40,38 @@ export async function verifySessionToken(
     return null;
   }
 }
+
+// Admin impersonation ("view as", #234) — a distinct, short-lived (15m)
+// cookie signed by identity-service, kept separate from sh_session so it
+// never clobbers the admin's own session. See identity-service's
+// lib/session.ts for how it's minted.
+export const IMPERSONATION_COOKIE = "impersonation_session";
+
+export type ImpersonationPayload = SessionPayload & {
+  // The admin userId that started the impersonation — required on every
+  // impersonation token so it can never be confused with a real session.
+  impersonatedBy: string;
+};
+
+// Same verification as verifySessionToken, plus: a token missing
+// `impersonatedBy` is not treated as a valid impersonation token even if it
+// is otherwise a validly-signed sh_session-shaped JWT.
+export async function verifyImpersonationToken(
+  token: string
+): Promise<ImpersonationPayload | null> {
+  try {
+    const { payload } = await jwtVerify(token, secret, {
+      algorithms: ["HS256"],
+    });
+    if (typeof payload.impersonatedBy !== "string") return null;
+    return {
+      userId: payload.userId as string,
+      role: payload.role as string,
+      name: payload.name as string,
+      sv: typeof payload.sv === "number" ? payload.sv : 0,
+      impersonatedBy: payload.impersonatedBy,
+    };
+  } catch {
+    return null;
+  }
+}
