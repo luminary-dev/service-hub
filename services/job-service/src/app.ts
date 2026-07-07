@@ -3,9 +3,8 @@ import { requireInternalSecret } from "./lib/http";
 import { log } from "./lib/log";
 import { getRequestId, requestLogger } from "./lib/logging";
 import { jobs } from "./routes/jobs";
-import { admin } from "./routes/admin";
+import { admin, adminRoutes } from "./routes/admin";
 import { internal } from "./routes/internal";
-import { adminRoutes } from "./routes/admin";
 
 export const app = new Hono();
 
