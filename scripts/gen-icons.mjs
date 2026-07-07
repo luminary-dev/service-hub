@@ -66,13 +66,18 @@ const MAP = {
   FaWhatsapp: ["b", "whatsapp"],
 };
 
-const inner = (svg) =>
-  svg
-    .replace(/<svg[^>]*>/, "")
-    .replace(/<\/svg>\s*$/, "")
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+function inner(svg) {
+  let s = svg.replace(/<svg[^>]*>/, "").replace(/<\/svg>\s*$/, "");
+  // Strip HTML comments, looping until stable so adjacent/overlapping comment
+  // delimiters can't survive a single pass (satisfies CodeQL's
+  // incomplete-multi-character-sanitization check).
+  let prev;
+  do {
+    prev = s;
+    s = s.replace(/<!--[\s\S]*?-->/g, "");
+  } while (s !== prev);
+  return s.replace(/\s+/g, " ").trim();
+}
 
 let body = "";
 for (const [name, [src, icon, filled]] of Object.entries(MAP)) {
