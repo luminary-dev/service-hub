@@ -23,6 +23,35 @@ import FavoriteButton from "@/components/FavoriteButton";
 import ReportButton from "@/components/ReportButton";
 import ShareButton from "@/components/ShareButton";
 import VerifiedBadge from "@/components/VerifiedBadge";
+import InView from "@/components/InView";
+import StatReadout, { type Stat } from "@/components/ui/StatReadout";
+import type { ReactNode } from "react";
+
+// A blueprint "spec panel": a `.card` fronted by a mono code tag and a
+// hairline rule, then the localized section heading — the same registry
+// language the ProviderCard uses, so the click-through reads as one system.
+function SpecSection({
+  code,
+  title,
+  children,
+}: {
+  code: string;
+  title: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="card p-6">
+      <div className="flex items-center gap-2.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em]">
+        <span className="rounded-sm bg-brand-700 px-1.5 py-0.5 text-white dark:text-ink-50">
+          {code}
+        </span>
+        <span className="h-px flex-1 bg-ink-200" />
+      </div>
+      <h2 className="mt-3 text-lg font-semibold text-ink-900">{title}</h2>
+      {children}
+    </section>
+  );
+}
 
 // Profile payload as served by `GET /api/providers/:id/full` on the gateway.
 // Suspended profiles come back 404 for everyone but admins; dates are ISO
@@ -155,36 +184,62 @@ export default async function ProviderProfilePage({
     favorited = favorites?.providerIds.includes(provider.id) ?? false;
   }
 
+  const away =
+    !!provider.awayUntil && new Date(provider.awayUntil) > new Date();
+
+  // Instrument-style readout mirroring the registry header on the listing.
+  // Labels are the same terse English mono captions the shipped pages use;
+  // the localized experience/review copy still reads in the meta line below.
+  const stats: Stat[] = [];
+  if (provider.experience > 0)
+    stats.push({ label: "EXP · YRS", value: provider.experience });
+  if (avg !== null) stats.push({ label: "RATING", value: avg.toFixed(1) });
+  stats.push({ label: "REVIEWS", value: provider.reviews.length });
+
   return (
     <div>
-      <div className="border-b border-ink-200 bg-surface">
+      {/* -- Blueprint hero band ---------------------------------------- */}
+      <section className="blueprint-grid border-b border-ink-300 bg-ink-50">
         <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex items-start gap-5">
-              <Avatar
-                name={provider.user.name}
-                url={provider.avatarUrl}
-                size={88}
-              />
+              <div className="tech-corners shrink-0 border border-ink-300 bg-surface p-1.5">
+                <Avatar
+                  name={provider.user.name}
+                  url={provider.avatarUrl}
+                  size={84}
+                />
+              </div>
               <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-2xl font-semibold tracking-tight text-ink-900 sm:text-3xl">
+                <div className="flex items-center gap-2.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em]">
+                  <span className="rounded-sm bg-brand-700 px-1.5 py-0.5 text-white dark:text-ink-50">
+                    PRO
+                  </span>
+                  <span className="flex items-center gap-1.5 text-ink-500">
+                    <CategoryIcon
+                      slug={provider.category}
+                      className="h-3.5 w-3.5"
+                    />
+                    {categoryLabelLoc(provider.category, locale)}
+                  </span>
+                </div>
+                <div className="mt-2.5 flex flex-wrap items-center gap-2.5">
+                  <h1 className="text-3xl font-bold tracking-tight text-ink-900 sm:text-4xl">
                     {provider.user.name}
                   </h1>
                   {provider.verificationStatus === "VERIFIED" && (
                     <VerifiedBadge label={t.card.verified} size="md" />
                   )}
-                  {provider.awayUntil &&
-                  new Date(provider.awayUntil) > new Date() ? (
+                  {away ? (
                     <span className="chip bg-amber-50 text-amber-700 ring-1 ring-amber-200">
-                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                      <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-amber-500" />
                       {t.profile.awayUntil(
-                        formatDate(provider.awayUntil, locale)
+                        formatDate(provider.awayUntil!, locale)
                       )}
                     </span>
                   ) : provider.available ? (
                     <span className="chip bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-emerald-500" />
                       {t.profile.available}
                     </span>
                   ) : (
@@ -193,21 +248,17 @@ export default async function ProviderProfilePage({
                     </span>
                   )}
                 </div>
-                <p className="mt-1 flex items-center gap-1.5 font-medium text-brand-700">
-                  <CategoryIcon slug={provider.category} className="h-4 w-4" />
-                  {categoryLabelLoc(provider.category, locale)}
-                </p>
-                <p className="mt-1 flex items-center gap-1.5 text-sm text-ink-500">
-                  <FaLocationDot className="h-3.5 w-3.5 text-ink-500" />
-                  {provider.city}, {districtLabelLoc(provider.district, locale)}
+                <p className="mt-2 flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-ink-500">
+                  <FaLocationDot className="h-3.5 w-3.5" />
+                  {provider.city} · {districtLabelLoc(provider.district, locale)}
                   {provider.experience > 0 &&
                     ` · ${t.profile.exp(provider.experience)}`}
                 </p>
-                <div className="mt-2 flex items-center gap-2">
+                <div className="mt-2.5 flex items-center gap-2">
                   {avg !== null ? (
                     <>
                       <Stars rating={avg} size="md" />
-                      <span className="font-semibold text-ink-800">
+                      <span className="font-semibold tabular-nums text-ink-800">
                         {avg.toFixed(1)}
                       </span>
                       <span className="text-sm text-ink-500">
@@ -222,102 +273,100 @@ export default async function ProviderProfilePage({
                 </div>
               </div>
             </div>
-            <div className="flex flex-col items-start gap-3 sm:items-end">
-              <div className="flex flex-wrap items-center gap-2">
-                {canFavorite && (
-                  <FavoriteButton
-                    providerId={provider.id}
-                    initialFavorited={favorited}
-                    variant="inline"
-                  />
-                )}
-                <ShareButton
-                  title={`${provider.user.name} — ${categoryLabelLoc(
-                    provider.category,
-                    locale
-                  )}`}
+            <div className="flex flex-wrap items-center gap-2">
+              {canFavorite && (
+                <FavoriteButton
+                  providerId={provider.id}
+                  initialFavorited={favorited}
+                  variant="inline"
                 />
-                {!isOwner && (
-                  <ReportButton
-                    endpoint={`/api/providers/${provider.id}/report`}
-                    label={t.report.reportProvider}
-                    variant="chip"
-                    showLabel={false}
-                  />
-                )}
-              </div>
-              <ContactLinks
-                phone={provider.user.phone}
-                whatsapp={provider.whatsapp}
-                phone2={provider.phone2}
-                facebook={provider.facebook}
-                instagram={provider.instagram}
-                tiktok={provider.tiktok}
-                youtube={provider.youtube}
-                website={provider.website}
-                altLabel={t.profile.altPhone}
+              )}
+              <ShareButton
+                title={`${provider.user.name} — ${categoryLabelLoc(
+                  provider.category,
+                  locale
+                )}`}
               />
+              {!isOwner && (
+                <ReportButton
+                  endpoint={`/api/providers/${provider.id}/report`}
+                  label={t.report.reportProvider}
+                  variant="chip"
+                  showLabel={false}
+                />
+              )}
             </div>
           </div>
+
+          {/* Instrument readout + direct-contact rail */}
+          <div className="mt-8 flex flex-col gap-6 border-t border-dashed border-ink-300 pt-6 sm:flex-row sm:items-start sm:justify-between">
+            <StatReadout stats={stats} />
+            <ContactLinks
+              phone={provider.user.phone}
+              whatsapp={provider.whatsapp}
+              phone2={provider.phone2}
+              facebook={provider.facebook}
+              instagram={provider.instagram}
+              tiktok={provider.tiktok}
+              youtube={provider.youtube}
+              website={provider.website}
+              altLabel={t.profile.altPhone}
+            />
+          </div>
         </div>
-      </div>
+      </section>
 
       <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
         <div className="grid gap-8 lg:grid-cols-3">
-          <div className="space-y-8 lg:col-span-2">
-            <section className="card p-6">
-              <h2 className="text-lg font-semibold text-ink-900">
-                {t.profile.about}
-              </h2>
-              <p className="mt-2 font-medium text-ink-700">
+          <InView stagger className="space-y-8 lg:col-span-2">
+            <SpecSection code="01" title={t.profile.about}>
+              <p className="mt-3 font-medium text-ink-800">
                 {provider.headline}
               </p>
               <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-ink-600">
                 {provider.bio}
               </p>
-            </section>
+            </SpecSection>
 
-            <section className="card p-6">
-              <h2 className="text-lg font-semibold text-ink-900">
-                {t.profile.services}
-              </h2>
+            <SpecSection code="02" title={t.profile.services}>
               {provider.services.length === 0 ? (
                 <p className="mt-3 text-sm text-ink-500">
                   {t.profile.noServices}
                 </p>
               ) : (
-                <ul className="mt-4 divide-y divide-ink-100">
-                  {provider.services.map((s) => (
+                <ul className="mt-4 divide-y divide-dashed divide-ink-300">
+                  {provider.services.map((s, i) => (
                     <li
                       key={s.id}
-                      className="flex items-start justify-between gap-4 py-3"
+                      className="flex items-start justify-between gap-4 py-3.5"
                     >
-                      <div>
-                        <p className="font-medium text-ink-800">{s.title}</p>
-                        {s.description && (
-                          <p className="mt-0.5 text-sm text-ink-500">
-                            {s.description}
-                          </p>
-                        )}
-                      </div>
-                      <p className="shrink-0 text-right">
-                        <span className="font-semibold tabular-nums text-brand-700">
-                          {formatLKR(s.price, locale)}
+                      <div className="flex min-w-0 items-start gap-3">
+                        <span className="mt-0.5 shrink-0 font-mono text-[10px] uppercase tracking-wider text-ink-400 tabular-nums">
+                          S-{String(i + 1).padStart(2, "0")}
                         </span>
-                        <span className="block text-xs text-ink-500">
+                        <div className="min-w-0">
+                          <p className="font-medium text-ink-800">{s.title}</p>
+                          {s.description && (
+                            <p className="mt-0.5 text-sm text-ink-500">
+                              {s.description}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <span className="shrink-0 rounded-sm border border-brand-200 bg-brand-50 px-2.5 py-1 text-right font-mono text-xs font-semibold tabular-nums text-brand-800">
+                        {formatLKR(s.price, locale)}
+                        <span className="font-normal text-brand-700/70">
+                          {" · "}
                           {priceTypeLabelLoc(s.priceType, locale)}
                         </span>
-                      </p>
+                      </span>
                     </li>
                   ))}
                 </ul>
               )}
-            </section>
+            </SpecSection>
 
-            <section className="card p-6">
-              <h2 className="text-lg font-semibold text-ink-900">
-                {t.profile.photos}
-              </h2>
+            <SpecSection code="03" title={t.profile.photos}>
               {provider.photos.length === 0 ? (
                 <p className="mt-3 text-sm text-ink-500">
                   {t.profile.noPhotos}
@@ -333,7 +382,7 @@ export default async function ProviderProfilePage({
                   />
                 </div>
               )}
-            </section>
+            </SpecSection>
 
             <ReviewSection
               providerId={provider.id}
@@ -360,7 +409,7 @@ export default async function ProviderProfilePage({
                   : null
               }
             />
-          </div>
+          </InView>
 
           <div className="lg:col-span-1">
             <div className="sticky top-24">
