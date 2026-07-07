@@ -10,6 +10,8 @@ import { FaBriefcase } from "@/components/icons";
 import DashboardTabs from "@/components/dashboard/DashboardTabs";
 import EmailVerifyBanner from "@/components/EmailVerifyBanner";
 import VerificationSection from "@/components/dashboard/VerificationSection";
+import PageHeader from "@/components/ui/PageHeader";
+import StatReadout, { type Stat } from "@/components/ui/StatReadout";
 
 // Caching (#57): session-gated and must reflect the user's own writes
 // immediately — stays fully dynamic (no-store).
@@ -90,57 +92,70 @@ export default async function DashboardPage({
   const { welcome } = await searchParams;
   const avg = provider.ratingSummary.rating;
 
+  // Overview instruments in the blueprint header band (mirrors the registry
+  // stat readout on the providers listing): rating renders as a fixed string,
+  // the counts zero-pad.
+  const stats: Stat[] = [
+    { label: t.dashboard.stats.rating, value: avg !== null ? avg.toFixed(1) : "—" },
+    { label: t.dashboard.stats.reviews, value: provider.ratingSummary.count },
+    { label: t.dashboard.stats.photos, value: provider.photos.length },
+    { label: t.dashboard.stats.newInquiries, value: provider.inquiries.filter((i) => i.status === "NEW").length },
+  ];
+
   return (
-    <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
-      {!provider.user.emailVerified && <EmailVerifyBanner />}
-      <VerificationSection status={provider.verificationStatus} />
-      {matchingJobs > 0 && (
-        <Link
-          href="/jobs"
-          className="mb-6 flex items-center justify-between gap-3 rounded-2xl border border-brand-200 bg-brand-50 p-4 transition hover:border-brand-400"
-        >
-          <span className="flex items-center gap-2 text-sm font-medium text-brand-900">
-            <FaBriefcase className="h-4 w-4 text-brand-600" />
-            {t.jobs.matchingBadge(matchingJobs)}
-          </span>
-          <span className="text-sm font-semibold text-brand-700">
-            {t.jobs.boardTitle} →
-          </span>
-        </Link>
-      )}
-      {welcome && (
-        <div className="mb-6 rounded-2xl border border-brand-200 bg-brand-50 p-5">
-          <h2 className="flex items-center gap-2 font-semibold text-brand-900">
-            <FaCircleCheck className="h-4 w-4 text-brand-600" />
-            {t.dashboard.welcomeTitle(provider.user.name.split(" ")[0])}
-          </h2>
-          <p className="mt-1 text-sm text-brand-800">
-            {t.dashboard.welcomeBody}
-          </p>
+    <div>
+      <PageHeader
+        tag="DASH"
+        eyebrow={t.nav.dashboard}
+        title={t.dashboard.title}
+        status={t.dashboard.subtitle}
+      >
+        <div className="flex w-full flex-col items-start gap-5 sm:w-auto sm:items-end">
+          <a
+            href={`/providers/${provider.id}`}
+            className="btn-secondary"
+            target="_blank"
+          >
+            {t.dashboard.viewPublic}
+            <FaArrowUpRightFromSquare className="h-3 w-3" />
+          </a>
+          <StatReadout stats={stats} />
         </div>
-      )}
+      </PageHeader>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-ink-900">
-            {t.dashboard.title}
-          </h1>
-          <p className="mt-1 text-ink-500">{t.dashboard.subtitle}</p>
-        </div>
-        <a
-          href={`/providers/${provider.id}`}
-          className="btn-secondary"
-          target="_blank"
-        >
-          {t.dashboard.viewPublic}
-          <FaArrowUpRightFromSquare className="h-3 w-3" />
-        </a>
-      </div>
+      <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+        {!provider.user.emailVerified && <EmailVerifyBanner />}
+        <VerificationSection status={provider.verificationStatus} />
+        {matchingJobs > 0 && (
+          <Link
+            href="/jobs"
+            className="tech-corners mb-6 flex items-center justify-between gap-3 rounded-lg border border-brand-200 bg-brand-50 p-4 transition-colors duration-200 ease-snap hover:border-brand-400"
+          >
+            <span className="flex items-center gap-2 text-sm font-medium text-brand-900">
+              <FaBriefcase className="h-4 w-4 text-brand-600" />
+              {t.jobs.matchingBadge(matchingJobs)}
+            </span>
+            <span className="font-mono text-xs font-semibold uppercase tracking-[0.12em] text-brand-700">
+              {t.jobs.boardTitle} →
+            </span>
+          </Link>
+        )}
+        {welcome && (
+          <div className="tech-corners mb-6 rounded-lg border border-brand-200 bg-brand-50 p-5">
+            <h2 className="flex items-center gap-2 font-semibold text-brand-900">
+              <FaCircleCheck className="h-4 w-4 text-brand-600" />
+              {t.dashboard.welcomeTitle(provider.user.name.split(" ")[0])}
+            </h2>
+            <p className="mt-1 text-sm text-brand-800">
+              {t.dashboard.welcomeBody}
+            </p>
+          </div>
+        )}
 
-      <DashboardTabs
-        categories={categories}
-        data={{
-          providerId: provider.id,
+        <DashboardTabs
+          categories={categories}
+          data={{
+            providerId: provider.id,
           name: provider.user.name,
           email: provider.user.email,
           phone: provider.user.phone ?? "",
@@ -189,7 +204,8 @@ export default async function DashboardPage({
               .length,
           },
         }}
-      />
+        />
+      </div>
     </div>
   );
 }
