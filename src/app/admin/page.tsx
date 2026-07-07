@@ -108,6 +108,12 @@ export default async function AdminHomePage() {
       title: t.reportsLink,
       desc: t.reportsDesc,
     },
+    {
+      href: "/admin/jobs",
+      icon: FaBriefcase,
+      title: t.jobsLink,
+      desc: t.jobsDesc,
+    },
   ];
 
   return (
