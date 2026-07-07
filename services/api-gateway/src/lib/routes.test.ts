@@ -90,11 +90,18 @@ describe("resolveRoute (routing table)", () => {
     });
   });
 
-  it("routes admin job management to job-service (#222)", () => {
-    expect(resolveRoute("/api/admin/jobs")).toEqual({ service: "job", path: "/api/admin/jobs" });
-    expect(resolveRoute("/api/admin/jobs/job-1")).toEqual({
-      service: "job",
-      path: "/api/admin/jobs/job-1",
+  it("routes the admin dashboard analytics endpoints to their owning services (#219)", () => {
+    expect(resolveRoute("/api/admin/signups")).toEqual({
+      service: "identity",
+      path: "/api/admin/signups",
+    });
+    expect(resolveRoute("/api/admin/review-stats")).toEqual({
+      service: "review",
+      path: "/api/admin/review-stats",
+    });
+    expect(resolveRoute("/api/admin/stats")).toEqual({
+      service: "provider",
+      path: "/api/admin/stats",
     });
   });
 

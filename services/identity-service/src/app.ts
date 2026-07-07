@@ -7,6 +7,7 @@ import { getRequestId, requestLogger } from "./lib/logging";
 import { adminUsersRoutes } from "./routes/admin-users";
 import { authRoutes } from "./routes/auth";
 import { favoritesRoutes } from "./routes/favorites";
+import { adminRoutes } from "./routes/admin";
 import { internalUsersRoutes } from "./routes/internal-users";
 
 export const app = new Hono();
@@ -33,6 +34,7 @@ app.use("*", requireInternalSecret);
 app.route("/api/auth", authRoutes);
 app.route("/api/favorites", favoritesRoutes);
 app.route("/", adminUsersRoutes);
+app.route("/api/admin", adminRoutes);
 app.route("/internal/users", internalUsersRoutes);
 
 // Fallbacks mirror the monolith's Next.js behavior.
