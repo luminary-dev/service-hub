@@ -24,8 +24,10 @@ export default function InView({
 
   useEffect(() => {
     if (typeof IntersectionObserver === "undefined") {
-      setSeen(true);
-      return;
+      // Old browser with no IO: reveal immediately. Deferred to a frame so it's
+      // a callback rather than a synchronous setState in the effect body.
+      const id = requestAnimationFrame(() => setSeen(true));
+      return () => cancelAnimationFrame(id);
     }
     const el = ref.current;
     if (!el) return;
