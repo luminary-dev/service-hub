@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { FaInbox, FaRegHeart, FaRegStar } from "@/components/icons";
+import type { ReactNode } from "react";
+import { FaInbox, FaRegHeart, FaRegStar, type IconType } from "@/components/icons";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
@@ -9,6 +10,10 @@ import { formatDate } from "@/lib/format";
 import ProviderCard, { ProviderCardDTO } from "@/components/ProviderCard";
 import Stars from "@/components/Stars";
 import VerifiedBadge from "@/components/VerifiedBadge";
+import InView from "@/components/InView";
+import PageHeader from "@/components/ui/PageHeader";
+import StatReadout from "@/components/ui/StatReadout";
+import EmptyState from "@/components/ui/EmptyState";
 
 // Caching (#57): session-gated and must reflect the user's own writes
 // immediately — stays fully dynamic (no-store).
@@ -40,6 +45,34 @@ const STATUS_STYLES: Record<string, string> = {
   RESPONDED: "bg-emerald-50 text-emerald-700 ring-emerald-200",
   CLOSED: "bg-ink-100 text-ink-500 ring-ink-200",
 };
+
+// Mono spec label + iconed heading shared by the portal's three sections —
+// the blueprint "REF / label" kicker over an h2, mirroring the section markers
+// on the home and providers surfaces.
+function SectionHeading({
+  code,
+  icon: Icon,
+  title,
+}: {
+  code: string;
+  icon: IconType;
+  title: ReactNode;
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-2.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em]">
+        <span className="rounded-sm bg-brand-700 px-1.5 py-0.5 text-white dark:text-ink-50">
+          {code}
+        </span>
+        <span className="hidden h-px flex-1 bg-ink-300 sm:block" />
+      </div>
+      <h2 className="mt-3 flex items-center gap-2 text-2xl font-bold tracking-tight text-ink-900">
+        <Icon className="h-5 w-5 text-ink-400" />
+        {title}
+      </h2>
+    </div>
+  );
+}
 
 export default async function AccountPage() {
   const session = await getSession();
@@ -80,158 +113,171 @@ export default async function AccountPage() {
   };
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-ink-900">
-            {t.account.title}
-          </h1>
-          <p className="mt-1 text-ink-600">{t.account.subtitle}</p>
+    <div>
+      <PageHeader
+        tag="ACCT"
+        eyebrow={t.account.title}
+        title={t.account.title}
+        status={t.account.subtitle}
+      >
+        <div className="flex flex-col items-start gap-4 sm:items-end">
+          <StatReadout
+            stats={[
+              { label: "SAVED", value: results.length },
+              { label: "SENT", value: inquiries.length },
+              { label: "REVIEWS", value: reviews.length },
+            ]}
+          />
+          <Link href="/account/security" className="btn-secondary">
+            {t.security.link}
+          </Link>
         </div>
-        <Link href="/account/security" className="btn-secondary shrink-0">
-          {t.security.link}
-        </Link>
-      </div>
+      </PageHeader>
 
-      <section className="mt-10">
-        <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-ink-900">
-          <FaRegHeart className="h-5 w-5 text-ink-400" />
-          {t.account.savedTitle}
-        </h2>
-        {results.length === 0 ? (
-          <div className="card mt-4 flex flex-col items-center px-6 py-16 text-center">
-            <FaRegHeart className="h-12 w-12 text-ink-300" />
-            <p className="mt-4 max-w-sm text-sm text-ink-500">
-              {t.account.empty}
-            </p>
-            <Link href="/providers" className="btn-primary mt-6">
-              {t.account.emptyCta}
-            </Link>
-          </div>
-        ) : (
-          <div className="mt-4 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {results.map((p) => (
-              <ProviderCard
-                key={p.id}
-                p={p}
-                locale={locale}
-                showFavorite
-                favorited
-              />
-            ))}
-          </div>
-        )}
-      </section>
-
-      <div className="mt-12 grid items-start gap-10 lg:grid-cols-2">
+      <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
         <section>
-          <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-ink-900">
-            <FaInbox className="h-5 w-5 text-ink-400" />
-            {t.account.inquiriesTitle}
-          </h2>
-          {inquiries.length === 0 ? (
-            <div className="card mt-4 px-6 py-12 text-center">
-              <p className="mx-auto max-w-sm text-sm text-ink-500">
-                {t.account.inquiriesEmpty}
-              </p>
-            </div>
+          <SectionHeading code="SAV" icon={FaRegHeart} title={t.account.savedTitle} />
+          {results.length === 0 ? (
+            <EmptyState
+              className="mt-6"
+              icon={FaRegHeart}
+              title={t.account.empty}
+              action={
+                <Link href="/providers" className="btn-primary">
+                  {t.account.emptyCta}
+                </Link>
+              }
+            />
           ) : (
-            <ul className="mt-4 space-y-4">
-              {inquiries.map((i) => (
-                <li key={i.id} className="card p-5">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      {i.provider.suspended ? (
-                        <span className="font-semibold text-ink-900">
-                          {i.provider.name}
-                        </span>
-                      ) : (
-                        <Link
-                          href={`/providers/${i.provider.id}`}
-                          className="font-semibold text-ink-900 hover:text-brand-700"
-                        >
-                          {i.provider.name}
-                        </Link>
-                      )}
-                      <p className="mt-0.5 text-sm text-ink-500">
-                        {categoryLabelLoc(i.provider.category, locale)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`chip ring-1 ${STATUS_STYLES[i.status] ?? STATUS_STYLES.NEW}`}
-                      >
-                        {statusLabel[i.status] ?? i.status}
-                      </span>
-                      <span className="text-xs text-ink-500">
-                        {formatDate(i.createdAt, locale)}
-                      </span>
-                    </div>
-                  </div>
-                  <p className="mt-3 line-clamp-2 whitespace-pre-line text-sm leading-relaxed text-ink-600">
-                    {i.message}
-                  </p>
-                  <div className="mt-3 flex items-center gap-2">
-                    <Link
-                      href={`/account/inquiries/${i.id}`}
-                      className="text-sm font-medium text-brand-600 hover:text-brand-700"
-                    >
-                      {t.messages.open}
-                    </Link>
-                    {i.unreadCount > 0 && (
-                      <span className="chip bg-brand-600 text-white">
-                        {t.messages.unread(i.unreadCount)}
-                      </span>
-                    )}
-                  </div>
-                </li>
+            <InView
+              stagger
+              className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3"
+            >
+              {results.map((p) => (
+                <ProviderCard
+                  key={p.id}
+                  p={p}
+                  locale={locale}
+                  showFavorite
+                  favorited
+                />
               ))}
-            </ul>
+            </InView>
           )}
         </section>
 
-        <section>
-          <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-ink-900">
-            <FaRegStar className="h-5 w-5 text-ink-400" />
-            {t.account.reviewsTitle}
-          </h2>
-          {reviews.length === 0 ? (
-            <div className="card mt-4 px-6 py-12 text-center">
-              <p className="mx-auto max-w-sm text-sm text-ink-500">
-                {t.account.reviewsEmpty}
-              </p>
-            </div>
-          ) : (
-            <ul className="mt-4 space-y-4">
-              {reviews.map((r) => (
-                <li key={r.id} className="card p-5">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <Link
-                        href={`/providers/${r.provider.id}`}
-                        className="font-semibold text-ink-900 hover:text-brand-700"
-                      >
-                        {r.provider.name}
-                      </Link>
-                      <div className="mt-1 flex items-center gap-2">
-                        <Stars rating={r.rating} />
-                        {r.verified && (
-                          <VerifiedBadge label={t.account.verifiedReview} />
+        <div className="mt-14 grid items-start gap-10 lg:grid-cols-2">
+          <section>
+            <SectionHeading
+              code="INQ"
+              icon={FaInbox}
+              title={t.account.inquiriesTitle}
+            />
+            {inquiries.length === 0 ? (
+              <EmptyState
+                className="mt-6"
+                icon={FaInbox}
+                title={t.account.inquiriesEmpty}
+              />
+            ) : (
+              <ul className="mt-6 space-y-4">
+                {inquiries.map((i) => (
+                  <li key={i.id} className="tech-corners card p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        {i.provider.suspended ? (
+                          <span className="font-semibold text-ink-900">
+                            {i.provider.name}
+                          </span>
+                        ) : (
+                          <Link
+                            href={`/providers/${i.provider.id}`}
+                            className="font-semibold text-ink-900 hover:text-brand-700"
+                          >
+                            {i.provider.name}
+                          </Link>
                         )}
+                        <p className="mt-0.5 text-sm text-ink-500">
+                          {categoryLabelLoc(i.provider.category, locale)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`chip ring-1 ${STATUS_STYLES[i.status] ?? STATUS_STYLES.NEW}`}
+                        >
+                          {statusLabel[i.status] ?? i.status}
+                        </span>
+                        <span className="font-mono text-xs tabular-nums text-ink-500">
+                          {formatDate(i.createdAt, locale)}
+                        </span>
                       </div>
                     </div>
-                    <span className="text-xs text-ink-500">
-                      {formatDate(r.createdAt, locale)}
-                    </span>
-                  </div>
-                  <p className="mt-3 line-clamp-2 text-sm leading-relaxed text-ink-600">
-                    {r.comment}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+                    <p className="mt-3 line-clamp-2 whitespace-pre-line text-sm leading-relaxed text-ink-600">
+                      {i.message}
+                    </p>
+                    <div className="mt-4 flex items-center gap-2 border-t border-dashed border-ink-200 pt-3">
+                      <Link
+                        href={`/account/inquiries/${i.id}`}
+                        className="text-sm font-medium text-brand-600 hover:text-brand-700"
+                      >
+                        {t.messages.open}
+                      </Link>
+                      {i.unreadCount > 0 && (
+                        <span className="chip bg-brand-600 text-white dark:text-ink-50">
+                          {t.messages.unread(i.unreadCount)}
+                        </span>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section>
+            <SectionHeading
+              code="REV"
+              icon={FaRegStar}
+              title={t.account.reviewsTitle}
+            />
+            {reviews.length === 0 ? (
+              <EmptyState
+                className="mt-6"
+                icon={FaRegStar}
+                title={t.account.reviewsEmpty}
+              />
+            ) : (
+              <ul className="mt-6 space-y-4">
+                {reviews.map((r) => (
+                  <li key={r.id} className="tech-corners card p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <Link
+                          href={`/providers/${r.provider.id}`}
+                          className="font-semibold text-ink-900 hover:text-brand-700"
+                        >
+                          {r.provider.name}
+                        </Link>
+                        <div className="mt-1 flex items-center gap-2">
+                          <Stars rating={r.rating} />
+                          {r.verified && (
+                            <VerifiedBadge label={t.account.verifiedReview} />
+                          )}
+                        </div>
+                      </div>
+                      <span className="font-mono text-xs tabular-nums text-ink-500">
+                        {formatDate(r.createdAt, locale)}
+                      </span>
+                    </div>
+                    <p className="mt-3 line-clamp-2 text-sm leading-relaxed text-ink-600">
+                      {r.comment}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
       </div>
     </div>
   );

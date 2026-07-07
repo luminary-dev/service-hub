@@ -90,6 +90,14 @@ describe("resolveRoute (routing table)", () => {
     });
   });
 
+  it("routes admin job management to job-service (#222)", () => {
+    expect(resolveRoute("/api/admin/jobs")).toEqual({ service: "job", path: "/api/admin/jobs" });
+    expect(resolveRoute("/api/admin/jobs/job-1")).toEqual({
+      service: "job",
+      path: "/api/admin/jobs/job-1",
+    });
+  });
+
   it("routes the rest of admin to provider-service", () => {
     expect(resolveRoute("/api/admin/providers")).toEqual({ service: "provider", path: "/api/admin/providers" });
     expect(resolveRoute("/api/admin/providers/prov-1")).toEqual({

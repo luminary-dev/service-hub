@@ -119,7 +119,12 @@ export default function ServicesManager({
   return (
     <div className="card p-6">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-ink-900">{s2.heading}</h2>
+        <div className="flex items-center gap-2.5">
+          <span className="rounded-sm bg-brand-700 px-1.5 py-0.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-white dark:text-ink-50">
+            SVC
+          </span>
+          <h2 className="font-semibold text-ink-900">{s2.heading}</h2>
+        </div>
         <button onClick={startNew} className="btn-primary !px-4 !py-2">
           {s2.add}
         </button>
@@ -132,7 +137,7 @@ export default function ServicesManager({
       )}
 
       {editing !== null && (
-        <div className="mt-4 rounded-xl bg-ink-50 p-4">
+        <div className="tech-corners mt-4 rounded-sm border border-ink-300 bg-ink-50 p-4">
           <div className="space-y-3">
             <input
               className="input"
@@ -187,7 +192,7 @@ export default function ServicesManager({
         </div>
       )}
 
-      <ul className="mt-4 divide-y divide-ink-100">
+      <ul className="mt-4 divide-y divide-dashed divide-ink-200">
         {services.map((s) => (
           <li
             key={s.id}

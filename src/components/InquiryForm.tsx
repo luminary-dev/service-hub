@@ -42,21 +42,35 @@ export default function InquiryForm({
 
   if (sent) {
     return (
-      <div className="card flex flex-col items-center p-6 text-center">
-        <FaCircleCheck className="h-10 w-10 text-emerald-500" />
-        <h3 className="mt-3 font-semibold text-ink-900">
-          {t.inquiry.sentTitle}
-        </h3>
-        <p className="mt-1 text-sm text-ink-500">
-          {t.inquiry.sentBody(providerName)}
-        </p>
+      <div className="tech-corners border border-ink-300 bg-surface">
+        <div className="hazard h-2 w-full" />
+        <div className="flex flex-col items-center p-6 text-center">
+          <FaCircleCheck className="h-10 w-10 text-emerald-500" />
+          <h3 className="mt-3 font-semibold text-ink-900">
+            {t.inquiry.sentTitle}
+          </h3>
+          <p className="mt-1 text-sm text-ink-500">
+            {t.inquiry.sentBody(providerName)}
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <form onSubmit={submit} className="card p-6">
-      <h3 className="font-semibold text-ink-900">
+    <form
+      onSubmit={submit}
+      className="tech-corners border border-ink-300 bg-surface"
+    >
+      <div className="hazard h-2 w-full" />
+      <div className="p-6">
+      <div className="flex items-center gap-2.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em]">
+        <span className="rounded-sm bg-brand-700 px-1.5 py-0.5 text-white dark:text-ink-50">
+          CTA
+        </span>
+        <span className="h-px flex-1 bg-ink-200" />
+      </div>
+      <h3 className="mt-3 text-lg font-semibold text-ink-900">
         {t.inquiry.title(providerName.split(" ")[0])}
       </h3>
       <p className="mt-1 text-xs text-ink-500">{t.inquiry.sub}</p>
@@ -129,6 +143,7 @@ export default function InquiryForm({
         <FaRegPaperPlane className="h-3.5 w-3.5" />
         {loading ? t.inquiry.sending : t.inquiry.send}
       </button>
+      </div>
     </form>
   );
 }
