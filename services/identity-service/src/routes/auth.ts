@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { db } from "../db";
 import { getAuth, getLocale, getOrigin } from "../lib/http";
 import { log } from "../lib/log";
@@ -54,15 +55,34 @@ authRoutes.post("/register", async (c) => {
 
   const passwordHash = await bcrypt.hash(data.password, 10);
 
-  const user = await db.user.create({
-    data: {
-      email: data.email,
-      passwordHash,
-      name: data.name,
-      phone: data.phone,
-      role: data.role,
-    },
-  });
+  // The findUnique above is a fast path, not a guarantee: two concurrent
+  // registrations with the same email both pass it, and the loser hits the
+  // unique constraint. Catch P2002 and return the same 409 rather than a 500.
+  const user = await db.user
+    .create({
+      data: {
+        email: data.email,
+        passwordHash,
+        name: data.name,
+        phone: data.phone,
+        role: data.role,
+      },
+    })
+    .catch((e: unknown) => {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === "P2002"
+      ) {
+        return null;
+      }
+      throw e;
+    });
+  if (!user) {
+    return c.json(
+      { error: "An account with this email already exists" },
+      409
+    );
+  }
 
   let providerId: string | null = null;
   if (data.role === "PROVIDER") {

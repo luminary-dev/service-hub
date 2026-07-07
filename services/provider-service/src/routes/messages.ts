@@ -90,10 +90,6 @@ messagesRoutes.post("/api/inquiries/:id/messages", async (c) => {
     return c.json({ error: "Invalid input" }, 400);
   }
 
-  const message = await db.inquiryMessage.create({
-    data: { inquiryId: inquiry.id, sender: party, body: parsed.data.body },
-  });
-
   // A provider's first reply IS the response — same semantics as flipping
   // the status by hand, including the once-only respondedAt stamp.
   const statusUpdate =
@@ -103,9 +99,20 @@ messagesRoutes.post("/api/inquiries/:id/messages", async (c) => {
           ...(inquiry.respondedAt ? {} : { respondedAt: new Date() }),
         }
       : {};
-  await db.inquiry.update({
-    where: { id: inquiry.id },
-    data: { [lastReadField(party)]: new Date(), ...statusUpdate },
+
+  // One transaction: the message insert and the thread-state update (read
+  // marker + NEW→RESPONDED + once-only respondedAt) must both land or neither.
+  // A partial write here corrupts unread counts and the public
+  // average-response-time stat.
+  const message = await db.$transaction(async (tx) => {
+    const m = await tx.inquiryMessage.create({
+      data: { inquiryId: inquiry.id, sender: party, body: parsed.data.body },
+    });
+    await tx.inquiry.update({
+      where: { id: inquiry.id },
+      data: { [lastReadField(party)]: new Date(), ...statusUpdate },
+    });
+    return m;
   });
 
   return c.json({

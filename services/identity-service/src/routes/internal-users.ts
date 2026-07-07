@@ -6,12 +6,21 @@ import { db } from "../db";
 
 export const internalUsersRoutes = new Hono();
 
+// Bound the batch so a large caller list can't produce an unbounded
+// `IN (...)`. Mirrors provider-service's MAX_BATCH_IDS; callers that need more
+// must page. Extra ids beyond the cap are ignored (deduped first).
+const MAX_BATCH_IDS = 500;
+
 // GET /internal/users?ids=a,b,c — batch hydration (reviewer / customer names).
 internalUsersRoutes.get("/", async (c) => {
-  const ids = (c.req.query("ids") ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const ids = [
+    ...new Set(
+      (c.req.query("ids") ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+    ),
+  ].slice(0, MAX_BATCH_IDS);
 
   const users = ids.length
     ? await db.user.findMany({
