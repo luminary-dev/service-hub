@@ -48,6 +48,13 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
     return { service: "review", path: pathname };
   }
 
+  // User management (#220) is identity-service data; carved out of the
+  // generic /api/admin/ fallback below the same way review-service's queues
+  // are.
+  if (pathname === "/api/admin/users" || pathname.startsWith("/api/admin/users/")) {
+    return { service: "identity", path: pathname };
+  }
+
   // Admin impersonation ("view as", #234) — identity-service owns User rows
   // and mints/clears the impersonation cookie, so both the start (:userId)
   // and end routes belong there rather than falling through to provider-
@@ -77,6 +84,15 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
   }
   if (pathname === "/api/admin/review-stats") {
     return { service: "review", path: pathname };
+  }
+
+  // Admin job management (#222): job-service owns JobRequest/JobResponse; the
+  // rest of /api/admin/ falls through to provider-service below.
+  if (
+    pathname === "/api/admin/jobs" ||
+    pathname.startsWith("/api/admin/jobs/")
+  ) {
+    return { service: "job", path: pathname };
   }
 
   if (pathname.startsWith("/api/admin/")) {

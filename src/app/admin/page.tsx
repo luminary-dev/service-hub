@@ -5,6 +5,7 @@ import {
   FaBriefcase,
   FaFileLines,
   FaFlag,
+  FaIdCard,
   FaShieldHalved,
   FaTags,
   FaUsers,
@@ -106,6 +107,12 @@ export default async function AdminHomePage() {
       icon: FaBriefcase,
       title: t.jobsLink,
       desc: t.jobsDesc,
+    },
+    {
+      href: "/admin/users",
+      icon: FaIdCard,
+      title: t.usersLink,
+      desc: t.usersDesc,
     },
     {
       href: "/admin/billing",
