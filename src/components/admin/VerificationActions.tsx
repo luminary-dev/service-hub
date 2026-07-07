@@ -18,7 +18,8 @@ export default function VerificationActions({
   const [pending, setPending] = useState(false);
   const [showReason, setShowReason] = useState(false);
   const [reason, setReason] = useState("");
-  const t = useT().admin;
+  const t = useT();
+  const toast = useToast();
   const router = useRouter();
 
   async function act(action: "approve" | "reject") {
@@ -49,14 +50,14 @@ export default function VerificationActions({
           disabled={pending}
           className="btn-primary !px-4 !py-2"
         >
-          {t.approve}
+          {t.admin.approve}
         </button>
         <button
           onClick={() => (showReason ? act("reject") : setShowReason(true))}
           disabled={pending}
           className="cursor-pointer rounded-full border border-ink-300 bg-surface px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-60"
         >
-          {showReason ? t.confirmReject : t.reject}
+          {showReason ? t.admin.confirmReject : t.admin.reject}
         </button>
       </div>
       {showReason && (
@@ -66,7 +67,7 @@ export default function VerificationActions({
             rows={2}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder={t.rejectionReasonPlaceholder}
+            placeholder={t.admin.rejectionReasonPlaceholder}
             autoFocus
           />
           <button
@@ -76,7 +77,7 @@ export default function VerificationActions({
             }}
             className="btn-ghost mt-1 !px-2 !py-1 text-xs"
           >
-            {t.cancel}
+            {t.admin.cancel}
           </button>
         </div>
       )}
