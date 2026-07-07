@@ -4,6 +4,7 @@ import {
   FaBriefcase,
   FaCircleCheck,
   FaCircleXmark,
+  FaFileLines,
   FaFlag,
   FaIdCard,
   FaShieldHalved,
@@ -11,6 +12,7 @@ import {
   FaUsers,
 } from "@/components/icons";
 import { getSession } from "@/lib/auth";
+import { isAdminRole } from "@/lib/roles";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
 import { apiJson } from "@/lib/api";
@@ -51,7 +53,7 @@ type SignupStats = {
 export default async function AdminHomePage() {
   const session = await getSession();
   if (!session) redirect("/login");
-  if (session.role !== "ADMIN") redirect("/");
+  if (!isAdminRole(session.role)) redirect("/");
 
   const [locale, providerStats, reviewStats, signupStats] = await Promise.all([
     getLocale(),
@@ -121,6 +123,12 @@ export default async function AdminHomePage() {
       icon: FaIdCard,
       title: t.usersLink,
       desc: t.usersDesc,
+    },
+    {
+      href: "/admin/billing",
+      icon: FaFileLines,
+      title: t.billingLink,
+      desc: t.billingDesc,
     },
   ];
 
