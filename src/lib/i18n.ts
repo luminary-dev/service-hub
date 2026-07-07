@@ -298,6 +298,11 @@ const en = {
     suspendedTag: "Suspended",
     pendingTag: "Pending",
     moderate: "Moderate",
+    qualityScoreLabel: "Quality",
+    qualityScoreHint:
+      "Combines review rating and open reports. Job response rate is a planned future addition.",
+    qualityScoreBreakdown: (rating: number, reviewCount: number, openReportCount: number) =>
+      `Rating ${rating}/5 (${reviewCount} review${reviewCount === 1 ? "" : "s"}) · ${openReportCount} open report${openReportCount === 1 ? "" : "s"}`,
     reviewsHeading: "Reviews",
     photosHeading: "Work photos",
     noReviews: "No reviews.",
@@ -1020,6 +1025,11 @@ const si: Dict = {
     suspendedTag: "අත්හිටුවා ඇත",
     pendingTag: "පොරොත්තුවෙන්",
     moderate: "පාලනය",
+    qualityScoreLabel: "ගුණාත්මකභාවය",
+    qualityScoreHint:
+      "සමාලෝචන ශ්‍රේණිගත කිරීම සහ විවෘත වාර්තා ඒකාබද්ධ කරයි. රැකියා ප්‍රතිචාර අනුපාතය අනාගත එකතු කිරීමකි.",
+    qualityScoreBreakdown: (rating: number, reviewCount: number, openReportCount: number) =>
+      `ශ්‍රේණිගත කිරීම ${rating}/5 (සමාලෝචන ${reviewCount}) · විවෘත වාර්තා ${openReportCount}`,
     reviewsHeading: "සමාලෝචන",
     photosHeading: "වැඩ ඡායාරූප",
     noReviews: "සමාලෝචන නැත.",
