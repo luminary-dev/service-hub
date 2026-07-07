@@ -10,6 +10,7 @@ import {
 } from "@/lib/categories";
 import { districtLabelLoc } from "@/lib/i18n";
 import { useLocale, useT } from "@/components/I18nProvider";
+import { Field, FormRow } from "@/components/ui/Field";
 
 export default function JobPostForm({
   categories = STATIC_CATEGORY_OPTIONS,
@@ -59,100 +60,94 @@ export default function JobPostForm({
   }
 
   return (
-    <form onSubmit={submit} className="card space-y-4 p-6">
-      <div>
-        <label className="label" htmlFor="job-jobTitle">
-          {t.jobTitle}
-        </label>
-        <input
-          id="job-jobTitle"
-          className="input"
-          value={form.title}
-          onChange={(e) => set("title", e.target.value)}
-          placeholder={t.jobTitlePh}
-          required
-          minLength={5}
-          maxLength={100}
-        />
+    <form
+      onSubmit={submit}
+      className="tech-corners overflow-hidden rounded-lg border border-ink-300 bg-surface"
+    >
+      {/* Spec header bar — mirrors the register/provider form panel. */}
+      <div className="flex items-center justify-between border-b border-ink-200 bg-ink-100 px-5 py-3 font-mono text-[11px] uppercase tracking-[0.12em]">
+        <span className="font-bold tabular-nums text-ink-700">JOB-01</span>
+        <span className="text-brand-700">{t.postTitle}</span>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label className="label" htmlFor="job-category">
-            {t.category}
-          </label>
-          <select
-            id="job-category"
+      <div className="space-y-4 p-6">
+        <Field label={t.jobTitle} htmlFor="job-jobTitle">
+          <input
+            id="job-jobTitle"
             className="input"
-            value={form.category}
-            onChange={(e) => set("category", e.target.value)}
+            value={form.title}
+            onChange={(e) => set("title", e.target.value)}
+            placeholder={t.jobTitlePh}
             required
-          >
-            <option value="">{t.selectCategory}</option>
-            {categories.map((c) => (
-              <option key={c.slug} value={c.slug}>
-                {categoryOptionLabel(c, locale)}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="label" htmlFor="job-district">
-            {t.district}
-          </label>
-          <select
-            id="job-district"
+            minLength={5}
+            maxLength={100}
+          />
+        </Field>
+        <FormRow>
+          <Field label={t.category} htmlFor="job-category">
+            <select
+              id="job-category"
+              className="input"
+              value={form.category}
+              onChange={(e) => set("category", e.target.value)}
+              required
+            >
+              <option value="">{t.selectCategory}</option>
+              {categories.map((c) => (
+                <option key={c.slug} value={c.slug}>
+                  {categoryOptionLabel(c, locale)}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label={t.district} htmlFor="job-district">
+            <select
+              id="job-district"
+              className="input"
+              value={form.district}
+              onChange={(e) => set("district", e.target.value)}
+              required
+            >
+              <option value="">{t.selectDistrict}</option>
+              {DISTRICTS.map((d) => (
+                <option key={d} value={d}>
+                  {districtLabelLoc(d, locale)}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </FormRow>
+        <Field label={t.description} htmlFor="job-description">
+          <textarea
+            id="job-description"
+            className="input min-h-32 resize-y"
+            value={form.description}
+            onChange={(e) => set("description", e.target.value)}
+            placeholder={t.descriptionPh}
+            required
+            minLength={10}
+            maxLength={2000}
+          />
+        </Field>
+        <Field label={t.budget} htmlFor="job-budget" help={t.budgetOptional}>
+          <input
+            id="job-budget"
             className="input"
-            value={form.district}
-            onChange={(e) => set("district", e.target.value)}
-            required
-          >
-            <option value="">{t.selectDistrict}</option>
-            {DISTRICTS.map((d) => (
-              <option key={d} value={d}>
-                {districtLabelLoc(d, locale)}
-              </option>
-            ))}
-          </select>
-        </div>
+            type="number"
+            min={100}
+            value={form.budget}
+            onChange={(e) => set("budget", e.target.value)}
+            placeholder={t.budgetPh}
+          />
+        </Field>
+        {error && (
+          <p role="alert" className="text-sm text-red-600">
+            {error}
+          </p>
+        )}
+        <button type="submit" disabled={loading} className="btn-primary">
+          {loading ? t.posting : t.post}
+        </button>
       </div>
-      <div>
-        <label className="label" htmlFor="job-description">
-          {t.description}
-        </label>
-        <textarea
-          id="job-description"
-          className="input min-h-32 resize-y"
-          value={form.description}
-          onChange={(e) => set("description", e.target.value)}
-          placeholder={t.descriptionPh}
-          required
-          minLength={10}
-          maxLength={2000}
-        />
-      </div>
-      <div>
-        <label className="label" htmlFor="job-budget">
-          {t.budget}
-        </label>
-        <input
-          id="job-budget"
-          className="input"
-          type="number"
-          min={100}
-          value={form.budget}
-          onChange={(e) => set("budget", e.target.value)}
-          placeholder={t.budgetPh}
-        />
-        <p className="mt-1 text-xs text-ink-500">{t.budgetOptional}</p>
-      </div>
-      {error && (
-        <p role="alert" className="text-sm text-red-600">
-          {error}
-        </p>
-      )}
-      <button type="submit" disabled={loading} className="btn-primary">
-        {loading ? t.posting : t.post}
-      </button>
     </form>
   );
 }

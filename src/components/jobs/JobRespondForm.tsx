@@ -32,14 +32,14 @@ export default function JobRespondForm({ jobId }: { jobId: string }) {
 
   if (!open) {
     return (
-      <button onClick={() => setOpen(true)} className="btn-secondary mt-3">
+      <button onClick={() => setOpen(true)} className="btn-secondary">
         {t.respond}
       </button>
     );
   }
 
   return (
-    <form onSubmit={submit} className="mt-3">
+    <form onSubmit={submit} className="space-y-2">
       <textarea
         className="input min-h-20 resize-y"
         value={message}
@@ -51,11 +51,11 @@ export default function JobRespondForm({ jobId }: { jobId: string }) {
         maxLength={1000}
       />
       {error && (
-        <p role="alert" className="mt-2 text-sm text-red-600">
+        <p role="alert" className="text-sm text-red-600">
           {error}
         </p>
       )}
-      <button type="submit" disabled={loading} className="btn-primary mt-2">
+      <button type="submit" disabled={loading} className="btn-primary">
         {loading ? t.sending : t.sendResponse}
       </button>
     </form>
