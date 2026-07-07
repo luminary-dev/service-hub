@@ -129,7 +129,13 @@ adminRoutes.patch("/api/admin/providers/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-const verificationActionSchema = z.object({ action: z.enum(["approve", "reject"]) });
+// `reason` is only meaningful on reject — an admin note that gets stored on
+// the provider so they know what to fix on resubmission. Optional: existing
+// callers that don't send it keep working unchanged.
+const verificationActionSchema = z.object({
+  action: z.enum(["approve", "reject"]),
+  reason: z.string().trim().max(1000).optional(),
+});
 
 adminRoutes.patch("/api/admin/verifications/:id", async (c) => {
   if (!isAdmin(c)) {
@@ -154,10 +160,46 @@ adminRoutes.patch("/api/admin/verifications/:id", async (c) => {
     data: {
       verificationStatus: approved ? "VERIFIED" : "REJECTED",
       verifiedAt: approved ? new Date() : null,
+      rejectionReason: approved ? null : parsed.data.reason || null,
     },
   });
 
   return c.json({ status: approved ? "VERIFIED" : "REJECTED" });
+});
+
+// Bulk approve/reject across the pending queue (#225). Only rows still
+// PENDING are touched — an id that's already been actioned (e.g. by another
+// admin, or from a stale client selection) is silently skipped rather than
+// re-flipping its status.
+const verificationBulkSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(200),
+  action: z.enum(["approve", "reject"]),
+  reason: z.string().trim().max(1000).optional(),
+});
+
+adminRoutes.patch("/api/admin/verifications", async (c) => {
+  if (!isAdmin(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = verificationBulkSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid input" }, 400);
+  }
+
+  const { ids, action, reason } = parsed.data;
+  const approved = action === "approve";
+  const { count } = await db.provider.updateMany({
+    where: { id: { in: ids }, verificationStatus: "PENDING" },
+    data: {
+      verificationStatus: approved ? "VERIFIED" : "REJECTED",
+      verifiedAt: approved ? new Date() : null,
+      rejectionReason: approved ? null : reason || null,
+    },
+  });
+
+  return c.json({ status: approved ? "VERIFIED" : "REJECTED", count });
 });
 
 adminRoutes.delete("/api/admin/photos/:id", async (c) => {

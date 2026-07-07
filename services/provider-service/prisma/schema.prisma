@@ -54,6 +54,9 @@ model Provider {
   // NONE | PENDING | VERIFIED | REJECTED
   verificationStatus String    @default("NONE")
   verifiedAt         DateTime?
+  // Set when an admin rejects a verification request (single or bulk) so the
+  // provider knows what to fix on resubmission. Cleared on the next approve.
+  rejectionReason    String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
