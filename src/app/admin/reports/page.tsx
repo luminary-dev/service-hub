@@ -7,6 +7,10 @@ import AdminReportsList, {
   type ReportRow,
 } from "@/components/admin/AdminReportsList";
 import RunFlaggingButton from "@/components/admin/RunFlaggingButton";
+import ReportsFilterBar, {
+  type StatusFilter,
+  type TargetTypeFilter,
+} from "@/components/admin/ReportsFilterBar";
 
 // Caching (#57): admin-only moderation view; edits must be visible on the
 // next request — stays fully dynamic (no-store).
@@ -17,19 +21,45 @@ export const dynamic = "force-dynamic";
 // review-service owns reports on reviews (`GET /api/admin/review-reports`).
 // Both return OPEN first (newest first) with a hydrated target summary
 // (null when the target no longer exists).
-export default async function AdminReportsPage() {
+const TARGET_TYPES: TargetTypeFilter[] = ["PROVIDER", "WORK_PHOTO", "REVIEW"];
+const STATUSES: StatusFilter[] = ["OPEN", "RESOLVED", "DISMISSED"];
+
+export default async function AdminReportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   const session = await getSession();
   if (!session) redirect("/login");
   if (session.role !== "ADMIN") redirect("/");
+
+  const params = await searchParams;
+  const targetType: TargetTypeFilter = TARGET_TYPES.includes(
+    params.targetType as TargetTypeFilter
+  )
+    ? (params.targetType as TargetTypeFilter)
+    : "";
+  const status: StatusFilter = STATUSES.includes(params.status as StatusFilter)
+    ? (params.status as StatusFilter)
+    : "";
+
+  // Filtering (#223): both underlying queues accept the same `targetType`/
+  // `status` params and apply them independently before this page merges
+  // their results — a queue whose owner doesn't match the target type
+  // filter (e.g. REVIEW at provider-service) just returns an empty list.
+  const query = new URLSearchParams();
+  if (targetType) query.set("targetType", targetType);
+  if (status) query.set("status", status);
+  const qs = query.toString();
 
   const [locale, providerData, reviewData] = await Promise.all([
     getLocale(),
     apiJson<{
       reports: Omit<Extract<ReportRow, { source: "provider" }>, "source">[];
-    }>("/api/admin/reports"),
+    }>(`/api/admin/reports${qs ? `?${qs}` : ""}`),
     apiJson<{
       reports: Omit<Extract<ReportRow, { source: "review" }>, "source">[];
-    }>("/api/admin/review-reports"),
+    }>(`/api/admin/review-reports${qs ? `?${qs}` : ""}`),
   ]);
   const t = dict[locale].admin;
 
@@ -59,6 +89,10 @@ export default async function AdminReportsPage() {
           <p className="mt-1 text-ink-600">{t.reportsSubtitle}</p>
         </div>
         <RunFlaggingButton />
+      </div>
+
+      <div className="mt-6">
+        <ReportsFilterBar targetType={targetType} status={status} />
       </div>
 
       <AdminReportsList rows={rows} />

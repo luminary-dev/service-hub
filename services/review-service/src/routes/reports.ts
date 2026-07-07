@@ -80,29 +80,52 @@ reports.post("/api/reviews/:id/report", async (c) => {
 // handled reports are kept for context, not as a full audit browser.
 const CLOSED_REPORTS_TAKE = 100;
 
+const REPORT_STATUSES = ["OPEN", "RESOLVED", "DISMISSED"] as const;
+// This queue only ever holds REVIEW reports — provider/work-photo reports
+// live at provider-service. A PROVIDER/WORK_PHOTO filter is valid overall
+// (the admin frontend offers it as one dropdown across both services) but
+// never matches here, so it short-circuits to an empty list below.
+const LOCAL_TARGET_TYPE = "REVIEW";
+
 // OPEN reports first (newest first), then recently closed ones. Every report
 // carries a hydrated target summary from the local Review table (rating,
 // comment, provider/author ids); `target` is null when the review has since
 // been hard-deleted (account erasure). Soft-deleted reviews still hydrate,
 // flagged with removed=true, so an admin can see a report was already handled.
+//
+// Filtering (#223): optional `status` and `targetType` query params, passed
+// straight through from the admin frontend's filter dropdowns. Unrecognized
+// values are ignored (treated as "all").
 reports.get("/api/admin/review-reports", async (c) => {
   const auth = getAuth(c);
   if (auth?.role !== "ADMIN") {
     return c.json({ error: "Forbidden" }, 403);
   }
 
-  const [open, closed] = await Promise.all([
-    db.report.findMany({
-      where: { status: "OPEN" },
-      orderBy: { createdAt: "desc" },
-    }),
-    db.report.findMany({
-      where: { status: { not: "OPEN" } },
-      orderBy: { createdAt: "desc" },
-      take: CLOSED_REPORTS_TAKE,
-    }),
-  ]);
-  const rows = [...open, ...closed];
+  const statusParam = c.req.query("status");
+  const status = REPORT_STATUSES.find((s) => s === statusParam);
+  const targetTypeParam = c.req.query("targetType");
+  if (targetTypeParam && targetTypeParam !== LOCAL_TARGET_TYPE) {
+    return c.json({ reports: [] });
+  }
+
+  const rows = status
+    ? await db.report.findMany({
+        where: { status },
+        orderBy: { createdAt: "desc" },
+        ...(status === "OPEN" ? {} : { take: CLOSED_REPORTS_TAKE }),
+      })
+    : await Promise.all([
+        db.report.findMany({
+          where: { status: "OPEN" },
+          orderBy: { createdAt: "desc" },
+        }),
+        db.report.findMany({
+          where: { status: { not: "OPEN" } },
+          orderBy: { createdAt: "desc" },
+          take: CLOSED_REPORTS_TAKE,
+        }),
+      ]).then(([open, closed]) => [...open, ...closed]);
 
   const reviewIds = rows.map((r) => r.targetId);
   const reviews = reviewIds.length
@@ -154,9 +177,14 @@ reports.patch("/api/admin/review-reports/:id", async (c) => {
     return c.json({ error: "Invalid input" }, 400);
   }
 
+  // Audit trail (#223): stamp who closed the report and when.
   const { count } = await db.report.updateMany({
     where: { id: c.req.param("id") },
-    data: { status: parsed.data.status },
+    data: {
+      status: parsed.data.status,
+      resolvedBy: auth?.userId ?? null,
+      resolvedAt: new Date(),
+    },
   });
   if (count === 0) {
     return c.json({ error: "Report not found" }, 404);

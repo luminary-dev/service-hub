@@ -23,6 +23,11 @@ type ReportBase = {
   details: string | null;
   status: "OPEN" | "RESOLVED" | "DISMISSED";
   createdAt: string;
+  // Resolution audit trail (#223): stamped when the report is resolved or
+  // dismissed; null while OPEN (and for pre-existing rows closed before the
+  // audit trail shipped).
+  resolvedBy: string | null;
+  resolvedAt: string | null;
 };
 
 type ProviderReport = ReportBase & {
@@ -236,6 +241,14 @@ export default function AdminReportsList({ rows }: { rows: ReportRow[] }) {
                     {formatDate(r.createdAt, locale)} · {t.reportedBy}{" "}
                     {r.reporterId ?? t.reportAnonymous}
                   </p>
+                  {r.status !== "OPEN" && r.resolvedBy && r.resolvedAt && (
+                    <p className="mt-1 text-xs text-ink-500">
+                      {t.reportResolvedMeta(
+                        r.resolvedBy,
+                        formatDate(r.resolvedAt, locale)
+                      )}
+                    </p>
+                  )}
                 </div>
               </div>
               {r.status === "OPEN" && (

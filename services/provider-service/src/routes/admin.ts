@@ -308,27 +308,53 @@ adminRoutes.patch("/api/admin/photos/:id/restore", async (c) => {
 // handled reports are kept for context, not as a full audit browser.
 const CLOSED_REPORTS_TAKE = 100;
 
+const REPORT_STATUSES = ["OPEN", "RESOLVED", "DISMISSED"] as const;
+// This queue only ever holds PROVIDER/WORK_PHOTO reports — REVIEW reports
+// live at review-service. A REVIEW filter is valid overall (the admin
+// frontend offers it as one dropdown across both services) but never
+// matches here, so it short-circuits to an empty list below.
+const LOCAL_TARGET_TYPES = ["PROVIDER", "WORK_PHOTO"] as const;
+
 // OPEN reports first (newest first), then recently closed ones. Every report
 // carries a hydrated target summary from local tables — provider name for
 // PROVIDER targets, photo url + owner for WORK_PHOTO targets — and `target`
 // is null when the target has since been hard-deleted.
+//
+// Filtering (#223): optional `status` and `targetType` query params, passed
+// straight through from the admin frontend's filter dropdowns. Unrecognized
+// values are ignored (treated as "all").
 adminRoutes.get("/api/admin/reports", async (c) => {
   if (!isAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
-  const [open, closed] = await Promise.all([
-    db.report.findMany({
-      where: { status: "OPEN" },
-      orderBy: { createdAt: "desc" },
-    }),
-    db.report.findMany({
-      where: { status: { not: "OPEN" } },
-      orderBy: { createdAt: "desc" },
-      take: CLOSED_REPORTS_TAKE,
-    }),
-  ]);
-  const rows = [...open, ...closed];
+  const statusParam = c.req.query("status");
+  const status = REPORT_STATUSES.find((s) => s === statusParam);
+  const targetTypeParam = c.req.query("targetType");
+  if (targetTypeParam && !LOCAL_TARGET_TYPES.includes(targetTypeParam as never)) {
+    // A REVIEW (or otherwise unknown) filter never matches provider-service
+    // reports.
+    return c.json({ reports: [] });
+  }
+  const targetType = targetTypeParam as (typeof LOCAL_TARGET_TYPES)[number] | undefined;
+
+  const rows = status
+    ? await db.report.findMany({
+        where: { status, ...(targetType ? { targetType } : {}) },
+        orderBy: { createdAt: "desc" },
+        ...(status === "OPEN" ? {} : { take: CLOSED_REPORTS_TAKE }),
+      })
+    : await Promise.all([
+        db.report.findMany({
+          where: { status: "OPEN", ...(targetType ? { targetType } : {}) },
+          orderBy: { createdAt: "desc" },
+        }),
+        db.report.findMany({
+          where: { status: { not: "OPEN" }, ...(targetType ? { targetType } : {}) },
+          orderBy: { createdAt: "desc" },
+          take: CLOSED_REPORTS_TAKE,
+        }),
+      ]).then(([open, closed]) => [...open, ...closed]);
 
   const providerIds = rows
     .filter((r) => r.targetType === "PROVIDER")
@@ -402,9 +428,14 @@ adminRoutes.patch("/api/admin/reports/:id", async (c) => {
     return c.json({ error: "Invalid input" }, 400);
   }
 
+  // Audit trail (#223): stamp who closed the report and when.
   const { count } = await db.report.updateMany({
     where: { id: c.req.param("id") },
-    data: { status: parsed.data.status },
+    data: {
+      status: parsed.data.status,
+      resolvedBy: getAuth(c)?.userId ?? null,
+      resolvedAt: new Date(),
+    },
   });
   if (count === 0) {
     return c.json({ error: "Report not found" }, 404);
