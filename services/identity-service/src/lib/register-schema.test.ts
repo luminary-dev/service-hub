@@ -5,7 +5,7 @@ const validCustomer = {
   role: "CUSTOMER",
   name: "Dilani Rajapaksa",
   email: "dilani@example.com",
-  password: "Str0ng!Passphrase",
+  password: "example-passphrase",
   phone: "0711111111",
 };
 
@@ -13,7 +13,7 @@ const validProvider = {
   role: "PROVIDER",
   name: "Nuwan Perera",
   email: "nuwan@example.com",
-  password: "Str0ng!Passphrase",
+  password: "example-passphrase",
   phone: "0771234501",
   category: "mechanic",
   headline: "Honest auto repairs",
