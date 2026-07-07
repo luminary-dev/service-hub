@@ -91,6 +91,7 @@ through internal HTTP endpoints.
 | `DATABASE_URL` | identity, provider, review, job |
 | `AUTH_SECRET` | identity (sign), gateway + web (verify) |
 | `INTERNAL_API_SECRET` | all services + gateway |
+| `REDIS_URL` | gateway (distributed rate-limit window; unset → per-instance in-memory fallback — see [RATE_LIMITING.md](RATE_LIMITING.md)) |
 | `IDENTITY_SERVICE_URL`, `PROVIDER_SERVICE_URL`, `REVIEW_SERVICE_URL`, `JOB_SERVICE_URL`, `NOTIFICATION_SERVICE_URL`, `MEDIA_SERVICE_URL` | gateway + any service that calls that peer |
 | `RESEND_API_KEY`, `EMAIL_FROM` | notification (console fallback when unset) |
 | `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | media (uploads → Cloudflare R2; all four unset → local disk under `$MEDIA_DIR`) |
