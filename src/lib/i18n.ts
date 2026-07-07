@@ -346,6 +346,7 @@ const en = {
     reportTargetGone: "This content no longer exists.",
     reportContentRemoved: "Removed",
     viewProvider: "View provider",
+    exportCsv: "Export CSV",
   },
   profile: {
     available: "Available for work",
@@ -1048,6 +1049,7 @@ const si: Dict = {
     reportTargetGone: "මෙම අන්තර්ගතය තවදුරටත් නොපවතී.",
     reportContentRemoved: "ඉවත් කර ඇත",
     viewProvider: "වෘත්තිකයා බලන්න",
+    exportCsv: "CSV නිර්යාත කරන්න",
   },
   profile: {
     available: "වැඩට සූදානම්",

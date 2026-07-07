@@ -8,6 +8,7 @@ import { dict } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
 import Stars from "@/components/Stars";
 import ReportActions from "@/components/admin/ReportActions";
+import ExportCsvButton from "@/components/admin/ExportCsvButton";
 
 // Caching (#57): admin-only moderation view; edits must be visible on the
 // next request — stays fully dynamic (no-store).
@@ -92,12 +93,31 @@ export default async function AdminReportsPage() {
   const reasonLabel = (reason: string) =>
     reason in tr.reasons ? tr.reasons[reason as keyof typeof tr.reasons] : reason;
 
+  // Flat subset for the CSV export (#230) — mirrors the interleaved queue
+  // above. No resolvedBy/resolvedAt in the current report schema yet.
+  const csvRows = rows.map((r) => ({
+    id: r.id,
+    targetType: r.targetType,
+    reason: r.reason,
+    status: r.status,
+    createdAt: r.createdAt,
+  }));
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
-      <h1 className="text-3xl font-semibold tracking-tight text-ink-900">
-        {t.reportsTitle}
-      </h1>
-      <p className="mt-1 text-ink-600">{t.reportsSubtitle}</p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight text-ink-900">
+            {t.reportsTitle}
+          </h1>
+          <p className="mt-1 text-ink-600">{t.reportsSubtitle}</p>
+        </div>
+        <ExportCsvButton
+          rows={csvRows}
+          filename="reports.csv"
+          label={t.exportCsv}
+        />
+      </div>
 
       {rows.length === 0 ? (
         <p className="mt-8 text-sm text-ink-500">{t.reportsEmpty}</p>

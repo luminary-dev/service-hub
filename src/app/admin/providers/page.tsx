@@ -6,6 +6,7 @@ import { getLocale } from "@/lib/locale";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
 import Avatar from "@/components/Avatar";
 import AdminProviderActions from "@/components/admin/AdminProviderActions";
+import ExportCsvButton from "@/components/admin/ExportCsvButton";
 
 // Caching (#57): admin-only moderation view; edits must be visible on the
 // next request — stays fully dynamic (no-store).
@@ -20,6 +21,7 @@ type AdminProviderRow = {
   avatarUrl: string | null;
   verificationStatus: string;
   suspended: boolean;
+  createdAt: string;
   user: { name: string; email: string };
   _count: { reviews: number; photos: number };
 };
@@ -36,12 +38,33 @@ export default async function AdminProvidersPage() {
   const providers = data?.providers ?? [];
   const t = dict[locale].admin;
 
+  // Flat subset for the CSV export (#230) — mirrors what's rendered above.
+  const csvRows = providers.map((p) => ({
+    id: p.id,
+    name: p.user.name,
+    category: p.category,
+    city: p.city,
+    verificationStatus: p.verificationStatus,
+    suspended: p.suspended,
+    reviewCount: p._count.reviews,
+    createdAt: p.createdAt,
+  }));
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
-      <h1 className="text-3xl font-semibold tracking-tight text-ink-900">
-        {t.providersTitle}
-      </h1>
-      <p className="mt-1 text-ink-600">{t.providersSubtitle}</p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight text-ink-900">
+            {t.providersTitle}
+          </h1>
+          <p className="mt-1 text-ink-600">{t.providersSubtitle}</p>
+        </div>
+        <ExportCsvButton
+          rows={csvRows}
+          filename="providers.csv"
+          label={t.exportCsv}
+        />
+      </div>
 
       {providers.length === 0 ? (
         <div className="card mt-8 px-6 py-16 text-center text-sm text-ink-500">
