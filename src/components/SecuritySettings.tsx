@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useT } from "@/components/I18nProvider";
 import PasswordInput from "@/components/PasswordInput";
 import { useToast } from "@/components/ToastProvider";
+import { Field } from "@/components/ui/Field";
 
 // Account security controls, backed by identity-service via the gateway:
 // change-password re-issues this session's cookie (other devices drop via the
@@ -89,129 +90,146 @@ export default function SecuritySettings() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
-      <h1 className="text-3xl font-semibold tracking-tight text-ink-900">
+    <div className="mx-auto max-w-2xl px-4 py-12 sm:px-6">
+      {/* Spec kicker mirroring the registry surfaces. */}
+      <div className="flex items-center gap-2.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em]">
+        <span className="rounded-sm bg-brand-700 px-1.5 py-0.5 text-white dark:text-ink-50">
+          SEC
+        </span>
+        <span className="hidden h-px flex-1 bg-ink-300 sm:block" />
+      </div>
+      <h1 className="mt-3 text-3xl font-bold tracking-tight text-ink-900 sm:text-4xl">
         {t.security.title}
       </h1>
-      <p className="mt-1 text-ink-600">{t.security.subtitle}</p>
+      <p className="mt-2 text-ink-600">{t.security.subtitle}</p>
 
-      <form onSubmit={changePassword} className="card mt-8 space-y-4 p-6">
-        <h2 className="text-lg font-semibold text-ink-900">
-          {t.security.changeTitle}
-        </h2>
-        <div>
-          <label className="label" htmlFor="current-password">
-            {t.security.current}
-          </label>
-          <PasswordInput
-            id="current-password"
-            value={current}
-            onChange={(e) => setCurrent(e.target.value)}
-            required
-            autoComplete="current-password"
-          />
+      {/* -- Change password ------------------------------------------ */}
+      <form
+        onSubmit={changePassword}
+        className="tech-corners mt-8 overflow-hidden rounded-lg border border-ink-300 bg-surface"
+      >
+        <div className="flex items-center justify-between border-b border-ink-200 bg-ink-100 px-5 py-3 font-mono text-[11px] uppercase tracking-[0.12em]">
+          <span className="font-bold text-ink-700">01</span>
+          <span className="text-brand-700">{t.security.changeTitle}</span>
         </div>
-        <div>
-          <label className="label" htmlFor="new-password">
-            {t.security.newPassword}
-          </label>
-          <PasswordInput
-            id="new-password"
-            value={next}
-            onChange={(e) => setNext(e.target.value)}
-            required
-            minLength={6}
-            maxLength={100}
-            autoComplete="new-password"
-          />
+        <div className="space-y-4 p-6">
+          <Field label={t.security.current} htmlFor="current-password">
+            <PasswordInput
+              id="current-password"
+              value={current}
+              onChange={(e) => setCurrent(e.target.value)}
+              required
+              autoComplete="current-password"
+            />
+          </Field>
+          <Field label={t.security.newPassword} htmlFor="new-password">
+            <PasswordInput
+              id="new-password"
+              value={next}
+              onChange={(e) => setNext(e.target.value)}
+              required
+              minLength={6}
+              maxLength={100}
+              autoComplete="new-password"
+            />
+          </Field>
+          <Field label={t.security.confirm} htmlFor="confirm-password">
+            <PasswordInput
+              id="confirm-password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              required
+              minLength={6}
+              maxLength={100}
+              autoComplete="new-password"
+              aria-invalid={changeError ? true : undefined}
+              aria-describedby={
+                changeError ? "change-password-error" : undefined
+              }
+            />
+          </Field>
+          {changeError && (
+            <p
+              id="change-password-error"
+              role="alert"
+              className="text-sm text-red-600"
+            >
+              {changeError}
+            </p>
+          )}
+          <button type="submit" disabled={changing} className="btn-primary">
+            {changing ? t.security.changing : t.security.change}
+          </button>
         </div>
-        <div>
-          <label className="label" htmlFor="confirm-password">
-            {t.security.confirm}
-          </label>
-          <PasswordInput
-            id="confirm-password"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            required
-            minLength={6}
-            maxLength={100}
-            autoComplete="new-password"
-            aria-invalid={changeError ? true : undefined}
-            aria-describedby={changeError ? "change-password-error" : undefined}
-          />
-        </div>
-        {changeError && (
-          <p
-            id="change-password-error"
-            role="alert"
-            className="text-sm text-red-600"
-          >
-            {changeError}
-          </p>
-        )}
-        <button type="submit" disabled={changing} className="btn-primary">
-          {changing ? t.security.changing : t.security.change}
-        </button>
       </form>
 
-      <div className="card mt-6 p-6">
-        <h2 className="text-lg font-semibold text-ink-900">
-          {t.security.logoutAllTitle}
-        </h2>
-        <p className="mt-1 text-sm text-ink-500">{t.security.logoutAllBody}</p>
-        {logoutError && (
-          <p role="alert" className="mt-3 text-sm text-red-600">
-            {logoutError}
-          </p>
-        )}
-        <button
-          type="button"
-          onClick={logoutAll}
-          disabled={loggingOut}
-          className="btn-secondary mt-4"
-        >
-          {t.security.logoutAll}
-        </button>
+      {/* -- Sign out everywhere -------------------------------------- */}
+      <div className="tech-corners mt-6 overflow-hidden rounded-lg border border-ink-300 bg-surface">
+        <div className="flex items-center justify-between border-b border-ink-200 bg-ink-100 px-5 py-3 font-mono text-[11px] uppercase tracking-[0.12em]">
+          <span className="font-bold text-ink-700">02</span>
+          <span className="text-brand-700">{t.security.logoutAllTitle}</span>
+        </div>
+        <div className="p-6">
+          <p className="text-sm text-ink-500">{t.security.logoutAllBody}</p>
+          {logoutError && (
+            <p role="alert" className="mt-3 text-sm text-red-600">
+              {logoutError}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={logoutAll}
+            disabled={loggingOut}
+            className="btn-secondary mt-4"
+          >
+            {t.security.logoutAll}
+          </button>
+        </div>
       </div>
 
+      {/* -- Delete account (danger zone) ----------------------------- */}
       <form
         onSubmit={deleteAccount}
-        className="card mt-6 border-red-200 p-6"
+        className="tech-corners mt-6 overflow-hidden rounded-lg border border-red-300 bg-surface"
       >
-        <h2 className="text-lg font-semibold text-red-700">
-          {t.security.deleteTitle}
-        </h2>
-        <p className="mt-1 text-sm text-ink-500">{t.security.deleteBody}</p>
-        <div className="mt-4">
-          <label className="label" htmlFor="delete-password">
-            {t.security.deletePassword}
-          </label>
-          <PasswordInput
-            id="delete-password"
-            value={deletePassword}
-            onChange={(e) => setDeletePassword(e.target.value)}
-            required
-            autoComplete="current-password"
-            aria-describedby={deleteError ? "delete-account-error" : undefined}
-          />
+        <div className="hazard h-1.5 w-full" />
+        <div className="flex items-center justify-between border-b border-red-200 bg-red-50 px-5 py-3 font-mono text-[11px] uppercase tracking-[0.12em] dark:bg-red-950/30">
+          <span className="font-bold text-red-700">03</span>
+          <span className="text-red-700">{t.security.deleteTitle}</span>
         </div>
-        {deleteError && (
-          <p
-            id="delete-account-error"
-            role="alert"
-            className="mt-3 text-sm text-red-600"
+        <div className="p-6">
+          <p className="text-sm text-ink-500">{t.security.deleteBody}</p>
+          <div className="mt-4">
+            <Field label={t.security.deletePassword} htmlFor="delete-password">
+              <PasswordInput
+                id="delete-password"
+                value={deletePassword}
+                onChange={(e) => setDeletePassword(e.target.value)}
+                required
+                autoComplete="current-password"
+                aria-describedby={
+                  deleteError ? "delete-account-error" : undefined
+                }
+              />
+            </Field>
+          </div>
+          {deleteError && (
+            <p
+              id="delete-account-error"
+              role="alert"
+              className="mt-3 text-sm text-red-600"
+            >
+              {deleteError}
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={deleting || deletePassword.length === 0}
+            className="mt-4 inline-flex items-center justify-center gap-2 rounded-md bg-red-600 px-5 py-2.5 font-display text-sm font-semibold text-white transition hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-red-600/85"
           >
-            {deleteError}
-          </p>
-        )}
-        <button
-          type="submit"
-          disabled={deleting || deletePassword.length === 0}
-          className="mt-4 rounded-full bg-red-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-red-700 dark:hover:bg-red-600/85 disabled:opacity-50"
-        >
-          {deleting ? t.security.deleting : t.security.delete}
-        </button>
+            {deleting ? t.security.deleting : t.security.delete}
+          </button>
+        </div>
       </form>
     </div>
   );
