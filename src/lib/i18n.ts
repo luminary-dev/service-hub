@@ -346,6 +346,22 @@ const en = {
     reportTargetGone: "This content no longer exists.",
     reportContentRemoved: "Removed",
     viewProvider: "View provider",
+    // Impersonation ("view as", #234). Standalone entry point for now; will
+    // move behind a "View as" button on the user detail page once #220
+    // (admin user management) merges.
+    impersonateTitle: "View as user",
+    impersonateSubtitle:
+      "Start a short-lived, logged session as another user for support debugging. Admin accounts cannot be impersonated.",
+    impersonateInputLabel: "User ID or email",
+    impersonateInputPlaceholder: "e.g. user_abc123 or user@example.com",
+    impersonateSubmit: "Start viewing as user",
+    impersonateSubmitting: "Starting…",
+    impersonateError: "Could not start impersonation.",
+    impersonateExpiryNote: "Impersonation sessions expire automatically after 15 minutes.",
+    impersonationBannerLabel: (name: string) => `Viewing as ${name}`,
+    impersonationEndButton: "End impersonation",
+    impersonationEnding: "Ending…",
+    impersonationEndError: "Could not end impersonation.",
   },
   profile: {
     available: "Available for work",
@@ -1048,6 +1064,19 @@ const si: Dict = {
     reportTargetGone: "මෙම අන්තර්ගතය තවදුරටත් නොපවතී.",
     reportContentRemoved: "ඉවත් කර ඇත",
     viewProvider: "වෘත්තිකයා බලන්න",
+    impersonateTitle: "පරිශීලකයෙකු ලෙස බලන්න",
+    impersonateSubtitle:
+      "සහාය දෝෂ නිරාකරණය සඳහා තවත් පරිශීලකයෙකු ලෙස කෙටි කාලීන, වාර්තා කළ සැසියක් ආරම්භ කරන්න. පරිපාලක ගිණුම් අනුකරණය කළ නොහැක.",
+    impersonateInputLabel: "පරිශීලක ID හෝ විද්‍යුත් තැපෑල",
+    impersonateInputPlaceholder: "උදා: user_abc123 හෝ user@example.com",
+    impersonateSubmit: "පරිශීලකයා ලෙස බැලීම ආරම්භ කරන්න",
+    impersonateSubmitting: "ආරම්භ කරමින්…",
+    impersonateError: "අනුකරණය ආරම්භ කළ නොහැකි විය.",
+    impersonateExpiryNote: "අනුකරණ සැසි විනාඩි 15කින් ස්වයංක්‍රීයව කල් ඉකුත් වේ.",
+    impersonationBannerLabel: (name: string) => `${name} ලෙස බලමින්`,
+    impersonationEndButton: "අනුකරණය අවසන් කරන්න",
+    impersonationEnding: "අවසන් කරමින්…",
+    impersonationEndError: "අනුකරණය අවසන් කළ නොහැකි විය.",
   },
   profile: {
     available: "වැඩට සූදානම්",
