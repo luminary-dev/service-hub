@@ -399,6 +399,13 @@ const en = {
     jobDescription: "Description",
     jobResponseFrom: "From",
     jobView: "View",
+    // Filtering (#223)
+    reportsFilterTypeLabel: "Target type",
+    reportsFilterStatusLabel: "Status",
+    reportsFilterAllTypes: "All types",
+    reportsFilterAllStatuses: "All statuses",
+    // Resolution audit trail (#223)
+    reportResolvedMeta: (who: string, when: string) => `Handled by ${who} on ${when}`,
     // Billing (#221): flat 10% commission v1 default, not a finalized
     // pricing decision.
     billingLink: "Billing",
@@ -1194,6 +1201,13 @@ const si: Dict = {
     jobDescription: "විස්තරය",
     jobResponseFrom: "වෙතින්",
     jobView: "බලන්න",
+    // Filtering (#223)
+    reportsFilterTypeLabel: "ඉලක්ක වර්ගය",
+    reportsFilterStatusLabel: "තත්ත්වය",
+    reportsFilterAllTypes: "සියලුම වර්ග",
+    reportsFilterAllStatuses: "සියලුම තත්ත්ව",
+    // Resolution audit trail (#223)
+    reportResolvedMeta: (who: string, when: string) => `${who} විසින් ${when} දින හසුරුවන ලදී`,
     billingLink: "බිල්පත්",
     billingDesc: "සම්පූර්ණ කළ රැකියා පිළිබඳ කොමිස් ගනුදෙනු.",
     billingTitle: "බිල්පත්",
