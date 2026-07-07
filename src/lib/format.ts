@@ -29,3 +29,11 @@ export function formatDate(
 ): string {
   return new Date(d).toLocaleDateString(intlLocale(locale), opts);
 }
+
+// Whole days elapsed since `d` (never negative — clock skew or a
+// just-now timestamp both read as 0). Used for SLA/age badges like the
+// verification queue's "waiting N days" indicator.
+export function daysSince(d: string | Date, now: Date = new Date()): number {
+  const ms = now.getTime() - new Date(d).getTime();
+  return Math.max(0, Math.floor(ms / 86_400_000));
+}
