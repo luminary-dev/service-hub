@@ -78,6 +78,17 @@ describe("resolveRoute (routing table)", () => {
     });
   });
 
+  it("routes the admin audit logs to their owning services (#227)", () => {
+    expect(resolveRoute("/api/admin/audit-log")).toEqual({
+      service: "provider",
+      path: "/api/admin/audit-log",
+    });
+    expect(resolveRoute("/api/admin/review-audit-log")).toEqual({
+      service: "review",
+      path: "/api/admin/review-audit-log",
+    });
+  });
+
   it("routes the rest of admin to provider-service", () => {
     expect(resolveRoute("/api/admin/providers")).toEqual({ service: "provider", path: "/api/admin/providers" });
     expect(resolveRoute("/api/admin/providers/prov-1")).toEqual({

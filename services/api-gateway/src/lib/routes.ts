@@ -44,6 +44,12 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
   ) {
     return { service: "review", path: pathname };
   }
+  // Moderation audit trail (#227): review-service's log of the actions it
+  // owns (review delete, report resolve/dismiss); the provider/category/photo
+  // log at /api/admin/audit-log falls through to provider-service below.
+  if (pathname === "/api/admin/review-audit-log") {
+    return { service: "review", path: pathname };
+  }
   if (pathname.startsWith("/api/reviews/")) {
     return { service: "review", path: pathname };
   }
