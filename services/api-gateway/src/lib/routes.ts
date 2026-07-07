@@ -48,6 +48,15 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
     return { service: "review", path: pathname };
   }
 
+  // Admin job management (#222): job-service owns JobRequest/JobResponse; the
+  // rest of /api/admin/ falls through to provider-service below.
+  if (
+    pathname === "/api/admin/jobs" ||
+    pathname.startsWith("/api/admin/jobs/")
+  ) {
+    return { service: "job", path: pathname };
+  }
+
   if (pathname.startsWith("/api/admin/")) {
     return { service: "provider", path: pathname };
   }

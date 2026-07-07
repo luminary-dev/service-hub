@@ -3,6 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useT } from "../I18nProvider";
+import { useToast } from "../ToastProvider";
+
+const ACTION_MESSAGES = {
+  verify: { success: "adminVerified", error: "adminVerifyError" },
+  unverify: { success: "adminUnverified", error: "adminUnverifyError" },
+  suspend: { success: "adminSuspended", error: "adminSuspendError" },
+  unsuspend: { success: "adminUnsuspended", error: "adminUnsuspendError" },
+} as const;
 
 export default function AdminProviderActions({
   providerId,
@@ -14,10 +22,11 @@ export default function AdminProviderActions({
   suspended: boolean;
 }) {
   const [pending, setPending] = useState(false);
-  const t = useT().admin;
+  const t = useT();
+  const toast = useToast();
   const router = useRouter();
 
-  async function act(action: string) {
+  async function act(action: keyof typeof ACTION_MESSAGES) {
     setPending(true);
     const res = await fetch(`/api/admin/providers/${providerId}`, {
       method: "PATCH",
@@ -25,7 +34,13 @@ export default function AdminProviderActions({
       body: JSON.stringify({ action }),
     }).catch(() => null);
     setPending(false);
-    if (res && res.ok) router.refresh();
+    const messages = ACTION_MESSAGES[action];
+    if (res && res.ok) {
+      toast.success(t.toast[messages.success]);
+      router.refresh();
+    } else {
+      toast.error(t.toast[messages.error]);
+    }
   }
 
   return (
@@ -35,7 +50,7 @@ export default function AdminProviderActions({
         disabled={pending}
         className="cursor-pointer rounded-full border border-ink-300 bg-surface px-3 py-1.5 text-xs font-semibold text-ink-800 transition hover:border-brand-400 hover:text-brand-700 disabled:opacity-60"
       >
-        {verified ? t.unverify : t.verify}
+        {verified ? t.admin.unverify : t.admin.verify}
       </button>
       <button
         onClick={() => act(suspended ? "unsuspend" : "suspend")}
@@ -46,7 +61,7 @@ export default function AdminProviderActions({
             : "border-red-300 bg-surface text-red-600 hover:bg-red-50"
         }`}
       >
-        {suspended ? t.unsuspend : t.suspend}
+        {suspended ? t.admin.unsuspend : t.admin.suspend}
       </button>
     </div>
   );

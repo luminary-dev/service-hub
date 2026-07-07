@@ -3,6 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useT } from "../I18nProvider";
+import { useToast } from "../ToastProvider";
+
+const ACTION_MESSAGES = {
+  approve: { success: "adminVerificationApproved", error: "adminVerificationApproveError" },
+  reject: { success: "adminVerificationRejected", error: "adminVerificationRejectError" },
+} as const;
 
 export default function VerificationActions({
   providerId,
@@ -26,7 +32,13 @@ export default function VerificationActions({
       }),
     }).catch(() => null);
     setPending(false);
-    if (res && res.ok) router.refresh();
+    const messages = ACTION_MESSAGES[action];
+    if (res && res.ok) {
+      toast.success(t.toast[messages.success]);
+      router.refresh();
+    } else {
+      toast.error(t.toast[messages.error]);
+    }
   }
 
   return (
