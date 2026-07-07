@@ -108,12 +108,27 @@ adminRoutes.get("/api/admin/providers/:id", async (c) => {
   }
 
   // Moderation view: include soft-deleted reviews so admins can restore.
-  const { reviews } = await fetchProviderReviews(id, { includeDeleted: true });
+  const [{ reviews }, ratings, openReportCount] = await Promise.all([
+    fetchProviderReviews(id, { includeDeleted: true }),
+    fetchRatings([id]),
+    db.report.count({
+      where: { targetType: "PROVIDER", targetId: id, status: "OPEN" },
+    }),
+  ]);
+  const rating = ratings[id]?.rating ?? 0;
+  const reviewCount = ratings[id]?.count ?? 0;
   return c.json({
     provider: {
       ...provider,
       user: { name: provider.contactName, email: provider.contactEmail },
       reviews,
+      // Quality signal (#229): see lib/quality-score.ts for the formula.
+      quality: {
+        ...computeQualityScore({ rating, reviewCount, openReportCount }),
+        rating,
+        reviewCount,
+        openReportCount,
+      },
     },
   });
 });

@@ -5,6 +5,7 @@ import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
+import { qualityChipClasses } from "@/lib/quality";
 import Avatar from "@/components/Avatar";
 import Stars from "@/components/Stars";
 import AdminProviderActions from "@/components/admin/AdminProviderActions";
@@ -24,6 +25,12 @@ type AdminProviderDetail = {
   verificationStatus: string;
   suspended: boolean;
   user: { name: string; email: string };
+  quality: {
+    qualityScore: number;
+    rating: number;
+    reviewCount: number;
+    openReportCount: number;
+  };
   reviews: {
     id: string;
     rating: number;
@@ -74,6 +81,21 @@ export default async function AdminProviderModeratePage({
               {categoryLabelLoc(provider.category, locale)} · {provider.city} ·{" "}
               {provider.user.email}
             </p>
+            <div className="mt-2 flex items-center gap-2">
+              <span
+                className={`chip ${qualityChipClasses(provider.quality.qualityScore)}`}
+                title={t.qualityScoreHint}
+              >
+                {t.qualityScoreLabel} {provider.quality.qualityScore}
+              </span>
+              <span className="text-xs text-ink-500">
+                {t.qualityScoreBreakdown(
+                  provider.quality.rating,
+                  provider.quality.reviewCount,
+                  provider.quality.openReportCount
+                )}
+              </span>
+            </div>
           </div>
         </div>
         <AdminProviderActions

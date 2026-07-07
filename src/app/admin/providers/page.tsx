@@ -32,6 +32,12 @@ type AdminProviderRow = {
   suspended: boolean;
   user: { name: string; email: string };
   _count: { reviews: number; photos: number };
+  quality: {
+    qualityScore: number;
+    rating: number;
+    reviewCount: number;
+    openReportCount: number;
+  };
 };
 
 export default async function AdminProvidersPage({
@@ -148,6 +154,16 @@ export default async function AdminProvidersPage({
                       {t.suspendedTag}
                     </span>
                   )}
+                  <span
+                    className={`chip ${qualityChipClasses(p.quality.qualityScore)}`}
+                    title={t.qualityScoreBreakdown(
+                      p.quality.rating,
+                      p.quality.reviewCount,
+                      p.quality.openReportCount
+                    )}
+                  >
+                    {t.qualityScoreLabel} {p.quality.qualityScore}
+                  </span>
                 </div>
                 <p className="text-sm text-ink-500">
                   {categoryLabelLoc(p.category, locale)} · {p.city} ·{" "}
