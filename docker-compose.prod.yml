@@ -187,6 +187,9 @@ services:
       NEXT_PUBLIC_SITE_URL: ${WEB_ORIGIN:?WEB_ORIGIN is required}
       CHAT_SERVICE_URL: http://chat-service:4007
       INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:?INTERNAL_API_SECRET is required}
+      # Session-revocation check for page gating (src/lib/session-version.ts) —
+      # reaches identity directly with the internal secret; fails open if unset.
+      IDENTITY_SERVICE_URL: http://identity-service:4001
     depends_on:
       api-gateway:
         condition: service_healthy

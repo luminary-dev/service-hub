@@ -2,6 +2,7 @@
 // src/app/api/auth/register/route.ts. Kept in its own module so the schema
 // can be unit-tested without pulling in the DB client.
 import { z } from "zod";
+import { isCommonPassword } from "./common-passwords";
 import {
   districtEnum,
   optionalSlPhone,
@@ -17,8 +18,17 @@ export const serviceSchema = z.object({
   priceType: z.enum(["HOURLY", "DAILY", "FIXED", "VISIT"]),
 });
 
-// Single source of truth for password rules — reused by change-password.
-export const passwordSchema = z.string().min(6).max(100);
+// Single source of truth for password rules — reused by change-password and
+// reset-password. Minimum length 10 (length is the strongest single factor)
+// plus an offline breach/common-password screen. Length is validated before the
+// deny-list so the user gets the more actionable message first.
+export const passwordSchema = z
+  .string()
+  .min(10, "Password must be at least 10 characters")
+  .max(100)
+  .refine((p) => !isCommonPassword(p), {
+    message: "This password is too common — please choose a less guessable one",
+  });
 
 const baseSchema = z.object({
   name: z.string().min(2).max(80),

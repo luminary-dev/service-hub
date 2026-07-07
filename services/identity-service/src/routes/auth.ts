@@ -449,7 +449,9 @@ authRoutes.post("/forgot-password", async (c) => {
 // ---------------------------------------------------------------------------
 const resetSchema = z.object({
   token: z.string().min(1),
-  password: z.string().min(6).max(100),
+  // Reuse the shared policy (length + breach screen) instead of a weaker inline
+  // rule, so a reset can't set a password the registration flow would reject.
+  password: passwordSchema,
 });
 
 authRoutes.post("/reset-password", async (c) => {
