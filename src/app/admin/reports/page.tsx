@@ -6,6 +6,7 @@ import { dict } from "@/lib/i18n";
 import AdminReportsList, {
   type ReportRow,
 } from "@/components/admin/AdminReportsList";
+import RunFlaggingButton from "@/components/admin/RunFlaggingButton";
 
 // Caching (#57): admin-only moderation view; edits must be visible on the
 // next request — stays fully dynamic (no-store).

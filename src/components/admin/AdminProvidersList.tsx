@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useT, useLocale } from "../I18nProvider";
 import { categoryLabelLoc } from "@/lib/i18n";
+import { qualityChipClasses } from "@/lib/quality";
 import Avatar from "../Avatar";
 import AdminProviderActions from "./AdminProviderActions";
 
@@ -19,6 +20,12 @@ export type AdminProviderRow = {
   suspended: boolean;
   user: { name: string; email: string };
   _count: { reviews: number; photos: number };
+  quality: {
+    qualityScore: number;
+    rating: number;
+    reviewCount: number;
+    openReportCount: number;
+  };
 };
 
 // Providers list (#231): multi-select + bulk suspend/unsuspend on top of the
@@ -161,6 +168,16 @@ export default function AdminProvidersList({
                       {t.suspendedTag}
                     </span>
                   )}
+                  <span
+                    className={`chip ${qualityChipClasses(p.quality.qualityScore)}`}
+                    title={t.qualityScoreBreakdown(
+                      p.quality.rating,
+                      p.quality.reviewCount,
+                      p.quality.openReportCount
+                    )}
+                  >
+                    {t.qualityScoreLabel} {p.quality.qualityScore}
+                  </span>
                 </div>
                 <p className="text-sm text-ink-500">
                   {categoryLabelLoc(p.category, locale)} · {p.city} ·{" "}
