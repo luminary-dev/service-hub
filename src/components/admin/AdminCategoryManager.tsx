@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { hasSuperAdminAccess } from "@/lib/roles";
 import { useT } from "../I18nProvider";
+import { useToast } from "../ToastProvider";
 
 export type AdminCategory = {
   slug: string;
@@ -35,7 +36,8 @@ export default function AdminCategoryManager({
   initial: AdminCategory[];
   role: string;
 }) {
-  const t = useT().admin;
+  const t = useT();
+  const toast = useToast();
   const router = useRouter();
   const canManage = hasSuperAdminAccess(role);
   const [pending, setPending] = useState(false);
@@ -67,11 +69,14 @@ export default function AdminCategoryManager({
     setPending(false);
     if (res && res.ok) {
       setEditing(null);
+      toast.success(t.toast.adminCategorySaved);
       router.refresh();
       return true;
     }
     const d = await res?.json().catch(() => ({}));
-    setError(d?.error ?? t.catError);
+    const message = d?.error ?? t.admin.catError;
+    setError(message);
+    toast.error(message);
     return false;
   }
 
@@ -120,10 +125,13 @@ export default function AdminCategoryManager({
         icon: "",
         sortOrder: "",
       });
+      toast.success(t.toast.adminCategoryAdded);
       router.refresh();
     } else {
       const d = await res?.json().catch(() => ({}));
-      setError(d?.error ?? t.catError);
+      const message = d?.error ?? t.admin.catError;
+      setError(message);
+      toast.error(message);
     }
   }
 
@@ -132,7 +140,7 @@ export default function AdminCategoryManager({
       {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
 
       {initial.length === 0 ? (
-        <p className="mt-8 text-ink-500">{t.catEmpty}</p>
+        <p className="mt-8 text-ink-500">{t.admin.catEmpty}</p>
       ) : (
         <ul className="mt-8 space-y-3">
           {initial.map((c) => (
@@ -144,7 +152,7 @@ export default function AdminCategoryManager({
                 <div className="flex flex-1 flex-wrap items-end gap-3">
                   <div>
                     <label className="label" htmlFor="cat-catLabelEn">
-                      {t.catLabelEn}
+                      {t.admin.catLabelEn}
                     </label>
                     <input
                       id="cat-catLabelEn"
@@ -157,7 +165,7 @@ export default function AdminCategoryManager({
                   </div>
                   <div>
                     <label className="label" htmlFor="cat-catLabelSi">
-                      {t.catLabelSi}
+                      {t.admin.catLabelSi}
                     </label>
                     <input
                       id="cat-catLabelSi"
@@ -170,7 +178,7 @@ export default function AdminCategoryManager({
                   </div>
                   <div>
                     <label className="label" htmlFor="cat-catIcon">
-                      {t.catIcon}
+                      {t.admin.catIcon}
                     </label>
                     <input
                       id="cat-catIcon"
@@ -183,7 +191,7 @@ export default function AdminCategoryManager({
                   </div>
                   <div>
                     <label className="label" htmlFor="cat-catSortOrder">
-                      {t.catSortOrder}
+                      {t.admin.catSortOrder}
                     </label>
                     <input
                       id="cat-catSortOrder"
@@ -202,7 +210,7 @@ export default function AdminCategoryManager({
                       disabled={pending}
                       className="btn-primary"
                     >
-                      {t.catSave}
+                      {t.admin.catSave}
                     </button>
                     <button
                       onClick={() => {
@@ -212,7 +220,7 @@ export default function AdminCategoryManager({
                       disabled={pending}
                       className="btn-ghost"
                     >
-                      {t.catCancel}
+                      {t.admin.catCancel}
                     </button>
                   </div>
                 </div>
@@ -226,16 +234,16 @@ export default function AdminCategoryManager({
                       <span className="text-ink-500">{c.labelSi}</span>
                       {c.active ? (
                         <span className="chip bg-brand-50 text-brand-700 ring-1 ring-brand-200">
-                          {t.catActive}
+                          {t.admin.catActive}
                         </span>
                       ) : (
                         <span className="chip bg-red-50 text-red-700 ring-1 ring-red-200">
-                          {t.catInactive}
+                          {t.admin.catInactive}
                         </span>
                       )}
                     </div>
                     <p className="text-sm text-ink-500">
-                      {c.slug} · {t.catSortOrder.toLowerCase()} {c.sortOrder}
+                      {c.slug} · {t.admin.catSortOrder.toLowerCase()} {c.sortOrder}
                       {c.icon ? ` · ${c.icon}` : ""}
                     </p>
                   </div>
@@ -280,11 +288,11 @@ export default function AdminCategoryManager({
 
       {canManage && (
       <form onSubmit={add} className="card mt-8 space-y-4 p-6">
-        <h2 className="font-semibold text-ink-900">{t.catAddTitle}</h2>
+        <h2 className="font-semibold text-ink-900">{t.admin.catAddTitle}</h2>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="label" htmlFor="cat-catSlug">
-              {t.catSlug}
+              {t.admin.catSlug}
             </label>
             <input
               id="cat-catSlug"
@@ -297,11 +305,11 @@ export default function AdminCategoryManager({
               pattern="[a-z0-9-]{2,40}"
               required
             />
-            <p className="mt-1 text-xs text-ink-500">{t.catSlugHint}</p>
+            <p className="mt-1 text-xs text-ink-500">{t.admin.catSlugHint}</p>
           </div>
           <div>
             <label className="label" htmlFor="cat-catIcon-1">
-              {t.catIcon}
+              {t.admin.catIcon}
             </label>
             <input
               id="cat-catIcon-1"
@@ -315,7 +323,7 @@ export default function AdminCategoryManager({
           </div>
           <div>
             <label className="label" htmlFor="cat-catLabelEn-1">
-              {t.catLabelEn}
+              {t.admin.catLabelEn}
             </label>
             <input
               id="cat-catLabelEn-1"
@@ -329,7 +337,7 @@ export default function AdminCategoryManager({
           </div>
           <div>
             <label className="label" htmlFor="cat-catLabelSi-1">
-              {t.catLabelSi}
+              {t.admin.catLabelSi}
             </label>
             <input
               id="cat-catLabelSi-1"
@@ -343,7 +351,7 @@ export default function AdminCategoryManager({
           </div>
           <div>
             <label className="label" htmlFor="cat-catSortOrder-1">
-              {t.catSortOrder}
+              {t.admin.catSortOrder}
             </label>
             <input
               id="cat-catSortOrder-1"
@@ -358,7 +366,7 @@ export default function AdminCategoryManager({
           </div>
         </div>
         <button type="submit" disabled={pending} className="btn-primary">
-          {pending ? t.catAdding : t.catAdd}
+          {pending ? t.admin.catAdding : t.admin.catAdd}
         </button>
       </form>
       )}

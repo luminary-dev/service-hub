@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { FaFlag, FaShieldHalved, FaTags, FaUsers } from "@/components/icons";
+import { FaBriefcase, FaFlag, FaShieldHalved, FaTags, FaUsers } from "@/components/icons";
 import { getSession } from "@/lib/auth";
 import { isAdminRole } from "@/lib/roles";
 import { getLocale } from "@/lib/locale";
@@ -41,6 +41,12 @@ export default async function AdminHomePage() {
       icon: FaFlag,
       title: t.reportsLink,
       desc: t.reportsDesc,
+    },
+    {
+      href: "/admin/jobs",
+      icon: FaBriefcase,
+      title: t.jobsLink,
+      desc: t.jobsDesc,
     },
   ];
 
