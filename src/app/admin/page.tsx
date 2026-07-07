@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { FaFlag, FaShieldHalved, FaTags, FaUsers, type IconType } from "@/components/icons";
+import { FaBriefcase, FaFlag, FaShieldHalved, FaTags, FaUsers, type IconType } from "@/components/icons";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";

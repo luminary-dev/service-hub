@@ -3,10 +3,10 @@ import { FaShieldHalved } from "@/components/icons";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
-import { formatDate } from "@/lib/format";
-import { dict, categoryLabelLoc } from "@/lib/i18n";
-import Avatar from "@/components/Avatar";
-import VerificationActions from "@/components/admin/VerificationActions";
+import { dict } from "@/lib/i18n";
+import VerificationQueue, {
+  type PendingVerification,
+} from "@/components/admin/VerificationQueue";
 import MarkQueueViewed from "@/components/admin/MarkQueueViewed";
 
 // Caching (#57): admin-only moderation view; edits must be visible on the

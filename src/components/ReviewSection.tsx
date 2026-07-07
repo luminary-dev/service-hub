@@ -99,7 +99,13 @@ export default function ReviewSection({
 
   return (
     <section className="card p-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em]">
+        <span className="rounded-sm bg-brand-700 px-1.5 py-0.5 text-white dark:text-ink-50">
+          04
+        </span>
+        <span className="h-px flex-1 bg-ink-200" />
+      </div>
+      <div className="mt-3 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-ink-900">
           {t.reviews.title(reviews.length)}
         </h2>
@@ -119,7 +125,10 @@ export default function ReviewSection({
       </div>
 
       {showForm && (
-        <form onSubmit={submit} className="mt-4 rounded-xl bg-ink-50 p-4">
+        <form
+          onSubmit={submit}
+          className="mt-4 rounded-lg border border-ink-200 bg-ink-50 p-4"
+        >
           {/* The star picker is a button group, so it is named with
               aria-labelledby rather than an orphaned <label>. */}
           <span className="label" id="review-rating-label">
@@ -228,7 +237,7 @@ export default function ReviewSection({
       {reviews.length === 0 ? (
         <p className="mt-4 text-sm text-ink-500">{t.reviews.empty}</p>
       ) : (
-        <ul className="mt-4 divide-y divide-ink-100">
+        <ul className="mt-4 divide-y divide-dashed divide-ink-300">
           {reviews.map((r) => (
             <li key={r.id} className="py-4">
               <div className="flex items-start justify-between gap-3">

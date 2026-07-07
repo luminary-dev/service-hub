@@ -255,7 +255,12 @@ export default function PhotosManager({
   return (
     <div className="space-y-6">
       <div className="card p-6">
-        <h2 className="font-semibold text-ink-900">{ph.profilePicture}</h2>
+        <div className="flex items-center gap-2.5">
+          <span className="rounded-sm bg-brand-700 px-1.5 py-0.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-white dark:text-ink-50">
+            PIC
+          </span>
+          <h2 className="font-semibold text-ink-900">{ph.profilePicture}</h2>
+        </div>
         <div className="mt-4 flex items-center gap-5">
           <Avatar name={name} url={avatarUrl} size={72} />
           <div>
@@ -286,7 +291,12 @@ export default function PhotosManager({
       </div>
 
       <div className="card p-6">
-        <h2 className="font-semibold text-ink-900">{ph.workPhotos}</h2>
+        <div className="flex items-center gap-2.5">
+          <span className="rounded-sm bg-brand-700 px-1.5 py-0.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-white dark:text-ink-50">
+            IMG
+          </span>
+          <h2 className="font-semibold text-ink-900">{ph.workPhotos}</h2>
+        </div>
         <p className="mt-1 text-sm text-ink-500">{ph.workPhotosSub}</p>
 
         <input

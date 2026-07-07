@@ -23,13 +23,18 @@ export default async function DashboardInquiryThreadPage({
     <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
       <Link
         href="/dashboard"
-        className="text-sm font-medium text-brand-600 hover:text-brand-700"
+        className="inline-flex items-center gap-1.5 font-mono text-xs font-semibold uppercase tracking-[0.12em] text-brand-700 hover:text-brand-800"
       >
         ← {t.nav.dashboard}
       </Link>
-      <h1 className="mt-2 text-2xl font-semibold tracking-tight text-ink-900">
-        {t.messages.title}
-      </h1>
+      <div className="mt-3 flex items-center gap-2.5">
+        <span className="rounded-sm bg-brand-700 px-1.5 py-0.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-white dark:text-ink-50">
+          MSG
+        </span>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink-900">
+          {t.messages.title}
+        </h1>
+      </div>
       <div className="mt-6">
         <MessageThread inquiryId={id} />
       </div>
