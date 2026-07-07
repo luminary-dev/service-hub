@@ -3,20 +3,27 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { FaTrash } from "@/components/icons";
+import { hasSuperAdminAccess } from "@/lib/roles";
 import { useT } from "../I18nProvider";
 import { useToast } from "../ToastProvider";
 
 export default function AdminDeleteButton({
   endpoint,
+  role,
 }: {
   endpoint: string;
+  role: string;
 }) {
   const [pending, setPending] = useState(false);
   const t = useT();
   const toast = useToast();
   const router = useRouter();
+  // Delete is a destructive, SUPERADMIN-only action (#226) — SUPPORT gets
+  // read access plus report resolve/dismiss, nothing destructive.
+  const allowed = hasSuperAdminAccess(role);
 
   async function remove() {
+    if (!allowed) return;
     setPending(true);
     const res = await fetch(endpoint, { method: "DELETE" }).catch(() => null);
     setPending(false);
@@ -31,9 +38,10 @@ export default function AdminDeleteButton({
   return (
     <button
       onClick={remove}
-      disabled={pending}
-      aria-label={t.admin.delete}
-      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-red-200 bg-surface px-2.5 py-1 text-xs font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-60"
+      disabled={pending || !allowed}
+      aria-label={allowed ? t.admin.delete : t.admin.insufficientPermissions}
+      title={allowed ? undefined : t.admin.insufficientPermissions}
+      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-red-200 bg-surface px-2.5 py-1 text-xs font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
     >
       <FaTrash className="h-3 w-3" />
       {t.admin.delete}
