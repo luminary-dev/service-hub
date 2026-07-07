@@ -1,0 +1,89 @@
+name: Deploy
+
+# Builds and publishes a container image per service + web to GHCR on every push
+# to prod (the deploy branch), then — once a production server exists — pulls and
+# restarts the stack there. The deploy job is inert until the repo variable
+# DEPLOY_ENABLED is set to "true" and the PROD_SSH_* secrets are configured
+# (tracked by #110); publishing images works on its own before then.
+on:
+  push:
+    branches: [prod]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+# Default-deny; each job opts into exactly the scopes it needs.
+permissions: {}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        image:
+          - web
+          - identity-service
+          - provider-service
+          - review-service
+          - job-service
+          - notification-service
+          - media-service
+          - chat-service
+          - api-gateway
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push ${{ matrix.image }}
+        uses: docker/build-push-action@v6
+        with:
+          # web builds from the repo root; each service from its own directory.
+          context: ${{ matrix.image == 'web' && '.' || format('services/{0}', matrix.image) }}
+          push: true
+          tags: |
+            ghcr.io/luminary-dev/service-hub-${{ matrix.image }}:prod
+            ghcr.io/luminary-dev/service-hub-${{ matrix.image }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    # Deploys over SSH with its own secrets — it needs no GITHUB_TOKEN scope.
+    permissions: {}
+    # Stays skipped until the production host (#110) is provisioned and this repo
+    # variable is flipped on. Images are still published by the job above.
+    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
+    environment: production
+    steps:
+      - name: Deploy over SSH
+        env:
+          SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+          HOST: ${{ secrets.PROD_SSH_HOST }}
+          SSH_USER: ${{ secrets.PROD_SSH_USER }}
+          APP_DIR: ${{ secrets.PROD_APP_DIR }}
+          TAG: ${{ github.sha }}
+        run: |
+          install -m 600 /dev/stdin "$HOME/deploy_key" <<< "$SSH_KEY"
+          ssh -o StrictHostKeyChecking=accept-new -i "$HOME/deploy_key" "$SSH_USER@$HOST" bash -s <<EOF
+            set -euo pipefail
+            cd "$APP_DIR"
+            git fetch origin prod && git reset --hard origin/prod
+            export IMAGE_TAG="$TAG"
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            docker image prune -f
+          EOF

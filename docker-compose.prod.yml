@@ -1,0 +1,214 @@
+name: service-hub-prod
+
+# Production stack. Pulls pre-built images from GHCR (published by
+# .github/workflows/deploy.yml on push to prod) instead of building locally.
+# Only Caddy is published to the host (80/443, auto-TLS); every service and the
+# datastores stay on the internal network. Required secrets use ${VAR:?} so the
+# stack refuses to start rather than fall back to a dev default — this mirrors
+# the AUTH_SECRET / INTERNAL_API_SECRET guards in the app.
+#
+# Usage on the server:
+#   cp .env.prod.example .env && $EDITOR .env      # fill in the secrets
+#   IMAGE_TAG=<sha-or-prod> docker compose -f docker-compose.prod.yml up -d
+
+x-service-env: &service-env
+  NODE_ENV: production
+  INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:?INTERNAL_API_SECRET is required}
+  IDENTITY_SERVICE_URL: http://identity-service:4001
+  PROVIDER_SERVICE_URL: http://provider-service:4002
+  REVIEW_SERVICE_URL: http://review-service:4003
+  JOB_SERVICE_URL: http://job-service:4004
+  NOTIFICATION_SERVICE_URL: http://notification-service:4005
+  MEDIA_SERVICE_URL: http://media-service:4006
+  CHAT_SERVICE_URL: http://chat-service:4007
+
+x-node-healthcheck: &node-healthcheck
+  test: ["CMD-SHELL", "wget -qO- http://localhost:$$PORT/healthz > /dev/null || exit 1"]
+  interval: 10s
+  timeout: 3s
+  retries: 10
+
+x-restart: &restart
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    <<: *restart
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    <<: *restart
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  identity-service:
+    image: ghcr.io/luminary-dev/service-hub-identity-service:${IMAGE_TAG:-prod}
+    <<: *restart
+    environment:
+      <<: *service-env
+      PORT: 4001
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?}@postgres:5432/identity_db
+      AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck: *node-healthcheck
+
+  provider-service:
+    image: ghcr.io/luminary-dev/service-hub-provider-service:${IMAGE_TAG:-prod}
+    <<: *restart
+    environment:
+      <<: *service-env
+      PORT: 4002
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?}@postgres:5432/provider_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+      media-service:
+        condition: service_healthy
+    healthcheck: *node-healthcheck
+
+  review-service:
+    image: ghcr.io/luminary-dev/service-hub-review-service:${IMAGE_TAG:-prod}
+    <<: *restart
+    environment:
+      <<: *service-env
+      PORT: 4003
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?}@postgres:5432/review_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+      media-service:
+        condition: service_healthy
+    healthcheck: *node-healthcheck
+
+  job-service:
+    image: ghcr.io/luminary-dev/service-hub-job-service:${IMAGE_TAG:-prod}
+    <<: *restart
+    environment:
+      <<: *service-env
+      PORT: 4004
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?}@postgres:5432/job_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck: *node-healthcheck
+
+  notification-service:
+    image: ghcr.io/luminary-dev/service-hub-notification-service:${IMAGE_TAG:-prod}
+    <<: *restart
+    environment:
+      <<: *service-env
+      PORT: 4005
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+    healthcheck: *node-healthcheck
+
+  media-service:
+    image: ghcr.io/luminary-dev/service-hub-media-service:${IMAGE_TAG:-prod}
+    <<: *restart
+    environment:
+      <<: *service-env
+      PORT: 4006
+      MEDIA_DIR: /app/data
+      # Set BLOB_READ_WRITE_TOKEN to use Vercel Blob; unset → local disk (the
+      # volumes below, which you MUST then back up).
+      BLOB_READ_WRITE_TOKEN: ${BLOB_READ_WRITE_TOKEN:-}
+    volumes:
+      - provider_uploads:/app/data/provider
+      - review_uploads:/app/data/review
+    healthcheck: *node-healthcheck
+
+  chat-service:
+    image: ghcr.io/luminary-dev/service-hub-chat-service:${IMAGE_TAG:-prod}
+    <<: *restart
+    environment:
+      <<: *service-env
+      PORT: 4007
+      GATEWAY_URL: http://api-gateway:4000
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    healthcheck: *node-healthcheck
+
+  api-gateway:
+    image: ghcr.io/luminary-dev/service-hub-api-gateway:${IMAGE_TAG:-prod}
+    <<: *restart
+    environment:
+      <<: *service-env
+      PORT: 4000
+      AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required}
+      WEB_ORIGIN: ${WEB_ORIGIN:?WEB_ORIGIN is required}
+      REDIS_URL: redis://redis:6379
+      # Once #201 lands, set TRUSTED_PROXY_HOPS to match the Caddy→web→gateway
+      # chain so the rate limiter reads the real client IP, not a forged XFF.
+    depends_on:
+      redis:
+        condition: service_healthy
+      media-service:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+      provider-service:
+        condition: service_healthy
+      review-service:
+        condition: service_healthy
+      job-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+    healthcheck: *node-healthcheck
+
+  web:
+    image: ghcr.io/luminary-dev/service-hub-web:${IMAGE_TAG:-prod}
+    <<: *restart
+    environment:
+      NODE_ENV: production
+      GATEWAY_URL: http://api-gateway:4000
+      AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required}
+      NEXT_PUBLIC_SITE_URL: ${WEB_ORIGIN:?WEB_ORIGIN is required}
+      CHAT_SERVICE_URL: http://chat-service:4007
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:?INTERNAL_API_SECRET is required}
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+      chat-service:
+        condition: service_healthy
+
+  # The only public surface: terminates TLS (auto Let's Encrypt) and proxies to
+  # the web app, which in turn proxies /api/* to the gateway internally.
+  caddy:
+    image: caddy:2-alpine
+    <<: *restart
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN is required (the public hostname, e.g. baas.lk)}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
+volumes:
+  pgdata:
+  provider_uploads:
+  review_uploads:
+  caddy_data:
+  caddy_config:

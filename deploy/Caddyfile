@@ -1,0 +1,11 @@
+# Public edge for the production stack. Caddy auto-provisions and renews TLS
+# (Let's Encrypt) for $DOMAIN and reverse-proxies to the web app, which proxies
+# /api/* to the gateway on the internal network. No other service is exposed.
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy web:3000
+}
