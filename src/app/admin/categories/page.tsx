@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
+import { isAdminRole } from "@/lib/roles";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
 import AdminCategoryManager, {
@@ -16,7 +17,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminCategoriesPage() {
   const session = await getSession();
   if (!session) redirect("/login");
-  if (session.role !== "ADMIN") redirect("/");
+  if (!isAdminRole(session.role)) redirect("/");
 
   const [locale, data] = await Promise.all([
     getLocale(),
@@ -32,7 +33,7 @@ export default async function AdminCategoriesPage() {
       </h1>
       <p className="mt-1 text-ink-600">{t.categoriesSubtitle}</p>
 
-      <AdminCategoryManager initial={categories} />
+      <AdminCategoryManager initial={categories} role={session.role} />
     </div>
   );
 }

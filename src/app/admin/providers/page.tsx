@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
+import { isAdminRole } from "@/lib/roles";
 import { getLocale } from "@/lib/locale";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
 import Avatar from "@/components/Avatar";
@@ -27,7 +28,7 @@ type AdminProviderRow = {
 export default async function AdminProvidersPage() {
   const session = await getSession();
   if (!session) redirect("/login");
-  if (session.role !== "ADMIN") redirect("/");
+  if (!isAdminRole(session.role)) redirect("/");
 
   const [locale, data] = await Promise.all([
     getLocale(),
@@ -98,6 +99,7 @@ export default async function AdminProvidersPage() {
                 providerId={p.id}
                 verified={p.verificationStatus === "VERIFIED"}
                 suspended={p.suspended}
+                role={session.role}
               />
             </div>
           </li>

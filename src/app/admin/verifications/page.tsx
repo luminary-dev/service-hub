@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { FaFileLines, FaShieldHalved } from "@/components/icons";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
+import { isAdminRole } from "@/lib/roles";
 import { getLocale } from "@/lib/locale";
 import { formatDate } from "@/lib/format";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
@@ -27,7 +28,7 @@ type PendingVerification = {
 export default async function AdminVerificationsPage() {
   const session = await getSession();
   if (!session) redirect("/login");
-  if (session.role !== "ADMIN") redirect("/");
+  if (!isAdminRole(session.role)) redirect("/");
 
   const [locale, data] = await Promise.all([
     getLocale(),

@@ -346,6 +346,9 @@ const en = {
     reportTargetGone: "This content no longer exists.",
     reportContentRemoved: "Removed",
     viewProvider: "View provider",
+    // Tiered admin roles (#226): shown wherever a SUPPORT-tier admin hits
+    // an action gated to SUPERADMIN (delete, category edits, verify/suspend).
+    insufficientPermissions: "Insufficient permissions",
   },
   profile: {
     available: "Available for work",
@@ -1048,6 +1051,7 @@ const si: Dict = {
     reportTargetGone: "මෙම අන්තර්ගතය තවදුරටත් නොපවතී.",
     reportContentRemoved: "ඉවත් කර ඇත",
     viewProvider: "වෘත්තිකයා බලන්න",
+    insufficientPermissions: "ප්‍රමාණවත් අවසර නැත",
   },
   profile: {
     available: "වැඩට සූදානම්",

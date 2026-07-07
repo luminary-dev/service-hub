@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { FaFlag, FaShieldHalved, FaTags, FaUsers } from "@/components/icons";
 import { getSession } from "@/lib/auth";
+import { isAdminRole } from "@/lib/roles";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
 
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminHomePage() {
   const session = await getSession();
   if (!session) redirect("/login");
-  if (session.role !== "ADMIN") redirect("/");
+  if (!isAdminRole(session.role)) redirect("/");
 
   const t = dict[await getLocale()].admin;
 

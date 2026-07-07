@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { hasSuperAdminAccess } from "@/lib/roles";
 import { useT } from "../I18nProvider";
 
 export type AdminCategory = {
@@ -23,13 +24,20 @@ type EditState = {
 // Category management (#135/#60): list with an active toggle, inline label
 // editing, and an add form. There is deliberately no delete — deactivating
 // hides a category from public lists while existing providers keep the slug.
+//
+// Category edits are explicitly a SUPERADMIN-only action (#226) — SUPPORT
+// gets read access here (the list itself) plus report resolve/dismiss
+// elsewhere, nothing that mutates the marketplace's category set.
 export default function AdminCategoryManager({
   initial,
+  role,
 }: {
   initial: AdminCategory[];
+  role: string;
 }) {
   const t = useT().admin;
   const router = useRouter();
+  const canManage = hasSuperAdminAccess(role);
   const [pending, setPending] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [edit, setEdit] = useState<EditState>({
@@ -48,6 +56,7 @@ export default function AdminCategoryManager({
   });
 
   async function patch(slug: string, body: Record<string, unknown>) {
+    if (!canManage) return false;
     setPending(true);
     setError("");
     const res = await fetch(`/api/admin/categories/${slug}`, {
@@ -88,6 +97,7 @@ export default function AdminCategoryManager({
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
+    if (!canManage) return;
     setPending(true);
     setError("");
     const res = await fetch("/api/admin/categories", {
@@ -229,26 +239,32 @@ export default function AdminCategoryManager({
                       {c.icon ? ` · ${c.icon}` : ""}
                     </p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={() => startEdit(c)}
-                      disabled={pending}
-                      className="cursor-pointer rounded-full border border-ink-300 bg-surface px-3 py-1.5 text-xs font-semibold text-ink-800 transition hover:border-brand-400 hover:text-brand-700 disabled:opacity-60"
-                    >
-                      {t.catEdit}
-                    </button>
-                    <button
-                      onClick={() => patch(c.slug, { active: !c.active })}
-                      disabled={pending}
-                      className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-60 ${
-                        c.active
-                          ? "border-red-300 bg-surface text-red-600 hover:bg-red-50"
-                          : "border-emerald-300 bg-surface text-emerald-700 hover:bg-emerald-50"
-                      }`}
-                    >
-                      {c.active ? t.catDeactivate : t.catActivate}
-                    </button>
-                  </div>
+                  {canManage ? (
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => startEdit(c)}
+                        disabled={pending}
+                        className="cursor-pointer rounded-full border border-ink-300 bg-surface px-3 py-1.5 text-xs font-semibold text-ink-800 transition hover:border-brand-400 hover:text-brand-700 disabled:opacity-60"
+                      >
+                        {t.catEdit}
+                      </button>
+                      <button
+                        onClick={() => patch(c.slug, { active: !c.active })}
+                        disabled={pending}
+                        className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-60 ${
+                          c.active
+                            ? "border-red-300 bg-surface text-red-600 hover:bg-red-50"
+                            : "border-emerald-300 bg-surface text-emerald-700 hover:bg-emerald-50"
+                        }`}
+                      >
+                        {c.active ? t.catDeactivate : t.catActivate}
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-xs italic text-ink-400">
+                      {t.insufficientPermissions}
+                    </span>
+                  )}
                 </>
               )}
             </li>
@@ -256,6 +272,13 @@ export default function AdminCategoryManager({
         </ul>
       )}
 
+      {!canManage && (
+        <p className="card mt-8 p-6 text-sm text-ink-500">
+          {t.insufficientPermissions}
+        </p>
+      )}
+
+      {canManage && (
       <form onSubmit={add} className="card mt-8 space-y-4 p-6">
         <h2 className="font-semibold text-ink-900">{t.catAddTitle}</h2>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -338,6 +361,7 @@ export default function AdminCategoryManager({
           {pending ? t.catAdding : t.catAdd}
         </button>
       </form>
+      )}
     </div>
   );
 }
