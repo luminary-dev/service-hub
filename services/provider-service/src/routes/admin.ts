@@ -306,6 +306,49 @@ adminRoutes.patch("/api/admin/reports/:id", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// Dashboard analytics (#219): aggregate counts for the /admin home page.
+// Open reports here is only the provider-service half of the metric — the
+// review-service half (reports on reviews) is served separately at
+// review-service's /api/admin/review-stats and summed on the frontend.
+// ---------------------------------------------------------------------------
+
+adminRoutes.get("/api/admin/stats", async (c) => {
+  if (!isAdmin(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const [active, suspended, pendingVerifications, openReports, categoryGroups, categories] =
+    await Promise.all([
+      db.provider.count({ where: { suspended: false } }),
+      db.provider.count({ where: { suspended: true } }),
+      db.provider.count({ where: { verificationStatus: "PENDING" } }),
+      db.report.count({ where: { status: "OPEN" } }),
+      db.provider.groupBy({ by: ["category"], _count: { _all: true } }),
+      db.category.findMany({ select: { slug: true, labelEn: true, labelSi: true } }),
+    ]);
+
+  const labelBySlug = new Map(categories.map((cat) => [cat.slug, cat]));
+  const categoryDistribution = categoryGroups
+    .map((g) => {
+      const cat = labelBySlug.get(g.category);
+      return {
+        slug: g.category,
+        labelEn: cat?.labelEn ?? g.category,
+        labelSi: cat?.labelSi ?? g.category,
+        count: g._count._all,
+      };
+    })
+    .sort((a, b) => b.count - a.count);
+
+  return c.json({
+    providers: { active, suspended, total: active + suspended },
+    pendingVerifications,
+    openReports,
+    categoryDistribution,
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Category management (#135/#60). No hard delete: deactivating hides a
 // category from the public list while existing providers keep the slug.
 // ---------------------------------------------------------------------------
