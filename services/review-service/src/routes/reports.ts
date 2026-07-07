@@ -214,7 +214,11 @@ reports.patch("/api/admin/review-reports", async (c) => {
 
   const { count } = await db.report.updateMany({
     where: { id: { in: parsed.data.ids } },
-    data: { status: parsed.data.status },
+    data: {
+      status: parsed.data.status,
+      resolvedBy: auth?.userId ?? null,
+      resolvedAt: new Date(),
+    },
   });
   return c.json({ ok: true, count });
 });
