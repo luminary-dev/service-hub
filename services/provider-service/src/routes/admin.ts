@@ -6,6 +6,7 @@ import type { Context } from "hono";
 import { db } from "../db";
 import { getAuth } from "../lib/http";
 import { fetchProviderReviews, fetchRatings } from "../lib/clients";
+import { computeQualityScore } from "../lib/quality-score";
 
 export const adminRoutes = new Hono();
 
@@ -25,16 +26,44 @@ adminRoutes.get("/api/admin/providers", async (c) => {
     orderBy: { createdAt: "desc" },
     include: { _count: { select: { photos: true } } },
   });
-  const ratings = await fetchRatings(rows.map((p) => p.id));
+  const providerIds = rows.map((p) => p.id);
+  const [ratings, openReportRows] = await Promise.all([
+    fetchRatings(providerIds),
+    providerIds.length
+      ? db.report.groupBy({
+          by: ["targetId"],
+          where: {
+            targetType: "PROVIDER",
+            targetId: { in: providerIds },
+            status: "OPEN",
+          },
+          _count: { _all: true },
+        })
+      : [],
+  ]);
+  const openReportCounts: Record<string, number> = {};
+  for (const r of openReportRows) openReportCounts[r.targetId] = r._count._all;
 
-  const providers = rows.map(({ _count, ...p }) => ({
-    ...p,
-    user: { name: p.contactName, email: p.contactEmail },
-    _count: {
-      reviews: ratings[p.id]?.count ?? 0,
-      photos: _count.photos,
-    },
-  }));
+  const providers = rows.map(({ _count, ...p }) => {
+    const rating = ratings[p.id]?.rating ?? 0;
+    const reviewCount = ratings[p.id]?.count ?? 0;
+    const openReportCount = openReportCounts[p.id] ?? 0;
+    return {
+      ...p,
+      user: { name: p.contactName, email: p.contactEmail },
+      _count: {
+        reviews: reviewCount,
+        photos: _count.photos,
+      },
+      // Quality signal (#229): see lib/quality-score.ts for the formula.
+      quality: {
+        ...computeQualityScore({ rating, reviewCount, openReportCount }),
+        rating,
+        reviewCount,
+        openReportCount,
+      },
+    };
+  });
 
   return c.json({ providers });
 });
@@ -56,12 +85,27 @@ adminRoutes.get("/api/admin/providers/:id", async (c) => {
   }
 
   // Moderation view: include soft-deleted reviews so admins can restore.
-  const { reviews } = await fetchProviderReviews(id, { includeDeleted: true });
+  const [{ reviews }, ratings, openReportCount] = await Promise.all([
+    fetchProviderReviews(id, { includeDeleted: true }),
+    fetchRatings([id]),
+    db.report.count({
+      where: { targetType: "PROVIDER", targetId: id, status: "OPEN" },
+    }),
+  ]);
+  const rating = ratings[id]?.rating ?? 0;
+  const reviewCount = ratings[id]?.count ?? 0;
   return c.json({
     provider: {
       ...provider,
       user: { name: provider.contactName, email: provider.contactEmail },
       reviews,
+      // Quality signal (#229): see lib/quality-score.ts for the formula.
+      quality: {
+        ...computeQualityScore({ rating, reviewCount, openReportCount }),
+        rating,
+        reviewCount,
+        openReportCount,
+      },
     },
   });
 });
