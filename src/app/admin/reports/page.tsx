@@ -8,6 +8,7 @@ import { dict } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
 import Stars from "@/components/Stars";
 import ReportActions from "@/components/admin/ReportActions";
+import RunFlaggingButton from "@/components/admin/RunFlaggingButton";
 
 // Caching (#57): admin-only moderation view; edits must be visible on the
 // next request — stays fully dynamic (no-store).
@@ -94,10 +95,15 @@ export default async function AdminReportsPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
-      <h1 className="text-3xl font-semibold tracking-tight text-ink-900">
-        {t.reportsTitle}
-      </h1>
-      <p className="mt-1 text-ink-600">{t.reportsSubtitle}</p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight text-ink-900">
+            {t.reportsTitle}
+          </h1>
+          <p className="mt-1 text-ink-600">{t.reportsSubtitle}</p>
+        </div>
+        <RunFlaggingButton />
+      </div>
 
       {rows.length === 0 ? (
         <p className="mt-8 text-sm text-ink-500">{t.reportsEmpty}</p>

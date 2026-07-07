@@ -16,6 +16,8 @@ export default function VerificationActions({
   providerId: string;
 }) {
   const [pending, setPending] = useState(false);
+  const [showReason, setShowReason] = useState(false);
+  const [reason, setReason] = useState("");
   const t = useT();
   const toast = useToast();
   const router = useRouter();
@@ -25,7 +27,10 @@ export default function VerificationActions({
     const res = await fetch(`/api/admin/verifications/${providerId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({
+        action,
+        ...(action === "reject" && reason.trim() ? { reason: reason.trim() } : {}),
+      }),
     }).catch(() => null);
     setPending(false);
     const messages = ACTION_MESSAGES[action];
@@ -38,21 +43,44 @@ export default function VerificationActions({
   }
 
   return (
-    <div className="flex gap-2">
-      <button
-        onClick={() => act("approve")}
-        disabled={pending}
-        className="btn-primary !px-4 !py-2"
-      >
-        {t.admin.approve}
-      </button>
-      <button
-        onClick={() => act("reject")}
-        disabled={pending}
-        className="cursor-pointer rounded-full border border-ink-300 bg-surface px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-60"
-      >
-        {t.admin.reject}
-      </button>
+    <div className="flex flex-col items-end gap-2">
+      <div className="flex gap-2">
+        <button
+          onClick={() => act("approve")}
+          disabled={pending}
+          className="btn-primary !px-4 !py-2"
+        >
+          {t.admin.approve}
+        </button>
+        <button
+          onClick={() => (showReason ? act("reject") : setShowReason(true))}
+          disabled={pending}
+          className="cursor-pointer rounded-full border border-ink-300 bg-surface px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-60"
+        >
+          {showReason ? t.admin.confirmReject : t.admin.reject}
+        </button>
+      </div>
+      {showReason && (
+        <div className="w-64">
+          <textarea
+            className="input"
+            rows={2}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder={t.admin.rejectionReasonPlaceholder}
+            autoFocus
+          />
+          <button
+            onClick={() => {
+              setShowReason(false);
+              setReason("");
+            }}
+            className="btn-ghost mt-1 !px-2 !py-1 text-xs"
+          >
+            {t.admin.cancel}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
