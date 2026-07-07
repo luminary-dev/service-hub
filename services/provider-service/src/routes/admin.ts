@@ -306,6 +306,28 @@ adminRoutes.patch("/api/admin/reports/:id", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// Admin hub notification badges (#233): lightweight aggregate counts for the
+// nav cards on /admin — pending verifications and open reports. This is
+// provider-service's slice only; review-service owns reports filed against
+// reviews (GET /api/admin/review-reports/count) and the frontend sums the
+// two client-side, mirroring the two-service merge already done on the
+// reports page. Cheap counts on indexed columns, safe to poll on page
+// load/focus.
+// ---------------------------------------------------------------------------
+adminRoutes.get("/api/admin/notifications/counts", async (c) => {
+  if (!isAdmin(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const [pendingVerifications, openReports] = await Promise.all([
+    db.provider.count({ where: { verificationStatus: "PENDING" } }),
+    db.report.count({ where: { status: "OPEN" } }),
+  ]);
+
+  return c.json({ pendingVerifications, openReports });
+});
+
+// ---------------------------------------------------------------------------
 // Category management (#135/#60). No hard delete: deactivating hides a
 // category from the public list while existing providers keep the slug.
 // ---------------------------------------------------------------------------

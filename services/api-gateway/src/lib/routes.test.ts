@@ -78,6 +78,17 @@ describe("resolveRoute (routing table)", () => {
     });
   });
 
+  it("routes the admin notification-badge counts endpoints (#233)", () => {
+    expect(resolveRoute("/api/admin/notifications/counts")).toEqual({
+      service: "provider",
+      path: "/api/admin/notifications/counts",
+    });
+    expect(resolveRoute("/api/admin/review-reports/count")).toEqual({
+      service: "review",
+      path: "/api/admin/review-reports/count",
+    });
+  });
+
   it("routes the rest of admin to provider-service", () => {
     expect(resolveRoute("/api/admin/providers")).toEqual({ service: "provider", path: "/api/admin/providers" });
     expect(resolveRoute("/api/admin/providers/prov-1")).toEqual({
