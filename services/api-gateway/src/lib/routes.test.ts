@@ -78,6 +78,21 @@ describe("resolveRoute (routing table)", () => {
     });
   });
 
+  it("routes admin impersonation ('view as', #234) to identity-service", () => {
+    expect(resolveRoute("/api/admin/impersonate/user_1")).toEqual({
+      service: "identity",
+      path: "/api/admin/impersonate/user_1",
+    });
+    expect(resolveRoute("/api/admin/impersonate/someone%40example.com")).toEqual({
+      service: "identity",
+      path: "/api/admin/impersonate/someone%40example.com",
+    });
+    expect(resolveRoute("/api/admin/impersonate/end")).toEqual({
+      service: "identity",
+      path: "/api/admin/impersonate/end",
+    });
+  });
+
   it("routes the rest of admin to provider-service", () => {
     expect(resolveRoute("/api/admin/providers")).toEqual({ service: "provider", path: "/api/admin/providers" });
     expect(resolveRoute("/api/admin/providers/prov-1")).toEqual({

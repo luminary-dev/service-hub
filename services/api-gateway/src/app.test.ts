@@ -17,6 +17,14 @@ async function signSession(payload: Record<string, unknown>) {
     .sign(DEV_SECRET);
 }
 
+async function signImpersonation(payload: Record<string, unknown>) {
+  return new SignJWT(payload)
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("15m")
+    .sign(DEV_SECRET);
+}
+
 // Stub the global fetch the proxy uses to reach upstream services, capturing
 // the forwarded Request so tests can assert on it.
 let upstreamRequests: Request[];
@@ -227,6 +235,102 @@ describe("identity headers", () => {
     const fwd = upstreamRequests[0].headers;
     expect(fwd.get("x-locale")).toBe("si");
     expect(fwd.get("x-origin")).toBe("https://baas.lk");
+  });
+});
+
+describe("admin impersonation (#234)", () => {
+  beforeEach(() => {
+    clearSessionVersionCache();
+  });
+
+  it("forwards the target's identity and x-impersonated-by for a valid impersonation cookie", async () => {
+    const impersonation = await signImpersonation({
+      userId: "target-1",
+      role: "CUSTOMER",
+      name: "Target User",
+      sv: 0,
+      impersonatedBy: "admin-1",
+    });
+    const res = await app.request("/api/auth/me", {
+      headers: { cookie: `impersonation_session=${impersonation}` },
+    });
+    expect(res.status).toBe(200);
+    const fwd = upstreamRequests.at(-1)!.headers;
+    expect(fwd.get("x-user-id")).toBe("target-1");
+    expect(fwd.get("x-user-role")).toBe("CUSTOMER");
+    expect(fwd.get("x-user-name")).toBe(encodeURIComponent("Target User"));
+    expect(fwd.get("x-impersonated-by")).toBe("admin-1");
+  });
+
+  it("prefers a valid impersonation cookie over sh_session, leaving the admin's own session untouched", async () => {
+    const adminSession = await signSession({
+      userId: "admin-1",
+      role: "ADMIN",
+      name: "Admin",
+      sv: 0,
+    });
+    const impersonation = await signImpersonation({
+      userId: "target-1",
+      role: "CUSTOMER",
+      name: "Target User",
+      sv: 0,
+      impersonatedBy: "admin-1",
+    });
+    const res = await app.request("/api/auth/me", {
+      headers: {
+        cookie: `sh_session=${adminSession}; impersonation_session=${impersonation}`,
+      },
+    });
+    expect(res.status).toBe(200);
+    const fwd = upstreamRequests.at(-1)!.headers;
+    expect(fwd.get("x-user-id")).toBe("target-1");
+    expect(fwd.get("x-impersonated-by")).toBe("admin-1");
+  });
+
+  it("falls back to sh_session once the impersonation cookie is gone", async () => {
+    const adminSession = await signSession({
+      userId: "admin-1",
+      role: "ADMIN",
+      name: "Admin",
+      sv: 0,
+    });
+    const res = await app.request("/api/auth/me", {
+      headers: { cookie: `sh_session=${adminSession}` },
+    });
+    expect(res.status).toBe(200);
+    const fwd = upstreamRequests.at(-1)!.headers;
+    expect(fwd.get("x-user-id")).toBe("admin-1");
+    expect(fwd.get("x-impersonated-by")).toBeNull();
+  });
+
+  it("ignores an sh_session-shaped token in the impersonation cookie (missing impersonatedBy)", async () => {
+    const notAnImpersonationToken = await signSession({
+      userId: "target-1",
+      role: "CUSTOMER",
+      name: "Target User",
+      sv: 0,
+    });
+    const res = await app.request("/api/auth/me", {
+      headers: { cookie: `impersonation_session=${notAnImpersonationToken}` },
+    });
+    expect(res.status).toBe(200);
+    const fwd = upstreamRequests.at(-1)!.headers;
+    expect(fwd.get("x-user-id")).toBeNull();
+  });
+
+  it("strips a client-sent x-impersonated-by header (no spoofing)", async () => {
+    const res = await app.request("/api/providers", {
+      headers: { "x-impersonated-by": "spoofed-admin" },
+    });
+    expect(res.status).toBe(200);
+    expect(upstreamRequests[0].headers.get("x-impersonated-by")).toBeNull();
+  });
+
+  it("routes impersonate start/end to identity-service", async () => {
+    await app.request("/api/admin/impersonate/user-1", { method: "POST" });
+    expect(upstreamRequests.at(-1)!.url).toContain(":4001");
+    await app.request("/api/admin/impersonate/end", { method: "POST" });
+    expect(upstreamRequests.at(-1)!.url).toContain(":4001");
   });
 });
 

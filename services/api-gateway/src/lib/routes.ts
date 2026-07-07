@@ -48,6 +48,17 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
     return { service: "review", path: pathname };
   }
 
+  // Admin impersonation ("view as", #234) — identity-service owns User rows
+  // and mints/clears the impersonation cookie, so both the start (:userId)
+  // and end routes belong there rather than falling through to provider-
+  // service with the rest of /api/admin/*.
+  if (
+    pathname === "/api/admin/impersonate/end" ||
+    /^\/api\/admin\/impersonate\/[^/]+$/.test(pathname)
+  ) {
+    return { service: "identity", path: pathname };
+  }
+
   if (pathname.startsWith("/api/admin/")) {
     return { service: "provider", path: pathname };
   }
