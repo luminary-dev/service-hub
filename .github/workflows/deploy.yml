@@ -36,7 +36,7 @@ jobs:
           - chat-service
           - api-gateway
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: docker/setup-buildx-action@v3
 
@@ -48,7 +48,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push ${{ matrix.image }}
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           # web builds from the repo root; each service from its own directory.
           context: ${{ matrix.image == 'web' && '.' || format('services/{0}', matrix.image) }}
