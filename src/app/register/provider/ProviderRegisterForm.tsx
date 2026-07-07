@@ -8,6 +8,7 @@ import { DISTRICTS, PRICE_TYPES } from "@/lib/constants";
 import { categoryOptionLabel, type CategoryOption } from "@/lib/categories";
 import { districtLabelLoc, priceTypeLabelLoc } from "@/lib/i18n";
 import { useLocale, useT } from "@/components/I18nProvider";
+import PasswordInput from "@/components/PasswordInput";
 import CategoryIcon from "@/components/CategoryIcon";
 
 type ServiceInput = {
@@ -288,10 +289,8 @@ export default function ProviderRegisterForm({
               <label className="label" htmlFor="pr-password">
                 {r.password}
               </label>
-              <input
+              <PasswordInput
                 id="pr-password"
-                className="input"
-                type="password"
                 value={form.password}
                 onChange={(e) => set("password", e.target.value)}
                 autoComplete="new-password"

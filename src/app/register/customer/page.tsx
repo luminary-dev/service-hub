@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useT } from "@/components/I18nProvider";
+import PasswordInput from "@/components/PasswordInput";
 
 export default function CustomerRegisterPage() {
   const [form, setForm] = useState({
@@ -94,10 +95,8 @@ export default function CustomerRegisterPage() {
           <label className="label" htmlFor="reg-password">
             {t.custReg.password}
           </label>
-          <input
+          <PasswordInput
             id="reg-password"
-            className="input"
-            type="password"
             value={form.password}
             onChange={(e) => set("password", e.target.value)}
             required

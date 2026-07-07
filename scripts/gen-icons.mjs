@@ -20,6 +20,8 @@ const MAP = {
   FaCommentDots: ["l", "message-circle"],
   FaCompass: ["l", "compass"],
   FaEnvelope: ["l", "mail"],
+  FaEye: ["l", "eye"],
+  FaEyeSlash: ["l", "eye-off"],
   FaFileLines: ["l", "file-text"],
   FaFire: ["l", "flame"],
   FaFlag: ["l", "flag"],

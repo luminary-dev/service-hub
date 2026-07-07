@@ -30,6 +30,8 @@ const en = {
   a11y: {
     skipToContent: "Skip to main content",
     rated: (rating: string) => `Rated ${rating} out of 5`,
+    showPassword: "Show password",
+    hidePassword: "Hide password",
   },
   jobs: {
     postTitle: "Post a job",
@@ -730,6 +732,8 @@ const si: Dict = {
   a11y: {
     skipToContent: "ප්‍රධාන අන්තර්ගතයට යන්න",
     rated: (rating: string) => `5න් ${rating}ක ඇගයීම`,
+    showPassword: "මුරපදය පෙන්වන්න",
+    hidePassword: "මුරපදය සඟවන්න",
   },
   jobs: {
     postTitle: "රැකියාවක් පළ කරන්න",

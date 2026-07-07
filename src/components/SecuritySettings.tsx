@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useT } from "@/components/I18nProvider";
+import PasswordInput from "@/components/PasswordInput";
 import { useToast } from "@/components/ToastProvider";
 
 // Account security controls, backed by identity-service via the gateway:
@@ -102,10 +103,8 @@ export default function SecuritySettings() {
           <label className="label" htmlFor="current-password">
             {t.security.current}
           </label>
-          <input
+          <PasswordInput
             id="current-password"
-            className="input"
-            type="password"
             value={current}
             onChange={(e) => setCurrent(e.target.value)}
             required
@@ -116,10 +115,8 @@ export default function SecuritySettings() {
           <label className="label" htmlFor="new-password">
             {t.security.newPassword}
           </label>
-          <input
+          <PasswordInput
             id="new-password"
-            className="input"
-            type="password"
             value={next}
             onChange={(e) => setNext(e.target.value)}
             required
@@ -132,10 +129,8 @@ export default function SecuritySettings() {
           <label className="label" htmlFor="confirm-password">
             {t.security.confirm}
           </label>
-          <input
+          <PasswordInput
             id="confirm-password"
-            className="input"
-            type="password"
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
             required
@@ -192,10 +187,8 @@ export default function SecuritySettings() {
           <label className="label" htmlFor="delete-password">
             {t.security.deletePassword}
           </label>
-          <input
+          <PasswordInput
             id="delete-password"
-            className="input"
-            type="password"
             value={deletePassword}
             onChange={(e) => setDeletePassword(e.target.value)}
             required

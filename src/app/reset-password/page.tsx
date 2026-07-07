@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { FaCircleCheck } from "@/components/icons";
 import { useT } from "@/components/I18nProvider";
+import PasswordInput from "@/components/PasswordInput";
 
 function ResetForm() {
   const params = useSearchParams();
@@ -66,10 +67,8 @@ function ResetForm() {
           <label className="label" htmlFor="reset-password">
             {t.reset.password}
           </label>
-          <input
+          <PasswordInput
             id="reset-password"
-            className="input"
-            type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
