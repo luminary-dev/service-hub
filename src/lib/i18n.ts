@@ -363,6 +363,14 @@ const en = {
     reportTargetGone: "This content no longer exists.",
     reportContentRemoved: "Removed",
     viewProvider: "View provider",
+    // Automated flagging (#232)
+    runFlagging: "Run auto-flagging",
+    runningFlagging: "Running…",
+    flaggingDone: (n: number) =>
+      n > 0
+        ? `Flagged ${n} provider${n === 1 ? "" : "s"} for review.`
+        : "No providers matched the auto-flagging rules.",
+    flaggingError: "Could not run auto-flagging. Please try again.",
     // Job management (#222)
     jobsLink: "Jobs",
     jobsDesc: "Browse job requests and track provider responses.",
@@ -1129,6 +1137,14 @@ const si: Dict = {
     reportTargetGone: "මෙම අන්තර්ගතය තවදුරටත් නොපවතී.",
     reportContentRemoved: "ඉවත් කර ඇත",
     viewProvider: "වෘත්තිකයා බලන්න",
+    // Automated flagging (#232)
+    runFlagging: "ස්වයංක්‍රීය සලකුණු කිරීම ධාවනය කරන්න",
+    runningFlagging: "ධාවනය වෙමින්…",
+    flaggingDone: (n: number) =>
+      n > 0
+        ? `සමාලෝචනය සඳහා වෘත්තිකයන් ${n}ක් සලකුණු කරන ලදී.`
+        : "ස්වයංක්‍රීය සලකුණු කිරීමේ නීති හා ගැලපෙන වෘත්තිකයන් නොමැත.",
+    flaggingError: "ස්වයංක්‍රීය සලකුණු කිරීම ධාවනය කළ නොහැකි විය. නැවත උත්සාහ කරන්න.",
     // Job management (#222)
     jobsLink: "රැකියා",
     jobsDesc: "රැකියා ඉල්ලීම් සහ වෘත්තික ප්‍රතිචාර නිරීක්ෂණය කරන්න.",

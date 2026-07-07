@@ -392,6 +392,111 @@ adminRoutes.patch("/api/admin/reports/:id", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// Automated flagging (#232): surfaces providers into the moderation queue
+// without waiting for a user report, by auto-creating a SYSTEM-sourced
+// Report. There is no cron/worker infra anywhere in the repo yet (checked
+// across services/), so this is an admin-triggerable endpoint rather than a
+// background job — a real cron can call it once one exists, and for now it's
+// wired to a manual "Run auto-flagging" button on /admin/reports.
+//
+// Thresholds are named constants so they're easy to tune without touching
+// the rule logic.
+// ---------------------------------------------------------------------------
+
+// Rule 1: 3+ OPEN reports on a provider.
+const OPEN_REPORT_FLAG_THRESHOLD = 3;
+
+// Rule 2: average rating below 2.5 once a provider has at least 5 reviews.
+// Reuses review-service's existing rating aggregation (the same
+// `fetchRatings` call already used for the moderation list and provider
+// cards) — no new rating pipeline is introduced here.
+const LOW_RATING_FLAG_THRESHOLD = 2.5;
+const MIN_REVIEWS_FOR_RATING_FLAG = 5;
+
+// Adds a trigger description for a provider, merging with any other trigger
+// already recorded for it in this run (a provider can match both rules at
+// once).
+function addTrigger(byProvider: Map<string, string[]>, providerId: string, trigger: string) {
+  const existing = byProvider.get(providerId);
+  if (existing) {
+    existing.push(trigger);
+  } else {
+    byProvider.set(providerId, [trigger]);
+  }
+}
+
+adminRoutes.post("/api/admin/flagging/run", async (c) => {
+  if (!isAdmin(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  // Don't pile up duplicate SYSTEM flags — a provider already sitting in the
+  // queue from a previous run doesn't need a second entry (mirrors the
+  // one-open-report-per-target duplicate protection in reports.ts).
+  const existingSystemFlags = await db.report.findMany({
+    where: { targetType: "PROVIDER", source: "SYSTEM", status: "OPEN" },
+    select: { targetId: true },
+  });
+  const alreadyFlagged = new Set(existingSystemFlags.map((r) => r.targetId));
+
+  const triggersByProvider = new Map<string, string[]>();
+
+  // Rule 1: open-report count.
+  const openReportCounts = await db.report.groupBy({
+    by: ["targetId"],
+    where: { targetType: "PROVIDER", status: "OPEN" },
+    _count: { _all: true },
+  });
+  for (const row of openReportCounts) {
+    if (row._count._all >= OPEN_REPORT_FLAG_THRESHOLD && !alreadyFlagged.has(row.targetId)) {
+      addTrigger(
+        triggersByProvider,
+        row.targetId,
+        `Auto-flagged: ${row._count._all} open reports (threshold ${OPEN_REPORT_FLAG_THRESHOLD})`
+      );
+    }
+  }
+
+  // Rule 2: low average rating with enough reviews to be meaningful.
+  const providerIds = (await db.provider.findMany({ select: { id: true } })).map(
+    (p) => p.id
+  );
+  const ratings = await fetchRatings(providerIds);
+  for (const id of providerIds) {
+    const r = ratings[id];
+    if (
+      r &&
+      r.count >= MIN_REVIEWS_FOR_RATING_FLAG &&
+      r.rating < LOW_RATING_FLAG_THRESHOLD &&
+      !alreadyFlagged.has(id)
+    ) {
+      addTrigger(
+        triggersByProvider,
+        id,
+        `Auto-flagged: average rating ${r.rating.toFixed(1)} across ${r.count} reviews (below ${LOW_RATING_FLAG_THRESHOLD})`
+      );
+    }
+  }
+
+  const created = await Promise.all(
+    Array.from(triggersByProvider.entries()).map(([targetId, triggers]) =>
+      db.report.create({
+        data: {
+          targetType: "PROVIDER",
+          targetId,
+          reporterId: null,
+          reason: triggers.join(" · "),
+          details: null,
+          source: "SYSTEM",
+        },
+      })
+    )
+  );
+
+  return c.json({ ok: true, flagged: created.length });
+});
+
+// ---------------------------------------------------------------------------
 // Category management (#135/#60). No hard delete: deactivating hides a
 // category from the public list while existing providers keep the slug.
 // ---------------------------------------------------------------------------
