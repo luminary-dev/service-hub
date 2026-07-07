@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { FaUsers } from "@/components/icons";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { isAdminRole } from "@/lib/roles";
@@ -10,6 +11,9 @@ import {
   normalizeStatusFilter,
   normalizeSuspendedFilter,
 } from "@/lib/admin-list";
+import PageHeader from "@/components/ui/PageHeader";
+import StatReadout from "@/components/ui/StatReadout";
+import EmptyState from "@/components/ui/EmptyState";
 import AdminProvidersFilterBar from "@/components/admin/AdminProvidersFilterBar";
 import type { AdminCategory } from "@/components/admin/AdminCategoryManager";
 import AdminProvidersList, {
@@ -70,6 +74,7 @@ export default async function AdminProvidersPage({
   const pageSize = listing?.pageSize ?? PAGE_SIZE;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const categories = categoriesData?.categories ?? [];
+  const hasFilters = Boolean(q || category || city || status || suspended);
 
   function pageLink(target: number) {
     const sp = new URLSearchParams(query);
@@ -78,13 +83,17 @@ export default async function AdminProvidersPage({
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
-      <h1 className="text-3xl font-semibold tracking-tight text-ink-900">
-        {t.providersTitle}
-      </h1>
-      <p className="mt-1 text-ink-600">{t.providersSubtitle}</p>
+    <div>
+      <PageHeader
+        tag="REG"
+        eyebrow={t.providersLink}
+        title={t.providersTitle}
+        status={t.providersSubtitle}
+      >
+        <StatReadout stats={[{ label: "TOTAL", value: total }]} />
+      </PageHeader>
 
-      <div className="mt-6">
+      <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
         <AdminProvidersFilterBar
           q={q}
           category={category}
@@ -94,40 +103,45 @@ export default async function AdminProvidersPage({
           sort={sort}
           categories={categories}
         />
+
+        <p className="mt-4 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-400">
+          {t.adminFound(total)}
+        </p>
+
+        {providers.length === 0 ? (
+          <div className="mt-4">
+            <EmptyState
+              icon={FaUsers}
+              title={total === 0 && !hasFilters ? t.providersEmpty : t.adminNoResults}
+            />
+          </div>
+        ) : (
+          // Bulk actions (#231): multi-select + bulk suspend/unsuspend layered on
+          // top of dev's per-row moderation (search/filter/sort/pagination live
+          // on this server page; selection state lives in the client component).
+          <div className="mt-4">
+            <AdminProvidersList providers={providers} role={session.role} />
+          </div>
+        )}
+
+        {totalPages > 1 && (
+          <div className="mt-10 flex items-center justify-center gap-2">
+            {page > 1 && (
+              <Link href={pageLink(page - 1)} className="btn-secondary">
+                {dict[locale].browse.prev}
+              </Link>
+            )}
+            <span className="px-3 text-sm text-ink-500">
+              {dict[locale].browse.pageOf(page, totalPages)}
+            </span>
+            {page < totalPages && (
+              <Link href={pageLink(page + 1)} className="btn-secondary">
+                {dict[locale].browse.next}
+              </Link>
+            )}
+          </div>
+        )}
       </div>
-
-      <p className="mt-4 text-sm text-ink-500">{t.adminFound(total)}</p>
-
-      {providers.length === 0 ? (
-        <div className="card mt-4 px-6 py-16 text-center text-sm text-ink-500">
-          {total === 0 && !q && !category && !city && !status && !suspended
-            ? t.providersEmpty
-            : t.adminNoResults}
-        </div>
-      ) : (
-        // Bulk actions (#231): multi-select + bulk suspend/unsuspend layered on
-        // top of dev's per-row moderation (search/filter/sort/pagination live
-        // on this server page; selection state lives in the client component).
-        <AdminProvidersList providers={providers} role={session.role} />
-      )}
-
-      {totalPages > 1 && (
-        <div className="mt-10 flex items-center justify-center gap-2">
-          {page > 1 && (
-            <Link href={pageLink(page - 1)} className="btn-secondary">
-              {dict[locale].browse.prev}
-            </Link>
-          )}
-          <span className="px-3 text-sm text-ink-500">
-            {dict[locale].browse.pageOf(page, totalPages)}
-          </span>
-          {page < totalPages && (
-            <Link href={pageLink(page + 1)} className="btn-secondary">
-              {dict[locale].browse.next}
-            </Link>
-          )}
-        </div>
-      )}
     </div>
   );
 }

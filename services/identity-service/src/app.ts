@@ -4,6 +4,7 @@ import { db } from "./db";
 import { requireInternalSecret } from "./lib/http";
 import { log } from "./lib/log";
 import { getRequestId, requestLogger } from "./lib/logging";
+import { adminImpersonationRoutes } from "./routes/admin-impersonation";
 import { authRoutes } from "./routes/auth";
 import { favoritesRoutes } from "./routes/favorites";
 import { adminRoutes } from "./routes/admin";
@@ -32,6 +33,7 @@ app.use("*", requireInternalSecret);
 
 app.route("/api/auth", authRoutes);
 app.route("/api/favorites", favoritesRoutes);
+app.route("/api/admin/impersonate", adminImpersonationRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/internal/users", internalUsersRoutes);
 

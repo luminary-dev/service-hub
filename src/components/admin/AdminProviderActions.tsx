@@ -57,7 +57,7 @@ export default function AdminProviderActions({
         onClick={() => act(verified ? "unverify" : "verify")}
         disabled={pending || !allowed}
         title={allowed ? undefined : t.admin.insufficientPermissions}
-        className="cursor-pointer rounded-full border border-ink-300 bg-surface px-3 py-1.5 text-xs font-semibold text-ink-800 transition hover:border-brand-400 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+        className="cursor-pointer rounded-sm border border-ink-300 bg-surface px-3 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-800 transition-[border-color,color,background-color] duration-200 ease-snap hover:border-brand-400 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {verified ? t.admin.unverify : t.admin.verify}
       </button>
@@ -65,10 +65,10 @@ export default function AdminProviderActions({
         onClick={() => act(suspended ? "unsuspend" : "suspend")}
         disabled={pending || !allowed}
         title={allowed ? undefined : t.admin.insufficientPermissions}
-        className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+        className={`cursor-pointer rounded-sm border px-3 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider transition-[border-color,color,background-color] duration-200 ease-snap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60 ${
           suspended
-            ? "border-emerald-300 bg-surface text-emerald-700 hover:bg-emerald-50"
-            : "border-red-300 bg-surface text-red-600 hover:bg-red-50"
+            ? "border-emerald-300 bg-surface text-emerald-700 hover:bg-emerald-50 focus-visible:ring-emerald-400"
+            : "border-red-300 bg-surface text-red-600 hover:bg-red-50 focus-visible:ring-red-400"
         }`}
       >
         {suspended ? t.admin.unsuspend : t.admin.suspend}
