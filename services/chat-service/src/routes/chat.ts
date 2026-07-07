@@ -11,6 +11,7 @@ export const chatRoutes = new Hono();
 const MODEL = "claude-opus-4-8";
 const MAX_TURNS = 40; // message-history cap per request
 const MAX_LOOPS = 6; // tool-use loop safety bound
+const MAX_BODY_BYTES = 256 * 1024; // reject oversized histories (memory guard)
 
 const GATEWAY_URL = process.env.GATEWAY_URL ?? "http://localhost:4000";
 
@@ -23,6 +24,12 @@ chatRoutes.post("/internal/chat/:persona/stream", async (c) => {
   const persona = PERSONAS[c.req.param("persona")];
   if (!persona) {
     return c.json({ error: "unknown persona" }, 404);
+  }
+
+  // Defense in depth: the web proxy already caps + authenticates, but this
+  // service is internal-only and must not buffer an unbounded body itself.
+  if (Number(c.req.header("content-length") ?? 0) > MAX_BODY_BYTES) {
+    return c.json({ error: "payload too large" }, 413);
   }
 
   const body = (await c.req.json().catch(() => null)) as {

@@ -18,9 +18,15 @@ import { slPhone } from "../lib/field-rules";
 import { normalizeListQuery } from "../lib/query";
 import { averageResponseMs } from "../lib/response-time";
 import { buildBrowseWhere } from "../lib/search";
+import { log } from "../lib/log";
 import { sortProviders, type Sortable } from "../lib/sort";
 
 export const providersRoutes = new Hono();
+
+// Upper bound on providers loaded for in-memory ranking of a browse query.
+// Keeps memory + the ratings fan-out bounded; well above any realistic v0.1
+// match set. If ever hit, we log and serve the newest slice (see below).
+const MAX_BROWSE_CANDIDATES = 1000;
 
 // Public category list for browse filters and forms (#135/#60). Active only —
 // deactivated categories disappear from pickers while existing providers keep
@@ -156,10 +162,24 @@ providersRoutes.get("/api/providers", async (c) => {
     availableOnly,
   });
 
-  // Rating and starting price are derived data, so (matching the monolith's
-  // providers page) we rank in memory across the full match set and paginate
-  // afterwards. Fine at the current scale.
-  const rows = await db.provider.findMany({ where, include: cardInclude });
+  // Rating and starting price are derived data (starting price is joined,
+  // rating is owned by review-service), so ranking happens in memory across the
+  // match set. To keep that bounded we load at most MAX_BROWSE_CANDIDATES rows
+  // (newest first) instead of the whole table; the ratings fan-out is chunked
+  // in fetchRatings. Full DB-side ranking would need rating denormalized onto
+  // Provider — tracked as a follow-up. At current scale the cap is never hit.
+  const rows = await db.provider.findMany({
+    where,
+    include: cardInclude,
+    orderBy: { createdAt: "desc" },
+    take: MAX_BROWSE_CANDIDATES + 1,
+  });
+  if (rows.length > MAX_BROWSE_CANDIDATES) {
+    rows.length = MAX_BROWSE_CANDIDATES;
+    log.warn("provider browse hit candidate cap — results may be incomplete", {
+      cap: MAX_BROWSE_CANDIDATES,
+    });
+  }
   const ratings = await fetchRatings(rows.map((p) => p.id));
 
   const enriched: (Sortable & { dto: ReturnType<typeof toCardDTO> })[] = rows.map((p) => {
