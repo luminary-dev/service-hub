@@ -200,7 +200,10 @@ adminRoutes.patch("/api/admin/providers", async (c) => {
   return c.json({ ok: true, count });
 });
 
-const verificationActionSchema = z.object({ action: z.enum(["approve", "reject"]) });
+const verificationActionSchema = z.object({
+  action: z.enum(["approve", "reject"]),
+  reason: z.string().trim().max(1000).optional(),
+});
 
 adminRoutes.patch("/api/admin/verifications/:id", async (c) => {
   if (!isAdmin(c)) {
@@ -461,9 +464,15 @@ adminRoutes.patch("/api/admin/reports", async (c) => {
     return c.json({ error: "Invalid input" }, 400);
   }
 
+  // Audit trail (#223): stamp who closed the reports and when, matching the
+  // single-report PATCH above so bulk-closed reports carry the same metadata.
   const { count } = await db.report.updateMany({
     where: { id: { in: parsed.data.ids } },
-    data: { status: parsed.data.status },
+    data: {
+      status: parsed.data.status,
+      resolvedBy: getAuth(c)?.userId ?? null,
+      resolvedAt: new Date(),
+    },
   });
   return c.json({ ok: true, count });
 });
