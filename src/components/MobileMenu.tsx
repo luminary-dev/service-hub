@@ -65,7 +65,7 @@ export default function MobileMenu({
 
   const close = () => setOpen(false);
   const itemClass =
-    "block rounded-xl px-4 py-2.5 text-sm font-medium text-ink-700 transition hover:bg-ink-100 hover:text-ink-900";
+    "block rounded-md px-4 py-2.5 text-sm font-medium text-ink-700 transition-colors duration-200 ease-snap hover:bg-ink-100 hover:text-brand-700";
 
   return (
     <div
@@ -87,7 +87,7 @@ export default function MobileMenu({
         aria-expanded={open}
         aria-controls="mobile-menu"
         aria-label={open ? t.nav.closeMenu : t.nav.openMenu}
-        className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full text-ink-700 transition hover:bg-ink-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+        className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-md text-ink-700 transition-colors duration-200 ease-snap hover:bg-ink-100 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
       >
         {open ? <FaXmark className="h-5 w-5" /> : <FaBars className="h-5 w-5" />}
       </button>
@@ -95,7 +95,7 @@ export default function MobileMenu({
       {open && (
         <nav
           id="mobile-menu"
-          className="absolute inset-x-0 top-16 border-b border-ink-200 bg-surface p-3 shadow-lg"
+          className="absolute inset-x-0 top-16 border-b border-ink-300 bg-surface p-3 shadow-lg"
         >
           <Link
             href={localizedHref("/providers", locale)}
@@ -126,7 +126,7 @@ export default function MobileMenu({
                 type="button"
                 onClick={logout}
                 disabled={signingOut}
-                className="block w-full cursor-pointer rounded-xl px-4 py-2.5 text-left text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-red-950"
+                className="block w-full cursor-pointer rounded-md px-4 py-2.5 text-left text-sm font-medium text-red-600 transition-colors duration-200 ease-snap hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-red-950"
               >
                 {t.nav.signOut}
               </button>
@@ -148,7 +148,7 @@ export default function MobileMenu({
               </Link>
             </>
           )}
-          <div className="mt-2 flex items-center gap-3 border-t border-ink-100 px-4 pt-3 pb-1">
+          <div className="mt-2 flex items-center gap-3 border-t border-dashed border-ink-200 px-4 pt-3 pb-1">
             <LanguageToggle />
             <ThemeToggle initialTheme={theme} />
           </div>

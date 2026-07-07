@@ -19,28 +19,33 @@ export default function EmailVerifyBanner() {
   }
 
   return (
-    <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-      <p className="flex items-center gap-2 text-sm font-medium text-amber-900">
-        <FaEnvelope className="h-4 w-4 text-amber-600" />
-        {t.verify.bannerText}
-      </p>
-      {state === "sent" ? (
-        <span className="text-sm font-medium text-emerald-700">
-          {t.verify.bannerSent}
-        </span>
-      ) : (
-        <button
-          onClick={resend}
-          disabled={state === "sending"}
-          className="cursor-pointer rounded-full border border-amber-300 bg-surface px-4 py-1.5 text-sm font-semibold text-amber-900 transition hover:bg-amber-100 disabled:opacity-50"
-        >
-          {state === "sending"
-            ? t.verify.bannerSending
-            : state === "error"
-              ? t.verify.bannerError
-              : t.verify.bannerResend}
-        </button>
-      )}
+    <div className="mb-6 overflow-hidden rounded-lg border border-amber-300 bg-amber-50">
+      {/* Working caution rail — the shared hazard-stripe accent. */}
+      <div className="hazard h-1.5 w-full" />
+      <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+        <p className="flex items-center gap-2.5 text-sm font-medium text-amber-900">
+          <FaEnvelope className="h-4 w-4 text-amber-600" />
+          {t.verify.bannerText}
+        </p>
+        {state === "sent" ? (
+          <span className="flex items-center gap-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-700">
+            <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-emerald-700" />
+            {t.verify.bannerSent}
+          </span>
+        ) : (
+          <button
+            onClick={resend}
+            disabled={state === "sending"}
+            className="cursor-pointer rounded-md border border-amber-300 bg-surface px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.1em] text-amber-900 transition-colors duration-200 ease-snap hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:opacity-50"
+          >
+            {state === "sending"
+              ? t.verify.bannerSending
+              : state === "error"
+                ? t.verify.bannerError
+                : t.verify.bannerResend}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
