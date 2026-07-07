@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { FaFlag, FaShieldHalved, FaTags, FaUsers } from "@/components/icons";
+import { FaFileLines, FaFlag, FaShieldHalved, FaTags, FaUsers } from "@/components/icons";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
@@ -40,6 +40,12 @@ export default async function AdminHomePage() {
       icon: FaFlag,
       title: t.reportsLink,
       desc: t.reportsDesc,
+    },
+    {
+      href: "/admin/billing",
+      icon: FaFileLines,
+      title: t.billingLink,
+      desc: t.billingDesc,
     },
   ];
 
