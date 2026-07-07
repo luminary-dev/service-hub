@@ -41,6 +41,34 @@ export async function providerExists(providerId: string): Promise<boolean> {
   return true;
 }
 
+export type ProviderSummary = {
+  id: string;
+  contactName: string;
+  contactPhone: string | null;
+  suspended: boolean;
+};
+
+// Batch hydration for admin user detail (#220): provider names/phones behind
+// a user's favorites. Degrades to an empty map on any S2S failure so the
+// admin page still renders (just without provider names).
+export async function fetchProvidersByIds(
+  ids: string[]
+): Promise<Map<string, ProviderSummary>> {
+  if (ids.length === 0) return new Map();
+  try {
+    const res = await s2s(
+      PROVIDER_SERVICE_URL,
+      `/internal/providers?ids=${ids.map(encodeURIComponent).join(",")}`
+    );
+    if (!res.ok) return new Map();
+    const data = (await res.json()) as { providers: ProviderSummary[] };
+    return new Map(data.providers.map((p) => [p.id, p]));
+  } catch (e) {
+    log.error("batch provider lookup failed", { context: "providers", err: e });
+    return new Map();
+  }
+}
+
 export type ProviderRegistration = {
   userId: string;
   name: string;

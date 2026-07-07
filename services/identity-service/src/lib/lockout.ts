@@ -5,6 +5,12 @@
 export const MAX_FAILED_LOGINS = 5;
 export const LOCKOUT_MS = 15 * 60_000;
 
+// Admin-initiated lock (#220): reuses the same `lockedUntil` column as the
+// automatic failed-login lockout above — isLockedOut() already treats any
+// future date as locked — instead of adding a separate boolean column. Far
+// enough out to read as "locked until an admin explicitly unlocks it".
+export const MANUAL_LOCK_UNTIL = new Date("9999-12-31T00:00:00.000Z");
+
 // True while the account is inside a lockout window. Locked accounts get the
 // same "Invalid email or password" 401 as a wrong password — a distinct
 // "account locked" message would confirm the account exists (enumeration).
