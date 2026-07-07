@@ -242,3 +242,18 @@ reports.get("/api/admin/review-audit-log", async (c) => {
 
   return c.json({ entries });
 });
+
+// ---------------------------------------------------------------------------
+// Dashboard analytics (#219): open review-report count for the /admin home
+// page's merged "open reports" metric — provider-service serves the other
+// half (reports on providers/photos) at its own /api/admin/stats.
+// ---------------------------------------------------------------------------
+
+reports.get("/api/admin/review-stats", async (c) => {
+  const auth = getAuth(c);
+  if (auth?.role !== "ADMIN") {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+  const openReports = await db.report.count({ where: { status: "OPEN" } });
+  return c.json({ openReports });
+});

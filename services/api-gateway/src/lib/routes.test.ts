@@ -97,6 +97,21 @@ describe("resolveRoute (routing table)", () => {
     });
   });
 
+  it("routes the admin dashboard analytics endpoints to their owning services (#219)", () => {
+    expect(resolveRoute("/api/admin/signups")).toEqual({
+      service: "identity",
+      path: "/api/admin/signups",
+    });
+    expect(resolveRoute("/api/admin/review-stats")).toEqual({
+      service: "review",
+      path: "/api/admin/review-stats",
+    });
+    expect(resolveRoute("/api/admin/stats")).toEqual({
+      service: "provider",
+      path: "/api/admin/stats",
+    });
+  });
+
   it("routes the rest of admin to provider-service", () => {
     expect(resolveRoute("/api/admin/providers")).toEqual({ service: "provider", path: "/api/admin/providers" });
     expect(resolveRoute("/api/admin/providers/prov-1")).toEqual({
