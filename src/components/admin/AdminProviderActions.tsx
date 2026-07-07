@@ -33,7 +33,7 @@ export default function AdminProviderActions({
   // SUPPORT gets read access plus report resolve/dismiss only.
   const allowed = hasSuperAdminAccess(role);
 
-  async function act(action: string) {
+  async function act(action: keyof typeof ACTION_MESSAGES) {
     if (!allowed) return;
     setPending(true);
     const res = await fetch(`/api/admin/providers/${providerId}`, {
@@ -56,7 +56,7 @@ export default function AdminProviderActions({
       <button
         onClick={() => act(verified ? "unverify" : "verify")}
         disabled={pending || !allowed}
-        title={allowed ? undefined : t.insufficientPermissions}
+        title={allowed ? undefined : t.admin.insufficientPermissions}
         className="cursor-pointer rounded-full border border-ink-300 bg-surface px-3 py-1.5 text-xs font-semibold text-ink-800 transition hover:border-brand-400 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {verified ? t.admin.unverify : t.admin.verify}
@@ -64,7 +64,7 @@ export default function AdminProviderActions({
       <button
         onClick={() => act(suspended ? "unsuspend" : "suspend")}
         disabled={pending || !allowed}
-        title={allowed ? undefined : t.insufficientPermissions}
+        title={allowed ? undefined : t.admin.insufficientPermissions}
         className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
           suspended
             ? "border-emerald-300 bg-surface text-emerald-700 hover:bg-emerald-50"

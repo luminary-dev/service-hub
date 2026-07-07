@@ -254,7 +254,7 @@ export default function AdminCategoryManager({
                         disabled={pending}
                         className="cursor-pointer rounded-full border border-ink-300 bg-surface px-3 py-1.5 text-xs font-semibold text-ink-800 transition hover:border-brand-400 hover:text-brand-700 disabled:opacity-60"
                       >
-                        {t.catEdit}
+                        {t.admin.catEdit}
                       </button>
                       <button
                         onClick={() => patch(c.slug, { active: !c.active })}
@@ -265,12 +265,12 @@ export default function AdminCategoryManager({
                             : "border-emerald-300 bg-surface text-emerald-700 hover:bg-emerald-50"
                         }`}
                       >
-                        {c.active ? t.catDeactivate : t.catActivate}
+                        {c.active ? t.admin.catDeactivate : t.admin.catActivate}
                       </button>
                     </div>
                   ) : (
                     <span className="text-xs italic text-ink-400">
-                      {t.insufficientPermissions}
+                      {t.admin.insufficientPermissions}
                     </span>
                   )}
                 </>
@@ -282,7 +282,7 @@ export default function AdminCategoryManager({
 
       {!canManage && (
         <p className="card mt-8 p-6 text-sm text-ink-500">
-          {t.insufficientPermissions}
+          {t.admin.insufficientPermissions}
         </p>
       )}
 

@@ -54,7 +54,7 @@ export default function ReportActions({
       <button
         onClick={() => act("RESOLVED")}
         disabled={pending || !allowed}
-        title={allowed ? undefined : t.insufficientPermissions}
+        title={allowed ? undefined : t.admin.insufficientPermissions}
         className="cursor-pointer rounded-full border border-emerald-300 bg-surface px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50 dark:hover:bg-emerald-950 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {t.admin.resolve}
@@ -62,7 +62,7 @@ export default function ReportActions({
       <button
         onClick={() => act("DISMISSED")}
         disabled={pending || !allowed}
-        title={allowed ? undefined : t.insufficientPermissions}
+        title={allowed ? undefined : t.admin.insufficientPermissions}
         className="cursor-pointer rounded-full border border-ink-300 bg-surface px-3 py-1.5 text-xs font-semibold text-ink-600 transition hover:border-ink-400 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {t.admin.dismissReport}
