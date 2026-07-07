@@ -48,6 +48,16 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
     return { service: "review", path: pathname };
   }
 
+  // Billing admin queue (#221) — transactions are job-service data (they
+  // reference JobRequest/agreedPrice); falls through to provider-service
+  // below like the other carved-out admin namespaces above.
+  if (
+    pathname === "/api/admin/transactions" ||
+    pathname.startsWith("/api/admin/transactions/")
+  ) {
+    return { service: "job", path: pathname };
+  }
+
   if (pathname.startsWith("/api/admin/")) {
     return { service: "provider", path: pathname };
   }
