@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { FaBars, FaXmark } from "react-icons/fa6";
+import { FaBars, FaXmark } from "@/components/icons";
 import { useLocale, useT } from "./I18nProvider";
 import { localizedHref } from "@/lib/links";
 import LanguageToggle from "./LanguageToggle";

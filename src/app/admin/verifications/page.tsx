@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { FaFileLines, FaShieldHalved } from "react-icons/fa6";
+import { FaFileLines, FaShieldHalved } from "@/components/icons";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";

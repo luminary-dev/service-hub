@@ -1,6 +1,6 @@
 "use client";
 
-import { FaShareNodes } from "react-icons/fa6";
+import { FaShareNodes } from "@/components/icons";
 import { useT } from "./I18nProvider";
 import { useToast } from "./ToastProvider";
 

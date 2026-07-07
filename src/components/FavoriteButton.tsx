@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { FaHeart, FaRegHeart } from "react-icons/fa6";
+import { FaHeart, FaRegHeart } from "@/components/icons";
 import { useT } from "./I18nProvider";
 import { useToast } from "./ToastProvider";
 

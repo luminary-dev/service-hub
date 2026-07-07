@@ -26,7 +26,6 @@ const en = {
     language: "Language",
     themeLight: "Light theme",
     themeDark: "Dark theme",
-    themeSystem: "System theme",
   },
   a11y: {
     skipToContent: "Skip to main content",
@@ -727,7 +726,6 @@ const si: Dict = {
     language: "භාෂාව",
     themeLight: "ලා තේමාව",
     themeDark: "අඳුරු තේමාව",
-    themeSystem: "පද්ධති තේමාව",
   },
   a11y: {
     skipToContent: "ප්‍රධාන අන්තර්ගතයට යන්න",

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { FaMagnifyingGlass } from "react-icons/fa6";
+import { FaMagnifyingGlass } from "@/components/icons";
 import { CATEGORIES } from "@/lib/constants";
 import { categoryLabelLoc } from "@/lib/i18n";
 import { localizedHref } from "@/lib/links";

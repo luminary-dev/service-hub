@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { FaLocationDot } from "react-icons/fa6";
+import { FaLocationDot } from "@/components/icons";
 import { apiJson } from "@/lib/api";
 import { getSession, type SessionPayload } from "@/lib/auth";
 import { formatDate, formatLKR } from "@/lib/format";

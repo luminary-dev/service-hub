@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FaHeart } from "react-icons/fa6";
+import { FaHeart } from "@/components/icons";
 import { CATEGORIES } from "@/lib/constants";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";

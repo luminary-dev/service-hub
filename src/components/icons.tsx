@@ -1,0 +1,223 @@
+// AUTO-GENERATED self-contained icon components (scripts/gen-icons.mjs).
+// Exact SVGs copied from Lucide (UI icons) and simple-icons (brand logos) — the
+// sets shadcn.io/icons aggregates — so there is no runtime icon dependency.
+// Export names are kept as the former react-icons/fa6 identifiers so callers
+// only changed their import path. className/size/color pass straight through.
+import type { ReactElement, SVGProps } from "react";
+
+// title is allowed for parity with react-icons (renders as an SVG tooltip).
+type IconProps = SVGProps<SVGSVGElement> & { title?: string };
+
+// Drop-in replacement for react-icons' IconType (callers that store an icon
+// component in a typed field / map, e.g. category → icon).
+export type IconType = (props: IconProps) => ReactElement;
+
+const outline = {
+  xmlns: "http://www.w3.org/2000/svg",
+  viewBox: "0 0 24 24",
+  width: "1em",
+  height: "1em",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 2,
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+} as const;
+
+const filledOutline = {
+  xmlns: "http://www.w3.org/2000/svg",
+  viewBox: "0 0 24 24",
+  width: "1em",
+  height: "1em",
+  fill: "currentColor",
+  stroke: "none",
+} as const;
+
+const brand = {
+  xmlns: "http://www.w3.org/2000/svg",
+  viewBox: "0 0 24 24",
+  width: "1em",
+  height: "1em",
+  fill: "currentColor",
+} as const;
+
+export function FaArrowRight(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M5 12h14\" /> <path d=\"m12 5 7 7-7 7\" />" }} />;
+}
+export function FaArrowUpRightFromSquare(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M15 3h6v6\" /> <path d=\"M10 14 21 3\" /> <path d=\"M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6\" />" }} />;
+}
+export function FaBars(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M4 5h16\" /> <path d=\"M4 12h16\" /> <path d=\"M4 19h16\" />" }} />;
+}
+export function FaBolt(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\" />" }} />;
+}
+export function FaBorderAll(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<rect width=\"7\" height=\"7\" x=\"3\" y=\"3\" rx=\"1\" /> <rect width=\"7\" height=\"7\" x=\"14\" y=\"3\" rx=\"1\" /> <rect width=\"7\" height=\"7\" x=\"14\" y=\"14\" rx=\"1\" /> <rect width=\"7\" height=\"7\" x=\"3\" y=\"14\" rx=\"1\" />" }} />;
+}
+export function FaBriefcase(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16\" /> <rect width=\"20\" height=\"14\" x=\"2\" y=\"6\" rx=\"2\" />" }} />;
+}
+export function FaBroom(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M3 3h.01\" /> <path d=\"M7 5h.01\" /> <path d=\"M11 7h.01\" /> <path d=\"M3 7h.01\" /> <path d=\"M7 9h.01\" /> <path d=\"M3 11h.01\" /> <rect width=\"4\" height=\"4\" x=\"15\" y=\"5\" /> <path d=\"m19 9 2 2v10c0 .6-.4 1-1 1h-6c-.6 0-1-.4-1-1V11l2-2\" /> <path d=\"m13 14 8-2\" /> <path d=\"m13 19 8-2\" />" }} />;
+}
+export function FaBug(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M12 20v-9\" /> <path d=\"M14 7a4 4 0 0 1 4 4v3a6 6 0 0 1-12 0v-3a4 4 0 0 1 4-4z\" /> <path d=\"M14.12 3.88 16 2\" /> <path d=\"M21 21a4 4 0 0 0-3.81-4\" /> <path d=\"M21 5a4 4 0 0 1-3.55 3.97\" /> <path d=\"M22 13h-4\" /> <path d=\"M3 21a4 4 0 0 1 3.81-4\" /> <path d=\"M3 5a4 4 0 0 0 3.55 3.97\" /> <path d=\"M6 13H2\" /> <path d=\"m8 2 1.88 1.88\" /> <path d=\"M9 7.13V6a3 3 0 1 1 6 0v1.13\" />" }} />;
+}
+export function FaChevronLeft(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"m15 18-6-6 6-6\" />" }} />;
+}
+export function FaChevronRight(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"m9 18 6-6-6-6\" />" }} />;
+}
+export function FaCircleCheck(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"m9 12 2 2 4-4\" />" }} />;
+}
+export function FaCircleExclamation(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <line x1=\"12\" x2=\"12\" y1=\"8\" y2=\"12\" /> <line x1=\"12\" x2=\"12.01\" y1=\"16\" y2=\"16\" />" }} />;
+}
+export function FaCircleXmark(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"m15 9-6 6\" /> <path d=\"m9 9 6 6\" />" }} />;
+}
+export function FaClock(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"M12 6v6l4 2\" />" }} />;
+}
+export function FaCommentDots(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719\" />" }} />;
+}
+export function FaCompass(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z\" />" }} />;
+}
+export function FaEnvelope(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7\" /> <rect x=\"2\" y=\"4\" width=\"20\" height=\"16\" rx=\"2\" />" }} />;
+}
+export function FaFileLines(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z\" /> <path d=\"M14 2v5a1 1 0 0 0 1 1h5\" /> <path d=\"M10 9H8\" /> <path d=\"M16 13H8\" /> <path d=\"M16 17H8\" />" }} />;
+}
+export function FaFire(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4\" />" }} />;
+}
+export function FaFlag(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M4 22V4a1 1 0 0 1 .4-.8A6 6 0 0 1 8 2c3 0 5 2 7.333 2q2 0 3.067-.8A1 1 0 0 1 20 4v10a1 1 0 0 1-.4.8A6 6 0 0 1 16 16c-3 0-5-2-8-2a6 6 0 0 0-4 1.528\" />" }} />;
+}
+export function FaGlobe(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20\" /> <path d=\"M2 12h20\" />" }} />;
+}
+export function FaHammer(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"m15 12-9.373 9.373a1 1 0 0 1-3.001-3L12 9\" /> <path d=\"m18 15 4-4\" /> <path d=\"m21.5 11.5-1.914-1.914A2 2 0 0 1 19 8.172v-.344a2 2 0 0 0-.586-1.414l-1.657-1.657A6 6 0 0 0 12.516 3H9l1.243 1.243A6 6 0 0 1 12 8.485V10l2 2h1.172a2 2 0 0 1 1.414.586L18.5 14.5\" />" }} />;
+}
+export function FaHeart(props: IconProps) {
+  return <svg {...filledOutline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5\" />" }} />;
+}
+export function FaHouse(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8\" /> <path d=\"M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\" />" }} />;
+}
+export function FaHouseChimney(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8\" /> <path d=\"M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\" />" }} />;
+}
+export function FaInbox(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<polyline points=\"22 12 16 12 14 15 10 15 8 12 2 12\" /> <path d=\"M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z\" />" }} />;
+}
+export function FaLeaf(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z\" /> <path d=\"M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12\" />" }} />;
+}
+export function FaLocationDot(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0\" /> <circle cx=\"12\" cy=\"10\" r=\"3\" />" }} />;
+}
+export function FaMagnifyingGlass(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"m21 21-4.34-4.34\" /> <circle cx=\"11\" cy=\"11\" r=\"8\" />" }} />;
+}
+export function FaMoon(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401\" />" }} />;
+}
+export function FaPaintRoller(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<rect width=\"16\" height=\"6\" x=\"2\" y=\"2\" rx=\"2\" /> <path d=\"M10 16v-2a2 2 0 0 1 2-2h8a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2\" /> <rect width=\"4\" height=\"6\" x=\"8\" y=\"16\" rx=\"1\" />" }} />;
+}
+export function FaPaperPlane(props: IconProps) {
+  return <svg {...filledOutline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z\" /> <path d=\"m21.854 2.147-10.94 10.939\" />" }} />;
+}
+export function FaPhone(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M13.832 16.568a1 1 0 0 0 1.213-.303l.355-.465A2 2 0 0 1 17 15h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-.8 1.6l-.468.351a1 1 0 0 0-.292 1.233 14 14 0 0 0 6.392 6.384\" />" }} />;
+}
+export function FaPlug(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M12 22v-5\" /> <path d=\"M15 8V2\" /> <path d=\"M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1z\" /> <path d=\"M9 8V2\" />" }} />;
+}
+export function FaPlus(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M5 12h14\" /> <path d=\"M12 5v14\" />" }} />;
+}
+export function FaRegHeart(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5\" />" }} />;
+}
+export function FaRegPaperPlane(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z\" /> <path d=\"m21.854 2.147-10.94 10.939\" />" }} />;
+}
+export function FaRegStar(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z\" />" }} />;
+}
+export function FaScrewdriverWrench(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z\" />" }} />;
+}
+export function FaShareNodes(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<circle cx=\"18\" cy=\"5\" r=\"3\" /> <circle cx=\"6\" cy=\"12\" r=\"3\" /> <circle cx=\"18\" cy=\"19\" r=\"3\" /> <line x1=\"8.59\" x2=\"15.42\" y1=\"13.51\" y2=\"17.49\" /> <line x1=\"15.41\" x2=\"8.59\" y1=\"6.51\" y2=\"10.49\" />" }} />;
+}
+export function FaShieldHalved(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\" /> <path d=\"m9 12 2 2 4-4\" />" }} />;
+}
+export function FaShower(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"m4 4 2.5 2.5\" /> <path d=\"M13.5 6.5a4.95 4.95 0 0 0-7 7\" /> <path d=\"M15 5 5 15\" /> <path d=\"M14 17v.01\" /> <path d=\"M10 16v.01\" /> <path d=\"M13 13v.01\" /> <path d=\"M16 10v.01\" /> <path d=\"M11 20v.01\" /> <path d=\"M17 14v.01\" /> <path d=\"M20 11v.01\" />" }} />;
+}
+export function FaSnowflake(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"m10 20-1.25-2.5L6 18\" /> <path d=\"M10 4 8.75 6.5 6 6\" /> <path d=\"m14 20 1.25-2.5L18 18\" /> <path d=\"m14 4 1.25 2.5L18 6\" /> <path d=\"m17 21-3-6h-4\" /> <path d=\"m17 3-3 6 1.5 3\" /> <path d=\"M2 12h6.5L10 9\" /> <path d=\"m20 10-1.5 2 1.5 2\" /> <path d=\"M22 12h-6.5L14 15\" /> <path d=\"m4 10 1.5 2L4 14\" /> <path d=\"m7 21 3-6-1.5-3\" /> <path d=\"m7 3 3 6h4\" />" }} />;
+}
+export function FaStar(props: IconProps) {
+  return <svg {...filledOutline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z\" />" }} />;
+}
+export function FaSun(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<circle cx=\"12\" cy=\"12\" r=\"4\" /> <path d=\"M12 2v2\" /> <path d=\"M12 20v2\" /> <path d=\"m4.93 4.93 1.41 1.41\" /> <path d=\"m17.66 17.66 1.41 1.41\" /> <path d=\"M2 12h2\" /> <path d=\"M20 12h2\" /> <path d=\"m6.34 17.66-1.41 1.41\" /> <path d=\"m19.07 4.93-1.41 1.41\" />" }} />;
+}
+export function FaTags(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M13.172 2a2 2 0 0 1 1.414.586l6.71 6.71a2.4 2.4 0 0 1 0 3.408l-4.592 4.592a2.4 2.4 0 0 1-3.408 0l-6.71-6.71A2 2 0 0 1 6 9.172V3a1 1 0 0 1 1-1z\" /> <path d=\"M2 7v6.172a2 2 0 0 0 .586 1.414l6.71 6.71a2.4 2.4 0 0 0 3.191.193\" /> <circle cx=\"10.5\" cy=\"6.5\" r=\".5\" fill=\"currentColor\" />" }} />;
+}
+export function FaTrash(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M10 11v6\" /> <path d=\"M14 11v6\" /> <path d=\"M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6\" /> <path d=\"M3 6h18\" /> <path d=\"M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2\" />" }} />;
+}
+export function FaTriangleExclamation(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3\" /> <path d=\"M12 9v4\" /> <path d=\"M12 17h.01\" />" }} />;
+}
+export function FaTrowel(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" /> <path d=\"M12 9v6\" /> <path d=\"M16 15v6\" /> <path d=\"M16 3v6\" /> <path d=\"M3 15h18\" /> <path d=\"M3 9h18\" /> <path d=\"M8 15v6\" /> <path d=\"M8 3v6\" />" }} />;
+}
+export function FaTruck(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2\" /> <path d=\"M15 18H9\" /> <path d=\"M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14\" /> <circle cx=\"17\" cy=\"18\" r=\"2\" /> <circle cx=\"7\" cy=\"18\" r=\"2\" />" }} />;
+}
+export function FaUpload(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M12 3v12\" /> <path d=\"m17 8-5-5-5 5\" /> <path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\" />" }} />;
+}
+export function FaUsers(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\" /> <path d=\"M16 3.128a4 4 0 0 1 0 7.744\" /> <path d=\"M22 21v-2a4 4 0 0 0-3-3.87\" /> <circle cx=\"9\" cy=\"7\" r=\"4\" />" }} />;
+}
+export function FaVideo(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5\" /> <rect x=\"2\" y=\"6\" width=\"14\" height=\"12\" rx=\"2\" />" }} />;
+}
+export function FaWrench(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z\" />" }} />;
+}
+export function FaXmark(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M18 6 6 18\" /> <path d=\"m6 6 12 12\" />" }} />;
+}
+export function FaFacebookF(props: IconProps) {
+  return <svg {...brand} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<title>Facebook</title><path d=\"M9.101 23.691v-7.98H6.627v-3.667h2.474v-1.58c0-4.085 1.848-5.978 5.858-5.978.401 0 .955.042 1.468.103a8.68 8.68 0 0 1 1.141.195v3.325a8.623 8.623 0 0 0-.653-.036 26.805 26.805 0 0 0-.733-.009c-.707 0-1.259.096-1.675.309a1.686 1.686 0 0 0-.679.622c-.258.42-.374.995-.374 1.752v1.297h3.919l-.386 2.103-.287 1.564h-3.246v8.245C19.396 23.238 24 18.179 24 12.044c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.628 3.874 10.35 9.101 11.647Z\"/>" }} />;
+}
+export function FaInstagram(props: IconProps) {
+  return <svg {...brand} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<title>Instagram</title><path d=\"M7.0301.084c-1.2768.0602-2.1487.264-2.911.5634-.7888.3075-1.4575.72-2.1228 1.3877-.6652.6677-1.075 1.3368-1.3802 2.127-.2954.7638-.4956 1.6365-.552 2.914-.0564 1.2775-.0689 1.6882-.0626 4.947.0062 3.2586.0206 3.6671.0825 4.9473.061 1.2765.264 2.1482.5635 2.9107.308.7889.72 1.4573 1.388 2.1228.6679.6655 1.3365 1.0743 2.1285 1.38.7632.295 1.6361.4961 2.9134.552 1.2773.056 1.6884.069 4.9462.0627 3.2578-.0062 3.668-.0207 4.9478-.0814 1.28-.0607 2.147-.2652 2.9098-.5633.7889-.3086 1.4578-.72 2.1228-1.3881.665-.6682 1.0745-1.3378 1.3795-2.1284.2957-.7632.4966-1.636.552-2.9124.056-1.2809.0692-1.6898.063-4.948-.0063-3.2583-.021-3.6668-.0817-4.9465-.0607-1.2797-.264-2.1487-.5633-2.9117-.3084-.7889-.72-1.4568-1.3876-2.1228C21.2982 1.33 20.628.9208 19.8378.6165 19.074.321 18.2017.1197 16.9244.0645 15.6471.0093 15.236-.005 11.977.0014 8.718.0076 8.31.0215 7.0301.0839m.1402 21.6932c-1.17-.0509-1.8053-.2453-2.2287-.408-.5606-.216-.96-.4771-1.3819-.895-.422-.4178-.6811-.8186-.9-1.378-.1644-.4234-.3624-1.058-.4171-2.228-.0595-1.2645-.072-1.6442-.079-4.848-.007-3.2037.0053-3.583.0607-4.848.05-1.169.2456-1.805.408-2.2282.216-.5613.4762-.96.895-1.3816.4188-.4217.8184-.6814 1.3783-.9003.423-.1651 1.0575-.3614 2.227-.4171 1.2655-.06 1.6447-.072 4.848-.079 3.2033-.007 3.5835.005 4.8495.0608 1.169.0508 1.8053.2445 2.228.408.5608.216.96.4754 1.3816.895.4217.4194.6816.8176.9005 1.3787.1653.4217.3617 1.056.4169 2.2263.0602 1.2655.0739 1.645.0796 4.848.0058 3.203-.0055 3.5834-.061 4.848-.051 1.17-.245 1.8055-.408 2.2294-.216.5604-.4763.96-.8954 1.3814-.419.4215-.8181.6811-1.3783.9-.4224.1649-1.0577.3617-2.2262.4174-1.2656.0595-1.6448.072-4.8493.079-3.2045.007-3.5825-.006-4.848-.0608M16.953 5.5864A1.44 1.44 0 1 0 18.39 4.144a1.44 1.44 0 0 0-1.437 1.4424M5.8385 12.012c.0067 3.4032 2.7706 6.1557 6.173 6.1493 3.4026-.0065 6.157-2.7701 6.1506-6.1733-.0065-3.4032-2.771-6.1565-6.174-6.1498-3.403.0067-6.156 2.771-6.1496 6.1738M8 12.0077a4 4 0 1 1 4.008 3.9921A3.9996 3.9996 0 0 1 8 12.0077\"/>" }} />;
+}
+export function FaTiktok(props: IconProps) {
+  return <svg {...brand} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<title>TikTok</title><path d=\"M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z\"/>" }} />;
+}
+export function FaYoutube(props: IconProps) {
+  return <svg {...brand} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<title>YouTube</title><path d=\"M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z\"/>" }} />;
+}
+export function FaWhatsapp(props: IconProps) {
+  return <svg {...brand} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<title>WhatsApp</title><path d=\"M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z\"/>" }} />;
+}

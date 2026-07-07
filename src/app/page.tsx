@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
-import { FaArrowRight } from "react-icons/fa6";
+import { FaArrowRight } from "@/components/icons";
 import { apiJson } from "@/lib/api";
 import { CATEGORIES, DISTRICTS } from "@/lib/constants";
 import { dict, categoryLabelLoc, districtLabelLoc } from "@/lib/i18n";

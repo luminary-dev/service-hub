@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { FaMagnifyingGlass } from "react-icons/fa6";
+import { FaMagnifyingGlass } from "@/components/icons";
 import { apiJson } from "@/lib/api";
 import { fetchCategoryOptions } from "@/lib/categories-server";
 import { dict, categoryLabelLoc } from "@/lib/i18n";

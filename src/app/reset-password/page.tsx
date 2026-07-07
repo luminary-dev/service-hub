@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
-import { FaCircleCheck } from "react-icons/fa6";
+import { FaCircleCheck } from "@/components/icons";
 import { useT } from "@/components/I18nProvider";
 
 function ResetForm() {

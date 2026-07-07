@@ -1,4 +1,4 @@
-import type { IconType } from "react-icons";
+import type { IconType } from "@/components/icons";
 import {
   FaBolt,
   FaBorderAll,
@@ -17,7 +17,7 @@ import {
   FaTruck,
   FaVideo,
   FaWrench,
-} from "react-icons/fa6";
+} from "@/components/icons";
 
 export const CATEGORIES: readonly {
   slug: string;

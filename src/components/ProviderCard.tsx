@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { FaCircleCheck } from "react-icons/fa6";
+import { FaCircleCheck } from "@/components/icons";
 import Stars from "./Stars";
 import Avatar from "./Avatar";
 import CategoryIcon from "./CategoryIcon";

@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { FaCircleCheck, FaCircleExclamation, FaXmark } from "react-icons/fa6";
+import { FaCircleCheck, FaCircleExclamation, FaXmark } from "@/components/icons";
 import { useT } from "./I18nProvider";
 
 const TOAST_DURATION_MS = 4000;

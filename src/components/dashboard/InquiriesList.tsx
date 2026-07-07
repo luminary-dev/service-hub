@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { FaEnvelope, FaInbox, FaPhone } from "react-icons/fa6";
+import { FaEnvelope, FaInbox, FaPhone } from "@/components/icons";
 import { useLocale, useT } from "../I18nProvider";
 import { formatDate } from "@/lib/format";
 import type { InquiryItem } from "./DashboardTabs";

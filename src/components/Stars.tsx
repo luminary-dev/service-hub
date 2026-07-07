@@ -1,4 +1,4 @@
-import { FaStar } from "react-icons/fa6";
+import { FaStar } from "@/components/icons";
 
 export default function Stars({
   rating,

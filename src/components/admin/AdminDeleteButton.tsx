@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { FaTrash } from "react-icons/fa6";
+import { FaTrash } from "@/components/icons";
 import { useT } from "../I18nProvider";
 
 export default function AdminDeleteButton({

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FaHouse, FaScrewdriverWrench } from "react-icons/fa6";
+import { FaHouse, FaScrewdriverWrench } from "@/components/icons";
 import { dict } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
 
