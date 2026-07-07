@@ -6,6 +6,7 @@ import { Suspense, useState } from "react";
 import { FaCircleCheck } from "@/components/icons";
 import { useT } from "@/components/I18nProvider";
 import PasswordInput from "@/components/PasswordInput";
+import { Field } from "@/components/ui/Field";
 
 function ResetForm() {
   const params = useSearchParams();
@@ -40,7 +41,7 @@ function ResetForm() {
 
   if (done) {
     return (
-      <div className="card flex flex-col items-center p-8 text-center">
+      <div className="tech-corners card flex flex-col items-center border-ink-300 p-8 text-center">
         <FaCircleCheck className="h-10 w-10 text-emerald-500" />
         <h1 className="mt-4 text-xl font-semibold text-ink-900">
           {t.reset.doneTitle}
@@ -57,31 +58,51 @@ function ResetForm() {
 
   return (
     <>
-      <h1 className="text-2xl font-semibold tracking-tight text-ink-900">
+      <div className="flex items-center gap-2.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em]">
+        <span className="rounded-sm bg-brand-700 px-1.5 py-0.5 text-white dark:text-ink-50">
+          AUTH
+        </span>
+        <span className="text-ink-500">RECOVERY</span>
+      </div>
+      <h1 className="mt-3 text-3xl font-bold tracking-tight text-ink-900">
         {t.reset.title}
       </h1>
-      <p className="mt-1 text-sm text-ink-600">{t.reset.sub}</p>
+      <p className="mt-2 text-sm text-ink-600">{t.reset.sub}</p>
 
-      <form onSubmit={submit} className="card mt-8 space-y-4 p-6">
-        <div>
-          <label className="label" htmlFor="reset-password">
-            {t.reset.password}
-          </label>
-          <PasswordInput
-            id="reset-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            minLength={6}
-            autoComplete="new-password"
-          />
-          <p className="mt-1 text-xs text-ink-500">{t.reset.passwordHint}</p>
+      <div className="tech-corners mt-8 overflow-hidden rounded-lg border border-ink-300 bg-surface">
+        <div className="flex items-center justify-between border-b border-ink-200 bg-ink-100 px-5 py-3 font-mono text-[11px] uppercase tracking-[0.12em]">
+          <span className="font-bold tabular-nums text-ink-700">PWD-02</span>
+          <span className="text-brand-700">RESET</span>
         </div>
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <button type="submit" disabled={loading} className="btn-primary w-full">
-          {loading ? t.reset.submitting : t.reset.submit}
-        </button>
-      </form>
+        <form onSubmit={submit} className="space-y-4 p-6">
+          <Field
+            label={t.reset.password}
+            htmlFor="reset-password"
+            help={t.reset.passwordHint}
+          >
+            <PasswordInput
+              id="reset-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={6}
+              autoComplete="new-password"
+            />
+          </Field>
+          {error && (
+            <p role="alert" className="text-sm text-red-600">
+              {error}
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={loading}
+            className="btn-primary w-full"
+          >
+            {loading ? t.reset.submitting : t.reset.submit}
+          </button>
+        </form>
+      </div>
     </>
   );
 }
@@ -89,7 +110,7 @@ function ResetForm() {
 function InvalidLink() {
   const t = useT();
   return (
-    <div className="card flex flex-col items-center p-8 text-center">
+    <div className="tech-corners card flex flex-col items-center border-ink-300 p-8 text-center">
       <h1 className="text-xl font-semibold text-ink-900">
         {t.reset.invalidTitle}
       </h1>
@@ -105,10 +126,12 @@ function InvalidLink() {
 
 export default function ResetPasswordPage() {
   return (
-    <div className="mx-auto flex max-w-md flex-col px-4 py-16 sm:px-6">
-      <Suspense>
-        <ResetForm />
-      </Suspense>
+    <div className="blueprint-grid">
+      <div className="mx-auto flex max-w-md flex-col px-4 py-16 sm:px-6">
+        <Suspense>
+          <ResetForm />
+        </Suspense>
+      </div>
     </div>
   );
 }

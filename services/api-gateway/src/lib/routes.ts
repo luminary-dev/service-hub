@@ -48,6 +48,26 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
     return { service: "review", path: pathname };
   }
 
+  // Billing admin queue (#221) — transactions are job-service data (they
+  // reference JobRequest/agreedPrice); falls through to provider-service
+  // below like the other carved-out admin namespaces above.
+  if (
+    pathname === "/api/admin/transactions" ||
+    pathname.startsWith("/api/admin/transactions/")
+  ) {
+    return { service: "job", path: pathname };
+  }
+
+  // Admin dashboard analytics (#219): signups live on identity-service and
+  // the "open reports" metric's review half lives on review-service — both
+  // carved out ahead of the generic /api/admin/ → provider-service fallback.
+  if (pathname === "/api/admin/signups") {
+    return { service: "identity", path: pathname };
+  }
+  if (pathname === "/api/admin/review-stats") {
+    return { service: "review", path: pathname };
+  }
+
   // Everything else under /api/admin/, including the notification-badge
   // counts endpoint (#233, /api/admin/notifications/counts), belongs to
   // provider-service; the review-owned counterpart above

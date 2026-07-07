@@ -28,12 +28,19 @@ function VerifyInner() {
   }, [token]);
 
   if (state === "loading") {
-    return <p className="text-center text-sm text-ink-500">{t.verify.verifying}</p>;
+    return (
+      <div className="tech-corners card flex flex-col items-center border-ink-300 p-8 text-center">
+        <span className="pulse-dot h-2.5 w-2.5 rounded-full bg-brand-600" />
+        <p className="mt-4 font-mono text-sm uppercase tracking-[0.12em] text-ink-500">
+          {t.verify.verifying}
+        </p>
+      </div>
+    );
   }
 
   if (state === "success") {
     return (
-      <div className="card flex flex-col items-center p-8 text-center">
+      <div className="tech-corners card flex flex-col items-center border-ink-300 p-8 text-center">
         <FaCircleCheck className="h-10 w-10 text-emerald-500" />
         <h1 className="mt-4 text-xl font-semibold text-ink-900">
           {t.verify.successTitle}
@@ -54,7 +61,7 @@ function VerifyInner() {
   }
 
   return (
-    <div className="card flex flex-col items-center p-8 text-center">
+    <div className="tech-corners card flex flex-col items-center border-ink-300 p-8 text-center">
       <FaCircleXmark className="h-10 w-10 text-red-500" />
       <h1 className="mt-4 text-xl font-semibold text-ink-900">
         {t.verify.failTitle}
@@ -71,10 +78,20 @@ function VerifyInner() {
 
 export default function VerifyEmailPage() {
   return (
-    <div className="mx-auto flex max-w-md flex-col px-4 py-16 sm:px-6">
-      <Suspense>
-        <VerifyInner />
-      </Suspense>
+    <div className="blueprint-grid">
+      <div className="mx-auto flex max-w-md flex-col px-4 py-16 sm:px-6">
+        <div className="flex items-center gap-2.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em]">
+          <span className="rounded-sm bg-brand-700 px-1.5 py-0.5 text-white dark:text-ink-50">
+            AUTH
+          </span>
+          <span className="text-ink-500">VERIFY-EMAIL</span>
+        </div>
+        <div className="mt-8">
+          <Suspense>
+            <VerifyInner />
+          </Suspense>
+        </div>
+      </div>
     </div>
   );
 }
