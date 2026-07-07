@@ -48,13 +48,14 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
     return { service: "review", path: pathname };
   }
 
-  // Admin job management (#222): job-service owns JobRequest/JobResponse; the
-  // rest of /api/admin/ falls through to provider-service below.
-  if (
-    pathname === "/api/admin/jobs" ||
-    pathname.startsWith("/api/admin/jobs/")
-  ) {
-    return { service: "job", path: pathname };
+  // Admin dashboard analytics (#219): signups live on identity-service and
+  // the "open reports" metric's review half lives on review-service — both
+  // carved out ahead of the generic /api/admin/ → provider-service fallback.
+  if (pathname === "/api/admin/signups") {
+    return { service: "identity", path: pathname };
+  }
+  if (pathname === "/api/admin/review-stats") {
+    return { service: "review", path: pathname };
   }
 
   if (pathname.startsWith("/api/admin/")) {
