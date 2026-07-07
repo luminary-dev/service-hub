@@ -403,6 +403,13 @@ const en = {
     notificationsNewAria: (n: number) =>
       `${n} new since you last checked`,
     notificationsCountAria: (n: number) => `${n} pending`,
+    // Filtering (#223)
+    reportsFilterTypeLabel: "Target type",
+    reportsFilterStatusLabel: "Status",
+    reportsFilterAllTypes: "All types",
+    reportsFilterAllStatuses: "All statuses",
+    // Resolution audit trail (#223)
+    reportResolvedMeta: (who: string, when: string) => `Handled by ${who} on ${when}`,
   },
   profile: {
     available: "Available for work",
@@ -1179,6 +1186,13 @@ const si: Dict = {
     notificationsNewAria: (n: number) =>
       `ඔබ අවසන් වරට පරීක්ෂා කළ දා සිට නව ${n}ක්`,
     notificationsCountAria: (n: number) => `පොරොත්තුවෙන් ${n}`,
+    // Filtering (#223)
+    reportsFilterTypeLabel: "ඉලක්ක වර්ගය",
+    reportsFilterStatusLabel: "තත්ත්වය",
+    reportsFilterAllTypes: "සියලුම වර්ග",
+    reportsFilterAllStatuses: "සියලුම තත්ත්ව",
+    // Resolution audit trail (#223)
+    reportResolvedMeta: (who: string, when: string) => `${who} විසින් ${when} දින හසුරුවන ලදී`,
   },
   profile: {
     available: "වැඩට සූදානම්",

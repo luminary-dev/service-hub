@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/luminary-dev/service-hub/security/advisories/new
+    about: Do NOT open a public issue for security vulnerabilities. Report them privately — see SECURITY.md.
+  - name: Team documentation (onboarding, workflow, ops)
+    url: https://github.com/luminary-dev/service-hub-docs
+    about: Narrative team docs live in the service-hub-docs repo / GitBook.

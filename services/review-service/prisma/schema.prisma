@@ -25,7 +25,11 @@ model Review {
   photos     ReviewPhoto[]
 
   @@unique([providerId, userId])
-  @@index([providerId])
+  // Matches the provider-profile hot path: filter by providerId, order by
+  // (createdAt desc, id desc) with cursor pagination. Lets Postgres range-scan
+  // in order instead of sorting every page in memory. Covers plain providerId
+  // lookups too (leftmost prefix).
+  @@index([providerId, createdAt, id])
 }
 
 // Abuse reports (#50) on reviews — this service owns reviews, so it owns the
@@ -46,6 +50,10 @@ model Report {
   // "OPEN" | "RESOLVED" | "DISMISSED"
   status     String   @default("OPEN")
   createdAt  DateTime @default(now())
+  // Audit trail (#223): admin userId + timestamp stamped when a report
+  // transitions to RESOLVED or DISMISSED. Both null while OPEN.
+  resolvedBy String?
+  resolvedAt DateTime?
 
   // Admin queue reads by status; duplicate-protection looks up by target.
   @@index([status])

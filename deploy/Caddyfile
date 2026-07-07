@@ -7,5 +7,10 @@
 
 {$DOMAIN} {
 	encode zstd gzip
+	# HSTS: force HTTPS for two years on this host + subdomains. `preload` makes
+	# it eligible for the browser preload list (submit the domain separately at
+	# hstspreload.org once the site is stable). Caddy already redirects HTTP→HTTPS;
+	# this closes the first-request SSL-strip window for the session cookie.
+	header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
 	reverse_proxy web:3000
 }
