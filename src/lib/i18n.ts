@@ -420,6 +420,13 @@ const en = {
     usersFavoritesHeading: "Favorites",
     usersNoFavorites: "No saved providers.",
     usersSelfNotice: "This is your own account — actions here are disabled.",
+    // Filtering (#223)
+    reportsFilterTypeLabel: "Target type",
+    reportsFilterStatusLabel: "Status",
+    reportsFilterAllTypes: "All types",
+    reportsFilterAllStatuses: "All statuses",
+    // Resolution audit trail (#223)
+    reportResolvedMeta: (who: string, when: string) => `Handled by ${who} on ${when}`,
   },
   profile: {
     available: "Available for work",
@@ -1213,6 +1220,13 @@ const si: Dict = {
     usersFavoritesHeading: "ප්‍රියතමයන්",
     usersNoFavorites: "සුරැකි වෘත්තිකයන් නැත.",
     usersSelfNotice: "මෙය ඔබගේම ගිණුමයි — මෙහි ක්‍රියා අක්‍රියයි.",
+    // Filtering (#223)
+    reportsFilterTypeLabel: "ඉලක්ක වර්ගය",
+    reportsFilterStatusLabel: "තත්ත්වය",
+    reportsFilterAllTypes: "සියලුම වර්ග",
+    reportsFilterAllStatuses: "සියලුම තත්ත්ව",
+    // Resolution audit trail (#223)
+    reportResolvedMeta: (who: string, when: string) => `${who} විසින් ${when} දින හසුරුවන ලදී`,
   },
   profile: {
     available: "වැඩට සූදානම්",
