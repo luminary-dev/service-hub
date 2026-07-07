@@ -7,6 +7,10 @@ import { db } from "../db";
 import { getAuth } from "../lib/http";
 import { fetchProviderReviews, fetchRatings } from "../lib/clients";
 import { computeQualityScore } from "../lib/quality-score";
+import {
+  buildAdminProvidersWhere,
+  normalizeAdminListQuery,
+} from "../lib/admin-list";
 
 export const adminRoutes = new Hono();
 
@@ -14,58 +18,78 @@ function isAdmin(c: Context): boolean {
   return getAuth(c)?.role === "ADMIN";
 }
 
-// Moderation list: every provider (suspended included), newest first, with
-// contact info, local photo counts and review counts from review-service
-// (degrades to 0).
+// Moderation list (#224): search by name/contact, filter by category, city,
+// verification status and suspended state, sort by newest or most reviews,
+// paginated. Every row carries contact info, local photo counts and review
+// counts hydrated from review-service (degrades to 0).
 adminRoutes.get("/api/admin/providers", async (c) => {
   if (!isAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
-  const rows = await db.provider.findMany({
-    orderBy: { createdAt: "desc" },
-    include: { _count: { select: { photos: true } } },
-  });
-  const providerIds = rows.map((p) => p.id);
-  const [ratings, openReportRows] = await Promise.all([
-    fetchRatings(providerIds),
-    providerIds.length
-      ? db.report.groupBy({
-          by: ["targetId"],
-          where: {
-            targetType: "PROVIDER",
-            targetId: { in: providerIds },
-            status: "OPEN",
-          },
-          _count: { _all: true },
-        })
-      : [],
-  ]);
-  const openReportCounts: Record<string, number> = {};
-  for (const r of openReportRows) openReportCounts[r.targetId] = r._count._all;
+  const query = c.req.query();
+  const { page, pageSize, sort, q, category, city, status, suspended } =
+    normalizeAdminListQuery({
+      q: query.q ?? null,
+      category: query.category ?? null,
+      city: query.city ?? null,
+      status: query.status ?? null,
+      suspended: query.suspended ?? null,
+      sort: query.sort ?? null,
+      page: query.page ?? null,
+      pageSize: query.pageSize ?? null,
+    });
 
-  const providers = rows.map(({ _count, ...p }) => {
-    const rating = ratings[p.id]?.rating ?? 0;
-    const reviewCount = ratings[p.id]?.count ?? 0;
-    const openReportCount = openReportCounts[p.id] ?? 0;
-    return {
+  const where = buildAdminProvidersWhere({ q, category, city, status, suspended });
+
+  let total: number;
+  let providers: unknown[];
+
+  if (sort === "mostReviews") {
+    // Review counts are derived data owned by review-service, so ranking by
+    // them means hydrating and sorting the full match set in memory rather
+    // than paginating in the database (same tradeoff the public directory
+    // makes for its rating-based sorts — see providers.ts).
+    const all = await db.provider.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      include: { _count: { select: { photos: true } } },
+    });
+    const ratings = await fetchRatings(all.map((p) => p.id));
+    const ranked = [...all].sort(
+      (a, b) =>
+        (ratings[b.id]?.count ?? 0) - (ratings[a.id]?.count ?? 0) ||
+        b.createdAt.getTime() - a.createdAt.getTime()
+    );
+    total = ranked.length;
+    providers = ranked
+      .slice((page - 1) * pageSize, page * pageSize)
+      .map(({ _count, ...p }) => ({
+        ...p,
+        user: { name: p.contactName, email: p.contactEmail },
+        _count: { reviews: ratings[p.id]?.count ?? 0, photos: _count.photos },
+      }));
+  } else {
+    const [count, rows] = await Promise.all([
+      db.provider.count({ where }),
+      db.provider.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: { _count: { select: { photos: true } } },
+      }),
+    ]);
+    const ratings = await fetchRatings(rows.map((p) => p.id));
+    total = count;
+    providers = rows.map(({ _count, ...p }) => ({
       ...p,
       user: { name: p.contactName, email: p.contactEmail },
-      _count: {
-        reviews: reviewCount,
-        photos: _count.photos,
-      },
-      // Quality signal (#229): see lib/quality-score.ts for the formula.
-      quality: {
-        ...computeQualityScore({ rating, reviewCount, openReportCount }),
-        rating,
-        reviewCount,
-        openReportCount,
-      },
-    };
-  });
+      _count: { reviews: ratings[p.id]?.count ?? 0, photos: _count.photos },
+    }));
+  }
 
-  return c.json({ providers });
+  return c.json({ providers, total, page, pageSize });
 });
 
 // Moderation detail: provider + contact + photos + reviews hydrated from
@@ -173,9 +197,33 @@ adminRoutes.patch("/api/admin/providers/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-// `reason` is only meaningful on reject — an admin note that gets stored on
-// the provider so they know what to fix on resubmission. Optional: existing
-// callers that don't send it keep working unchanged.
+const batchSuspendSchema = z.object({
+  ids: z.array(z.string()).min(1).max(200),
+  suspended: z.boolean(),
+});
+
+// Bulk suspend/unsuspend (#231): batch variant of the single-provider PATCH
+// above, for the providers list's multi-select toolbar. Unknown/already-set
+// ids are silently skipped by `updateMany` — the response `count` tells the
+// caller how many rows actually changed.
+adminRoutes.patch("/api/admin/providers", async (c) => {
+  if (!isAdmin(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = batchSuspendSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid input" }, 400);
+  }
+
+  const { count } = await db.provider.updateMany({
+    where: { id: { in: parsed.data.ids } },
+    data: { suspended: parsed.data.suspended },
+  });
+  return c.json({ ok: true, count });
+});
+
 const verificationActionSchema = z.object({
   action: z.enum(["approve", "reject"]),
   reason: z.string().trim().max(1000).optional(),
@@ -422,109 +470,78 @@ adminRoutes.patch("/api/admin/reports/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-// ---------------------------------------------------------------------------
-// Automated flagging (#232): surfaces providers into the moderation queue
-// without waiting for a user report, by auto-creating a SYSTEM-sourced
-// Report. There is no cron/worker infra anywhere in the repo yet (checked
-// across services/), so this is an admin-triggerable endpoint rather than a
-// background job — a real cron can call it once one exists, and for now it's
-// wired to a manual "Run auto-flagging" button on /admin/reports.
-//
-// Thresholds are named constants so they're easy to tune without touching
-// the rule logic.
-// ---------------------------------------------------------------------------
+const batchReportStatusSchema = z.object({
+  ids: z.array(z.string()).min(1).max(200),
+  status: z.enum(["RESOLVED", "DISMISSED"]),
+});
 
-// Rule 1: 3+ OPEN reports on a provider.
-const OPEN_REPORT_FLAG_THRESHOLD = 3;
-
-// Rule 2: average rating below 2.5 once a provider has at least 5 reviews.
-// Reuses review-service's existing rating aggregation (the same
-// `fetchRatings` call already used for the moderation list and provider
-// cards) — no new rating pipeline is introduced here.
-const LOW_RATING_FLAG_THRESHOLD = 2.5;
-const MIN_REVIEWS_FOR_RATING_FLAG = 5;
-
-// Adds a trigger description for a provider, merging with any other trigger
-// already recorded for it in this run (a provider can match both rules at
-// once).
-function addTrigger(byProvider: Map<string, string[]>, providerId: string, trigger: string) {
-  const existing = byProvider.get(providerId);
-  if (existing) {
-    existing.push(trigger);
-  } else {
-    byProvider.set(providerId, [trigger]);
-  }
-}
-
-adminRoutes.post("/api/admin/flagging/run", async (c) => {
+// Bulk resolve/dismiss (#231): batch variant of the single-report PATCH
+// above, for the reports list's multi-select toolbar.
+adminRoutes.patch("/api/admin/reports", async (c) => {
   if (!isAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
-  // Don't pile up duplicate SYSTEM flags — a provider already sitting in the
-  // queue from a previous run doesn't need a second entry (mirrors the
-  // one-open-report-per-target duplicate protection in reports.ts).
-  const existingSystemFlags = await db.report.findMany({
-    where: { targetType: "PROVIDER", source: "SYSTEM", status: "OPEN" },
-    select: { targetId: true },
-  });
-  const alreadyFlagged = new Set(existingSystemFlags.map((r) => r.targetId));
-
-  const triggersByProvider = new Map<string, string[]>();
-
-  // Rule 1: open-report count.
-  const openReportCounts = await db.report.groupBy({
-    by: ["targetId"],
-    where: { targetType: "PROVIDER", status: "OPEN" },
-    _count: { _all: true },
-  });
-  for (const row of openReportCounts) {
-    if (row._count._all >= OPEN_REPORT_FLAG_THRESHOLD && !alreadyFlagged.has(row.targetId)) {
-      addTrigger(
-        triggersByProvider,
-        row.targetId,
-        `Auto-flagged: ${row._count._all} open reports (threshold ${OPEN_REPORT_FLAG_THRESHOLD})`
-      );
-    }
+  const body = await c.req.json().catch(() => null);
+  const parsed = batchReportStatusSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid input" }, 400);
   }
 
-  // Rule 2: low average rating with enough reviews to be meaningful.
-  const providerIds = (await db.provider.findMany({ select: { id: true } })).map(
-    (p) => p.id
-  );
-  const ratings = await fetchRatings(providerIds);
-  for (const id of providerIds) {
-    const r = ratings[id];
-    if (
-      r &&
-      r.count >= MIN_REVIEWS_FOR_RATING_FLAG &&
-      r.rating < LOW_RATING_FLAG_THRESHOLD &&
-      !alreadyFlagged.has(id)
-    ) {
-      addTrigger(
-        triggersByProvider,
-        id,
-        `Auto-flagged: average rating ${r.rating.toFixed(1)} across ${r.count} reviews (below ${LOW_RATING_FLAG_THRESHOLD})`
-      );
-    }
+  // Audit trail (#223): stamp who closed the reports and when, matching the
+  // single-report PATCH above so bulk-closed reports carry the same metadata.
+  const { count } = await db.report.updateMany({
+    where: { id: { in: parsed.data.ids } },
+    data: {
+      status: parsed.data.status,
+      resolvedBy: getAuth(c)?.userId ?? null,
+      resolvedAt: new Date(),
+    },
+  });
+  return c.json({ ok: true, count });
+});
+
+// ---------------------------------------------------------------------------
+// Dashboard analytics (#219): aggregate counts for the /admin home page.
+// Open reports here is only the provider-service half of the metric — the
+// review-service half (reports on reviews) is served separately at
+// review-service's /api/admin/review-stats and summed on the frontend.
+// ---------------------------------------------------------------------------
+
+adminRoutes.get("/api/admin/stats", async (c) => {
+  if (!isAdmin(c)) {
+    return c.json({ error: "Forbidden" }, 403);
   }
 
-  const created = await Promise.all(
-    Array.from(triggersByProvider.entries()).map(([targetId, triggers]) =>
-      db.report.create({
-        data: {
-          targetType: "PROVIDER",
-          targetId,
-          reporterId: null,
-          reason: triggers.join(" · "),
-          details: null,
-          source: "SYSTEM",
-        },
-      })
-    )
-  );
+  const [active, suspended, pendingVerifications, openReports, categoryGroups, categories] =
+    await Promise.all([
+      db.provider.count({ where: { suspended: false } }),
+      db.provider.count({ where: { suspended: true } }),
+      db.provider.count({ where: { verificationStatus: "PENDING" } }),
+      db.report.count({ where: { status: "OPEN" } }),
+      db.provider.groupBy({ by: ["category"], _count: { _all: true } }),
+      db.category.findMany({ select: { slug: true, labelEn: true, labelSi: true } }),
+    ]);
 
-  return c.json({ ok: true, flagged: created.length });
+  const labelBySlug = new Map(categories.map((cat) => [cat.slug, cat]));
+  const categoryDistribution = categoryGroups
+    .map((g) => {
+      const cat = labelBySlug.get(g.category);
+      return {
+        slug: g.category,
+        labelEn: cat?.labelEn ?? g.category,
+        labelSi: cat?.labelSi ?? g.category,
+        count: g._count._all,
+      };
+    })
+    .sort((a, b) => b.count - a.count);
+
+  return c.json({
+    providers: { active, suspended, total: active + suspended },
+    pendingVerifications,
+    openReports,
+    categoryDistribution,
+  });
 });
 
 // ---------------------------------------------------------------------------

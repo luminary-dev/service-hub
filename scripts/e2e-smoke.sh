@@ -63,7 +63,7 @@ check "me after logout" "$(req anon GET "/api/auth/me" | jq -r '.user')" "null"
 
 EMAIL="e2e-$RUN_TAG@example.com"
 check "register customer" "$(req cust POST "/api/auth/register" -H 'content-type: application/json' \
-  -d "{\"role\":\"CUSTOMER\",\"name\":\"E2E Customer\",\"email\":\"$EMAIL\",\"password\":\"password123\",\"phone\":\"0770000001\"}" \
+  -d "{\"role\":\"CUSTOMER\",\"name\":\"E2E Customer\",\"email\":\"$EMAIL\",\"password\":\"e2e-smoke-pass-9x\",\"phone\":\"0770000001\"}" \
   | jq -r '.user.role')" "CUSTOMER"
 check "bad login rejected" "$(req anon POST "/api/auth/login" -H 'content-type: application/json' \
   -d "{\"email\":\"$EMAIL\",\"password\":\"wrong\"}" | jq -r '.error')" "Invalid email or password"
@@ -119,7 +119,7 @@ echo "== Provider registration orchestration =="
 PEMAIL="e2e-prov-$RUN_TAG@example.com"
 PNAME="E2E Plumber $RUN_TAG"
 PREG=$(req newprov POST "/api/auth/register" -H 'content-type: application/json' -d "{
-  \"role\":\"PROVIDER\",\"name\":\"$PNAME\",\"email\":\"$PEMAIL\",\"password\":\"password123\",\"phone\":\"0770000002\",
+  \"role\":\"PROVIDER\",\"name\":\"$PNAME\",\"email\":\"$PEMAIL\",\"password\":\"e2e-smoke-pass-9x\",\"phone\":\"0770000002\",
   \"category\":\"plumber\",\"headline\":\"E2E plumbing headline\",\"bio\":\"A bio for the e2e plumbing provider that is long enough to pass validation.\",
   \"district\":\"Colombo\",\"city\":\"Colombo\",\"experience\":3,
   \"services\":[{\"title\":\"Leak fix\",\"price\":2500,\"priceType\":\"VISIT\"}]}")

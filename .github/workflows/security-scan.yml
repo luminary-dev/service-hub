@@ -78,12 +78,18 @@ jobs:
       - name: Scan image (base-image / OS packages)
         # --pkg-types os: npm packages are already covered by the lockfile scan
         # above; this job exists for the node:22-alpine layer (musl, openssl,
-        # busybox, ...). Report-only: never fails the build.
+        # busybox, ...). Gating (#238): fail the build on HIGH/CRITICAL OS-package
+        # vulns that have a fix available (--ignore-unfixed keeps the gate
+        # actionable — no failing on advisories we can't remediate). The SARIF is
+        # still written and uploaded (the upload step runs on always()), so all
+        # findings continue to surface in the Security tab.
         run: |
           "$RUNNER_TEMP/bin/trivy" image \
             --scanners vuln \
             --pkg-types os \
-            --severity CRITICAL,HIGH,MEDIUM \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --exit-code 1 \
             --format sarif \
             --output trivy-image.sarif \
             "scan/${{ matrix.image }}:ci"

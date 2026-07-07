@@ -1,9 +1,37 @@
 import "./load-env";
 import { serve } from "@hono/node-server";
 import { app } from "./app";
+import { db } from "./db";
 
 const port = Number(process.env.PORT ?? 4002);
 
-serve({ fetch: app.fetch, port }, (info) => {
+const server = serve({ fetch: app.fetch, port }, (info) => {
   console.log(`provider-service listening on :${info.port}`);
 });
+
+// Graceful shutdown: stop accepting connections, drain in-flight requests,
+// disconnect Prisma, then exit. Force-exit if draining stalls past the grace
+// window so the orchestrator's SIGKILL is never what stops us.
+let shuttingDown = false;
+function shutdown(signal: string) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`provider-service received ${signal}, shutting down`);
+  const forced = setTimeout(() => {
+    console.error("provider-service forced exit after shutdown timeout");
+    process.exit(1);
+  }, 10_000);
+  forced.unref();
+  server.close(async () => {
+    try {
+      await db.$disconnect();
+    } catch (err) {
+      console.error("provider-service error during shutdown", err);
+    }
+    clearTimeout(forced);
+    process.exit(0);
+  });
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));

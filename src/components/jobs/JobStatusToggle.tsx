@@ -31,7 +31,7 @@ export default function JobStatusToggle({
     <button
       onClick={toggle}
       disabled={pending}
-      className="text-sm font-medium text-ink-500 hover:text-ink-800 disabled:opacity-60"
+      className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-ink-300 px-3 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-600 transition-[border-color,color] duration-200 ease-snap hover:border-brand-400 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-300 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
     >
       {status === "OPEN" ? t.close : t.reopen}
     </button>

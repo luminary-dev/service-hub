@@ -120,6 +120,23 @@ function getRedis(): RedisCommands | null {
   return redisClient;
 }
 
+// Close the shared Redis connection during graceful shutdown. No-op when Redis
+// was never initialized or no REDIS_URL is configured.
+export async function closeRedis(): Promise<void> {
+  const client = redisClient as unknown as
+    | { quit(): Promise<unknown>; disconnect(): void }
+    | null
+    | undefined;
+  redisClient = null;
+  if (!client) return;
+  try {
+    await client.quit();
+  } catch {
+    // best-effort — force-disconnect if a graceful quit fails
+    client.disconnect();
+  }
+}
+
 // Returns a 429 response when the caller is over the limit, otherwise null.
 export async function rateLimit(
   c: Context,
