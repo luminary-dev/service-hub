@@ -9,6 +9,7 @@ import {
   type CategoryOption,
 } from "@/lib/categories";
 import { districtLabelLoc } from "@/lib/i18n";
+import { Field, FormRow } from "@/components/ui/Field";
 import { useLocale, useT } from "../I18nProvider";
 import { useToast } from "../ToastProvider";
 import type { DashboardData } from "./DashboardTabs";
@@ -85,7 +86,7 @@ export default function ProfileForm({
 
   return (
     <form onSubmit={submit} className="card space-y-6 p-6">
-      <label className="flex cursor-pointer items-center justify-between rounded-xl bg-ink-50 px-4 py-3">
+      <label className="flex cursor-pointer items-center justify-between rounded-lg border border-ink-200 bg-ink-50 px-4 py-3">
         <span>
           <span className="block text-sm font-medium text-ink-800">
             {p.availableTitle}
@@ -100,7 +101,7 @@ export default function ProfileForm({
         />
       </label>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-ink-50 px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-ink-200 bg-ink-50 px-4 py-3">
         <span>
           <span className="block text-sm font-medium text-ink-800">
             {p.awayUntilTitle}
@@ -129,11 +130,8 @@ export default function ProfileForm({
         </span>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label className="label" htmlFor="pf-fullName">
-            {p.fullName}
-          </label>
+      <FormRow>
+        <Field label={p.fullName} htmlFor="pf-fullName">
           <input
             id="pf-fullName"
             className="input"
@@ -142,11 +140,8 @@ export default function ProfileForm({
             required
             minLength={2}
           />
-        </div>
-        <div>
-          <label className="label" htmlFor="pf-phone">
-            {p.phone}
-          </label>
+        </Field>
+        <Field label={p.phone} htmlFor="pf-phone">
           <input
             id="pf-phone"
             className="input"
@@ -156,11 +151,8 @@ export default function ProfileForm({
             required
             minLength={9}
           />
-        </div>
-        <div>
-          <label className="label" htmlFor="pf-category">
-            {p.category}
-          </label>
+        </Field>
+        <Field label={p.category} htmlFor="pf-category">
           <select
             id="pf-category"
             className="input"
@@ -178,11 +170,8 @@ export default function ProfileForm({
               </option>
             ))}
           </select>
-        </div>
-        <div>
-          <label className="label" htmlFor="pf-experience">
-            {p.experience}
-          </label>
+        </Field>
+        <Field label={p.experience} htmlFor="pf-experience">
           <input
             id="pf-experience"
             className="input"
@@ -192,11 +181,8 @@ export default function ProfileForm({
             value={form.experience}
             onChange={(e) => set("experience", e.target.value)}
           />
-        </div>
-        <div>
-          <label className="label" htmlFor="pf-district">
-            {p.district}
-          </label>
+        </Field>
+        <Field label={p.district} htmlFor="pf-district">
           <select
             id="pf-district"
             className="input"
@@ -209,11 +195,8 @@ export default function ProfileForm({
               </option>
             ))}
           </select>
-        </div>
-        <div>
-          <label className="label" htmlFor="pf-townCity">
-            {p.townCity}
-          </label>
+        </Field>
+        <Field label={p.townCity} htmlFor="pf-townCity">
           <input
             id="pf-townCity"
             className="input"
@@ -221,13 +204,10 @@ export default function ProfileForm({
             onChange={(e) => set("city", e.target.value)}
             required
           />
-        </div>
-      </div>
+        </Field>
+      </FormRow>
 
-      <div>
-        <label className="label" htmlFor="pf-headline">
-          {p.headline}
-        </label>
+      <Field label={p.headline} htmlFor="pf-headline">
         <input
           id="pf-headline"
           className="input"
@@ -237,11 +217,8 @@ export default function ProfileForm({
           minLength={5}
           maxLength={120}
         />
-      </div>
-      <div>
-        <label className="label" htmlFor="pf-about">
-          {p.about}
-        </label>
+      </Field>
+      <Field label={p.about} htmlFor="pf-about">
         <textarea
           id="pf-about"
           className="input min-h-32 resize-y"
@@ -250,17 +227,17 @@ export default function ProfileForm({
           required
           minLength={20}
         />
-      </div>
+      </Field>
 
       <div>
-        <h3 className="text-sm font-semibold text-ink-900">
-          {p.contactSocial}
-        </h3>
-        <div className="mt-3 grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="label" htmlFor="pf-whatsapp">
-              {p.whatsapp}
-            </label>
+        <div className="flex items-center gap-3">
+          <h3 className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-500">
+            {p.contactSocial}
+          </h3>
+          <span className="h-px flex-1 border-t border-dashed border-ink-200" />
+        </div>
+        <FormRow className="mt-4">
+          <Field label={p.whatsapp} htmlFor="pf-whatsapp">
             <input
               id="pf-whatsapp"
               className="input"
@@ -268,74 +245,56 @@ export default function ProfileForm({
               onChange={(e) => set("whatsapp", e.target.value)}
               placeholder="94771234567"
             />
-          </div>
-          <div>
-            <label className="label" htmlFor="pf-altPhone">
-              {p.altPhone}
-            </label>
+          </Field>
+          <Field label={p.altPhone} htmlFor="pf-altPhone">
             <input
               id="pf-altPhone"
               className="input"
               value={form.phone2}
               onChange={(e) => set("phone2", e.target.value)}
             />
-          </div>
-          <div>
-            <label className="label" htmlFor="pf-facebook">
-              {p.facebook}
-            </label>
+          </Field>
+          <Field label={p.facebook} htmlFor="pf-facebook">
             <input
               id="pf-facebook"
               className="input"
               value={form.facebook}
               onChange={(e) => set("facebook", e.target.value)}
             />
-          </div>
-          <div>
-            <label className="label" htmlFor="pf-instagram">
-              {p.instagram}
-            </label>
+          </Field>
+          <Field label={p.instagram} htmlFor="pf-instagram">
             <input
               id="pf-instagram"
               className="input"
               value={form.instagram}
               onChange={(e) => set("instagram", e.target.value)}
             />
-          </div>
-          <div>
-            <label className="label" htmlFor="pf-tiktok">
-              {p.tiktok}
-            </label>
+          </Field>
+          <Field label={p.tiktok} htmlFor="pf-tiktok">
             <input
               id="pf-tiktok"
               className="input"
               value={form.tiktok}
               onChange={(e) => set("tiktok", e.target.value)}
             />
-          </div>
-          <div>
-            <label className="label" htmlFor="pf-youtube">
-              {p.youtube}
-            </label>
+          </Field>
+          <Field label={p.youtube} htmlFor="pf-youtube">
             <input
               id="pf-youtube"
               className="input"
               value={form.youtube}
               onChange={(e) => set("youtube", e.target.value)}
             />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="label" htmlFor="pf-website">
-              {p.website}
-            </label>
+          </Field>
+          <Field label={p.website} htmlFor="pf-website" className="sm:col-span-2">
             <input
               id="pf-website"
               className="input"
               value={form.website}
               onChange={(e) => set("website", e.target.value)}
             />
-          </div>
-        </div>
+          </Field>
+        </FormRow>
       </div>
 
       {error && (
