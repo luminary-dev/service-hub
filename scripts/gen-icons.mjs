@@ -30,6 +30,7 @@ const MAP = {
   FaHeart: ["l", "heart", true],
   FaHouse: ["l", "house"],
   FaHouseChimney: ["l", "house"],
+  FaIdCard: ["l", "id-card"],
   FaInbox: ["l", "inbox"],
   FaLeaf: ["l", "leaf"],
   FaLocationDot: ["l", "map-pin"],

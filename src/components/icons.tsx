@@ -122,6 +122,9 @@ export function FaHouse(props: IconProps) {
 export function FaHouseChimney(props: IconProps) {
   return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8\" /> <path d=\"M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\" />" }} />;
 }
+export function FaIdCard(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<rect x=\"2\" y=\"4\" width=\"20\" height=\"16\" rx=\"2\" /> <circle cx=\"9\" cy=\"10\" r=\"2\" /> <path d=\"M6 16c0-1.66 1.34-3 3-3s3 1.34 3 3\" /> <path d=\"M15 8h4\" /> <path d=\"M15 12h4\" /> <path d=\"M15 16h2\" />" }} />;
+}
 export function FaInbox(props: IconProps) {
   return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<polyline points=\"22 12 16 12 14 15 10 15 8 12 2 12\" /> <path d=\"M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z\" />" }} />;
 }
