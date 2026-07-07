@@ -163,3 +163,30 @@ reports.patch("/api/admin/review-reports/:id", async (c) => {
   }
   return c.json({ ok: true });
 });
+
+const batchReportStatusSchema = z.object({
+  ids: z.array(z.string()).min(1).max(200),
+  status: z.enum(["RESOLVED", "DISMISSED"]),
+});
+
+// Bulk resolve/dismiss (#231): batch variant of the single-report PATCH
+// above, mirroring provider-service's /api/admin/reports batch endpoint, for
+// the reports list's multi-select toolbar.
+reports.patch("/api/admin/review-reports", async (c) => {
+  const auth = getAuth(c);
+  if (auth?.role !== "ADMIN") {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = batchReportStatusSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid input" }, 400);
+  }
+
+  const { count } = await db.report.updateMany({
+    where: { id: { in: parsed.data.ids } },
+    data: { status: parsed.data.status },
+  });
+  return c.json({ ok: true, count });
+});

@@ -129,6 +129,33 @@ adminRoutes.patch("/api/admin/providers/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+const batchSuspendSchema = z.object({
+  ids: z.array(z.string()).min(1).max(200),
+  suspended: z.boolean(),
+});
+
+// Bulk suspend/unsuspend (#231): batch variant of the single-provider PATCH
+// above, for the providers list's multi-select toolbar. Unknown/already-set
+// ids are silently skipped by `updateMany` — the response `count` tells the
+// caller how many rows actually changed.
+adminRoutes.patch("/api/admin/providers", async (c) => {
+  if (!isAdmin(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = batchSuspendSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid input" }, 400);
+  }
+
+  const { count } = await db.provider.updateMany({
+    where: { id: { in: parsed.data.ids } },
+    data: { suspended: parsed.data.suspended },
+  });
+  return c.json({ ok: true, count });
+});
+
 const verificationActionSchema = z.object({ action: z.enum(["approve", "reject"]) });
 
 adminRoutes.patch("/api/admin/verifications/:id", async (c) => {
@@ -303,6 +330,31 @@ adminRoutes.patch("/api/admin/reports/:id", async (c) => {
     return c.json({ error: "Report not found" }, 404);
   }
   return c.json({ ok: true });
+});
+
+const batchReportStatusSchema = z.object({
+  ids: z.array(z.string()).min(1).max(200),
+  status: z.enum(["RESOLVED", "DISMISSED"]),
+});
+
+// Bulk resolve/dismiss (#231): batch variant of the single-report PATCH
+// above, for the reports list's multi-select toolbar.
+adminRoutes.patch("/api/admin/reports", async (c) => {
+  if (!isAdmin(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = batchReportStatusSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid input" }, 400);
+  }
+
+  const { count } = await db.report.updateMany({
+    where: { id: { in: parsed.data.ids } },
+    data: { status: parsed.data.status },
+  });
+  return c.json({ ok: true, count });
 });
 
 // ---------------------------------------------------------------------------
