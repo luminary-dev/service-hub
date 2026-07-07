@@ -41,15 +41,29 @@ builds and publishes images but does not deploy.
 Each DB service applies its migrations on start; the demo seed refuses to run
 under `NODE_ENV=production`.
 
+## Secrets: GitHub is the source of truth
+
+The repo is public, so nothing sensitive lives in the tree. All runtime config
+is stored as **GitHub Actions repo secrets**, and the deploy job **renders the
+server's `.env` from them on every deploy** (piped over SSH, never logged). So
+the manual `.env` in step 3 is only needed for a manual first bring-up before CD
+is enabled — once CD runs, it owns the server `.env`.
+
+App secrets (set with `gh secret set <NAME>`):
+
+- Required: `AUTH_SECRET`, `INTERNAL_API_SECRET`, `POSTGRES_PASSWORD`,
+  `WEB_ORIGIN`, `DOMAIN`
+- Optional: `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `EMAIL_FROM`, `ACME_EMAIL`,
+  `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`
+
+Deploy/SSH secrets: `PROD_SSH_HOST`, `PROD_SSH_USER`, `PROD_SSH_KEY` (a deploy
+key), `PROD_APP_DIR` (the checkout path on the host).
+
 ## Enabling automated deploys
 
-Once the host exists, in **GitHub → repo settings**:
-
-- **Variable** `DEPLOY_ENABLED = true` (un-gates the `deploy` job).
-- **Secrets** `PROD_SSH_HOST`, `PROD_SSH_USER`, `PROD_SSH_KEY` (a deploy key with
-  access), and `PROD_APP_DIR` (the checkout path on the host).
-
-After that, merging `dev → prod` builds the images and SSHes in to
+Once the host exists, set the variable **`DEPLOY_ENABLED = true`** (un-gates the
+`deploy` job) and the `PROD_SSH_*` secrets above. After that, merging
+`dev → prod` builds the images, renders the server `.env` from the secrets, then
 `git reset --hard origin/prod && docker compose -f docker-compose.prod.yml pull && up -d`.
 
 ## Releasing

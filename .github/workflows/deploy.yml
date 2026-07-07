@@ -76,13 +76,43 @@ jobs:
           SSH_USER: ${{ secrets.PROD_SSH_USER }}
           APP_DIR: ${{ secrets.PROD_APP_DIR }}
           TAG: ${{ github.sha }}
+          # App runtime config → rendered into the server's .env on every deploy,
+          # so GitHub secrets are the single source of truth (the repo is public;
+          # nothing sensitive lives in the tree). Optional vars may be empty;
+          # docker-compose.prod.yml's ${VAR:?} guards fail loudly on a missing
+          # required one (AUTH_SECRET / INTERNAL_API_SECRET / POSTGRES_PASSWORD /
+          # WEB_ORIGIN / DOMAIN).
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          INTERNAL_API_SECRET: ${{ secrets.INTERNAL_API_SECRET }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          WEB_ORIGIN: ${{ secrets.WEB_ORIGIN }}
+          DOMAIN: ${{ secrets.DOMAIN }}
+          ACME_EMAIL: ${{ secrets.ACME_EMAIL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: |
           install -m 600 /dev/stdin "$HOME/deploy_key" <<< "$SSH_KEY"
-          ssh -o StrictHostKeyChecking=accept-new -i "$HOME/deploy_key" "$SSH_USER@$HOST" bash -s <<EOF
+          SSH=(ssh -o StrictHostKeyChecking=accept-new -i "$HOME/deploy_key" "$SSH_USER@$HOST")
+          # 1) Render $APP_DIR/.env from the secrets above — piped over the
+          #    encrypted channel, so no value is ever printed to the log.
+          {
+            for k in AUTH_SECRET INTERNAL_API_SECRET POSTGRES_PASSWORD WEB_ORIGIN \
+                     DOMAIN ACME_EMAIL ANTHROPIC_API_KEY RESEND_API_KEY EMAIL_FROM \
+                     R2_ENDPOINT R2_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY; do
+              printf '%s=%s\n' "$k" "${!k}"
+            done
+            printf 'IMAGE_TAG=%s\n' "$TAG"
+          } | "${SSH[@]}" "umask 077 && mkdir -p '$APP_DIR' && cat > '$APP_DIR/.env'"
+          # 2) Pull the prod branch + images and (re)start the stack.
+          "${SSH[@]}" bash -s <<EOF
             set -euo pipefail
             cd "$APP_DIR"
             git fetch origin prod && git reset --hard origin/prod
-            export IMAGE_TAG="$TAG"
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
             docker image prune -f
