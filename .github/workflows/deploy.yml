@@ -98,6 +98,10 @@ jobs:
         run: |
           install -m 600 /dev/stdin "$HOME/deploy_key" <<< "$SSH_KEY"
           SSH=(ssh -o StrictHostKeyChecking=accept-new -i "$HOME/deploy_key" "$SSH_USER@$HOST")
+          # 0) Record the currently-deployed IMAGE_TAG from the server's .env
+          #    BEFORE we overwrite it, so a failed rollout can be rolled back.
+          PREV_TAG=$("${SSH[@]}" "grep -E '^IMAGE_TAG=' '$APP_DIR/.env' 2>/dev/null | tail -1 | cut -d= -f2- || true")
+          echo "Previous IMAGE_TAG: ${PREV_TAG:-<none>}"
           # 1) Render $APP_DIR/.env from the secrets above — piped over the
           #    encrypted channel, so no value is ever printed to the log.
           {
@@ -108,12 +112,33 @@ jobs:
             done
             printf 'IMAGE_TAG=%s\n' "$TAG"
           } | "${SSH[@]}" "umask 077 && mkdir -p '$APP_DIR' && cat > '$APP_DIR/.env'"
-          # 2) Pull the prod branch + images and (re)start the stack.
+          # 2) Pull the prod branch + images, then a HEALTH-GATED (re)start:
+          #    `up -d --wait` blocks until every container with a healthcheck is
+          #    healthy and none has exited, so a crash-loop or a failed
+          #    `prisma migrate deploy` fails the deploy instead of silently
+          #    replacing the running stack. On failure we roll the stack back to
+          #    the previous IMAGE_TAG and exit non-zero. The old image is pruned
+          #    only AFTER a healthy rollout, so rollback stays a one-liner.
           "${SSH[@]}" bash -s <<EOF
             set -euo pipefail
             cd "$APP_DIR"
+            COMPOSE="docker compose -f docker-compose.prod.yml"
             git fetch origin prod && git reset --hard origin/prod
-            docker compose -f docker-compose.prod.yml pull
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
-            docker image prune -f
+            \$COMPOSE pull
+            if \$COMPOSE up -d --remove-orphans --wait --wait-timeout 180; then
+              echo "Deploy healthy."
+              docker image prune -f
+            else
+              echo "Deploy UNHEALTHY — attempting rollback to '${PREV_TAG:-<none>}'." >&2
+              \$COMPOSE ps
+              if [ -n "${PREV_TAG:-}" ]; then
+                sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${PREV_TAG}/" .env
+                \$COMPOSE pull
+                \$COMPOSE up -d --remove-orphans --wait --wait-timeout 180 || true
+                echo "Rolled back to ${PREV_TAG}." >&2
+              else
+                echo "No previous IMAGE_TAG recorded; cannot auto-roll back." >&2
+              fi
+              exit 1
+            fi
           EOF
