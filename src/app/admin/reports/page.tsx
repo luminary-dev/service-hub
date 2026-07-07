@@ -8,6 +8,7 @@ import { dict } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
 import Stars from "@/components/Stars";
 import ReportActions from "@/components/admin/ReportActions";
+import RunFlaggingButton from "@/components/admin/RunFlaggingButton";
 import ReportsFilterBar, {
   type StatusFilter,
   type TargetTypeFilter,
