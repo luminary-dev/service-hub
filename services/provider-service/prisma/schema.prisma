@@ -54,6 +54,9 @@ model Provider {
   // NONE | PENDING | VERIFIED | REJECTED
   verificationStatus String    @default("NONE")
   verifiedAt         DateTime?
+  // Set when an admin rejects a verification request (single or bulk) so the
+  // provider knows what to fix on resubmission. Cleared on the next approve.
+  rejectionReason    String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -127,6 +130,10 @@ model Report {
   details    String?
   // "OPEN" | "RESOLVED" | "DISMISSED"
   status     String   @default("OPEN")
+  // "USER" | "SYSTEM" (#232): USER reports come from the public report flow
+  // above; SYSTEM reports are auto-created by POST /api/admin/flagging/run
+  // when a provider crosses a report-count or rating threshold.
+  source     String   @default("USER")
   createdAt  DateTime @default(now())
   // Audit trail (#223): admin userId + timestamp stamped when a report
   // transitions to RESOLVED or DISMISSED. Both null while OPEN.

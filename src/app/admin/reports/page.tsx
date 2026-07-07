@@ -133,10 +133,15 @@ export default async function AdminReportsPage({
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
-      <h1 className="text-3xl font-semibold tracking-tight text-ink-900">
-        {t.reportsTitle}
-      </h1>
-      <p className="mt-1 text-ink-600">{t.reportsSubtitle}</p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight text-ink-900">
+            {t.reportsTitle}
+          </h1>
+          <p className="mt-1 text-ink-600">{t.reportsSubtitle}</p>
+        </div>
+        <RunFlaggingButton />
+      </div>
 
       <div className="mt-6">
         <ReportsFilterBar targetType={targetType} status={status} />
