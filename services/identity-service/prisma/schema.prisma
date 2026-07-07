@@ -39,6 +39,23 @@ model AccountDeletion {
   createdAt DateTime @default(now())
 }
 
+// Standalone log for admin impersonation ("view as", #234): who impersonated
+// whom and for how long. Deliberately minimal and separate from the general
+// moderation audit log proposed in #227 — once that lands this should be
+// reconciled/merged into it rather than kept as a second audit trail.
+// No relations to User: an impersonation record should survive account
+// deletion of either party, same rationale as AccountDeletion above.
+model ImpersonationLog {
+  id           String    @id @default(cuid())
+  adminId      String
+  targetUserId String
+  startedAt    DateTime  @default(now())
+  endedAt      DateTime?
+
+  @@index([adminId])
+  @@index([targetUserId])
+}
+
 // providerId references a Provider owned by provider-service; no FK across
 // service boundaries — existence is checked over S2S HTTP at write time.
 model Favorite {
