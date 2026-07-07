@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { FaClock, FaFlag, FaShieldHalved, FaTags, FaUsers } from "@/components/icons";
+import { FaBriefcase, FaClock, FaFlag, FaShieldHalved, FaTags, FaUsers } from "@/components/icons";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
@@ -46,6 +46,12 @@ export default async function AdminHomePage() {
       icon: FaClock,
       title: t.auditLogLink,
       desc: t.auditLogDesc,
+    },
+    {
+      href: "/admin/jobs",
+      icon: FaBriefcase,
+      title: t.jobsLink,
+      desc: t.jobsDesc,
     },
   ];
 

@@ -92,7 +92,7 @@ export default function PhotoGallery({ photos }: { photos: Photo[] }) {
                 ? t.profile.viewPhotoCaption(p.caption)
                 : t.profile.viewPhoto
             }
-            className="group relative aspect-square cursor-pointer overflow-hidden rounded-xl bg-ink-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+            className="group relative aspect-square cursor-pointer overflow-hidden rounded-lg border border-ink-200 bg-ink-100 transition-[border-color,transform] duration-200 ease-snap hover:-translate-y-0.5 hover:border-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
           >
             <Image
               src={p.url}
@@ -103,7 +103,7 @@ export default function PhotoGallery({ photos }: { photos: Photo[] }) {
               className="object-cover transition group-hover:scale-105"
             />
             {p.caption && (
-              <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-3 pb-2 pt-8 text-left text-xs text-white">
+              <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-3 pb-2 pt-8 text-left font-mono text-[11px] uppercase tracking-wide text-white">
                 {p.caption}
               </span>
             )}
