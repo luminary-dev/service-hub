@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { FaPlus } from "@/components/icons";
+import { Field, FormRow } from "@/components/ui/Field";
 import { useT } from "../I18nProvider";
 
 export type AdminCategory = {
@@ -119,23 +121,24 @@ export default function AdminCategoryManager({
 
   return (
     <div>
-      {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+      {error && (
+        <p role="alert" className="mb-4 text-sm text-red-600">
+          {error}
+        </p>
+      )}
 
       {initial.length === 0 ? (
-        <p className="mt-8 text-ink-500">{t.catEmpty}</p>
+        <p className="text-ink-500">{t.catEmpty}</p>
       ) : (
-        <ul className="mt-8 space-y-3">
+        <ul className="space-y-3">
           {initial.map((c) => (
             <li
               key={c.slug}
-              className="card flex flex-wrap items-center justify-between gap-4 p-4"
+              className="tech-corners card flex flex-wrap items-center justify-between gap-4 p-4"
             >
               {editing === c.slug ? (
                 <div className="flex flex-1 flex-wrap items-end gap-3">
-                  <div>
-                    <label className="label" htmlFor="cat-catLabelEn">
-                      {t.catLabelEn}
-                    </label>
+                  <Field label={t.catLabelEn} htmlFor="cat-catLabelEn">
                     <input
                       id="cat-catLabelEn"
                       className="input"
@@ -144,11 +147,8 @@ export default function AdminCategoryManager({
                         setEdit((f) => ({ ...f, labelEn: e.target.value }))
                       }
                     />
-                  </div>
-                  <div>
-                    <label className="label" htmlFor="cat-catLabelSi">
-                      {t.catLabelSi}
-                    </label>
+                  </Field>
+                  <Field label={t.catLabelSi} htmlFor="cat-catLabelSi">
                     <input
                       id="cat-catLabelSi"
                       className="input"
@@ -157,11 +157,8 @@ export default function AdminCategoryManager({
                         setEdit((f) => ({ ...f, labelSi: e.target.value }))
                       }
                     />
-                  </div>
-                  <div>
-                    <label className="label" htmlFor="cat-catIcon">
-                      {t.catIcon}
-                    </label>
+                  </Field>
+                  <Field label={t.catIcon} htmlFor="cat-catIcon">
                     <input
                       id="cat-catIcon"
                       className="input w-36"
@@ -170,11 +167,8 @@ export default function AdminCategoryManager({
                         setEdit((f) => ({ ...f, icon: e.target.value }))
                       }
                     />
-                  </div>
-                  <div>
-                    <label className="label" htmlFor="cat-catSortOrder">
-                      {t.catSortOrder}
-                    </label>
+                  </Field>
+                  <Field label={t.catSortOrder} htmlFor="cat-catSortOrder">
                     <input
                       id="cat-catSortOrder"
                       className="input w-24"
@@ -185,7 +179,7 @@ export default function AdminCategoryManager({
                         setEdit((f) => ({ ...f, sortOrder: e.target.value }))
                       }
                     />
-                  </div>
+                  </Field>
                   <div className="flex gap-2">
                     <button
                       onClick={() => saveEdit(c.slug)}
@@ -224,26 +218,38 @@ export default function AdminCategoryManager({
                         </span>
                       )}
                     </div>
-                    <p className="text-sm text-ink-500">
-                      {c.slug} · {t.catSortOrder.toLowerCase()} {c.sortOrder}
-                      {c.icon ? ` · ${c.icon}` : ""}
+                    <p className="mt-1 flex flex-wrap items-center gap-1.5 font-mono text-xs text-ink-500">
+                      <span className="text-ink-600">{c.slug}</span>
+                      <span className="text-ink-300">·</span>
+                      <span className="text-ink-400 uppercase tracking-[0.08em]">
+                        {t.catSortOrder}
+                      </span>
+                      <span className="tabular-nums text-ink-600">
+                        {c.sortOrder}
+                      </span>
+                      {c.icon ? (
+                        <>
+                          <span className="text-ink-300">·</span>
+                          <span className="text-ink-600">{c.icon}</span>
+                        </>
+                      ) : null}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button
                       onClick={() => startEdit(c)}
                       disabled={pending}
-                      className="cursor-pointer rounded-full border border-ink-300 bg-surface px-3 py-1.5 text-xs font-semibold text-ink-800 transition hover:border-brand-400 hover:text-brand-700 disabled:opacity-60"
+                      className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-md border border-ink-300 bg-surface px-3 py-1.5 font-display text-xs font-semibold text-ink-800 transition-[border-color,color,transform] duration-200 ease-snap hover:border-brand-400 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-300 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {t.catEdit}
                     </button>
                     <button
                       onClick={() => patch(c.slug, { active: !c.active })}
                       disabled={pending}
-                      className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-60 ${
+                      className={`inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-md border bg-surface px-3 py-1.5 font-display text-xs font-semibold transition-[border-color,background-color,transform] duration-200 ease-snap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 ${
                         c.active
-                          ? "border-red-300 bg-surface text-red-600 hover:bg-red-50"
-                          : "border-emerald-300 bg-surface text-emerald-700 hover:bg-emerald-50"
+                          ? "border-red-300 text-red-600 hover:border-red-400 hover:bg-red-50 focus-visible:ring-red-300"
+                          : "border-emerald-300 text-emerald-700 hover:border-emerald-400 hover:bg-emerald-50 focus-visible:ring-emerald-300"
                       }`}
                     >
                       {c.active ? t.catDeactivate : t.catActivate}
@@ -256,13 +262,15 @@ export default function AdminCategoryManager({
         </ul>
       )}
 
-      <form onSubmit={add} className="card mt-8 space-y-4 p-6">
-        <h2 className="font-semibold text-ink-900">{t.catAddTitle}</h2>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="label" htmlFor="cat-catSlug">
-              {t.catSlug}
-            </label>
+      <form onSubmit={add} className="tech-corners card mt-8 space-y-4 p-6">
+        <div className="flex items-center gap-2.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em]">
+          <span className="rounded-sm bg-brand-700 px-1.5 py-0.5 text-white dark:text-ink-50">
+            NEW
+          </span>
+          <h2 className="text-ink-500">{t.catAddTitle}</h2>
+        </div>
+        <FormRow>
+          <Field label={t.catSlug} htmlFor="cat-catSlug" help={t.catSlugHint}>
             <input
               id="cat-catSlug"
               className="input"
@@ -274,12 +282,8 @@ export default function AdminCategoryManager({
               pattern="[a-z0-9-]{2,40}"
               required
             />
-            <p className="mt-1 text-xs text-ink-500">{t.catSlugHint}</p>
-          </div>
-          <div>
-            <label className="label" htmlFor="cat-catIcon-1">
-              {t.catIcon}
-            </label>
+          </Field>
+          <Field label={t.catIcon} htmlFor="cat-catIcon-1">
             <input
               id="cat-catIcon-1"
               className="input"
@@ -289,11 +293,8 @@ export default function AdminCategoryManager({
               }
               placeholder="FaWrench"
             />
-          </div>
-          <div>
-            <label className="label" htmlFor="cat-catLabelEn-1">
-              {t.catLabelEn}
-            </label>
+          </Field>
+          <Field label={t.catLabelEn} htmlFor="cat-catLabelEn-1">
             <input
               id="cat-catLabelEn-1"
               className="input"
@@ -303,11 +304,8 @@ export default function AdminCategoryManager({
               }
               required
             />
-          </div>
-          <div>
-            <label className="label" htmlFor="cat-catLabelSi-1">
-              {t.catLabelSi}
-            </label>
+          </Field>
+          <Field label={t.catLabelSi} htmlFor="cat-catLabelSi-1">
             <input
               id="cat-catLabelSi-1"
               className="input"
@@ -317,11 +315,8 @@ export default function AdminCategoryManager({
               }
               required
             />
-          </div>
-          <div>
-            <label className="label" htmlFor="cat-catSortOrder-1">
-              {t.catSortOrder}
-            </label>
+          </Field>
+          <Field label={t.catSortOrder} htmlFor="cat-catSortOrder-1">
             <input
               id="cat-catSortOrder-1"
               className="input w-32"
@@ -332,9 +327,10 @@ export default function AdminCategoryManager({
                 setAddForm((f) => ({ ...f, sortOrder: e.target.value }))
               }
             />
-          </div>
-        </div>
+          </Field>
+        </FormRow>
         <button type="submit" disabled={pending} className="btn-primary">
+          <FaPlus className="h-3.5 w-3.5" />
           {pending ? t.catAdding : t.catAdd}
         </button>
       </form>

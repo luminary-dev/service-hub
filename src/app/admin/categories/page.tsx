@@ -3,6 +3,8 @@ import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
+import PageHeader from "@/components/ui/PageHeader";
+import StatReadout from "@/components/ui/StatReadout";
 import AdminCategoryManager, {
   type AdminCategory,
 } from "@/components/admin/AdminCategoryManager";
@@ -25,14 +27,28 @@ export default async function AdminCategoriesPage() {
   const categories = data?.categories ?? [];
   const t = dict[locale].admin;
 
-  return (
-    <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
-      <h1 className="text-3xl font-semibold tracking-tight text-ink-900">
-        {t.categoriesTitle}
-      </h1>
-      <p className="mt-1 text-ink-600">{t.categoriesSubtitle}</p>
+  const activeCount = categories.filter((c) => c.active).length;
 
-      <AdminCategoryManager initial={categories} />
+  return (
+    <div>
+      <PageHeader
+        tag="CAT"
+        eyebrow={t.indexTitle}
+        title={t.categoriesTitle}
+        status={t.categoriesSubtitle}
+      >
+        <StatReadout
+          stats={[
+            { label: "TOTAL", value: categories.length },
+            { label: "ACTIVE", value: activeCount },
+            { label: "INACTIVE", value: categories.length - activeCount },
+          ]}
+        />
+      </PageHeader>
+
+      <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
+        <AdminCategoryManager initial={categories} />
+      </div>
     </div>
   );
 }

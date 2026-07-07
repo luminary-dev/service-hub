@@ -28,14 +28,14 @@ export default function ReportActions({ endpoint }: { endpoint: string }) {
       <button
         onClick={() => act("RESOLVED")}
         disabled={pending}
-        className="cursor-pointer rounded-full border border-emerald-300 bg-surface px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50 dark:hover:bg-emerald-950 disabled:opacity-60"
+        className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-md border border-emerald-300 bg-surface px-3 py-1.5 font-display text-xs font-semibold text-emerald-700 transition-[border-color,background-color,transform] duration-200 ease-snap hover:border-emerald-400 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
       >
         {t.resolve}
       </button>
       <button
         onClick={() => act("DISMISSED")}
         disabled={pending}
-        className="cursor-pointer rounded-full border border-ink-300 bg-surface px-3 py-1.5 text-xs font-semibold text-ink-600 transition hover:border-ink-400 disabled:opacity-60"
+        className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-md border border-ink-300 bg-surface px-3 py-1.5 font-display text-xs font-semibold text-ink-600 transition-[border-color,background-color,transform] duration-200 ease-snap hover:border-ink-400 hover:bg-ink-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-300 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
       >
         {t.dismissReport}
       </button>

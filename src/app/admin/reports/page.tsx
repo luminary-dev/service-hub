@@ -1,12 +1,17 @@
 /* eslint-disable @next/next/no-img-element */
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { FaFlag } from "@/components/icons";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
 import Stars from "@/components/Stars";
+import InView from "@/components/InView";
+import PageHeader from "@/components/ui/PageHeader";
+import StatReadout from "@/components/ui/StatReadout";
+import EmptyState from "@/components/ui/EmptyState";
 import ReportActions from "@/components/admin/ReportActions";
 
 // Caching (#57): admin-only moderation view; edits must be visible on the
@@ -92,131 +97,162 @@ export default async function AdminReportsPage() {
   const reasonLabel = (reason: string) =>
     reason in tr.reasons ? tr.reasons[reason as keyof typeof tr.reasons] : reason;
 
+  const openCount = rows.filter((r) => r.status === "OPEN").length;
+  const resolvedCount = rows.filter((r) => r.status === "RESOLVED").length;
+
   return (
-    <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
-      <h1 className="text-3xl font-semibold tracking-tight text-ink-900">
-        {t.reportsTitle}
-      </h1>
-      <p className="mt-1 text-ink-600">{t.reportsSubtitle}</p>
+    <div>
+      <PageHeader
+        tag="MOD"
+        eyebrow={t.indexTitle}
+        title={t.reportsTitle}
+        status={t.reportsSubtitle}
+      >
+        <StatReadout
+          stats={[
+            { label: "OPEN", value: openCount },
+            { label: "RESOLVED", value: resolvedCount },
+            { label: "TOTAL", value: rows.length },
+          ]}
+        />
+      </PageHeader>
 
-      {rows.length === 0 ? (
-        <p className="mt-8 text-sm text-ink-500">{t.reportsEmpty}</p>
-      ) : (
-        <ul className="mt-8 space-y-3">
-          {rows.map((r) => (
-            <li key={`${r.source}-${r.id}`} className="card p-4">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="chip bg-ink-100 text-ink-600">
-                      {typeLabel[r.targetType]}
-                    </span>
-                    {r.status === "OPEN" && (
-                      <span className="chip bg-amber-50 text-amber-700 ring-1 ring-amber-200">
-                        {t.openTag}
-                      </span>
-                    )}
-                    {r.status === "RESOLVED" && (
-                      <span className="chip bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">
-                        {t.resolvedTag}
-                      </span>
-                    )}
-                    {r.status === "DISMISSED" && (
-                      <span className="chip bg-ink-100 text-ink-500">
-                        {t.dismissedTag}
-                      </span>
-                    )}
-                    <span className="text-sm font-semibold text-ink-900">
-                      {reasonLabel(r.reason)}
-                    </span>
-                  </div>
-                  {r.details && (
-                    <p className="mt-2 whitespace-pre-line text-sm text-ink-600">
-                      {r.details}
-                    </p>
-                  )}
-                  <p className="mt-2 text-xs text-ink-500">
-                    {formatDate(r.createdAt, locale)} · {t.reportedBy}{" "}
-                    {r.reporterId ?? t.reportAnonymous}
-                  </p>
-                </div>
-                {r.status === "OPEN" && (
-                  <ReportActions
-                    endpoint={
-                      r.source === "provider"
-                        ? `/api/admin/reports/${r.id}`
-                        : `/api/admin/review-reports/${r.id}`
-                    }
-                  />
-                )}
-              </div>
-
-              <div className="mt-3 rounded-xl bg-ink-50 p-3">
-                {r.target === null ? (
-                  <p className="text-sm text-ink-500">{t.reportTargetGone}</p>
-                ) : r.source === "review" ? (
-                  <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+        {rows.length === 0 ? (
+          <EmptyState icon={FaFlag} title={t.reportsEmpty} />
+        ) : (
+          <>
+            {/* Active caution rail: open reports are awaiting moderation. */}
+            {openCount > 0 && (
+              <div className="hazard mb-6 h-1.5 w-full rounded-full" />
+            )}
+            <InView as="ul" stagger className="space-y-3">
+              {rows.map((r) => (
+                <li key={`${r.source}-${r.id}`} className="tech-corners card p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <Stars rating={r.target.rating} />
-                        {r.target.removed && (
-                          <span className="chip bg-red-50 text-red-700 ring-1 ring-red-200">
-                            {t.reportContentRemoved}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="chip bg-ink-100 font-mono uppercase tracking-[0.08em] text-ink-600">
+                          {typeLabel[r.targetType]}
+                        </span>
+                        {r.status === "OPEN" && (
+                          <span className="chip bg-amber-50 text-amber-700 ring-1 ring-amber-200">
+                            <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-amber-600" />
+                            {t.openTag}
                           </span>
                         )}
+                        {r.status === "RESOLVED" && (
+                          <span className="chip bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">
+                            {t.resolvedTag}
+                          </span>
+                        )}
+                        {r.status === "DISMISSED" && (
+                          <span className="chip bg-ink-100 text-ink-500">
+                            {t.dismissedTag}
+                          </span>
+                        )}
+                        <span className="text-sm font-semibold text-ink-900">
+                          {reasonLabel(r.reason)}
+                        </span>
                       </div>
-                      <p className="mt-1 line-clamp-3 text-sm text-ink-600">
-                        {r.target.comment}
+                      {r.details && (
+                        <p className="mt-2 whitespace-pre-line text-sm text-ink-600">
+                          {r.details}
+                        </p>
+                      )}
+                      <p className="mt-2 flex flex-wrap items-center gap-1.5 font-mono text-xs text-ink-500">
+                        <span className="tabular-nums text-ink-600">
+                          {formatDate(r.createdAt, locale)}
+                        </span>
+                        <span className="text-ink-300">·</span>
+                        <span className="text-ink-400">{t.reportedBy}</span>
+                        <span className="text-ink-600">
+                          {r.reporterId ?? t.reportAnonymous}
+                        </span>
                       </p>
                     </div>
-                    <Link
-                      href={`/admin/providers/${r.target.providerId}`}
-                      className="shrink-0 text-sm font-medium text-brand-700 hover:text-brand-800"
-                    >
-                      {t.moderate}
-                    </Link>
+                    {r.status === "OPEN" && (
+                      <ReportActions
+                        endpoint={
+                          r.source === "provider"
+                            ? `/api/admin/reports/${r.id}`
+                            : `/api/admin/review-reports/${r.id}`
+                        }
+                      />
+                    )}
                   </div>
-                ) : (
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      {r.targetType === "WORK_PHOTO" && r.target.photoUrl && (
-                        <img
-                          src={r.target.photoUrl}
-                          alt={r.target.caption ?? "Reported photo"}
-                          className="h-14 w-14 shrink-0 rounded-lg object-cover"
-                        />
-                      )}
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-ink-800">
-                          {r.target.providerName}
-                        </p>
-                        <div className="mt-0.5 flex flex-wrap gap-1.5">
-                          {r.target.suspended && (
-                            <span className="chip bg-red-50 text-red-700 ring-1 ring-red-200">
-                              {t.suspendedTag}
-                            </span>
-                          )}
-                          {r.target.removed && (
-                            <span className="chip bg-red-50 text-red-700 ring-1 ring-red-200">
-                              {t.reportContentRemoved}
-                            </span>
-                          )}
+
+                  <div className="mt-3 rounded-xl border border-dashed border-ink-200 bg-ink-50 p-3">
+                    {r.target === null ? (
+                      <p className="text-sm text-ink-500">
+                        {t.reportTargetGone}
+                      </p>
+                    ) : r.source === "review" ? (
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <Stars rating={r.target.rating} />
+                            {r.target.removed && (
+                              <span className="chip bg-red-50 text-red-700 ring-1 ring-red-200">
+                                {t.reportContentRemoved}
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-1 line-clamp-3 text-sm text-ink-600">
+                            {r.target.comment}
+                          </p>
                         </div>
+                        <Link
+                          href={`/admin/providers/${r.target.providerId}`}
+                          className="shrink-0 text-sm font-semibold text-brand-700 transition-colors duration-200 ease-snap hover:text-brand-800"
+                        >
+                          {t.moderate}
+                        </Link>
                       </div>
-                    </div>
-                    <Link
-                      href={`/admin/providers/${r.target.providerId}`}
-                      className="shrink-0 text-sm font-medium text-brand-700 hover:text-brand-800"
-                    >
-                      {t.moderate}
-                    </Link>
+                    ) : (
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-3">
+                          {r.targetType === "WORK_PHOTO" &&
+                            r.target.photoUrl && (
+                              <img
+                                src={r.target.photoUrl}
+                                alt={r.target.caption ?? "Reported photo"}
+                                className="h-14 w-14 shrink-0 rounded-lg object-cover"
+                              />
+                            )}
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-ink-800">
+                              {r.target.providerName}
+                            </p>
+                            <div className="mt-0.5 flex flex-wrap gap-1.5">
+                              {r.target.suspended && (
+                                <span className="chip bg-red-50 text-red-700 ring-1 ring-red-200">
+                                  {t.suspendedTag}
+                                </span>
+                              )}
+                              {r.target.removed && (
+                                <span className="chip bg-red-50 text-red-700 ring-1 ring-red-200">
+                                  {t.reportContentRemoved}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <Link
+                          href={`/admin/providers/${r.target.providerId}`}
+                          className="shrink-0 text-sm font-semibold text-brand-700 transition-colors duration-200 ease-snap hover:text-brand-800"
+                        >
+                          {t.moderate}
+                        </Link>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+                </li>
+              ))}
+            </InView>
+          </>
+        )}
+      </div>
     </div>
   );
 }
