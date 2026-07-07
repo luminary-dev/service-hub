@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { FaShieldHalved } from "@/components/icons";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
+import { isAdminRole } from "@/lib/roles";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
 import PageHeader from "@/components/ui/PageHeader";
@@ -18,7 +19,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminVerificationsPage() {
   const session = await getSession();
   if (!session) redirect("/login");
-  if (session.role !== "ADMIN") redirect("/");
+  if (!isAdminRole(session.role)) redirect("/");
 
   const [locale, data] = await Promise.all([
     getLocale(),

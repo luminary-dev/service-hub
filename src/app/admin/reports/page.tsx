@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { FaFlag } from "@/components/icons";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
+import { isAdminRole } from "@/lib/roles";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
@@ -79,7 +80,7 @@ export default async function AdminReportsPage({
 }) {
   const session = await getSession();
   if (!session) redirect("/login");
-  if (session.role !== "ADMIN") redirect("/");
+  if (!isAdminRole(session.role)) redirect("/");
 
   const params = await searchParams;
   const targetType: TargetTypeFilter = TARGET_TYPES.includes(
@@ -233,6 +234,7 @@ export default async function AdminReportsPage({
                             ? `/api/admin/reports/${r.id}`
                             : `/api/admin/review-reports/${r.id}`
                         }
+                        role={session.role}
                       />
                     )}
                   </div>
