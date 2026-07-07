@@ -41,7 +41,7 @@ export default function AdminDeleteButton({
       disabled={pending || !allowed}
       aria-label={allowed ? t.admin.delete : t.admin.insufficientPermissions}
       title={allowed ? undefined : t.admin.insufficientPermissions}
-      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-red-200 bg-surface px-2.5 py-1 text-xs font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+      className="inline-flex cursor-pointer items-center gap-1.5 rounded-sm border border-red-200 bg-surface px-2.5 py-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-red-600 transition-[border-color,color,background-color] duration-200 ease-snap hover:border-red-300 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
     >
       <FaTrash className="h-3 w-3" />
       {t.admin.delete}

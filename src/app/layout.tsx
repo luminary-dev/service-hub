@@ -10,6 +10,8 @@ import Footer from "@/components/Footer";
 import { I18nProvider } from "@/components/I18nProvider";
 import { ToastProvider } from "@/components/ToastProvider";
 import ChatAssistant from "@/components/ChatAssistant";
+import ImpersonationBanner from "@/components/ImpersonationBanner";
+import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { getTheme } from "@/lib/theme";
 import { dict } from "@/lib/i18n";
@@ -70,8 +72,13 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const [locale, theme] = await Promise.all([getLocale(), getTheme()]);
+  const [locale, theme, session] = await Promise.all([
+    getLocale(),
+    getTheme(),
+    getSession(),
+  ]);
   const t = dict[locale];
+  const impersonating = Boolean(session?.impersonatedBy);
 
   return (
     <html
@@ -91,7 +98,15 @@ export default async function RootLayout({
           dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }}
         />
       </head>
-      <body className="flex min-h-screen flex-col">
+      <body
+        className={`flex min-h-screen flex-col${impersonating ? " pt-10" : ""}`}
+      >
+        {/* Site-wide "view as" indicator (#234) — fixed, so it stays above
+            the sticky navbar for the whole impersonation session. The pt-10
+            above reserves its height so it never overlaps page content. */}
+        {impersonating && session && (
+          <ImpersonationBanner name={session.name} />
+        )}
         {/* First focusable element on every page: lets keyboard and screen
             reader users jump past the navbar (WCAG 2.4.1 Bypass Blocks). */}
         <a

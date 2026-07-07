@@ -55,6 +55,17 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
     return { service: "identity", path: pathname };
   }
 
+  // Admin impersonation ("view as", #234) — identity-service owns User rows
+  // and mints/clears the impersonation cookie, so both the start (:userId)
+  // and end routes belong there rather than falling through to provider-
+  // service with the rest of /api/admin/*.
+  if (
+    pathname === "/api/admin/impersonate/end" ||
+    /^\/api\/admin\/impersonate\/[^/]+$/.test(pathname)
+  ) {
+    return { service: "identity", path: pathname };
+  }
+
   // Billing admin queue (#221) — transactions are job-service data (they
   // reference JobRequest/agreedPrice); falls through to provider-service
   // below like the other carved-out admin namespaces above.
