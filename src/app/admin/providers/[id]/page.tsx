@@ -5,6 +5,7 @@ import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
+import { qualityChipClasses } from "@/lib/quality";
 import Avatar from "@/components/Avatar";
 import Stars from "@/components/Stars";
 import InView from "@/components/InView";
@@ -27,6 +28,12 @@ type AdminProviderDetail = {
   verificationStatus: string;
   suspended: boolean;
   user: { name: string; email: string };
+  quality: {
+    qualityScore: number;
+    rating: number;
+    reviewCount: number;
+    openReportCount: number;
+  };
   reviews: {
     id: string;
     rating: number;
@@ -95,6 +102,21 @@ export default async function AdminProviderModeratePage({
         }
       >
         <div className="flex flex-col items-start gap-4 sm:items-end">
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+            <span
+              className={`chip ${qualityChipClasses(provider.quality.qualityScore)}`}
+              title={t.qualityScoreHint}
+            >
+              {t.qualityScoreLabel} {provider.quality.qualityScore}
+            </span>
+            <span className="font-mono text-[11px] text-ink-500">
+              {t.qualityScoreBreakdown(
+                provider.quality.rating,
+                provider.quality.reviewCount,
+                provider.quality.openReportCount
+              )}
+            </span>
+          </div>
           <StatReadout
             stats={[
               { label: t.reviewsHeading, value: provider.reviews.length },

@@ -5,6 +5,7 @@ import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
+import { qualityChipClasses } from "@/lib/quality";
 import Avatar from "@/components/Avatar";
 import InView from "@/components/InView";
 import PageHeader from "@/components/ui/PageHeader";
@@ -27,6 +28,12 @@ type AdminProviderRow = {
   suspended: boolean;
   user: { name: string; email: string };
   _count: { reviews: number; photos: number };
+  quality: {
+    qualityScore: number;
+    rating: number;
+    reviewCount: number;
+    openReportCount: number;
+  };
 };
 
 export default async function AdminProvidersPage() {
@@ -120,6 +127,16 @@ export default async function AdminProvidersPage() {
                             {t.suspendedTag}
                           </span>
                         )}
+                        <span
+                          className={`chip ${qualityChipClasses(p.quality.qualityScore)}`}
+                          title={t.qualityScoreBreakdown(
+                            p.quality.rating,
+                            p.quality.reviewCount,
+                            p.quality.openReportCount
+                          )}
+                        >
+                          {t.qualityScoreLabel} {p.quality.qualityScore}
+                        </span>
                       </div>
                       <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-xs text-ink-500">
                         <span>{categoryLabelLoc(p.category, locale)}</span>
