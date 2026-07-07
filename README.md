@@ -33,7 +33,7 @@ Prereqs: Node 22+, Docker.
 
 ```bash
 npm run setup      # install all packages, create .env files, start Postgres, push schemas, seed
-npm run dev:all    # run all six services + the web app (Ctrl-C stops everything)
+npm run dev:all    # run the gateway + all seven services + the web app (Ctrl-C stops everything)
 ```
 
 Open http://localhost:3000.
@@ -89,6 +89,8 @@ services/
   review-service/        reviews, review photos                    (review_db)
   job-service/           job requests + responses                  (job_db)
   notification-service/  email templates + Resend delivery         (stateless)
+  media-service/         image processing (sharp) + file storage   (R2 / local disk)
+  chat-service/          Claude marketplace assistant (holds LLM key) (stateless)
 scripts/                 setup, dev-all, e2e-smoke, sync-service-repos
 docs/ARCHITECTURE.md     service contracts, conventions, env vars
 docker-compose.yml       Postgres + all services + web
