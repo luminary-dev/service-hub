@@ -1,10 +1,15 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { FaArrowRight, FaUsers } from "@/components/icons";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
 import Avatar from "@/components/Avatar";
+import InView from "@/components/InView";
+import PageHeader from "@/components/ui/PageHeader";
+import StatReadout from "@/components/ui/StatReadout";
+import EmptyState from "@/components/ui/EmptyState";
 import AdminProviderActions from "@/components/admin/AdminProviderActions";
 
 // Caching (#57): admin-only moderation view; edits must be visible on the
@@ -36,74 +41,130 @@ export default async function AdminProvidersPage() {
   const providers = data?.providers ?? [];
   const t = dict[locale].admin;
 
-  return (
-    <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
-      <h1 className="text-3xl font-semibold tracking-tight text-ink-900">
-        {t.providersTitle}
-      </h1>
-      <p className="mt-1 text-ink-600">{t.providersSubtitle}</p>
+  // Derived from the already-fetched listing — no extra requests.
+  const verified = providers.filter(
+    (p) => p.verificationStatus === "VERIFIED"
+  ).length;
+  const pending = providers.filter(
+    (p) => p.verificationStatus === "PENDING"
+  ).length;
+  const suspended = providers.filter((p) => p.suspended).length;
 
-      {providers.length === 0 ? (
-        <div className="card mt-8 px-6 py-16 text-center text-sm text-ink-500">
-          {t.providersEmpty}
-        </div>
-      ) : (
-      <ul className="mt-8 space-y-3">
-        {providers.map((p) => (
-          <li
-            key={p.id}
-            className="card flex flex-wrap items-center justify-between gap-4 p-4"
-          >
-            <div className="flex items-center gap-3">
-              <Avatar name={p.user.name} url={p.avatarUrl} size={40} />
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Link
-                    href={`/admin/providers/${p.id}`}
-                    className="font-semibold text-ink-900 hover:text-brand-700"
-                  >
-                    {p.user.name}
-                  </Link>
-                  {p.verificationStatus === "VERIFIED" && (
-                    <span className="chip bg-brand-50 text-brand-700 ring-1 ring-brand-200">
-                      {t.verifiedTag}
-                    </span>
-                  )}
-                  {p.verificationStatus === "PENDING" && (
-                    <span className="chip bg-amber-50 text-amber-700 ring-1 ring-amber-200">
-                      {t.pendingTag}
-                    </span>
-                  )}
-                  {p.suspended && (
-                    <span className="chip bg-red-50 text-red-700 ring-1 ring-red-200">
-                      {t.suspendedTag}
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm text-ink-500">
-                  {categoryLabelLoc(p.category, locale)} · {p.city} ·{" "}
-                  {p._count.reviews} {t.reviewsHeading.toLowerCase()},{" "}
-                  {p._count.photos} {t.photosHeading.toLowerCase()}
-                </p>
-              </div>
+  return (
+    <div>
+      <PageHeader
+        tag="REG"
+        eyebrow={t.providersLink}
+        title={t.providersTitle}
+        status={t.providersSubtitle}
+      >
+        <StatReadout
+          stats={[
+            { label: "TOTAL", value: providers.length },
+            { label: "VERIFIED", value: verified },
+            { label: "PENDING", value: pending },
+            { label: "SUSPENDED", value: suspended },
+          ]}
+        />
+      </PageHeader>
+
+      <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+        {providers.length === 0 ? (
+          <EmptyState icon={FaUsers} title={t.providersEmpty} />
+        ) : (
+          <div className="tech-corners border border-ink-300 bg-surface">
+            {/* Registry panel header */}
+            <div className="flex items-center justify-between border-b border-ink-200 px-5 py-3">
+              <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-400">
+                {t.providersLink}
+              </span>
+              <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-400">
+                <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-brand-600" />
+                <span className="tabular-nums text-ink-600">
+                  {providers.length}
+                </span>
+              </span>
             </div>
-            <div className="flex items-center gap-3">
-              <Link
-                href={`/admin/providers/${p.id}`}
-                className="text-sm font-medium text-brand-700 hover:text-brand-800"
-              >
-                {t.moderate}
-              </Link>
-              <AdminProviderActions
-                providerId={p.id}
-                verified={p.verificationStatus === "VERIFIED"}
-                suspended={p.suspended}
-              />
-            </div>
-          </li>
-        ))}
-      </ul>
-      )}
+
+            <InView as="ul" stagger className="divide-y divide-ink-200">
+              {providers.map((p, i) => (
+                <li
+                  key={p.id}
+                  className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 transition-colors duration-200 ease-snap hover:bg-ink-50 sm:px-5"
+                >
+                  <div className="flex min-w-0 items-center gap-4">
+                    <span className="hidden font-mono text-[11px] tabular-nums text-ink-400 sm:block">
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
+                    <Avatar name={p.user.name} url={p.avatarUrl} size={40} />
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link
+                          href={`/admin/providers/${p.id}`}
+                          className="font-semibold text-ink-900 hover:text-brand-700"
+                        >
+                          {p.user.name}
+                        </Link>
+                        {p.verificationStatus === "VERIFIED" && (
+                          <span className="chip bg-brand-50 text-brand-700 ring-1 ring-brand-200">
+                            {t.verifiedTag}
+                          </span>
+                        )}
+                        {p.verificationStatus === "PENDING" && (
+                          <span className="chip bg-amber-50 text-amber-700 ring-1 ring-amber-200">
+                            {t.pendingTag}
+                          </span>
+                        )}
+                        {p.suspended && (
+                          <span className="chip bg-red-50 text-red-700 ring-1 ring-red-200">
+                            {t.suspendedTag}
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-xs text-ink-500">
+                        <span>{categoryLabelLoc(p.category, locale)}</span>
+                        <span aria-hidden className="text-ink-300">
+                          ·
+                        </span>
+                        <span>{p.city}</span>
+                        <span aria-hidden className="text-ink-300">
+                          ·
+                        </span>
+                        <span>
+                          <span className="tabular-nums text-ink-700">
+                            {p._count.reviews}
+                          </span>{" "}
+                          {t.reviewsHeading.toLowerCase()},
+                        </span>
+                        <span>
+                          <span className="tabular-nums text-ink-700">
+                            {p._count.photos}
+                          </span>{" "}
+                          {t.photosHeading.toLowerCase()}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <Link
+                      href={`/admin/providers/${p.id}`}
+                      className="group inline-flex items-center gap-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-brand-700 hover:text-brand-800"
+                    >
+                      {t.moderate}
+                      <FaArrowRight className="h-3 w-3 transition-transform duration-200 ease-snap group-hover:translate-x-0.5" />
+                    </Link>
+                    <AdminProviderActions
+                      providerId={p.id}
+                      verified={p.verificationStatus === "VERIFIED"}
+                      suspended={p.suspended}
+                    />
+                  </div>
+                </li>
+              ))}
+            </InView>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

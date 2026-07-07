@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { FaFlag, FaShieldHalved, FaTags, FaUsers } from "@/components/icons";
+import { FaArrowRight, FaFlag, FaShieldHalved, FaTags, FaUsers } from "@/components/icons";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
+import PageHeader from "@/components/ui/PageHeader";
+import StatReadout from "@/components/ui/StatReadout";
+import InView from "@/components/InView";
 
 // Caching (#57): admin-only moderation view; edits must be visible on the
 // next request — stays fully dynamic (no-store).
@@ -44,28 +47,47 @@ export default async function AdminHomePage() {
   ];
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
-      <h1 className="text-3xl font-semibold tracking-tight text-ink-900">
-        {t.indexTitle}
-      </h1>
-      <p className="mt-1 text-ink-600">{t.indexSubtitle}</p>
+    <div>
+      <PageHeader
+        tag="ADM"
+        eyebrow={t.indexTitle}
+        title={t.indexTitle}
+        status={t.indexSubtitle}
+      >
+        <StatReadout stats={[{ label: "MODULES", value: cards.length }]} />
+      </PageHeader>
 
-      <div className="mt-8 grid gap-5 sm:grid-cols-2">
-        {cards.map((c) => (
-          <Link
-            key={c.href}
-            href={c.href}
-            className="card group p-6 transition-[border-color,transform] duration-200 ease-snap hover:-translate-y-1 hover:border-brand-400"
-          >
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
-              <c.icon className="h-5 w-5" />
-            </span>
-            <h2 className="mt-4 font-semibold text-ink-900 group-hover:text-brand-700">
-              {c.title}
-            </h2>
-            <p className="mt-1 text-sm text-ink-600">{c.desc}</p>
-          </Link>
-        ))}
+      <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
+        <InView
+          stagger
+          className="grid grid-cols-1 border-l border-t border-ink-200 sm:grid-cols-2"
+        >
+          {cards.map((c, i) => (
+            <Link
+              key={c.href}
+              href={c.href}
+              className="group relative flex items-start gap-4 overflow-hidden border-b border-r border-ink-200 bg-surface p-6 transition-colors duration-200 ease-snap hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-400"
+            >
+              {/* hover scan sheen */}
+              <span className="scan-line pointer-events-none absolute inset-y-0 left-0 w-1/2 -skew-x-12 bg-gradient-to-r from-transparent via-brand-500/15 to-transparent" />
+              {/* growing left accent bar */}
+              <span className="absolute inset-y-0 left-0 w-[3px] origin-top scale-y-0 bg-brand-600 transition-transform duration-300 ease-snap group-hover:scale-y-100" />
+              <span className="relative flex h-11 w-11 shrink-0 items-center justify-center border border-ink-300 bg-ink-50 transition-colors duration-300 group-hover:border-brand-600 group-hover:bg-brand-600">
+                <c.icon className="h-5 w-5 text-brand-700 transition-colors duration-300 group-hover:text-white" />
+              </span>
+              <span className="relative min-w-0 flex-1">
+                <span className="block font-mono text-[10px] uppercase tracking-wider text-ink-400 transition-colors duration-300 group-hover:text-brand-600">
+                  AD-{String(i + 1).padStart(2, "0")}
+                </span>
+                <span className="mt-0.5 flex items-center gap-1.5 font-semibold text-ink-900 transition-colors duration-300 group-hover:text-brand-700">
+                  {c.title}
+                  <FaArrowRight className="h-3 w-3 -translate-x-1 opacity-0 transition-all duration-300 ease-snap group-hover:translate-x-0 group-hover:opacity-100" />
+                </span>
+                <span className="mt-1 block text-sm text-ink-600">{c.desc}</span>
+              </span>
+            </Link>
+          ))}
+        </InView>
       </div>
     </div>
   );
