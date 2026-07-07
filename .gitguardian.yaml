@@ -1,0 +1,10 @@
+# GitGuardian configuration.
+# These paths contain password-LOOKING strings that are deliberately NOT
+# secrets: a deny-list of common/breached passwords used to reject weak user
+# passwords, and its test fixtures. They must never be treated as leaked
+# credentials.
+version: 2
+secret:
+  ignored-paths:
+    - "services/identity-service/src/lib/common-passwords.ts"
+    - "services/identity-service/src/lib/register-schema.test.ts"

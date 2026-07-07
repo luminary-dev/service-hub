@@ -415,6 +415,13 @@ const en = {
     impersonationEndButton: "End impersonation",
     impersonationEnding: "Ending…",
     impersonationEndError: "Could not end impersonation.",
+    // Filtering (#223)
+    reportsFilterTypeLabel: "Target type",
+    reportsFilterStatusLabel: "Status",
+    reportsFilterAllTypes: "All types",
+    reportsFilterAllStatuses: "All statuses",
+    // Resolution audit trail (#223)
+    reportResolvedMeta: (who: string, when: string) => `Handled by ${who} on ${when}`,
   },
   profile: {
     available: "Available for work",
@@ -1201,6 +1208,13 @@ const si: Dict = {
     impersonationEndButton: "අනුකරණය අවසන් කරන්න",
     impersonationEnding: "අවසන් කරමින්…",
     impersonationEndError: "අනුකරණය අවසන් කළ නොහැකි විය.",
+    // Filtering (#223)
+    reportsFilterTypeLabel: "ඉලක්ක වර්ගය",
+    reportsFilterStatusLabel: "තත්ත්වය",
+    reportsFilterAllTypes: "සියලුම වර්ග",
+    reportsFilterAllStatuses: "සියලුම තත්ත්ව",
+    // Resolution audit trail (#223)
+    reportResolvedMeta: (who: string, when: string) => `${who} විසින් ${when} දින හසුරුවන ලදී`,
   },
   profile: {
     available: "වැඩට සූදානම්",
