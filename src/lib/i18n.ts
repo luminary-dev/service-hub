@@ -346,6 +346,15 @@ const en = {
     reportTargetGone: "This content no longer exists.",
     reportContentRemoved: "Removed",
     viewProvider: "View provider",
+    // Bulk actions (#231)
+    selectAll: "Select all",
+    selectedCount: (n: number) => `${n} selected`,
+    clearSelection: "Clear",
+    bulkSuspend: "Suspend selected",
+    bulkUnsuspend: "Unsuspend selected",
+    bulkResolve: "Resolve selected",
+    bulkDismiss: "Dismiss selected",
+    bulkActionError: "Some of the selected items could not be updated.",
   },
   profile: {
     available: "Available for work",
@@ -1048,6 +1057,15 @@ const si: Dict = {
     reportTargetGone: "මෙම අන්තර්ගතය තවදුරටත් නොපවතී.",
     reportContentRemoved: "ඉවත් කර ඇත",
     viewProvider: "වෘත්තිකයා බලන්න",
+    // Bulk actions (#231)
+    selectAll: "සියල්ල තෝරන්න",
+    selectedCount: (n: number) => `${n} ක් තෝරා ඇත`,
+    clearSelection: "හිස් කරන්න",
+    bulkSuspend: "තෝරාගත් ඒවා අත්හිටුවන්න",
+    bulkUnsuspend: "තෝරාගත් ඒවා නැවත සක්‍රිය කරන්න",
+    bulkResolve: "තෝරාගත් ඒවා විසඳන්න",
+    bulkDismiss: "තෝරාගත් ඒවා ඉවත ලන්න",
+    bulkActionError: "තෝරාගත් සමහර අයිතම යාවත්කාලීන කළ නොහැකි විය.",
   },
   profile: {
     available: "වැඩට සූදානම්",
