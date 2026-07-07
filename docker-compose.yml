@@ -184,6 +184,9 @@ services:
       # key); it needs the URL + internal secret to reach that internal service.
       CHAT_SERVICE_URL: http://chat-service:4007
       INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-dev-internal-secret}
+      # Session-revocation check for page gating (src/lib/session-version.ts) —
+      # reaches identity directly with the internal secret; fails open if unset.
+      IDENTITY_SERVICE_URL: http://identity-service:4001
     ports:
       - "3000:3000"
     depends_on:
