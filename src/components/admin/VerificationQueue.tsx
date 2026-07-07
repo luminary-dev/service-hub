@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FaClock, FaFileLines } from "@/components/icons";
 import Avatar from "@/components/Avatar";
+import InView from "@/components/InView";
 import { categoryLabelLoc } from "@/lib/i18n";
 import { daysSince, formatDate } from "@/lib/format";
 import { useLocale, useT } from "../I18nProvider";
@@ -165,11 +166,11 @@ export default function VerificationQueue({
         {error && <p className="w-full text-sm text-red-600">{t.bulkActionError}</p>}
       </div>
 
-      <ul className="mt-4 space-y-4">
+      <InView as="ul" stagger className="mt-4 space-y-4">
         {items.map((p) => {
           const days = daysSince(p.updatedAt, now);
           return (
-            <li key={p.id} className="card p-5">
+            <li key={p.id} className="tech-corners card p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="flex items-start gap-3">
                   <input
@@ -186,9 +187,12 @@ export default function VerificationQueue({
                       {categoryLabelLoc(p.category, locale)} · {p.city} ·{" "}
                       {p.user.email}
                     </p>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink-500">
-                      <span>
-                        {t.submitted}: {formatDate(p.updatedAt, locale)}
+                    <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-xs uppercase tracking-[0.08em] text-ink-500">
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-ink-400">{t.submitted}</span>
+                        <span className="tabular-nums text-ink-600">
+                          {formatDate(p.updatedAt, locale)}
+                        </span>
                       </span>
                       <span
                         className={`chip ring-1 ${waitingBadgeClass(days)}`}
@@ -202,10 +206,8 @@ export default function VerificationQueue({
                 <VerificationActions providerId={p.id} />
               </div>
 
-              <div className="mt-4 border-t border-ink-100 pt-4">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-500">
-                  {t.documents}
-                </p>
+              <div className="mt-4 border-t border-dashed border-ink-200 pt-4">
+                <p className="eyebrow mb-2 !text-ink-500">{t.documents}</p>
                 {p.verificationDocs.length === 0 ? (
                   <p className="text-sm text-ink-400">—</p>
                 ) : (
@@ -216,7 +218,7 @@ export default function VerificationQueue({
                         href={d.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-ink-50 px-3 py-1.5 text-sm font-medium text-ink-700 transition hover:border-brand-400 hover:text-brand-700"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-ink-50 px-3 py-1.5 text-sm font-medium text-ink-700 transition-[border-color,color] duration-200 ease-snap hover:border-brand-400 hover:text-brand-700"
                       >
                         <FaFileLines className="h-3.5 w-3.5" />
                         {d.kind}
@@ -228,7 +230,7 @@ export default function VerificationQueue({
             </li>
           );
         })}
-      </ul>
+      </InView>
     </div>
   );
 }
