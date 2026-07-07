@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
+import { isAdminRole } from "@/lib/roles";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
 import AdminReportsList, {
@@ -31,7 +32,7 @@ export default async function AdminReportsPage({
 }) {
   const session = await getSession();
   if (!session) redirect("/login");
-  if (session.role !== "ADMIN") redirect("/");
+  if (!isAdminRole(session.role)) redirect("/");
 
   const params = await searchParams;
   const targetType: TargetTypeFilter = TARGET_TYPES.includes(
@@ -95,7 +96,7 @@ export default async function AdminReportsPage({
         <ReportsFilterBar targetType={targetType} status={status} />
       </div>
 
-      <AdminReportsList rows={rows} />
+      <AdminReportsList rows={rows} role={session.role} />
     </div>
   );
 }

@@ -199,7 +199,8 @@ const batchReportStatusSchema = z.object({
 
 // Bulk resolve/dismiss (#231): batch variant of the single-report PATCH
 // above, mirroring provider-service's /api/admin/reports batch endpoint, for
-// the reports list's multi-select toolbar.
+// the reports list's multi-select toolbar. Stamps resolvedBy/resolvedAt on
+// every affected row, same as the single-report path (#223 audit trail).
 reports.patch("/api/admin/review-reports", async (c) => {
   const auth = getAuth(c);
   if (auth?.role !== "ADMIN") {
@@ -221,4 +222,19 @@ reports.patch("/api/admin/review-reports", async (c) => {
     },
   });
   return c.json({ ok: true, count });
+});
+
+// ---------------------------------------------------------------------------
+// Dashboard analytics (#219): open review-report count for the /admin home
+// page's merged "open reports" metric — provider-service serves the other
+// half (reports on providers/photos) at its own /api/admin/stats.
+// ---------------------------------------------------------------------------
+
+reports.get("/api/admin/review-stats", async (c) => {
+  const auth = getAuth(c);
+  if (auth?.role !== "ADMIN") {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+  const openReports = await db.report.count({ where: { status: "OPEN" } });
+  return c.json({ openReports });
 });

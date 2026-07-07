@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useT, useLocale } from "../I18nProvider";
 import { categoryLabelLoc } from "@/lib/i18n";
 import { qualityChipClasses } from "@/lib/quality";
+import { hasSuperAdminAccess } from "@/lib/roles";
 import Avatar from "../Avatar";
 import AdminProviderActions from "./AdminProviderActions";
 
@@ -33,8 +34,10 @@ export type AdminProviderRow = {
 // :id) is the batch sibling of the single-provider endpoint.
 export default function AdminProvidersList({
   providers,
+  role,
 }: {
   providers: AdminProviderRow[];
+  role: string;
 }) {
   const t = useT().admin;
   const locale = useLocale();
@@ -43,6 +46,9 @@ export default function AdminProvidersList({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState(false);
 
+  // Suspend/unsuspend is SUPERADMIN-only (#226), same gate as the per-row
+  // AdminProviderActions — SUPPORT admins don't get the multi-select toolbar.
+  const canAct = hasSuperAdminAccess(role);
   const allSelected = providers.length > 0 && selected.size === providers.length;
 
   function toggle(id: string) {
@@ -86,7 +92,7 @@ export default function AdminProvidersList({
 
   return (
     <div>
-      {selected.size > 0 && (
+      {canAct && selected.size > 0 && (
         <div className="card sticky top-2 z-10 mt-6 flex flex-wrap items-center justify-between gap-3 p-3">
           <span className="text-sm font-medium text-ink-700">
             {t.selectedCount(selected.size)}
@@ -116,19 +122,21 @@ export default function AdminProvidersList({
           </div>
         </div>
       )}
-      {error && (
+      {canAct && error && (
         <p className="mt-3 text-sm text-red-600">{t.bulkActionError}</p>
       )}
 
-      <label className="mt-6 flex items-center gap-2 text-sm text-ink-600">
-        <input
-          type="checkbox"
-          checked={allSelected}
-          onChange={toggleAll}
-          className="size-4 rounded border-ink-300"
-        />
-        {t.selectAll}
-      </label>
+      {canAct && (
+        <label className="mt-6 flex items-center gap-2 text-sm text-ink-600">
+          <input
+            type="checkbox"
+            checked={allSelected}
+            onChange={toggleAll}
+            className="size-4 rounded border-ink-300"
+          />
+          {t.selectAll}
+        </label>
+      )}
 
       <ul className="mt-3 space-y-3">
         {providers.map((p) => (
@@ -137,13 +145,15 @@ export default function AdminProvidersList({
             className="card flex flex-wrap items-center justify-between gap-4 p-4"
           >
             <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                checked={selected.has(p.id)}
-                onChange={() => toggle(p.id)}
-                className="size-4 shrink-0 rounded border-ink-300"
-                aria-label={t.selectedCount(1)}
-              />
+              {canAct && (
+                <input
+                  type="checkbox"
+                  checked={selected.has(p.id)}
+                  onChange={() => toggle(p.id)}
+                  className="size-4 shrink-0 rounded border-ink-300"
+                  aria-label={t.selectedCount(1)}
+                />
+              )}
               <Avatar name={p.user.name} url={p.avatarUrl} size={40} />
               <div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -197,6 +207,7 @@ export default function AdminProvidersList({
                 providerId={p.id}
                 verified={p.verificationStatus === "VERIFIED"}
                 suspended={p.suspended}
+                role={role}
               />
             </div>
           </li>

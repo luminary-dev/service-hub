@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useT, useLocale } from "../I18nProvider";
 import { formatDate } from "@/lib/format";
+import { hasSupportAccess } from "@/lib/roles";
 import Stars from "../Stars";
 import ReportActions from "./ReportActions";
 
@@ -62,7 +63,13 @@ export type ReportRow =
 // `/api/admin/review-reports`), so the bulk action groups the selected ids
 // by source before calling each service's batch endpoint. Only OPEN reports
 // are selectable — closed ones have nothing left to bulk-act on.
-export default function AdminReportsList({ rows }: { rows: ReportRow[] }) {
+export default function AdminReportsList({
+  rows,
+  role,
+}: {
+  rows: ReportRow[];
+  role: string;
+}) {
   const t = useT().admin;
   const tr = useT().report;
   const locale = useLocale();
@@ -71,6 +78,10 @@ export default function AdminReportsList({ rows }: { rows: ReportRow[] }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState(false);
 
+  // Resolve/dismiss is part of the SUPPORT tier (#226), same gate as the
+  // per-row ReportActions — admins without support access don't get the
+  // multi-select toolbar.
+  const canAct = hasSupportAccess(role);
   const openRows = rows.filter((r) => r.status === "OPEN");
   const allSelected = openRows.length > 0 && selected.size === openRows.length;
 
@@ -150,7 +161,7 @@ export default function AdminReportsList({ rows }: { rows: ReportRow[] }) {
 
   return (
     <div>
-      {selected.size > 0 && (
+      {canAct && selected.size > 0 && (
         <div className="card sticky top-2 z-10 mt-6 flex flex-wrap items-center justify-between gap-3 p-3">
           <span className="text-sm font-medium text-ink-700">
             {t.selectedCount(selected.size)}
@@ -180,9 +191,11 @@ export default function AdminReportsList({ rows }: { rows: ReportRow[] }) {
           </div>
         </div>
       )}
-      {error && <p className="mt-3 text-sm text-red-600">{t.bulkActionError}</p>}
+      {canAct && error && (
+        <p className="mt-3 text-sm text-red-600">{t.bulkActionError}</p>
+      )}
 
-      {openRows.length > 0 && (
+      {canAct && openRows.length > 0 && (
         <label className="mt-6 flex items-center gap-2 text-sm text-ink-600">
           <input
             type="checkbox"
@@ -199,7 +212,7 @@ export default function AdminReportsList({ rows }: { rows: ReportRow[] }) {
           <li key={key(r)} className="card p-4">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="flex min-w-0 items-start gap-3">
-                {r.status === "OPEN" && (
+                {canAct && r.status === "OPEN" && (
                   <input
                     type="checkbox"
                     checked={selected.has(key(r))}
@@ -258,6 +271,7 @@ export default function AdminReportsList({ rows }: { rows: ReportRow[] }) {
                       ? `/api/admin/reports/${r.id}`
                       : `/api/admin/review-reports/${r.id}`
                   }
+                  role={role}
                 />
               )}
             </div>
