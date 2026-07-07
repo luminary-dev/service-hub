@@ -6,7 +6,6 @@ import ProfileForm from "./ProfileForm";
 import ServicesManager from "./ServicesManager";
 import PhotosManager from "./PhotosManager";
 import InquiriesList from "./InquiriesList";
-import Stars from "../Stars";
 import { useT } from "../I18nProvider";
 
 export type ServiceItem = {
@@ -83,62 +82,26 @@ export default function DashboardTabs({
 
   return (
     <div>
-      <div className="mt-8 grid gap-4 sm:grid-cols-4">
-        <div className="card p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-ink-500">
-            {tx.dashboard.stats.rating}
-          </p>
-          {data.stats.rating !== null ? (
-            <div className="mt-1 flex items-center gap-2">
-              <span className="text-2xl font-bold text-ink-900">
-                {data.stats.rating.toFixed(1)}
-              </span>
-              <Stars rating={data.stats.rating} />
-            </div>
-          ) : (
-            <p className="mt-1 text-2xl font-bold text-ink-300">—</p>
-          )}
-        </div>
-        <div className="card p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-ink-500">
-            {tx.dashboard.stats.reviews}
-          </p>
-          <p className="mt-1 text-2xl font-bold text-ink-900">
-            {data.stats.reviewCount}
-          </p>
-        </div>
-        <div className="card p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-ink-500">
-            {tx.dashboard.stats.photos}
-          </p>
-          <p className="mt-1 text-2xl font-bold text-ink-900">
-            {data.stats.photoCount}
-          </p>
-        </div>
-        <div className="card p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-ink-500">
-            {tx.dashboard.stats.newInquiries}
-          </p>
-          <p className="mt-1 text-2xl font-bold text-brand-600">
-            {data.stats.newInquiries}
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-8 flex gap-1 overflow-x-auto rounded-xl bg-ink-100 p-1">
-        {TABS.map((t) => (
+      {/* Blueprint tab strip: mono uppercase labels with a numeric spec code
+          and a brand underline on the active section. */}
+      <div className="mt-8 flex gap-1 overflow-x-auto border-b border-ink-200">
+        {TABS.map((t, i) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`flex-1 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition ${
+            aria-current={tab === t ? "true" : undefined}
+            className={`relative -mb-px flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-2.5 font-mono text-xs font-semibold uppercase tracking-[0.12em] transition-colors duration-200 ease-snap ${
               tab === t
-                ? "bg-white text-ink-900 shadow-sm dark:bg-ink-300"
-                : "text-ink-500 hover:text-ink-800"
+                ? "border-brand-600 text-brand-700"
+                : "border-transparent text-ink-500 hover:text-ink-800"
             }`}
           >
+            <span className="text-[10px] tabular-nums text-ink-400">
+              {String(i + 1).padStart(2, "0")}
+            </span>
             {tabLabels[t]}
             {t === "Inquiries" && data.stats.newInquiries > 0 && (
-              <span className="ml-1.5 rounded-full bg-brand-600 px-1.5 py-0.5 text-xs font-semibold text-white dark:text-ink-50">
+              <span className="rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-white dark:text-ink-50">
                 {data.stats.newInquiries}
               </span>
             )}
