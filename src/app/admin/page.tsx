@@ -5,6 +5,7 @@ import {
   FaCircleCheck,
   FaCircleXmark,
   FaClock,
+  FaFileLines,
   FaFlag,
   FaShieldHalved,
   FaTags,
@@ -122,6 +123,12 @@ export default async function AdminHomePage() {
       icon: FaBriefcase,
       title: t.jobsLink,
       desc: t.jobsDesc,
+    },
+    {
+      href: "/admin/billing",
+      icon: FaFileLines,
+      title: t.billingLink,
+      desc: t.billingDesc,
     },
   ];
 

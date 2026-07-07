@@ -89,6 +89,17 @@ describe("resolveRoute (routing table)", () => {
     });
   });
 
+  it("routes the admin billing queue to job-service (#221)", () => {
+    expect(resolveRoute("/api/admin/transactions")).toEqual({
+      service: "job",
+      path: "/api/admin/transactions",
+    });
+    expect(resolveRoute("/api/admin/transactions/txn-1")).toEqual({
+      service: "job",
+      path: "/api/admin/transactions/txn-1",
+    });
+  });
+
   it("routes admin job management to job-service (#222)", () => {
     expect(resolveRoute("/api/admin/jobs")).toEqual({ service: "job", path: "/api/admin/jobs" });
     expect(resolveRoute("/api/admin/jobs/job-1")).toEqual({
