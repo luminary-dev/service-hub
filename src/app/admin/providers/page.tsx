@@ -9,6 +9,7 @@ import {
   normalizeStatusFilter,
   normalizeSuspendedFilter,
 } from "@/lib/admin-list";
+import { qualityChipClasses } from "@/lib/quality";
 import Avatar from "@/components/Avatar";
 import AdminProviderActions from "@/components/admin/AdminProviderActions";
 import AdminProvidersFilterBar from "@/components/admin/AdminProvidersFilterBar";
