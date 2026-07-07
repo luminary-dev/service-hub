@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { FaEnvelope, FaInbox, FaPhone } from "@/components/icons";
+import EmptyState from "@/components/ui/EmptyState";
 import { useLocale, useT } from "../I18nProvider";
 import { formatDate } from "@/lib/format";
 import type { InquiryItem } from "./DashboardTabs";
@@ -38,13 +39,7 @@ export default function InquiriesList({ initial }: { initial: InquiryItem[] }) {
   }
 
   if (inquiries.length === 0) {
-    return (
-      <div className="card flex flex-col items-center p-12 text-center">
-        <FaInbox className="h-10 w-10 text-ink-300" />
-        <h2 className="mt-3 font-semibold text-ink-900">{q.emptyTitle}</h2>
-        <p className="mt-1 max-w-sm text-sm text-ink-500">{q.emptyBody}</p>
-      </div>
-    );
+    return <EmptyState icon={FaInbox} title={q.emptyTitle} body={q.emptyBody} />;
   }
 
   return (
@@ -78,16 +73,16 @@ export default function InquiriesList({ initial }: { initial: InquiryItem[] }) {
             </div>
             <div className="flex items-center gap-2">
               <span
-                className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${STATUS_STYLES[i.status] ?? STATUS_STYLES.NEW}`}
+                className={`rounded-full px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] ring-1 ${STATUS_STYLES[i.status] ?? STATUS_STYLES.NEW}`}
               >
                 {statusLabel[i.status] ?? i.status}
               </span>
-              <span className="text-xs text-ink-500">
+              <span className="font-mono text-xs tabular-nums text-ink-500">
                 {formatDate(i.createdAt, locale, { day: "numeric", month: "short" })}
               </span>
             </div>
           </div>
-          <p className="mt-3 whitespace-pre-line rounded-xl bg-ink-50 p-3 text-sm leading-relaxed text-ink-700">
+          <p className="mt-3 whitespace-pre-line rounded-lg border border-dashed border-ink-200 bg-ink-50 p-3 text-sm leading-relaxed text-ink-700">
             {i.message}
           </p>
           <div className="mt-3 flex items-center gap-2">
