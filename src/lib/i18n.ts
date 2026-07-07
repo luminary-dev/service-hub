@@ -402,6 +402,13 @@ const en = {
     // Tiered admin roles (#226): shown wherever a SUPPORT-tier admin hits
     // an action gated to SUPERADMIN (delete, category edits, verify/suspend).
     insufficientPermissions: "Insufficient permissions",
+    // Filtering (#223)
+    reportsFilterTypeLabel: "Target type",
+    reportsFilterStatusLabel: "Status",
+    reportsFilterAllTypes: "All types",
+    reportsFilterAllStatuses: "All statuses",
+    // Resolution audit trail (#223)
+    reportResolvedMeta: (who: string, when: string) => `Handled by ${who} on ${when}`,
   },
   profile: {
     available: "Available for work",
@@ -1176,6 +1183,13 @@ const si: Dict = {
     jobResponseFrom: "වෙතින්",
     jobView: "බලන්න",
     insufficientPermissions: "ප්‍රමාණවත් අවසර නැත",
+    // Filtering (#223)
+    reportsFilterTypeLabel: "ඉලක්ක වර්ගය",
+    reportsFilterStatusLabel: "තත්ත්වය",
+    reportsFilterAllTypes: "සියලුම වර්ග",
+    reportsFilterAllStatuses: "සියලුම තත්ත්ව",
+    // Resolution audit trail (#223)
+    reportResolvedMeta: (who: string, when: string) => `${who} විසින් ${when} දින හසුරුවන ලදී`,
   },
   profile: {
     available: "වැඩට සූදානම්",

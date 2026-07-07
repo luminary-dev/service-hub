@@ -12,23 +12,35 @@ const NOTIFICATION_URL =
 
 export type RatingEntry = { rating: number; count: number };
 
+// Cap the ids per request so a large provider set can't build an unbounded
+// query string / `IN (...)` on review-service. Batches are merged; a failing
+// batch degrades to "no reviews" for its providers without failing the rest.
+const RATINGS_CHUNK = 200;
+
 // review-service GET /internal/ratings?providerIds=a,b → { ratings: {...} }.
 // Degrades to {} (callers render "no reviews").
 export async function fetchRatings(
   providerIds: string[]
 ): Promise<Record<string, RatingEntry>> {
   if (providerIds.length === 0) return {};
-  try {
-    const res = await s2s(
-      REVIEW_URL,
-      `/internal/ratings?providerIds=${encodeURIComponent(providerIds.join(","))}`
-    );
-    if (!res.ok) return {};
-    const data = (await res.json()) as { ratings?: Record<string, RatingEntry> };
-    return data.ratings ?? {};
-  } catch {
-    return {};
+  const out: Record<string, RatingEntry> = {};
+  for (let i = 0; i < providerIds.length; i += RATINGS_CHUNK) {
+    const chunk = providerIds.slice(i, i + RATINGS_CHUNK);
+    try {
+      const res = await s2s(
+        REVIEW_URL,
+        `/internal/ratings?providerIds=${encodeURIComponent(chunk.join(","))}`
+      );
+      if (!res.ok) continue;
+      const data = (await res.json()) as {
+        ratings?: Record<string, RatingEntry>;
+      };
+      Object.assign(out, data.ratings ?? {});
+    } catch {
+      // degrade for this chunk only
+    }
   }
+  return out;
 }
 
 export type HydratedReview = {
