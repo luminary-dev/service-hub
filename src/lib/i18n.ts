@@ -430,6 +430,12 @@ const en = {
     jobDescription: "Description",
     jobResponseFrom: "From",
     jobView: "View",
+    // Bulk actions (#231)
+    clearSelection: "Clear",
+    bulkSuspend: "Suspend selected",
+    bulkUnsuspend: "Unsuspend selected",
+    bulkResolve: "Resolve selected",
+    bulkDismiss: "Dismiss selected",
     // Tiered admin roles (#226): shown wherever a SUPPORT-tier admin hits
     // an action gated to SUPERADMIN (delete, category edits, verify/suspend).
     insufficientPermissions: "Insufficient permissions",
@@ -1266,6 +1272,12 @@ const si: Dict = {
     jobDescription: "විස්තරය",
     jobResponseFrom: "වෙතින්",
     jobView: "බලන්න",
+    // Bulk actions (#231)
+    clearSelection: "හිස් කරන්න",
+    bulkSuspend: "තෝරාගත් ඒවා අත්හිටුවන්න",
+    bulkUnsuspend: "තෝරාගත් ඒවා නැවත සක්‍රිය කරන්න",
+    bulkResolve: "තෝරාගත් ඒවා විසඳන්න",
+    bulkDismiss: "තෝරාගත් ඒවා ඉවත ලන්න",
     insufficientPermissions: "ප්‍රමාණවත් අවසර නැත",
     // Filtering (#223)
     reportsFilterTypeLabel: "ඉලක්ක වර්ගය",
