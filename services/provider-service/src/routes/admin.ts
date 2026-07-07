@@ -6,6 +6,7 @@ import type { Context } from "hono";
 import { db } from "../db";
 import { getAuth } from "../lib/http";
 import { fetchProviderReviews, fetchRatings } from "../lib/clients";
+import { computeQualityScore } from "../lib/quality-score";
 import {
   buildAdminProvidersWhere,
   normalizeAdminListQuery,
