@@ -6,6 +6,9 @@ import type { NextConfig } from "next";
 //   hydration scripts without a nonce when self-hosted; enforcing without it
 //   blanks the page. This is the minimal loosening required — migrating to a
 //   per-request nonce + 'strict-dynamic' is the follow-up hardening.
+// - script-src additionally allows 'unsafe-eval' IN DEVELOPMENT ONLY: Turbopack
+//   and React dev tooling use eval() for HMR and callstack reconstruction.
+//   Production builds never include it.
 // - style-src keeps 'unsafe-inline' for Tailwind, next/font, and the inline
 //   style attributes used for gradients / --rise-index vars.
 // - img-src allows the Vercel Blob host (work photos/avatars served directly
@@ -13,9 +16,11 @@ import type { NextConfig } from "next";
 //   previews). Uploads served via /api/files/* are same-origin ('self').
 // No Report-Only copy is kept: we never had report-uri/report-to collection
 // infrastructure, so a shadow header would report to nowhere.
+const isDev = process.env.NODE_ENV !== "production";
+
 const csp = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https://*.public.blob.vercel-storage.com",
   "font-src 'self'",

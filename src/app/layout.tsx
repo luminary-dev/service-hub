@@ -82,7 +82,14 @@ export default async function RootLayout({
       }`}
     >
       <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        {/* SSR-only, deterministic. suppressHydrationWarning because some
+            browser extensions rewrite inline <script> tags (swap the content
+            for an extension src) before React hydrates, which would otherwise
+            log a spurious mismatch here. */}
+        <script
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }}
+        />
       </head>
       <body className="flex min-h-screen flex-col">
         {/* First focusable element on every page: lets keyboard and screen
