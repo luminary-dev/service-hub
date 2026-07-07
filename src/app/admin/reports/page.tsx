@@ -13,6 +13,11 @@ import PageHeader from "@/components/ui/PageHeader";
 import StatReadout from "@/components/ui/StatReadout";
 import EmptyState from "@/components/ui/EmptyState";
 import ReportActions from "@/components/admin/ReportActions";
+import RunFlaggingButton from "@/components/admin/RunFlaggingButton";
+import ReportsFilterBar, {
+  type StatusFilter,
+  type TargetTypeFilter,
+} from "@/components/admin/ReportsFilterBar";
 
 // Caching (#57): admin-only moderation view; edits must be visible on the
 // next request — stays fully dynamic (no-store).
@@ -32,6 +37,11 @@ type ReportBase = {
   details: string | null;
   status: "OPEN" | "RESOLVED" | "DISMISSED";
   createdAt: string;
+  // Resolution audit trail (#223): stamped when the report is resolved or
+  // dismissed; null while OPEN (and for pre-existing rows closed before the
+  // audit trail shipped).
+  resolvedBy: string | null;
+  resolvedAt: string | null;
 };
 
 type ProviderReport = ReportBase & {
@@ -59,15 +69,45 @@ type Row =
   | (ProviderReport & { source: "provider" })
   | (ReviewReport & { source: "review" });
 
-export default async function AdminReportsPage() {
+const TARGET_TYPES: TargetTypeFilter[] = ["PROVIDER", "WORK_PHOTO", "REVIEW"];
+const STATUSES: StatusFilter[] = ["OPEN", "RESOLVED", "DISMISSED"];
+
+export default async function AdminReportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   const session = await getSession();
   if (!session) redirect("/login");
   if (session.role !== "ADMIN") redirect("/");
 
+  const params = await searchParams;
+  const targetType: TargetTypeFilter = TARGET_TYPES.includes(
+    params.targetType as TargetTypeFilter
+  )
+    ? (params.targetType as TargetTypeFilter)
+    : "";
+  const status: StatusFilter = STATUSES.includes(params.status as StatusFilter)
+    ? (params.status as StatusFilter)
+    : "";
+
+  // Filtering (#223): both underlying queues accept the same `targetType`/
+  // `status` params and apply them independently before this page merges
+  // their results — a queue whose owner doesn't match the target type
+  // filter (e.g. REVIEW at provider-service) just returns an empty list.
+  const query = new URLSearchParams();
+  if (targetType) query.set("targetType", targetType);
+  if (status) query.set("status", status);
+  const qs = query.toString();
+
   const [locale, providerData, reviewData] = await Promise.all([
     getLocale(),
-    apiJson<{ reports: ProviderReport[] }>("/api/admin/reports"),
-    apiJson<{ reports: ReviewReport[] }>("/api/admin/review-reports"),
+    apiJson<{ reports: ProviderReport[] }>(
+      `/api/admin/reports${qs ? `?${qs}` : ""}`
+    ),
+    apiJson<{ reports: ReviewReport[] }>(
+      `/api/admin/review-reports${qs ? `?${qs}` : ""}`
+    ),
   ]);
   const t = dict[locale].admin;
   const tr = dict[locale].report;
@@ -118,6 +158,13 @@ export default async function AdminReportsPage() {
       </PageHeader>
 
       <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+        {/* Auto-flagging trigger + queue filters (#223) sit above the list so
+            they stay reachable even when the current filter yields nothing. */}
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+          <ReportsFilterBar targetType={targetType} status={status} />
+          <RunFlaggingButton />
+        </div>
+
         {rows.length === 0 ? (
           <EmptyState icon={FaFlag} title={t.reportsEmpty} />
         ) : (
@@ -170,6 +217,14 @@ export default async function AdminReportsPage() {
                           {r.reporterId ?? t.reportAnonymous}
                         </span>
                       </p>
+                      {r.status !== "OPEN" && r.resolvedBy && r.resolvedAt && (
+                        <p className="mt-1 font-mono text-xs text-ink-500">
+                          {t.reportResolvedMeta(
+                            r.resolvedBy,
+                            formatDate(r.resolvedAt, locale)
+                          )}
+                        </p>
+                      )}
                     </div>
                     {r.status === "OPEN" && (
                       <ReportActions

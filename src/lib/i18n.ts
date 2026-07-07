@@ -280,6 +280,18 @@ const en = {
     reject: "Reject",
     documents: "Documents",
     submitted: "Submitted",
+    // Bulk actions + SLA badge (#225)
+    selectAll: "Select all",
+    selectOne: "Select this request",
+    selectedCount: (n: number) => `${n} selected`,
+    approveSelected: "Approve selected",
+    rejectSelected: "Reject selected",
+    rejectionReasonLabel: "Rejection reason",
+    rejectionReasonPlaceholder: "Let the provider know what to fix…",
+    confirmReject: "Confirm reject",
+    cancel: "Cancel",
+    waitingDays: (n: number) => `Waiting ${n} day${n === 1 ? "" : "s"}`,
+    bulkActionError: "Couldn't complete that action. Please try again.",
     // Moderation
     indexTitle: "Admin",
     indexSubtitle: "Moderate providers and content.",
@@ -351,6 +363,14 @@ const en = {
     reportTargetGone: "This content no longer exists.",
     reportContentRemoved: "Removed",
     viewProvider: "View provider",
+    // Automated flagging (#232)
+    runFlagging: "Run auto-flagging",
+    runningFlagging: "Running…",
+    flaggingDone: (n: number) =>
+      n > 0
+        ? `Flagged ${n} provider${n === 1 ? "" : "s"} for review.`
+        : "No providers matched the auto-flagging rules.",
+    flaggingError: "Could not run auto-flagging. Please try again.",
     // Job management (#222)
     jobsLink: "Jobs",
     jobsDesc: "Browse job requests and track provider responses.",
@@ -379,6 +399,13 @@ const en = {
     jobDescription: "Description",
     jobResponseFrom: "From",
     jobView: "View",
+    // Filtering (#223)
+    reportsFilterTypeLabel: "Target type",
+    reportsFilterStatusLabel: "Status",
+    reportsFilterAllTypes: "All types",
+    reportsFilterAllStatuses: "All statuses",
+    // Resolution audit trail (#223)
+    reportResolvedMeta: (who: string, when: string) => `Handled by ${who} on ${when}`,
   },
   profile: {
     available: "Available for work",
@@ -1035,6 +1062,17 @@ const si: Dict = {
     reject: "ප්‍රතික්ෂේප කරන්න",
     documents: "ලේඛන",
     submitted: "යොමු කළේ",
+    selectAll: "සියල්ල තෝරන්න",
+    selectOne: "මෙම ඉල්ලීම තෝරන්න",
+    selectedCount: (n: number) => `${n} තෝරා ඇත`,
+    approveSelected: "තෝරාගත් ඒවා අනුමත කරන්න",
+    rejectSelected: "තෝරාගත් ඒවා ප්‍රතික්ෂේප කරන්න",
+    rejectionReasonLabel: "ප්‍රතික්ෂේප කිරීමේ හේතුව",
+    rejectionReasonPlaceholder: "නිවැරදි කළ යුතු දේ වෘත්තිකයාට දන්වන්න…",
+    confirmReject: "ප්‍රතික්ෂේප කිරීම තහවුරු කරන්න",
+    cancel: "අවලංගු කරන්න",
+    waitingDays: (n: number) => `දින ${n}ක් පොරොත්තුවෙන්`,
+    bulkActionError: "ක්‍රියාව සම්පූර්ණ කළ නොහැක. නැවත උත්සාහ කරන්න.",
     indexTitle: "පරිපාලක",
     indexSubtitle: "වෘත්තිකයන් සහ අන්තර්ගතය පාලනය කරන්න.",
     providersLink: "වෘත්තිකයන්",
@@ -1106,6 +1144,14 @@ const si: Dict = {
     reportTargetGone: "මෙම අන්තර්ගතය තවදුරටත් නොපවතී.",
     reportContentRemoved: "ඉවත් කර ඇත",
     viewProvider: "වෘත්තිකයා බලන්න",
+    // Automated flagging (#232)
+    runFlagging: "ස්වයංක්‍රීය සලකුණු කිරීම ධාවනය කරන්න",
+    runningFlagging: "ධාවනය වෙමින්…",
+    flaggingDone: (n: number) =>
+      n > 0
+        ? `සමාලෝචනය සඳහා වෘත්තිකයන් ${n}ක් සලකුණු කරන ලදී.`
+        : "ස්වයංක්‍රීය සලකුණු කිරීමේ නීති හා ගැලපෙන වෘත්තිකයන් නොමැත.",
+    flaggingError: "ස්වයංක්‍රීය සලකුණු කිරීම ධාවනය කළ නොහැකි විය. නැවත උත්සාහ කරන්න.",
     // Job management (#222)
     jobsLink: "රැකියා",
     jobsDesc: "රැකියා ඉල්ලීම් සහ වෘත්තික ප්‍රතිචාර නිරීක්ෂණය කරන්න.",
@@ -1133,6 +1179,13 @@ const si: Dict = {
     jobDescription: "විස්තරය",
     jobResponseFrom: "වෙතින්",
     jobView: "බලන්න",
+    // Filtering (#223)
+    reportsFilterTypeLabel: "ඉලක්ක වර්ගය",
+    reportsFilterStatusLabel: "තත්ත්වය",
+    reportsFilterAllTypes: "සියලුම වර්ග",
+    reportsFilterAllStatuses: "සියලුම තත්ත්ව",
+    // Resolution audit trail (#223)
+    reportResolvedMeta: (who: string, when: string) => `${who} විසින් ${when} දින හසුරුවන ලදී`,
   },
   profile: {
     available: "වැඩට සූදානම්",
