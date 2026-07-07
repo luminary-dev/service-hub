@@ -5,6 +5,9 @@ import { getSession } from "@/lib/auth";
 import { isAdminRole } from "@/lib/roles";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
+import PageHeader from "@/components/ui/PageHeader";
+import StatReadout from "@/components/ui/StatReadout";
+import EmptyState from "@/components/ui/EmptyState";
 import VerificationQueue, {
   type PendingVerification,
 } from "@/components/admin/VerificationQueue";
@@ -25,21 +28,35 @@ export default async function AdminVerificationsPage() {
   const pending = data?.providers ?? [];
   const t = dict[locale];
 
-  return (
-    <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
-      <h1 className="flex items-center gap-2 text-3xl font-semibold tracking-tight text-ink-900">
-        <FaShieldHalved className="h-6 w-6 text-brand-600" />
-        {t.admin.title}
-      </h1>
-      <p className="mt-1 text-ink-600">{t.admin.subtitle}</p>
+  const docCount = pending.reduce((n, p) => n + p.verificationDocs.length, 0);
 
-      {pending.length === 0 ? (
-        <div className="card mt-8 px-6 py-16 text-center text-sm text-ink-500">
-          {t.admin.empty}
-        </div>
-      ) : (
-        <VerificationQueue items={pending} />
-      )}
+  return (
+    <div>
+      <PageHeader
+        tag="VER"
+        eyebrow={t.admin.indexTitle}
+        title={t.admin.title}
+        status={t.admin.subtitle}
+      >
+        <StatReadout
+          stats={[
+            { label: "PENDING", value: pending.length },
+            { label: "DOCS", value: docCount },
+          ]}
+        />
+      </PageHeader>
+
+      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+        {pending.length === 0 ? (
+          <EmptyState icon={FaShieldHalved} title={t.admin.empty} />
+        ) : (
+          <>
+            {/* Active caution rail: this queue is awaiting review. */}
+            <div className="hazard mb-6 h-1.5 w-full rounded-full" />
+            <VerificationQueue items={pending} />
+          </>
+        )}
+      </div>
     </div>
   );
 }

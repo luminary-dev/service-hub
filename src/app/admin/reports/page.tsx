@@ -4,6 +4,8 @@ import { getSession } from "@/lib/auth";
 import { isAdminRole } from "@/lib/roles";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
+import PageHeader from "@/components/ui/PageHeader";
+import StatReadout from "@/components/ui/StatReadout";
 import AdminReportsList, {
   type ReportRow,
 } from "@/components/admin/AdminReportsList";
@@ -80,23 +82,36 @@ export default async function AdminReportsPage({
     return +new Date(b.createdAt) - +new Date(a.createdAt);
   });
 
+  const openCount = rows.filter((r) => r.status === "OPEN").length;
+  const resolvedCount = rows.filter((r) => r.status === "RESOLVED").length;
+
   return (
-    <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-ink-900">
-            {t.reportsTitle}
-          </h1>
-          <p className="mt-1 text-ink-600">{t.reportsSubtitle}</p>
+    <div>
+      <PageHeader
+        tag="MOD"
+        eyebrow={t.indexTitle}
+        title={t.reportsTitle}
+        status={t.reportsSubtitle}
+      >
+        <StatReadout
+          stats={[
+            { label: "OPEN", value: openCount },
+            { label: "RESOLVED", value: resolvedCount },
+            { label: "TOTAL", value: rows.length },
+          ]}
+        />
+      </PageHeader>
+
+      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+        {/* Auto-flagging trigger + queue filters (#223) sit above the list so
+            they stay reachable even when the current filter yields nothing. */}
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+          <ReportsFilterBar targetType={targetType} status={status} />
+          <RunFlaggingButton />
         </div>
-        <RunFlaggingButton />
-      </div>
 
-      <div className="mt-6">
-        <ReportsFilterBar targetType={targetType} status={status} />
+        <AdminReportsList rows={rows} role={session.role} />
       </div>
-
-      <AdminReportsList rows={rows} role={session.role} />
     </div>
   );
 }
