@@ -32,6 +32,11 @@ COPY --from=build /app/.next ./.next
 COPY --from=build /app/public ./public
 COPY --from=build /app/next.config.ts ./next.config.ts
 
+# The .next tree is copied in as root; `next start` writes its runtime cache
+# (fetch-cache / prerender cache) under .next/cache, so make it writable by the
+# non-root runtime user or Next logs EACCES and can't cache.
+RUN mkdir -p /app/.next/cache && chown -R node:node /app/.next
+
 USER node
 EXPOSE 3000
 CMD ["npm", "run", "start"]

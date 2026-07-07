@@ -130,9 +130,11 @@ jobs:
           done
           echo "web did not become ready"; docker compose ps; exit 1
       - name: Seed databases
+        # The prod images run with NODE_ENV=production, where the seed script
+        # refuses to create demo data unless explicitly overridden. Opt in here.
         run: |
           for s in identity-service provider-service review-service job-service; do
-            docker compose exec -T "$s" npm run db:seed
+            docker compose exec -T -e SEED_DEMO_DATA=true "$s" npm run db:seed
           done
       - name: Run e2e smoke
         env:
