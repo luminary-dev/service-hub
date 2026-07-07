@@ -3,6 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useT } from "../I18nProvider";
+import { useToast } from "../ToastProvider";
+
+const ACTION_MESSAGES = {
+  approve: { success: "adminVerificationApproved", error: "adminVerificationApproveError" },
+  reject: { success: "adminVerificationRejected", error: "adminVerificationRejectError" },
+} as const;
 
 export default function VerificationActions({
   providerId,
@@ -10,7 +16,8 @@ export default function VerificationActions({
   providerId: string;
 }) {
   const [pending, setPending] = useState(false);
-  const t = useT().admin;
+  const t = useT();
+  const toast = useToast();
   const router = useRouter();
 
   async function act(action: "approve" | "reject") {
@@ -21,7 +28,13 @@ export default function VerificationActions({
       body: JSON.stringify({ action }),
     }).catch(() => null);
     setPending(false);
-    if (res && res.ok) router.refresh();
+    const messages = ACTION_MESSAGES[action];
+    if (res && res.ok) {
+      toast.success(t.toast[messages.success]);
+      router.refresh();
+    } else {
+      toast.error(t.toast[messages.error]);
+    }
   }
 
   return (
@@ -31,14 +44,14 @@ export default function VerificationActions({
         disabled={pending}
         className="btn-primary !px-4 !py-2"
       >
-        {t.approve}
+        {t.admin.approve}
       </button>
       <button
         onClick={() => act("reject")}
         disabled={pending}
         className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-md border border-red-300 bg-surface px-4 py-2 font-display text-sm font-semibold text-red-600 transition-[border-color,background-color,transform] duration-200 ease-snap hover:border-red-400 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {t.reject}
+        {t.admin.reject}
       </button>
     </div>
   );
