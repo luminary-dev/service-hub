@@ -6,6 +6,10 @@ import type { Context } from "hono";
 import { db } from "../db";
 import { getAuth } from "../lib/http";
 import { fetchProviderReviews, fetchRatings } from "../lib/clients";
+import {
+  buildAdminProvidersWhere,
+  normalizeAdminListQuery,
+} from "../lib/admin-list";
 
 export const adminRoutes = new Hono();
 
@@ -13,30 +17,78 @@ function isAdmin(c: Context): boolean {
   return getAuth(c)?.role === "ADMIN";
 }
 
-// Moderation list: every provider (suspended included), newest first, with
-// contact info, local photo counts and review counts from review-service
-// (degrades to 0).
+// Moderation list (#224): search by name/contact, filter by category, city,
+// verification status and suspended state, sort by newest or most reviews,
+// paginated. Every row carries contact info, local photo counts and review
+// counts hydrated from review-service (degrades to 0).
 adminRoutes.get("/api/admin/providers", async (c) => {
   if (!isAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
-  const rows = await db.provider.findMany({
-    orderBy: { createdAt: "desc" },
-    include: { _count: { select: { photos: true } } },
-  });
-  const ratings = await fetchRatings(rows.map((p) => p.id));
+  const query = c.req.query();
+  const { page, pageSize, sort, q, category, city, status, suspended } =
+    normalizeAdminListQuery({
+      q: query.q ?? null,
+      category: query.category ?? null,
+      city: query.city ?? null,
+      status: query.status ?? null,
+      suspended: query.suspended ?? null,
+      sort: query.sort ?? null,
+      page: query.page ?? null,
+      pageSize: query.pageSize ?? null,
+    });
 
-  const providers = rows.map(({ _count, ...p }) => ({
-    ...p,
-    user: { name: p.contactName, email: p.contactEmail },
-    _count: {
-      reviews: ratings[p.id]?.count ?? 0,
-      photos: _count.photos,
-    },
-  }));
+  const where = buildAdminProvidersWhere({ q, category, city, status, suspended });
 
-  return c.json({ providers });
+  let total: number;
+  let providers: unknown[];
+
+  if (sort === "mostReviews") {
+    // Review counts are derived data owned by review-service, so ranking by
+    // them means hydrating and sorting the full match set in memory rather
+    // than paginating in the database (same tradeoff the public directory
+    // makes for its rating-based sorts — see providers.ts).
+    const all = await db.provider.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      include: { _count: { select: { photos: true } } },
+    });
+    const ratings = await fetchRatings(all.map((p) => p.id));
+    const ranked = [...all].sort(
+      (a, b) =>
+        (ratings[b.id]?.count ?? 0) - (ratings[a.id]?.count ?? 0) ||
+        b.createdAt.getTime() - a.createdAt.getTime()
+    );
+    total = ranked.length;
+    providers = ranked
+      .slice((page - 1) * pageSize, page * pageSize)
+      .map(({ _count, ...p }) => ({
+        ...p,
+        user: { name: p.contactName, email: p.contactEmail },
+        _count: { reviews: ratings[p.id]?.count ?? 0, photos: _count.photos },
+      }));
+  } else {
+    const [count, rows] = await Promise.all([
+      db.provider.count({ where }),
+      db.provider.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: { _count: { select: { photos: true } } },
+      }),
+    ]);
+    const ratings = await fetchRatings(rows.map((p) => p.id));
+    total = count;
+    providers = rows.map(({ _count, ...p }) => ({
+      ...p,
+      user: { name: p.contactName, email: p.contactEmail },
+      _count: { reviews: ratings[p.id]?.count ?? 0, photos: _count.photos },
+    }));
+  }
+
+  return c.json({ providers, total, page, pageSize });
 });
 
 // Moderation detail: provider + contact + photos + reviews hydrated from
