@@ -248,259 +248,47 @@ Public entry. Responsibilities:
 
 ## Endpoint reference
 
+The full, exhaustive endpoint list — every public `/api/*` route (method, auth/
+role gate, params, request/response) and every internal `/internal/*` S2S route
+— lives in **[API.md](API.md)**, which is the canonical reference and is kept in
+sync with the gateway routing table and the service handlers. This section only
+summarizes which service owns which slice of the surface; consult API.md for the
+routes themselves.
+
 Public routes are reached through the gateway (browser hits same-origin
-`/api/*`); `/internal/*` routes are S2S-only and never routed publicly.
+`/api/*`); `/internal/*` routes are S2S-only and never routed publicly. Ownership
+by service:
 
-### identity-service (:4001)
-
-Auth (`/api/auth/*`):
-- `POST /register` — zod discriminated union (CUSTOMER/PROVIDER); shared
-  field-rules (E.164 phones, http(s)-only links, district enum, prices
-  50–10,000,000); provider category validated against provider-service's
-  Category table (S2S, 60s cache, static fallback). Dup email → 409. If
-  PROVIDER: S2S `POST provider /internal/providers`; on failure
-  compensating-delete the user → 502. Verification email best-effort. Sets
-  cookie → `{ user, providerId }`.
-- `POST /login` — bcrypt; per-account lockout (5 wrong → 15 min); providerId via
-  S2S. 400/401 (no enumeration; dummy bcrypt on unknown email).
-- `POST /logout` → clears cookie.
-- `POST /logout-all` — session required; bumps `sessionVersion`, re-issues
-  cookie.
-- `POST /delete-account` — re-auth, fan out S2S erase to provider/review/job
-  (all idempotent; any failure → 502, nothing deleted locally), then delete User
-  + record `AccountDeletion`.
-- `GET /me` — `{ user: null }` or `{ user: {id,name,email,role,providerId} }`.
-- `POST /verify-email`, `POST /forgot-password`, `POST /reset-password`
-  (bumps `sessionVersion`), `POST /resend-verification`,
-  `POST /change-password` (re-auth, bumps `sessionVersion`, re-issues cookie).
-
-Favorites (`/api/favorites*`): `GET /api/favorites` (session → `{ providerIds }`),
-`POST /api/favorites/:id` (S2S provider existence check → `{ favorited: true }`),
-`DELETE /api/favorites/:id` → `{ favorited: false }`.
-
-Admin — user management (#220; reads gated `isSupportOrAdmin`, writes gated
-`isFullAdmin`):
-- `GET /api/admin/users?q&page` — search by email/name, newest first, page 20.
-- `GET /api/admin/users/:id` — detail + favorites hydrated with provider
-  names/phones (S2S, degrades to null).
-- `PATCH /api/admin/users/:id` — `{ action: "lock"|"unlock" }` and/or
-  `{ role: "CUSTOMER"|"PROVIDER"|"ADMIN" }` (SUPPORT is assigned out-of-band, not
-  via this API). Full ADMIN only. Self-modification blocked (400).
-- `POST /api/admin/users/:id/force-logout` — full ADMIN only; bumps
-  `sessionVersion` (400 on self).
-
-Admin — impersonation (#234, gated `isFullAdmin`):
-- `POST /api/admin/impersonate/:userId` — `:userId` may be an id or email;
-  cannot target self (400) or another admin (400); mints a 15-min
-  `impersonation_session` cookie, writes `ImpersonationLog` →
-  `{ ok, user, providerId, expiresInSeconds: 900 }`.
-- `POST /api/admin/impersonate/end` — clears the cookie, closes the open log row
-  → `{ ok: true }`.
-
-Admin — analytics: `GET /api/admin/signups` — daily CUSTOMER vs PROVIDER signup
-counts over the trailing 30 days (UTC-bucketed, zero-filled; admins excluded) →
-`{ series, totals }`.
-
-Internal: `GET /internal/users?ids=`, `GET /internal/users/:id/session-version`
-(gateway revocation check; `{ v: number | null }`), `GET /internal/users/count`,
-`PATCH /internal/users/:id` (profile sync `{ name?, phone? }`). Owns
-`src/lib/tokens.ts`.
-
-### provider-service (:4002)
-
-Public browse/detail:
-- `GET /api/categories` — active categories, sorted → `{ categories }`.
-- `GET /api/providers` — filters `q, category, district, sort, page, pageSize
-  (≤24), ids, take, priceMin, priceMax, ratingMin (1..5), availableOnly`.
-  `availableOnly`/`available` use **effective** availability
-  (`lib/availability.ts`: away providers report `false`, flip back once
-  `awayUntil` passes). Search across headline/bio/city/contactName/services
-  (pg_trgm GIN) plus Category label match (en/si) → slug join, so Sinhala/
-  category queries work. Ratings hydrated S2S; `ratingMin` applied in memory.
-  Returns `{ providers: ProviderCardDTO[], total, page, pageSize }`.
-- `GET /api/providers/ids` — `{ providers: [{id, updatedAt}] }` (sitemap).
-- `GET /api/providers/:id` — legacy detail (no reviews; 404 if missing).
-- `GET /api/providers/:id/full` — page payload: provider + contact + services +
-  first 50 photos (`sortOrder asc, createdAt desc`, `photosTotal`) + first page
-  of reviews (S2S, cursor) + `favorited`. Suspended → 404 unless
-  `x-user-role=ADMIN`.
-- `GET /api/providers/:id/card` — OG-image payload.
-- `POST /api/providers/:id/inquiries` — optional session; emails the provider
-  best-effort → `{ inquiry }`.
-- `GET /api/stats` — `{ providerCount, reviewCount }` (S2S review count).
-
-Abuse reports (session OPTIONAL): `POST /api/providers/:id/report`,
-`POST /api/photos/:id/report` — body `{ reason, details? }`; signed-in re-report
-updates the existing OPEN report → `{ ok: true }`.
-
-Inquiry threads (#13, session required): `GET|POST /api/inquiries/:id/messages`
-— only the inquiry's customer or receiving provider (else id-hiding 404); GET
-marks read + `?after=` polling; POST (1–2000) on a NEW inquiry flips it to
-RESPONDED.
-
-Account: `GET /api/account/inquiries` — caller's sent inquiries (cap 50) with
-provider `{id,name,category,suspended}` → `{ inquiries }`.
-
-Dashboard (require a provider owned by `x-user-id`, else 401):
-- `GET /api/provider/dashboard` — provider + services + photos + inquiries +
-  ratings + contact + `openJobsCount` (S2S job count).
-- `PUT /api/provider/profile` — tightened field rules; optional `awayUntil`
-  (#49); category checked post-parse; updates provider + contact and S2S
-  `PATCH identity /internal/users/:userId`.
-- `POST /api/provider/services`, `PUT|DELETE /api/provider/services/:id`.
-- `POST /api/provider/photos` (multipart; `kind=avatar` → avatarUrl else
-  WorkPhoto), `PATCH /api/provider/photos/order` (`{ ids }` → sortOrder),
-  `DELETE /api/provider/photos/:id`.
-- `GET /api/provider/inquiries`, `PATCH /api/provider/inquiries/:id` (status
-  NEW|RESPONDED|CLOSED).
-- `POST /api/provider/verification` — multipart nic/business docs → status
-  PENDING.
-
-Admin (reads + report resolve/dismiss gated `isSupportOrAdmin`; destructive
-writes — verify/suspend, verifications, photo delete/restore, categories,
-flagging — gated `isFullAdmin`; every write is recorded to `AdminAuditLog`):
-- `GET /api/admin/providers` — moderation list: `q`/`category`/`city`/`status`/
-  `suspended` filters, sort newest|mostReviews, paginated; rows carry contact +
-  photo/review counts.
-- `GET /api/admin/providers/:id` — detail + photos + reviews (incl.
-  soft-deleted) + **`quality`** (quality score #229: computed on the fly via
-  `lib/quality-score.ts` from rating/reviewCount/openReportCount — a 0-100
-  signal, not persisted).
-- `GET /api/admin/verifications` — PENDING queue + docs; paginated
-  (`page`/`pageSize`, default 20, capped 100) → `{ providers, total, page, pageSize }` (#255).
-- `PATCH /api/admin/providers/:id` — `{ action: verify|unverify|suspend|
-  unsuspend }`.
-- `PATCH /api/admin/providers` — **bulk** suspend/unsuspend `{ ids, suspended }`
-  → `{ ok, count }` (#231).
-- `PATCH /api/admin/verifications/:id` — `{ action: approve|reject, reason? }`
-  → `{ status }`.
-- `PATCH /api/admin/verifications` — **bulk** approve/reject `{ ids, action,
-  reason? }` (only PENDING rows touched) → `{ status, count }` (#225).
-- `DELETE /api/admin/photos/:id` — SOFT delete;
-  `PATCH /api/admin/photos/:id/restore`.
-- `GET /api/admin/reports` — OPEN first, then closed; optional
-  `status`/`targetType` filters; paginated (`page`/`pageSize`, default 20,
-  capped 100) → `{ reports, total, page, pageSize }` (#255); each row hydrated
-  with a target summary (provider name / photo url + owner; null when
-  hard-deleted).
-- `PATCH /api/admin/reports/:id` — `{ status: RESOLVED|DISMISSED }` (stamps
-  `resolvedBy`/`resolvedAt`).
-- `PATCH /api/admin/reports` — **bulk** resolve/dismiss `{ ids, status }` (#231).
-- `GET /api/admin/notifications/counts` — `{ pendingVerifications, openReports }`
-  for the nav badges (#233; the review half comes from review-service's
-  `/api/admin/review-reports/count`, summed client-side).
-- `GET /api/admin/stats` — dashboard analytics: provider active/suspended
-  totals, pendingVerifications, openReports (provider half), category
-  distribution (#219).
-- `GET /api/admin/categories`, `POST /api/admin/categories`
-  (slug `^[a-z0-9-]{2,40}$`, 409 on dup), `PATCH /api/admin/categories/:slug`
-  (no hard delete — deactivate).
-- `GET /api/admin/audit-log` — read-only moderation history, filter by
-  `adminId`/`action`/`from`/`to`, newest first, take 200 (#227).
-- `POST /api/admin/flagging/run` — full ADMIN only (`isFullAdmin`); auto-flagging
-  sweep (#232). Flags every active provider whose quality score is `< 40` **or**
-  which carries `>= 3` open `USER`-sourced reports, opening a deduplicated
-  `SYSTEM`-sourced report for each (providers already carrying an open `SYSTEM`
-  report are skipped). Returns `{ flagged }`. Admin-triggered on demand (no cron
-  in the stack; a scheduler could call the same endpoint later). The reports page
-  ships the `RunFlaggingButton` (`src/components/admin/RunFlaggingButton.tsx`),
-  shown only to full admins; the gateway routes it here via the `/api/admin/*`
-  → provider fallthrough.
-
-Internal: `GET /internal/categories`, `POST /internal/providers` (register
-orchestration), `GET /internal/providers/by-user/:userId`,
-`GET /internal/providers?ids=`, `GET /internal/inquiries/exists`,
-`GET /internal/providers/:id/summary`, `POST /internal/users/:id/erase`,
-`POST /internal/maintenance/sweep-orphans`. Photo bytes live in media-service;
-URLs resolve at `/api/files/provider/*`.
-
-### review-service (:4003)
-
-- `GET /api/providers/:id/reviews?take&cursor` — public paginated (take 10, max
-  100) → `{ reviews, nextCursor }`; suspended/missing provider → 404 (degrades
-  open on provider outage).
-- `POST /api/providers/:id/reviews` — session required; S2S provider summary;
-  multipart rating/comment + up to 3 photos → `{ ok: true }`.
-- `GET /api/account/reviews` — caller's reviews (cap 50, excludes soft-deleted),
-  provider names hydrated S2S → `{ reviews }`.
-- `DELETE /api/reviews/photos/:id` — owner-or-admin.
-- `POST /api/reviews/:id/report` — session OPTIONAL; soft-deleted/missing → 404
-  → `{ ok: true }`.
-- `DELETE /api/admin/reviews/:id` — ADMIN; SOFT delete (audited).
-- `PATCH /api/admin/reviews/:id/restore` — ADMIN; clears `deletedAt` (audited).
-- `GET /api/admin/review-reports` — moderation queue (same shape as
-  provider-service's; target = rating/comment/providerId/authorId + `removed`);
-  optional `status`/`targetType` filters; paginated (`page`/`pageSize`, default
-  20, capped 100) → `{ reports, total, page, pageSize }`, matching
-  provider-service so the merged admin queue pages both in lockstep (#255).
-- `GET /api/admin/review-reports/count` — `{ openReports }` (nav badge, #233).
-- `PATCH /api/admin/review-reports/:id` — `{ status }` (stamps
-  `resolvedBy`/`resolvedAt`, audited).
-- `PATCH /api/admin/review-reports` — **bulk** resolve/dismiss (#231).
-- `GET /api/admin/review-audit-log` — this service's moderation log (filters +
-  take 200; merged with provider-service's in the frontend, #227).
-- `GET /api/admin/review-stats` — `{ openReports }` (review half of #219).
-
-Internal: `GET /internal/ratings?providerIds=`,
-`GET /internal/by-provider/:id?take&cursor`, `GET /internal/count`,
-`POST /internal/maintenance/sweep-orphans`, `POST /internal/users/:id/erase`.
-Review-photo bytes resolve at `/api/files/review/*`.
-
-### job-service (:4004)
-
-- `POST /api/jobs` — session; `jobSchema` (district enum; category checked S2S)
-  → `{ id }`.
-- `PATCH /api/jobs/:id` — owner only; status OPEN|CLOSED.
-- `POST /api/jobs/:id/responses` — session; provider gate (S2S by-user, 403);
-  open + dup checks; best-effort email to customer → `{ ok: true }`.
-- `GET /api/jobs/board?page&pageSize` — provider gate: OPEN jobs matching
-  category+district, excluding own, with customer names + `responded`.
-  Paginated (default 20, max 50; `take` aliases `pageSize`) →
-  `{ jobs, total, page, pageSize }`.
-- `GET /api/jobs/mine?page&pageSize` — own jobs with responses hydrated with
-  provider `{name, phone}`. Paginated (same bounds) →
-  `{ jobs, total, page, pageSize }`.
-
-Admin (read-only oversight, gated `isSupportOrAdmin`):
-- `GET /api/admin/jobs?status&category` — list with customer name + response
-  count (#222).
-- `GET /api/admin/jobs/:id` — job + responses with customer/provider contact
-  hydrated.
-
-> **Monetization deferred to v0.2.** Pricing, commission and payments are
-> intentionally out of scope for v0.1 — the platform is free to use — so
-> job-service has no transaction ledger and no billing endpoints.
-
-Internal: `GET /internal/jobs/count?category&district&excludeCustomerId`,
-`POST /internal/users/:id/erase` (`{ providerId? }` — own JobRequests, plus
-JobResponses when providerId given).
-
-### notification-service (:4005)
-
-Internal-only: `POST /internal/email/verify`, `.../password-reset`,
-`.../inquiry`, `.../job-response` → `{ ok, delivered }`. en/si templates ported
-from `src/lib/email.ts`; Resend when `RESEND_API_KEY` set, otherwise console log
-with `delivered: false`.
-
-### media-service (:4006)
-
-- `GET /files/:namespace/*` — serve an image (public through the gateway at
-  `/api/files/<namespace>/*`); streamed from R2 (private bucket) or local disk.
-- Internal: `POST /internal/media/store`, `.../delete`, `.../sweep` (24h grace
-  window for the orphan sweep).
-
-### chat-service (:4007)
-
-- `POST /internal/chat/:persona/stream` — streaming Claude tool loop. Requires
-  `ANTHROPIC_API_KEY` (unset → `503 { error: "assistant unavailable" }`). Model
-  `claude-opus-4-8`. Organised around personas (system prompt + tool set +
-  runner); ships the **marketplace concierge** today. Its two tools:
-  `search_providers` (gateway browse) and `create_inquiry` (the same public
-  inquiry endpoint the form uses, with `source: "chat-agent"` attribution, the
-  caller's cookie + real client IP forwarded). The model may only call
-  `create_inquiry` after showing the exact message and getting explicit
-  confirmation. Localized en/si. Reached only via the web app's `/agent/chat`
-  proxy — never through the gateway.
+- **identity-service (:4001)** — `/api/auth/*` (register/login/logout/session,
+  email verification, password reset/change, self-service account deletion),
+  `/api/favorites*`, and the admin user-management, impersonation ("view as") and
+  signups-analytics routes. Signs the `sh_session` JWT; owns the S2S user
+  hydration + session-version revocation check.
+- **provider-service (:4002)** — the public directory/search (`/api/providers*`,
+  `/api/categories`, `/api/stats`), provider profile pages, the provider
+  dashboard (`/api/provider/*`), inquiries + threads (`/api/inquiries/*`,
+  `/api/account/inquiries`), provider/photo abuse reports, and the bulk of the
+  admin surface (providers, verifications, reports, categories, auto-flagging,
+  audit log, stats/notification counts).
+- **review-service (:4003)** — public + write review routes
+  (`/api/providers/:id/reviews`), `/api/account/reviews`, review photo delete,
+  review abuse reports, and the admin review moderation queues
+  (`/api/admin/review-*`).
+- **job-service (:4004)** — `/api/jobs*` (post, board, mine, responses, status)
+  and the read-only admin jobs oversight. **Monetization (pricing, commission,
+  payments) is intentionally deferred to v0.2** — v0.1 is free to use, so there
+  is no transaction ledger and no price/commission field on a job (a JobRequest
+  carries only an optional customer-stated `budget`).
+- **notification-service (:4005)** — internal-only en/si email templates
+  (`/internal/email/*`); Resend when `RESEND_API_KEY` is set, else console log.
+- **media-service (:4006)** — serves uploads at `GET /files/:namespace/*` (public
+  through the gateway as `/api/files/<namespace>/*`) and the internal
+  store/delete/sweep routes; bytes live in R2 (private) or on local disk.
+- **chat-service (:4007)** — the streaming Claude marketplace assistant at
+  `POST /internal/chat/:persona/stream`, reached only via the web app's
+  `/agent/chat` proxy (never through the gateway, which would buffer the stream).
+  Requires `ANTHROPIC_API_KEY` (unset → 503); model `claude-opus-4-8`; tools
+  `search_providers` + `create_inquiry` call back through the gateway.
 
 ## Admin surface (roles and audit)
 
