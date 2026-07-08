@@ -366,7 +366,8 @@ flagging — gated `isFullAdmin`; every write is recorded to `AdminAuditLog`):
   soft-deleted) + **`quality`** (quality score #229: computed on the fly via
   `lib/quality-score.ts` from rating/reviewCount/openReportCount — a 0-100
   signal, not persisted).
-- `GET /api/admin/verifications` — PENDING queue + docs.
+- `GET /api/admin/verifications` — PENDING queue + docs; paginated
+  (`page`/`pageSize`, default 20, capped 100) → `{ providers, total, page, pageSize }` (#255).
 - `PATCH /api/admin/providers/:id` — `{ action: verify|unverify|suspend|
   unsuspend }`.
 - `PATCH /api/admin/providers` — **bulk** suspend/unsuspend `{ ids, suspended }`
@@ -377,9 +378,11 @@ flagging — gated `isFullAdmin`; every write is recorded to `AdminAuditLog`):
   reason? }` (only PENDING rows touched) → `{ status, count }` (#225).
 - `DELETE /api/admin/photos/:id` — SOFT delete;
   `PATCH /api/admin/photos/:id/restore`.
-- `GET /api/admin/reports` — OPEN first + bounded closed tail; optional
-  `status`/`targetType` filters; each row hydrated with a target summary
-  (provider name / photo url + owner; null when hard-deleted).
+- `GET /api/admin/reports` — OPEN first, then closed; optional
+  `status`/`targetType` filters; paginated (`page`/`pageSize`, default 20,
+  capped 100) → `{ reports, total, page, pageSize }` (#255); each row hydrated
+  with a target summary (provider name / photo url + owner; null when
+  hard-deleted).
 - `PATCH /api/admin/reports/:id` — `{ status: RESOLVED|DISMISSED }` (stamps
   `resolvedBy`/`resolvedAt`).
 - `PATCH /api/admin/reports` — **bulk** resolve/dismiss `{ ids, status }` (#231).
@@ -427,7 +430,9 @@ URLs resolve at `/api/files/provider/*`.
 - `PATCH /api/admin/reviews/:id/restore` — ADMIN; clears `deletedAt` (audited).
 - `GET /api/admin/review-reports` — moderation queue (same shape as
   provider-service's; target = rating/comment/providerId/authorId + `removed`);
-  optional `status`/`targetType` filters.
+  optional `status`/`targetType` filters; paginated (`page`/`pageSize`, default
+  20, capped 100) → `{ reports, total, page, pageSize }`, matching
+  provider-service so the merged admin queue pages both in lockstep (#255).
 - `GET /api/admin/review-reports/count` — `{ openReports }` (nav badge, #233).
 - `PATCH /api/admin/review-reports/:id` — `{ status }` (stamps
   `resolvedBy`/`resolvedAt`, audited).
