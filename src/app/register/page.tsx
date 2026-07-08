@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { FaHouse, FaScrewdriverWrench } from "@/components/icons";
+import GoogleSignInButton from "@/components/GoogleSignInButton";
 import { dict } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
 
@@ -65,6 +66,17 @@ export default async function RegisterChoicePage() {
               {t.choose.needCta}
             </span>
           </Link>
+        </div>
+
+        <div className="mx-auto mt-10 max-w-md">
+          <div className="flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-400">
+            <span className="h-px flex-1 bg-ink-200" />
+            {t.oauth.divider}
+            <span className="h-px flex-1 bg-ink-200" />
+          </div>
+          <div className="mt-6">
+            <GoogleSignInButton label={t.oauth.continueWithGoogle} />
+          </div>
         </div>
 
         <p className="mt-8 text-center text-sm text-ink-500">

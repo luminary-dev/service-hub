@@ -129,6 +129,13 @@ export async function buildUpstreamHeaders(
 // Request bodies are buffered rather than streamed: a one-shot inbound stream
 // cannot be replayed when undici resends on a reused connection ("expected
 // non-null body source"), and payloads are capped small (5MB uploads).
+//
+// redirect: "manual" — a reverse proxy must return upstream 3xx responses to
+// the browser, not resolve them itself. fetch defaults to "follow", which for
+// the OAuth start route (#398) meant the gateway chased identity's 302 to
+// Google server-side and returned Google's consent HTML from the API URL — the
+// browser never navigated to Google and never received the state/PKCE cookies.
+// Manual keeps the Location + Set-Cookie intact for the client.
 export async function proxyRequest(c: Context) {
   const url = new URL(c.req.url);
   const route = resolveRoute(url.pathname);
@@ -149,6 +156,7 @@ export async function proxyRequest(c: Context) {
       method,
       headers,
       body,
+      redirect: "manual",
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
   } catch (err) {

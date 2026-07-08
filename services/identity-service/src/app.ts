@@ -7,6 +7,7 @@ import { getRequestId, requestLogger } from "./lib/logging";
 import { adminUsersRoutes } from "./routes/admin-users";
 import { adminImpersonationRoutes } from "./routes/admin-impersonation";
 import { authRoutes } from "./routes/auth";
+import { oauthRoutes } from "./routes/oauth";
 import { favoritesRoutes } from "./routes/favorites";
 import { adminRoutes } from "./routes/admin";
 import { internalUsersRoutes } from "./routes/internal-users";
@@ -33,6 +34,7 @@ app.get("/healthz", async (c) => {
 app.use("*", requireInternalSecret);
 
 app.route("/api/auth", authRoutes);
+app.route("/api/auth", oauthRoutes);
 app.route("/api/favorites", favoritesRoutes);
 app.route("/", adminUsersRoutes);
 app.route("/api/admin/impersonate", adminImpersonationRoutes);

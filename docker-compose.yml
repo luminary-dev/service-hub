@@ -35,6 +35,11 @@ services:
       PORT: 4001
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/identity_db
       AUTH_SECRET: ${AUTH_SECRET:-dev-only-secret}
+      # Social login (#398) — optional; unset → "Continue with Google" disabled.
+      # For the Docker path, put these in the repo-root .env (compose reads that
+      # for substitution); the host path (dev-all.sh) reads the service .env.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
     ports:
       - "4001:4001"
     depends_on:

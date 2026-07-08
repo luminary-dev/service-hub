@@ -1,21 +1,33 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useLocale, useT } from "@/components/I18nProvider";
 import { localizedHref } from "@/lib/links";
 import PasswordInput from "@/components/PasswordInput";
+import GoogleSignInButton from "@/components/GoogleSignInButton";
 import { Field } from "@/components/ui/Field";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const router = useRouter();
   const t = useT();
   const locale = useLocale();
+  // OAuth failures redirect back here as ?error=<code>; map it to a message.
+  const searchParams = useSearchParams();
+  const oauthError = searchParams.get("error");
+  const initialError =
+    oauthError === "oauth_email"
+      ? t.oauth.errEmail
+      : oauthError === "oauth_unavailable"
+        ? t.oauth.errUnavailable
+        : oauthError === "oauth"
+          ? t.oauth.errGeneric
+          : "";
+  const [error, setError] = useState(initialError);
+  const router = useRouter();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -110,6 +122,15 @@ export default function LoginPage() {
               {loading ? t.login.signingIn : t.login.signIn}
             </button>
           </form>
+        </div>
+
+        <div className="mt-6 flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-400">
+          <span className="h-px flex-1 bg-ink-200" />
+          {t.oauth.divider}
+          <span className="h-px flex-1 bg-ink-200" />
+        </div>
+        <div className="mt-6">
+          <GoogleSignInButton label={t.oauth.continueWithGoogle} />
         </div>
 
         <p className="mt-6 text-center text-sm text-ink-500">

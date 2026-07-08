@@ -51,10 +51,13 @@ the upstream that owns the handler.
 | Method + path | Auth | Summary |
 |---|---|---|
 | `POST /api/auth/register` | public | Register a CUSTOMER or PROVIDER (zod discriminated union). PROVIDER also creates the provider profile via S2S (compensating-delete + 502 on failure). Dup email → 409. Sets the session cookie → `{ user, providerId }`. |
-| `POST /api/auth/login` | public | bcrypt verify; per-account lockout (5 fails → 15 min); no email enumeration. Sets cookie → `{ user, providerId }`. 400/401 otherwise. |
+| `POST /api/auth/login` | public | bcrypt verify; per-account lockout (5 fails → 15 min); no email enumeration. Sets cookie → `{ user, providerId }`. 400/401 otherwise. Social-only accounts (no password) get the same uniform 401. |
+| `GET /api/auth/oauth/google/start` | public | Social login (#398). Sets state + PKCE cookies, 302 → Google consent. Optional `?next=` (same-origin relative). Unconfigured → 302 `/login?error=oauth_unavailable`. |
+| `GET /api/auth/oauth/google/callback` | public | Validates state/PKCE + code, reads the verified-email id_token, then: existing linked account → sign in; matching verified email → link + sign in; otherwise create a CUSTOMER (`emailVerified` set) + link. Sets cookie, 302 → `/welcome` (new) or `next`/`/` (returning). Failures → `/login?error=oauth\|oauth_email`. |
+| `POST /api/auth/complete-provider` | authenticated | Turns the signed-in CUSTOMER into a PROVIDER: validates the provider profile (registration fields minus account fields), creates the profile via S2S, flips role, bumps `sessionVersion`, re-issues cookie → `{ user, providerId }`. 409 if already a provider. |
 | `POST /api/auth/logout` | public | Clears the session cookie → `{ ok: true }`. |
 | `POST /api/auth/logout-all` | authenticated | Bumps `sessionVersion` (revokes every session), re-issues this one → `{ ok: true }`. |
-| `POST /api/auth/delete-account` | authenticated | Re-auth with `{ password }`; fans out S2S erase to provider/review/job (any failure → 502, nothing deleted), then deletes the User + records `AccountDeletion`. |
+| `POST /api/auth/delete-account` | authenticated | Re-auth with `{ password }` (optional for social-only accounts, which have none — the session is the re-auth); fans out S2S erase to provider/review/job (any failure → 502, nothing deleted), then deletes the User + records `AccountDeletion`. |
 | `GET /api/auth/me` | public | `{ user: null }` when signed out, else `{ user: { id, name, email, role, providerId } }`. |
 | `POST /api/auth/change-password` | authenticated | `{ currentPassword, newPassword }`; re-auth, bumps `sessionVersion`, re-issues cookie. |
 | `POST /api/auth/verify-email` | public | `{ token }` — marks the email verified. |
