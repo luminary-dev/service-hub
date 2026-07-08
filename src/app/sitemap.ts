@@ -56,10 +56,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "daily",
       priority: 0.9,
     }),
-    // Auth pages stay English-root only — they're session territory, not
-    // localized landing pages.
-    { url: `${SITE_URL}/register`, lastModified: now, changeFrequency: "monthly" },
-    { url: `${SITE_URL}/login`, lastModified: now, changeFrequency: "monthly" },
+    // Auth routes (/login, /register) are deliberately omitted: they're
+    // session/utility pages carrying only the generic default title and
+    // description, so listing them dilutes crawl focus without adding any
+    // indexable value.
   ];
 
   const categoryPages: MetadataRoute.Sitemap = CATEGORIES.flatMap((c) =>

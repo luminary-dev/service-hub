@@ -1,12 +1,13 @@
-/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FaFlag } from "@/components/icons";
 import { useT, useLocale } from "../I18nProvider";
 import { formatDate } from "@/lib/format";
+import { isSvg } from "@/lib/image";
 import { hasSupportAccess } from "@/lib/roles";
 import Stars from "../Stars";
 import InView from "../InView";
@@ -323,9 +324,12 @@ export default function AdminReportsList({
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-3">
                     {r.targetType === "WORK_PHOTO" && r.target.photoUrl && (
-                      <img
+                      <Image
                         src={r.target.photoUrl}
                         alt={r.target.caption ?? "Reported photo"}
+                        width={56}
+                        height={56}
+                        unoptimized={isSvg(r.target.photoUrl)}
                         className="h-14 w-14 shrink-0 rounded-lg object-cover"
                       />
                     )}
