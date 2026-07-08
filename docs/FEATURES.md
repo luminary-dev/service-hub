@@ -111,8 +111,12 @@ optional favorite button.
 **`/providers/[id]`** (`GET /api/providers/:id/full`) renders the public
 profile: hero (avatar, category, verified badge, availability, location,
 rating), action chips (favorite, share, report), a stats readout, contact links
-(phone, WhatsApp, socials, website), and four spec sections — **About,
+(a **tap-to-reveal** phone/WhatsApp button plus socials and website), and four
+spec sections — **About,
 Services, Photos, Reviews** — with an inquiry form in the sticky sidebar.
+Phone numbers are withheld from the public payload and fetched on the reveal tap
+via a rate-limited endpoint (#64), so crawlers can't harvest the directory's
+numbers from page HTML.
 Suspended providers 404 for everyone except admins.
 
 ### Open Graph images

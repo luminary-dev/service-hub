@@ -177,6 +177,17 @@ describe("rate limiting", () => {
     expect(blocked.status).toBe(429);
   });
 
+  it("rate-limits the phone-reveal endpoint with the contact budget (#64)", async () => {
+    const headers = { "sec-fetch-site": "same-origin", "x-forwarded-for": "203.0.113.94" };
+    // contactReveal budget: 20 per 10 minutes.
+    for (let i = 0; i < 20; i++) {
+      const res = await app.request("/api/providers/prov-1/contact", { method: "POST", headers });
+      expect(res.status).toBe(200);
+    }
+    const blocked = await app.request("/api/providers/prov-1/contact", { method: "POST", headers });
+    expect(blocked.status).toBe(429);
+  });
+
   it("rate-limits thread messages with the conversational budget", async () => {
     const headers = { "sec-fetch-site": "same-origin", "x-forwarded-for": "203.0.113.90" };
     // message budget: 30 per 10 minutes.

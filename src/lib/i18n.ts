@@ -540,6 +540,10 @@ const en = {
     photos: "Work Photos",
     noPhotos: "No work photos uploaded yet.",
     altPhone: "Alt:",
+    // Phone-number reveal (#64): numbers are hidden until the visitor taps.
+    showNumber: "Show number",
+    revealing: "Revealing…",
+    revealError: "Could not load the number. Please try again.",
     share: "Share",
     shareCopied: "Link copied to clipboard.",
     shareError: "Could not copy the link.",
@@ -1436,6 +1440,10 @@ const si: Dict = {
     photos: "වැඩ ඡායාරූප",
     noPhotos: "තවම වැඩ ඡායාරූප නැත.",
     altPhone: "වෙනත්:",
+    // Phone-number reveal (#64): අංකය සඟවා ඇත, ටැප් කරන තෙක්.
+    showNumber: "අංකය පෙන්වන්න",
+    revealing: "පෙන්වමින්…",
+    revealError: "අංකය ලබා ගැනීමට නොහැකි විය. නැවත උත්සාහ කරන්න.",
     share: "බෙදාගන්න",
     shareCopied: "සබැඳිය පිටපත් කරන ලදී.",
     shareError: "සබැඳිය පිටපත් කළ නොහැකි විය.",
