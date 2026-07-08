@@ -11,6 +11,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import VerificationQueue, {
   type PendingVerification,
 } from "@/components/admin/VerificationQueue";
+import MarkQueueViewed from "@/components/admin/MarkQueueViewed";
 
 // Caching (#57): admin-only moderation view; edits must be visible on the
 // next request — stays fully dynamic (no-store).
@@ -32,6 +33,7 @@ export default async function AdminVerificationsPage() {
 
   return (
     <div>
+      <MarkQueueViewed queue="verifications" count={pending.length} />
       <PageHeader
         tag="VER"
         eyebrow={t.admin.indexTitle}

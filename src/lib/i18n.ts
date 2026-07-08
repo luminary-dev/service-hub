@@ -464,6 +464,10 @@ const en = {
     jobDescription: "Description",
     jobResponseFrom: "From",
     jobView: "View",
+    // Notification badges on the admin hub cards (#233).
+    notificationsNewAria: (n: number) =>
+      `${n} new since you last checked`,
+    notificationsCountAria: (n: number) => `${n} pending`,
     // User management (#220)
     usersLink: "Users",
     usersDesc: "Search accounts, lock/unlock, change roles, force sign-out.",
@@ -1377,6 +1381,9 @@ const si: Dict = {
     jobDescription: "විස්තරය",
     jobResponseFrom: "වෙතින්",
     jobView: "බලන්න",
+    notificationsNewAria: (n: number) =>
+      `ඔබ අවසන් වරට පරීක්ෂා කළ දා සිට නව ${n}ක්`,
+    notificationsCountAria: (n: number) => `පොරොත්තුවෙන් ${n}`,
     usersLink: "පරිශීලකයන්",
     usersDesc: "ගිණුම් සොයන්න, අගුලු දමන්න/හරින්න, භූමිකා වෙනස් කරන්න, බලෙන් නික්මවන්න.",
     usersTitle: "පරිශීලකයන්",

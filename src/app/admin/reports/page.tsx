@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { isAdminRole } from "@/lib/roles";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
+import MarkQueueViewed from "@/components/admin/MarkQueueViewed";
 import PageHeader from "@/components/ui/PageHeader";
 import StatReadout from "@/components/ui/StatReadout";
 import AdminReportsList, {
@@ -82,11 +83,14 @@ export default async function AdminReportsPage({
     return +new Date(b.createdAt) - +new Date(a.createdAt);
   });
 
+  // Notification badge (#233): "mark viewed" needs the current open count so
+  // the admin hub badge clears once this queue has been seen.
   const openCount = rows.filter((r) => r.status === "OPEN").length;
   const resolvedCount = rows.filter((r) => r.status === "RESOLVED").length;
 
   return (
     <div>
+      <MarkQueueViewed queue="reports" count={openCount} />
       <PageHeader
         tag="MOD"
         eyebrow={t.indexTitle}

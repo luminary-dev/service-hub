@@ -90,6 +90,17 @@ describe("resolveRoute (routing table)", () => {
     });
   });
 
+  it("routes the admin notification-badge counts endpoints (#233)", () => {
+    expect(resolveRoute("/api/admin/notifications/counts")).toEqual({
+      service: "provider",
+      path: "/api/admin/notifications/counts",
+    });
+    expect(resolveRoute("/api/admin/review-reports/count")).toEqual({
+      service: "review",
+      path: "/api/admin/review-reports/count",
+    });
+  });
+
   it("routes the admin audit logs to their owning services (#227)", () => {
     expect(resolveRoute("/api/admin/audit-log")).toEqual({
       service: "provider",

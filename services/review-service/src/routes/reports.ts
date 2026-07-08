@@ -164,6 +164,19 @@ reports.get("/api/admin/review-reports", async (c) => {
   return c.json({ reports: result });
 });
 
+// Lightweight count for the admin hub notification badge (#233) — avoids
+// shipping the full review-reports payload just to display a number. Paired
+// with provider-service's GET /api/admin/notifications/counts, which the
+// frontend sums client-side into the reports badge total.
+reports.get("/api/admin/review-reports/count", async (c) => {
+  const auth = getAuth(c);
+  if (auth?.role !== "ADMIN") {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+  const openReports = await db.report.count({ where: { status: "OPEN" } });
+  return c.json({ openReports });
+});
+
 const reportStatusSchema = z.object({ status: z.enum(["RESOLVED", "DISMISSED"]) });
 
 reports.patch("/api/admin/review-reports/:id", async (c) => {

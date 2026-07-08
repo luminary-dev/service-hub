@@ -10,11 +10,14 @@ import {
   FaShieldHalved,
   FaTags,
   FaUsers,
+  type IconType,
 } from "@/components/icons";
 import { getSession } from "@/lib/auth";
 import { isAdminRole } from "@/lib/roles";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
+import NotificationBadge from "@/components/admin/NotificationBadge";
+import type { NotificationQueue } from "@/lib/adminNotifications";
 import { apiJson } from "@/lib/api";
 import { formatNumber } from "@/lib/format";
 import PageHeader from "@/components/ui/PageHeader";
@@ -28,6 +31,15 @@ import AdminDashboardCharts, {
 // Caching (#57): admin-only moderation view; edits must be visible on the
 // next request — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
+
+type Card = {
+  href: string;
+  icon: IconType;
+  title: string;
+  desc: string;
+  // Which queue's notification badge (#233) to show on this card, if any.
+  badgeQueue?: NotificationQueue;
+};
 
 // Dashboard metrics (#219). Three sources, gatewayed to the service that
 // owns the data:
@@ -78,7 +90,7 @@ export default async function AdminHomePage() {
     { value: providerStats?.providers.suspended ?? 0, label: t.statSuspendedProviders },
   ];
 
-  const cards = [
+  const cards: Card[] = [
     {
       href: "/admin/providers",
       icon: FaUsers,
@@ -90,6 +102,7 @@ export default async function AdminHomePage() {
       icon: FaShieldHalved,
       title: t.verificationsLink,
       desc: t.verificationsDesc,
+      badgeQueue: "verifications",
     },
     {
       href: "/admin/categories",
@@ -102,6 +115,7 @@ export default async function AdminHomePage() {
       icon: FaFlag,
       title: t.reportsLink,
       desc: t.reportsDesc,
+      badgeQueue: "reports",
     },
     {
       href: "/admin/audit-log",
@@ -186,6 +200,7 @@ export default async function AdminHomePage() {
                   </span>
                   <span className="mt-0.5 flex items-center gap-1.5 font-semibold text-ink-900 transition-colors duration-300 group-hover:text-brand-700">
                     {c.title}
+                    {c.badgeQueue && <NotificationBadge queue={c.badgeQueue} />}
                     <FaArrowRight className="h-3 w-3 -translate-x-1 opacity-0 transition-all duration-300 ease-snap group-hover:translate-x-0 group-hover:opacity-100" />
                   </span>
                   <span className="mt-1 block text-sm text-ink-600">{c.desc}</span>

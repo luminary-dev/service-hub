@@ -101,6 +101,10 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
     return { service: "job", path: pathname };
   }
 
+  // Everything else under /api/admin/, including the notification-badge
+  // counts endpoint (#233, /api/admin/notifications/counts), belongs to
+  // provider-service; the review-owned counterpart above
+  // (/api/admin/review-reports/count) is already carved out.
   if (pathname.startsWith("/api/admin/")) {
     return { service: "provider", path: pathname };
   }
