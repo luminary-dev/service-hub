@@ -528,6 +528,12 @@ with `delivered: false`.
   `${GATEWAY_URL}/api/:path*` at **request** time, so `GATEWAY_URL` is a pure
   runtime env var (unset → `http://localhost:4000`). Client components keep
   calling `/api/*` unchanged.
+- The proxy is also the trust boundary for the `x-locale` request header
+  (#67/#204): `/si*` URLs rewrite to the unprefixed route with `x-locale: si`;
+  every other page route has `x-locale` overwritten to `en`. It runs on all page
+  routes (matcher excludes only `/api`, `_next/*` and metadata assets) so a
+  client-supplied `X-Locale` can never reach `getUrlLocale()`. The `lang` cookie
+  still drives the rendered locale via `getLocale()`, which reads it directly.
 - Server components fetch the gateway directly (`src/lib/api.ts`: `GATEWAY_URL` +
   forwarded `cookie`, `cache: "no-store"`); `src/app/sitemap.ts` fetches
   `/api/providers/ids`.

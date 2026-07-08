@@ -68,15 +68,36 @@ consumed via `ioredis`. There is no Upstash/Vercel dependency — the stack
 deploys as Docker containers behind Caddy (see [DEPLOYMENT.md](DEPLOYMENT.md)),
 and Redis is just another service reached by URL.
 
-## Client IP caveat (#201)
+## Client IP resolution (`TRUSTED_PROXY_HOPS`, #201)
 
-The limiter keys on the client IP taken from `x-forwarded-for` (first hop),
-falling back to `x-real-ip`. Behind the production Caddy → web → gateway chain,
-`X-Forwarded-For` is currently **forgeable** by the client, which means a
-determined attacker could rotate the header to sidestep per-IP limits. The fix
-is tracked in **#201**: set `TRUSTED_PROXY_HOPS` on the gateway so it reads the
-real client IP from the correct position in the forwarded chain. This must land
-before a public launch for the brute-force protection to be trustworthy.
+The limiter keys on the client IP. The **leftmost** `X-Forwarded-For` token is
+always client-forgeable — an attacker who rotates it lands every request in a
+fresh bucket and defeats the per-IP limits (unlimited login attempts, etc.). So
+the gateway never trusts the left edge. Instead `clientIp()` (in
+`services/api-gateway/src/lib/rate-limit.ts`) resolves the IP from the trusted
+transport peer and a configurable number of trusted proxy hops:
+
+- **`TRUSTED_PROXY_HOPS`** — integer, **default `0`**. The socket peer counts as
+  the first trusted hop, so `0` means "trust nothing but the transport peer"
+  (`getConnInfo`, which the client cannot forge). Use `0` when the gateway is
+  directly exposed or its proxy topology is unknown — it is the safe default.
+- When `> 0`, the reverse-proxy chain in front of the gateway has appended
+  exactly that many `X-Forwarded-For` entries (one per trusted proxy, the last
+  added by our own socket peer). The gateway reads `X-Forwarded-For` **from the
+  right**, skipping those trusted hops, and takes the entry at
+  `length - TRUSTED_PROXY_HOPS` — the value the **outermost trusted proxy**
+  inserted, i.e. the real client. Anything the client prepended sits further
+  left and is ignored.
+- If `X-Forwarded-For` is absent, or the chain is shorter than
+  `TRUSTED_PROXY_HOPS` (so the request did not traverse the expected proxies),
+  the limiter falls back to the socket peer rather than trusting
+  attacker-controlled data.
+
+Set `TRUSTED_PROXY_HOPS` to match the deployed topology. In production the chain
+is **Caddy → web → gateway**, so it is set to **`2`** (see
+`docker-compose.prod.yml` / `.env.prod.example`). Getting this wrong is
+fail-safe in one direction: too small a value keys on a proxy IP (all clients
+share a bucket — over-limiting), never on a forgeable client value.
 
 ## Adding or changing a limit
 
