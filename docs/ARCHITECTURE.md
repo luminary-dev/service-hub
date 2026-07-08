@@ -289,8 +289,12 @@ by service:
 - **chat-service (:4007)** — the streaming Claude marketplace assistant at
   `POST /internal/chat/:persona/stream`, reached only via the web app's
   `/agent/chat` proxy (never through the gateway, which would buffer the stream).
-  Requires `ANTHROPIC_API_KEY` (unset → 503); model `claude-opus-4-8`; tools
-  `search_providers` + `create_inquiry` call back through the gateway.
+  Requires `ANTHROPIC_API_KEY` (unset → 503); model `claude-opus-4-8`. Its tools
+  are read-only from the user's perspective: `search_providers` queries the
+  public directory, and `propose_inquiry` only streams a draft to the browser —
+  the actual inquiry write happens out-of-band when the user confirms the card
+  in the web app (a normal authenticated `POST /api/providers/:id/inquiries`),
+  never as a model-invoked action (#202).
 
 ## Admin surface (roles and audit)
 
