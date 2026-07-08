@@ -66,14 +66,20 @@ Start with `docs/README.md` (the docs index) and `docs/ARCHITECTURE.md`.
 
 ## Project board & assignees
 
-- Every new issue **and** pull request is auto-synced onto the org board
-  (`luminary-dev/projects/1`) by `.github/workflows/add-to-project.yml` with
-  `Status=Backlog` + the `Service` field, and the **opener is auto-assigned**.
-- **The assignee is whoever created the PR/issue** — on the PR/issue itself and,
-  because the Projects v2 board mirrors assignees, on the board too. Don't
-  reassign someone else's open PR to yourself; own what you open.
+- **The board tracks issues** — one card per unit of work — synced by
+  `.github/workflows/add-to-project.yml` on issue open (`Status=Backlog` +
+  `Service`). **Pull requests are never separate board cards.**
+- **A PR that resolves an issue** links under it: put `Closes #n` in the body,
+  and the workflow mirrors the PR's **author onto that issue as the assignee**,
+  so the board card shows who's working it. When the PR merges, the issue
+  closes and the board moves it to Done.
+- **A PR that resolves no issue** gets **no board card** — it's just
+  auto-assigned to its author and merges. That's expected for trivial chores
+  (deps, docs, tiny fixes); **substantive work should have an issue first** so
+  it's tracked on the board.
+- Own what you open — don't reassign someone else's PR/issue to yourself.
 - Keep GitHub's built-in project auto-add workflow **OFF** — the workflow above
-  is the single sync path (double-adding would duplicate board items).
+  is the single sync path (double-adding would duplicate cards).
 
 ## Verifying changes
 
