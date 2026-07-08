@@ -1,8 +1,9 @@
-/* eslint-disable @next/next/no-img-element */
+import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
+import { isSvg } from "@/lib/image";
 import { isAdminRole } from "@/lib/roles";
 import { getLocale } from "@/lib/locale";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
@@ -224,11 +225,14 @@ export default async function AdminProviderModeratePage({
                   key={ph.id}
                   className="overflow-hidden border border-ink-300 bg-ink-100"
                 >
-                  <div className="relative">
-                    <img
+                  <div className="relative aspect-square">
+                    <Image
                       src={ph.url}
                       alt={ph.caption ?? "Work photo"}
-                      className={`aspect-square w-full object-cover ${
+                      fill
+                      sizes="(min-width: 640px) 33vw, 50vw"
+                      unoptimized={isSvg(ph.url)}
+                      className={`object-cover ${
                         ph.deletedAt ? "opacity-40" : ""
                       }`}
                     />

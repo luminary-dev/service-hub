@@ -3,7 +3,8 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { FaTriangleExclamation } from "@/components/icons";
-import { useT } from "@/components/I18nProvider";
+import { useLocale, useT } from "@/components/I18nProvider";
+import { localizedHref } from "@/lib/links";
 
 // Route error boundary: renders inside the root layout (navbar and i18n
 // provider stay available) with a retry that re-renders the failed segment.
@@ -15,6 +16,7 @@ export default function ErrorPage({
   reset: () => void;
 }) {
   const t = useT();
+  const locale = useLocale();
 
   useEffect(() => {
     console.error(error);
@@ -31,7 +33,7 @@ export default function ErrorPage({
         <button type="button" onClick={reset} className="btn-primary">
           {t.errors.retry}
         </button>
-        <Link href="/" className="btn-secondary">
+        <Link href={localizedHref("/", locale)} className="btn-secondary">
           {t.errors.goHome}
         </Link>
       </div>
