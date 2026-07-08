@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import {
   IBM_Plex_Sans,
   IBM_Plex_Mono,
@@ -48,6 +48,17 @@ const notoSinhala = Noto_Sans_Sinhala({
   display: "swap",
 });
 
+// Browser UI theme-color (#263). Per the current Next API this lives on the
+// `viewport` export, not `metadata`. Light/dark match the app's surface/page
+// tokens (globals.css / docs/DESIGN.md) so the mobile address bar tracks the
+// theme the same way the UI does.
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#191a1f" },
+  ],
+};
+
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();
   const m = dict[locale].meta;
@@ -55,6 +66,12 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase: new URL(SITE_URL),
     title: { default: m.title, template: `%s · ${SITE_NAME}` },
     description: m.description,
+    // The manifest, favicon/icon/apple-icon links, and the default OG/Twitter
+    // image are wired via the file conventions in this directory
+    // (manifest.ts, favicon.ico, icon.svg, apple-icon.tsx, opengraph-image.tsx)
+    // — Next injects those <head> tags automatically. appleWebApp only exists
+    // as metadata, so it's set explicitly here (#263).
+    appleWebApp: { capable: true, title: SITE_NAME, statusBarStyle: "default" },
     openGraph: {
       title: m.title,
       description: m.description,
