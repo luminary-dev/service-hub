@@ -1,10 +1,11 @@
-name: Move closed issues to Done
+name: "Project board: close to Done"
 
-# Keeps the org project board honest: when an issue is closed its board card
-# moves to Status=Done. Runs automatically on every issue close, and a manual
-# `workflow_dispatch` sweeps ALL currently-closed issues to Done (retroactive
-# cleanup). Uses the same PAT as the add-to-project workflow. The "Done" option
-# id is resolved by name at runtime so it survives board edits.
+# Companion to the "Project board sync" workflow. Keeps the org board honest:
+# when an issue is closed its board card moves to Status=Done. Runs
+# automatically on every issue close, and a manual `workflow_dispatch` sweeps
+# ALL currently-closed issues to Done (retroactive cleanup). Uses the same PAT
+# as the add-to-project workflow. The "Done" option id is resolved by name at
+# runtime so it survives board edits.
 on:
   issues:
     types: [closed]
@@ -18,7 +19,7 @@ env:
   STATUS_FIELD_ID: PVTSSF_lADOD0HlNc4Bcax8zhXDxPc
 
 jobs:
-  to-done:
+  mark-done:
     runs-on: ubuntu-latest
     steps:
       - name: Set closed issues to Done
