@@ -206,7 +206,9 @@ Public entry. Responsibilities:
    `POST /api/auth/login|forgot-password|reset-password|change-password|delete-account`
    → authStrict; `POST /api/auth/register` → authSignup;
    `POST /api/auth/resend-verification` → resend; `POST /api/jobs` and
-   `POST /api/providers/:id/inquiries` → inquiry; `POST /api/jobs/:id/responses`
+   `POST /api/providers/:id/inquiries` → inquiry;
+   `POST /api/providers/:id/contact` → contactReveal (phone-number reveal, #64);
+   `POST /api/jobs/:id/responses`
    and `POST /api/providers/:id/reviews` → review;
    `POST /api/providers/:id/report`, `POST /api/photos/:id/report` and
    `POST /api/reviews/:id/report` → report. 429 body/headers identical to the

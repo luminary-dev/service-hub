@@ -85,8 +85,27 @@ function toCardDTO(p: CardRow, r: RatingEntry | undefined) {
   };
 }
 
-function contactAsUser(p: { contactName: string; contactPhone: string | null; contactEmail: string }) {
-  return { name: p.contactName, phone: p.contactPhone, email: p.contactEmail };
+// Contact identity for the public payloads. Phone numbers are deliberately
+// omitted here (#64) — see contactFlags / the /:id/contact reveal below.
+function contactAsUser(p: { contactName: string; contactEmail: string }) {
+  return { name: p.contactName, email: p.contactEmail };
+}
+
+// Phone numbers are PII and a prime scraping target (#64): never ship the raw
+// digits in the public directory payloads, or a crawler harvests every number
+// in one pass. Instead we surface booleans so the UI knows whether a "show
+// number" affordance applies; the web reveals the actual digits on an explicit
+// user action via POST /:id/contact (rate-limited at the gateway).
+function contactFlags(p: {
+  contactPhone: string | null;
+  whatsapp: string | null;
+  phone2: string | null;
+}) {
+  return {
+    hasPhone: !!p.contactPhone,
+    hasWhatsapp: !!p.whatsapp,
+    hasPhone2: !!p.phone2,
+  };
 }
 
 providersRoutes.get("/api/providers", async (c) => {
@@ -257,11 +276,15 @@ providersRoutes.get("/api/providers/:id", async (c) => {
   if (provider.suspended && getAuth(c)?.role !== "ADMIN") {
     return c.json({ error: "Provider not found" }, 404);
   }
+  // Strip the raw phone columns (#64) — the public payload carries only
+  // booleans; the digits are fetched on demand via POST /:id/contact.
+  const { contactPhone, whatsapp, phone2, ...pub } = provider;
   return c.json({
     provider: {
-      ...provider,
+      ...pub,
       // Effective availability (#49) — raw awayUntil rides along.
       available: isEffectivelyAvailable(provider),
+      ...contactFlags(provider),
       user: contactAsUser(provider),
     },
   });
@@ -317,13 +340,16 @@ providersRoutes.get("/api/providers/:id/full", async (c) => {
       select: { createdAt: true, respondedAt: true },
     }),
   ]);
-  const { _count, ...providerFields } = provider;
+  // Drop _count (internal) and the raw phone columns (#64) — the profile page
+  // reveals the digits on demand via POST /:id/contact.
+  const { _count, contactPhone, whatsapp, phone2, ...providerFields } = provider;
   return c.json({
     provider: {
       ...providerFields,
       // Effective availability (#49): away providers surface available=false;
       // the profile page renders "Away until {awayUntil}" from the raw field.
       available: isEffectivelyAvailable(provider),
+      ...contactFlags(provider),
       user: contactAsUser(provider),
       reviews,
       reviewsNextCursor: nextCursor,
@@ -362,6 +388,31 @@ providersRoutes.get("/api/providers/:id/card", async (c) => {
     rating: r?.rating ?? null,
     reviewCount: r?.count ?? 0,
     verificationStatus: provider.verificationStatus,
+  });
+});
+
+// Phone-number reveal (#64). The public detail/profile payloads omit the raw
+// digits; the web fetches them here on an explicit "show number" action. It is
+// a POST (not a GET) so the gateway's rate limiter — which only guards writes —
+// throttles mass harvesting per IP without exposing every number in the
+// initial HTML. Suspended profiles stay hidden (same gate as the detail
+// routes); admins moderating a suspended profile still get through.
+providersRoutes.post("/api/providers/:id/contact", async (c) => {
+  const id = c.req.param("id");
+  const provider = await db.provider.findUnique({
+    where: { id },
+    select: { contactPhone: true, whatsapp: true, phone2: true, suspended: true },
+  });
+  if (!provider) {
+    return c.json({ error: "Provider not found" }, 404);
+  }
+  if (provider.suspended && getAuth(c)?.role !== "ADMIN") {
+    return c.json({ error: "Provider not found" }, 404);
+  }
+  return c.json({
+    phone: provider.contactPhone,
+    whatsapp: provider.whatsapp,
+    phone2: provider.phone2,
   });
 });
 

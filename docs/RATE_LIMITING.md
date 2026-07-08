@@ -22,6 +22,7 @@ them. Only `POST` requests are checked.
 | `POST /api/auth/resend-verification` | `resend` | 4 / 15 min |
 | `POST /api/jobs` | `inquiry` | 6 / 10 min |
 | `POST /api/providers/[id]/inquiries` | `inquiry` | 6 / 10 min |
+| `POST /api/providers/[id]/contact` | `contactReveal` | 20 / 10 min |
 | `POST /api/jobs/[id]/responses` | `review` | 10 / hour |
 | `POST /api/providers/[id]/reviews` | `review` | 10 / hour |
 | `POST /api/inquiries/[id]/messages` | `message` | 30 / 10 min |
@@ -31,7 +32,10 @@ them. Only `POST` requests are checked.
 each verifies the current password and is therefore a guessing oracle for a
 hijacked session. The three abuse-report endpoints share a single `report`
 bucket keyed per IP, since anonymous submissions are allowed and the IP budget
-is the main spam control.
+is the main spam control. The phone-number reveal (`contactReveal`, #64) sits
+on its own per-IP budget: provider phone/WhatsApp numbers are withheld from the
+public directory payloads and fetched only on an explicit tap, so this limit is
+the main defence against a crawler harvesting the whole directory's numbers.
 
 Over-limit requests get `429` with a JSON body
 (`{ "error": "Too many requests. Please slow down and try again shortly." }`)

@@ -82,14 +82,17 @@ type FullProvider = {
   suspended: boolean;
   verificationStatus: string;
   avatarUrl: string | null;
-  whatsapp: string | null;
-  phone2: string | null;
+  // Phone numbers are withheld from the public payload (#64): we only learn
+  // whether each exists, then reveal the digits on demand via ContactLinks.
+  hasPhone: boolean;
+  hasWhatsapp: boolean;
+  hasPhone2: boolean;
   facebook: string | null;
   instagram: string | null;
   tiktok: string | null;
   youtube: string | null;
   website: string | null;
-  user: { name: string; phone: string | null; email: string | null };
+  user: { name: string; email: string | null };
   services: {
     id: string;
     title: string;
@@ -302,9 +305,10 @@ export default async function ProviderProfilePage({
           <div className="mt-8 flex flex-col gap-6 border-t border-dashed border-ink-300 pt-6 sm:flex-row sm:items-start sm:justify-between">
             <StatReadout stats={stats} />
             <ContactLinks
-              phone={provider.user.phone}
-              whatsapp={provider.whatsapp}
-              phone2={provider.phone2}
+              providerId={provider.id}
+              hasPhone={provider.hasPhone}
+              hasWhatsapp={provider.hasWhatsapp}
+              hasPhone2={provider.hasPhone2}
               facebook={provider.facebook}
               instagram={provider.instagram}
               tiktok={provider.tiktok}
