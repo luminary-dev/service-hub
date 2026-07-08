@@ -2,17 +2,21 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { hasFullAdminAccess } from "@/lib/roles";
 import { useT } from "../I18nProvider";
 
 // Manual trigger for the automated flagging rule (#232): provider-service has
 // no cron/worker infra, so POST /api/admin/flagging/run is admin-triggered
 // here rather than scheduled. A real cron can call the same endpoint once one
-// exists.
-export default function RunFlaggingButton() {
+// exists. The run creates SYSTEM reports, so it's a full-ADMIN action (#226) —
+// SUPPORT users don't see the button (the endpoint would 403 them anyway).
+export default function RunFlaggingButton({ role }: { role: string }) {
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const t = useT().admin;
   const router = useRouter();
+
+  if (!hasFullAdminAccess(role)) return null;
 
   async function run() {
     setPending(true);
