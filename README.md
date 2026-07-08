@@ -6,7 +6,7 @@ The customer-facing UI is bilingual — an EN/සිං toggle in the navbar swi
 
 ## Architecture
 
-Microservices behind an API gateway; the Next.js app is a pure frontend. Full details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Team documentation (onboarding, workflow, operations) lives in [luminary-dev/service-hub-docs](https://github.com/luminary-dev/service-hub-docs).
+The marketplace is built as **eight Hono services — an API gateway fronting seven backend microservices — with a Next.js 16 web app as a pure frontend**, all backed by Postgres and Redis. The web app never touches a database — it rewrites `/api/*` to the gateway, which verifies the JWT session cookie, enforces CSRF + rate limits, and fans requests out to the backend services over internal HTTP secured by a shared secret. The four data-owning services (identity, provider, review, job) each own their own Postgres database, and Redis backs the gateway's distributed rate limiter. Full details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Narrative team documentation (onboarding, workflow, operations) lives on GitBook in [luminary-dev/service-hub-docs](https://github.com/luminary-dev/service-hub-docs).
 
 ```
 browser ── same-origin /api/* ──> Next.js web (:3000)
@@ -19,43 +19,54 @@ browser ── same-origin /api/* ──> Next.js web (:3000)
                                    ├── notification-service (:4005)  email (Resend)
                                    ├── media-service        (:4006)  image processing + file storage
                                    └── chat-service         (:4007)  Claude assistant (holds the LLM key)
+                                   gateway ── rate limits ──> Redis (:6379)
 ```
 
-- Each service owns its own Postgres database; cross-service data flows over internal HTTP with a shared secret.
-- The gateway verifies the JWT session cookie, enforces CSRF + rate limits, and forwards identity headers.
+- The four data-owning services (identity, provider, review, job) each own a Postgres database; notification, media and chat are stateless. Cross-service data flows over internal HTTP with a shared secret.
+- The gateway verifies the JWT session cookie, enforces CSRF + distributed (Redis-backed) rate limits, and forwards identity headers.
 - This repo is the **canonical monorepo**. Every service under `services/` is also mirrored to its own repo in the `luminary-dev` org (`npm run sync:repos`), where it builds, tests and deploys standalone.
 
-**Stack** — Next.js 16 (App Router) + React 19 + Tailwind CSS 4 on the frontend; Hono + Prisma 7 (Postgres) + zod per service; JWT sessions in httpOnly cookies (`jose` + `bcryptjs`).
+**Stack** — Next.js 16 (App Router) + React 19 + Tailwind CSS 4 on the frontend; Hono + Prisma 7 (Postgres) + zod per service; Redis for rate limiting; JWT sessions in httpOnly cookies (`jose` + `bcryptjs`).
 
 ## Getting started
 
 Prereqs: Node 22+, Docker.
 
 ```bash
-npm run setup      # install all packages, create .env files, start Postgres, push schemas, seed
-npm run dev:all    # run the gateway + all seven services + the web app (Ctrl-C stops everything)
+npm run setup      # scripts/setup.sh — install all packages, create .env files, start Postgres, push schemas, seed
+npm run dev:all    # scripts/dev-all.sh — run the gateway + all seven backend services + the web app (Ctrl-C stops everything)
 ```
 
 Open http://localhost:3000.
 
-Or run the entire stack in containers:
+Or run the entire stack (Postgres, Redis, all services, web) in containers:
 
 ```bash
-docker compose up --build
+docker compose up -d --build
 ```
 
-Postgres listens on host port **5433** (5432 is often taken by a local install). Verify everything with the end-to-end smoke suite while the stack is running:
+Ports: web `:3000`, gateway `:4000`, backend services `:4001`–`:4007`. Postgres
+listens on host port **5433** (5432 is often taken by a local install); Redis is
+internal to the compose network. Verify everything with the end-to-end smoke
+suite while the stack is running:
 
 ```bash
-npm run e2e
+npm run e2e         # scripts/e2e-smoke.sh — needs a running, seeded stack
 ```
+
+**Local data is disposable.** We don't preserve or migrate data between runs —
+the seeds are dummy data only. To get back to a clean, seeded stack, run
+`scripts/dev-reset.sh`, which tears everything down **including volumes**
+(`docker compose down -v`), rebuilds (`up -d --build`), and reseeds.
 
 ### Seeded accounts (password: `password123`)
 
 > Demo accounts are for **local development only** — the seed refuses to run
-> with `NODE_ENV=production`. Bootstrap a real admin with
-> `npm run create-admin` in `services/identity-service` (takes
-> `--email`/`--password` flags or `ADMIN_EMAIL`/`ADMIN_PASSWORD` env vars).
+> with `NODE_ENV=production` unless you explicitly set `SEED_DEMO_DATA=true`
+> (the production compose images run as `NODE_ENV=production`, so seeding there
+> is a deliberate opt-in). Bootstrap a real admin with `npm run create-admin`
+> in `services/identity-service` (takes `--email`/`--password` flags or
+> `ADMIN_EMAIL`/`ADMIN_PASSWORD` env vars).
 
 | Role | Email | Notes |
 | --- | --- | --- |
@@ -70,6 +81,7 @@ npm run e2e
 - Browse/search professionals by keyword, category and district, with sorting and pagination
 - View profiles: bio, services & rates (LKR), work-photo gallery with lightbox, social links, reviews
 - Send inquiries without an account; call/WhatsApp directly
+- Ask the built-in Claude marketplace assistant to find providers and start inquiries in chat
 - With a free account: leave star-rated reviews (with photos), save favorites, post job requests
 
 **Professionals** (account required)
@@ -77,6 +89,16 @@ npm run e2e
 - Dashboard: stats, edit profile & availability, manage services, upload photos, manage inquiries
 - Job board: open jobs matching their category & district, one response per job
 - Identity verification (NIC/business docs) reviewed by admins for a verified badge
+
+**Admins** (tiered roles)
+- Admin panel with two role tiers (**SUPPORT** read + report resolve/dismiss; **ADMIN** full access) gating what each admin can do, enforced in the web app and the backend services
+- Moderation: identity-verification review, provider suspension, and an abuse-report queue across providers, photos and reviews
+- User & job management, bulk actions, quality-score views, on-demand auto-flagging, content restore, and in-app notification badges
+- Every privileged action is written to an audit log; admins can impersonate users for support (see [docs/ADMIN.md](docs/ADMIN.md) and [docs/AUTHZ.md](docs/AUTHZ.md))
+
+**Platform**
+- Bilingual EN/සිං UI (cookie-based toggle) with light/dark themes (see [docs/DESIGN.md](docs/DESIGN.md))
+- Image uploads processed with sharp (re-encode + EXIF strip) and served from Cloudflare R2, or local disk in dev
 
 ## Project layout
 
@@ -100,7 +122,25 @@ Each service is self-contained (own `package.json`, lockfile, Prisma schema, Doc
 
 ## Production notes
 
-- Set a strong shared `AUTH_SECRET` (identity signs; gateway + web verify) and a strong `INTERNAL_API_SECRET` (all services + gateway); never expose service ports publicly — only the gateway.
+- Set a strong shared `AUTH_SECRET` (identity signs; gateway + web verify) and a strong `INTERNAL_API_SECRET` (all services + gateway); never expose service ports publicly — only the gateway. Secrets live in the environment, never in the repo (see [docs/SECURITY.md](docs/SECURITY.md)).
 - Uploads use Cloudflare R2 (S3-compatible, private bucket) when the four `R2_*` vars are set; otherwise local disk served via the gateway (`/api/files/*`) — fine for a single node, use R2 when scaling out.
+- Rate limits are Redis-backed and shared across gateway instances (`REDIS_URL`), with a per-instance in-memory fallback when Redis is unavailable (see [docs/RATE_LIMITING.md](docs/RATE_LIMITING.md)).
 - **Email (password reset & verification) is NOT delivering to real users yet** — it needs a verified sending domain + `RESEND_API_KEY` on notification-service. See [docs/EMAIL_SETUP.md](docs/EMAIL_SETUP.md).
-- Rate limits are in-memory per gateway instance; move to Redis if you run multiple gateways.
+- Releases follow a `dev → prod` branch model: changes land on `dev`, and a `dev → prod` PR cuts a tagged release; production runs pre-built GHCR images (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) and [docs/OPERATIONS.md](docs/OPERATIONS.md)).
+
+## Documentation
+
+The monorepo `docs/` folder is the canonical technical + process reference; narrative team docs (onboarding, workflow) live on GitBook in [luminary-dev/service-hub-docs](https://github.com/luminary-dev/service-hub-docs).
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — service contracts, conventions, env vars, data flow
+- [docs/FEATURES.md](docs/FEATURES.md) — product feature reference, per surface
+- [docs/AUTHZ.md](docs/AUTHZ.md) — authentication, sessions and the role/permission model
+- [docs/ADMIN.md](docs/ADMIN.md) — admin panel: tiered roles, audit log, moderation, impersonation
+- [docs/SECURITY.md](docs/SECURITY.md) — security model, secrets, and service hardening
+- [docs/RATE_LIMITING.md](docs/RATE_LIMITING.md) — the Redis-backed distributed rate limiter
+- [docs/DESIGN.md](docs/DESIGN.md) — the design system, theming and i18n
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — the `dev → prod` release flow and production topology
+- [docs/OPERATIONS.md](docs/OPERATIONS.md) — running, monitoring and troubleshooting the stack
+- [docs/BACKUPS.md](docs/BACKUPS.md) — database backup and restore
+- [docs/EMAIL_SETUP.md](docs/EMAIL_SETUP.md) — configuring Resend for real email delivery
+- [docs/TESTING.md](docs/TESTING.md) — the test layers, CI matrix, coverage and known gaps

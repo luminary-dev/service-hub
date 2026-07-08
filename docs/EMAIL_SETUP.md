@@ -1,48 +1,53 @@
-# Email setup (password reset & verification)
+# Email setup (verification, password reset & notifications)
 
-> **Status: NOT LIVE for real users yet — blocked on a sending domain.**
-> The password-reset and email-verification code is deployed and works, but
-> **no emails are actually delivered in production** until the steps below are done.
+Transactional email is owned by **notification-service** (`services/notification-service`,
+`:4005`) — a stateless service that renders the templates (EN + SI) and sends
+them via [Resend](https://resend.com). Sibling services call it over S2S
+(`POST /internal/email/*`); nothing else touches email. See the
+[service README](../services/notification-service/README.md) for the endpoint
+and template list.
 
-## Why it's not working yet
+> **Status: not delivering to real users until a sending domain is verified.**
+> The code is deployed and works end to end, but with no `RESEND_API_KEY` (and no
+> verified domain) it only logs the message — see the fallback below.
 
-Transactional email is sent via [Resend](https://resend.com). Two things are missing:
+## How it behaves
 
-1. **`RESEND_API_KEY` is not set** in Vercel. Until it is, the app runs fine but
-   only **logs the reset/verify link to the Vercel server console** instead of
-   emailing it (see `src/lib/email.ts` — the no-key fallback). Customers get nothing.
-2. **We do not own a verified sending domain yet.** Resend only lets you send from
-   `onboarding@resend.dev` until a domain is verified, and that test sender
-   **only delivers to your own Resend-account email address** — not to real
-   customers. So a domain is required before launch.
+- **No `RESEND_API_KEY`** — notification-service does **not** send. It logs the
+  full message (recipient, subject, HTML) to its container console and returns
+  `{ ok: true, delivered: false }`. The whole flow (register → verify link,
+  forgot-password → reset link) works locally with no account; you read the link
+  from the logs.
+- **`RESEND_API_KEY` set, no verified domain** — Resend only lets you send from
+  `onboarding@resend.dev`, and that sandbox sender **only delivers to your own
+  Resend-account email address**. Fine for a smoke test, not for customers.
+- **`RESEND_API_KEY` set + verified domain** — real delivery from your
+  `EMAIL_FROM` address. This is the production configuration.
 
-There is **no way to enable real customer email delivery in Vercel without a
-domain.** This is a hard dependency, noted here for later.
+## Enabling production email
 
-## What works right now, without a domain
+1. Register / confirm the sending domain (e.g. `baas.lk`).
+2. Create a Resend account (free tier: 3,000 emails/mo, 100/day).
+3. In Resend: **add the domain and verify it** — add the DNS records Resend
+   provides (SPF/DKIM; DMARC recommended).
+4. In Resend: create an **API key** (`re_...`).
+5. Set the notification-service environment (in `docker-compose.prod.yml` /
+   the deploy host's secrets — see [DEPLOYMENT.md](DEPLOYMENT.md)):
+   - `RESEND_API_KEY` = the `re_...` key
+   - `EMAIL_FROM` = e.g. `Baas.lk <noreply@baas.lk>` (must be on the verified domain)
+6. Redeploy / restart notification-service so it picks up the new env.
+7. End-to-end test: request a password reset for a real address, confirm the
+   email arrives, click the link and confirm the reset completes.
+8. Check rendering in Gmail + a common Sri Lankan inbox (e.g. `@sltnet.lk`) and
+   that it doesn't land in spam.
 
-- The full flow is testable locally (links print to the terminal).
-- In production you can smoke-test delivery by setting only `RESEND_API_KEY` and
-  sending a reset to **the email you signed up to Resend with** — that one address
-  will receive it even without domain verification.
+## Notes
 
-## TODO — enable production email (do this when the domain is ready)
-
-- [ ] Register / confirm the sending domain (e.g. `baas.lk`).
-- [ ] Create a free Resend account (3,000 emails/mo, 100/day on the free tier).
-- [ ] In Resend: **add the domain and verify it** (add the DNS records Resend
-      provides — SPF/DKIM, and DMARC recommended).
-- [ ] In Resend: create an **API key**.
-- [ ] In Vercel (Project → Settings → Environment Variables, or via CLI), set:
-  - [ ] `RESEND_API_KEY` = the `re_...` key  *(Production, Preview)*
-  - [ ] `EMAIL_FROM` = e.g. `Baas.lk <noreply@baas.lk>`  *(must be on the verified domain)*
-- [ ] **Redeploy** — env-var changes only take effect on a new deployment.
-- [ ] End-to-end test: request a password reset for a real address and confirm the
-      email arrives; click the link and confirm the reset completes.
-- [ ] Check the email renders correctly in Gmail + a Sri Lankan provider (e.g. an
-      `@sltnet.lk` / common local inbox) and that it doesn't land in spam.
-
-## Related
-
-- Code: `src/lib/email.ts`, `src/lib/verification.ts`, `src/app/api/auth/*`
-- Feature PR: #70
+- `EMAIL_FROM` defaults to `Baas.lk <onboarding@resend.dev>` — replace it with a
+  verified-domain address in production.
+- Email links use the origin the gateway forwards as `x-origin` (falling back to
+  `WEB_ORIGIN`), so links point at the right host per environment.
+- Related code: `services/notification-service/src/lib/email.ts` (templates +
+  Resend/console send), `src/routes/email.ts` (endpoints). Callers:
+  identity-service (verify / password-reset), provider-service (inquiry),
+  job-service (job-response).
