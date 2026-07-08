@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import {
   FaArrowRight,
   FaBriefcase,
+  FaClock,
   FaFileLines,
   FaFlag,
   FaIdCard,
@@ -101,6 +102,12 @@ export default async function AdminHomePage() {
       icon: FaFlag,
       title: t.reportsLink,
       desc: t.reportsDesc,
+    },
+    {
+      href: "/admin/audit-log",
+      icon: FaClock,
+      title: t.auditLogLink,
+      desc: t.auditLogDesc,
     },
     {
       href: "/admin/jobs",

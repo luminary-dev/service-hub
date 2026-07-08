@@ -90,6 +90,17 @@ describe("resolveRoute (routing table)", () => {
     });
   });
 
+  it("routes the admin audit logs to their owning services (#227)", () => {
+    expect(resolveRoute("/api/admin/audit-log")).toEqual({
+      service: "provider",
+      path: "/api/admin/audit-log",
+    });
+    expect(resolveRoute("/api/admin/review-audit-log")).toEqual({
+      service: "review",
+      path: "/api/admin/review-audit-log",
+    });
+  });
+
   it("routes admin impersonation ('view as', #234) to identity-service", () => {
     expect(resolveRoute("/api/admin/impersonate/user_1")).toEqual({
       service: "identity",
@@ -113,6 +124,14 @@ describe("resolveRoute (routing table)", () => {
     expect(resolveRoute("/api/admin/transactions/txn-1")).toEqual({
       service: "job",
       path: "/api/admin/transactions/txn-1",
+    });
+  });
+
+  it("routes admin job management to job-service (#222)", () => {
+    expect(resolveRoute("/api/admin/jobs")).toEqual({ service: "job", path: "/api/admin/jobs" });
+    expect(resolveRoute("/api/admin/jobs/job-1")).toEqual({
+      service: "job",
+      path: "/api/admin/jobs/job-1",
     });
   });
 

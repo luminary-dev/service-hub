@@ -184,3 +184,26 @@ model InquiryMessage {
 
   @@index([inquiryId, createdAt])
 }
+
+// Moderation audit trail (#227): one row per admin action taken through this
+// service's /api/admin/* routes (provider verify/suspend, photo delete,
+// report resolve/dismiss, category create/edit). adminId references a User
+// owned by identity-service (plain string, no FK — same convention as
+// Report.reporterId). review-service keeps an identical model for the
+// moderation actions it owns; the two logs are merged only in the admin
+// frontend's combined view, never server-side.
+model AdminAuditLog {
+  id         String   @id @default(cuid())
+  adminId    String
+  action     String
+  targetType String
+  targetId   String
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  // The read endpoint filters by any combination of admin/action/date range,
+  // and always orders newest-first.
+  @@index([adminId])
+  @@index([action])
+  @@index([createdAt])
+}

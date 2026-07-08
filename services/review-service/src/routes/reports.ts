@@ -5,6 +5,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
+import { logAudit } from "../lib/audit";
 import { getAuth } from "../lib/http";
 
 export const reports = new Hono();
@@ -177,9 +178,10 @@ reports.patch("/api/admin/review-reports/:id", async (c) => {
     return c.json({ error: "Invalid input" }, 400);
   }
 
+  const id = c.req.param("id");
   // Audit trail (#223): stamp who closed the report and when.
   const { count } = await db.report.updateMany({
-    where: { id: c.req.param("id") },
+    where: { id },
     data: {
       status: parsed.data.status,
       resolvedBy: auth?.userId ?? null,
@@ -189,6 +191,12 @@ reports.patch("/api/admin/review-reports/:id", async (c) => {
   if (count === 0) {
     return c.json({ error: "Report not found" }, 404);
   }
+  await logAudit(
+    c,
+    parsed.data.status === "RESOLVED" ? "resolve-report" : "dismiss-report",
+    "REPORT",
+    id
+  );
   return c.json({ ok: true });
 });
 
@@ -222,6 +230,49 @@ reports.patch("/api/admin/review-reports", async (c) => {
     },
   });
   return c.json({ ok: true, count });
+});
+
+// ---------------------------------------------------------------------------
+// Audit log (#227): read-only history of every moderation write in this
+// service (review delete/restore, report resolve/dismiss). provider-service
+// keeps its own log for the actions it owns, exposed at
+// GET /api/admin/audit-log — the admin frontend merges both.
+// ---------------------------------------------------------------------------
+
+const AUDIT_LOG_TAKE = 200;
+
+reports.get("/api/admin/review-audit-log", async (c) => {
+  const auth = getAuth(c);
+  if (auth?.role !== "ADMIN") {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const adminId = c.req.query("adminId") || undefined;
+  const action = c.req.query("action") || undefined;
+  const from = c.req.query("from");
+  const to = c.req.query("to");
+
+  const createdAt: { gte?: Date; lte?: Date } = {};
+  if (from) {
+    const d = new Date(from);
+    if (!Number.isNaN(d.getTime())) createdAt.gte = d;
+  }
+  if (to) {
+    const d = new Date(to);
+    if (!Number.isNaN(d.getTime())) createdAt.lte = d;
+  }
+
+  const entries = await db.adminAuditLog.findMany({
+    where: {
+      ...(adminId ? { adminId } : {}),
+      ...(action ? { action } : {}),
+      ...(createdAt.gte || createdAt.lte ? { createdAt } : {}),
+    },
+    orderBy: { createdAt: "desc" },
+    take: AUDIT_LOG_TAKE,
+  });
+
+  return c.json({ entries });
 });
 
 // ---------------------------------------------------------------------------

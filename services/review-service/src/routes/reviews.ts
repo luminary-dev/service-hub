@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { db } from "../db";
+import { logAudit } from "../lib/audit";
 import { getAuth, s2s } from "../lib/http";
 import { listProviderReviews, normalizeTake } from "../lib/provider-reviews";
 import {
@@ -214,6 +215,7 @@ reviews.delete("/api/admin/reviews/:id", async (c) => {
     where: { id },
     data: { deletedAt: new Date() },
   });
+  await logAudit(c, "delete-review", "REVIEW", id);
   return c.json({ ok: true });
 });
 
@@ -224,5 +226,6 @@ reviews.patch("/api/admin/reviews/:id/restore", async (c) => {
   }
   const id = c.req.param("id");
   await db.review.updateMany({ where: { id }, data: { deletedAt: null } });
+  await logAudit(c, "restore-review", "REVIEW", id);
   return c.json({ ok: true });
 });
