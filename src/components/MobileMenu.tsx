@@ -56,7 +56,7 @@ export default function MobileMenu({
     try {
       await fetch("/api/auth/logout", { method: "POST" });
       setOpen(false);
-      router.push("/");
+      router.push(localizedHref("/", locale));
       router.refresh();
     } catch {
       setSigningOut(false);
@@ -106,20 +106,36 @@ export default function MobileMenu({
           </Link>
           {session ? (
             <>
-              <Link href="/jobs" onClick={close} className={itemClass}>
+              <Link
+                href={localizedHref("/jobs", locale)}
+                onClick={close}
+                className={itemClass}
+              >
                 {t.nav.jobs}
               </Link>
               {session.role === "PROVIDER" && (
-                <Link href="/dashboard" onClick={close} className={itemClass}>
+                <Link
+                  href={localizedHref("/dashboard", locale)}
+                  onClick={close}
+                  className={itemClass}
+                >
                   {t.nav.dashboard}
                 </Link>
               )}
               {session.role === "ADMIN" && (
-                <Link href="/admin" onClick={close} className={itemClass}>
+                <Link
+                  href={localizedHref("/admin", locale)}
+                  onClick={close}
+                  className={itemClass}
+                >
                   {t.nav.admin}
                 </Link>
               )}
-              <Link href="/account" onClick={close} className={itemClass}>
+              <Link
+                href={localizedHref("/account", locale)}
+                onClick={close}
+                className={itemClass}
+              >
                 {t.nav.saved}
               </Link>
               <button
@@ -134,16 +150,24 @@ export default function MobileMenu({
           ) : (
             <>
               <Link
-                href="/register/provider"
+                href={localizedHref("/register/provider", locale)}
                 onClick={close}
                 className={itemClass}
               >
                 {t.nav.offer}
               </Link>
-              <Link href="/login" onClick={close} className={itemClass}>
+              <Link
+                href={localizedHref("/login", locale)}
+                onClick={close}
+                className={itemClass}
+              >
                 {t.nav.signIn}
               </Link>
-              <Link href="/register" onClick={close} className={itemClass}>
+              <Link
+                href={localizedHref("/register", locale)}
+                onClick={close}
+                className={itemClass}
+              >
                 {t.nav.getStarted}
               </Link>
             </>

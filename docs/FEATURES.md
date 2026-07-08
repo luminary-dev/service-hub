@@ -285,6 +285,9 @@ district, and price-type labels.
 - **Language toggle** — writes the `lang` cookie (1-year) and navigates to the
   localized URL. `generateMetadata` emits hreflang alternates (`en`, `si`,
   `x-default`).
+- **Locale-preserving links.** Internal nav, auth, and error-boundary links (and
+  their `router.push` redirects) route through `localizedHref(path, locale)`, so
+  a visitor under `/si/*` stays in the `/si` URL space as they navigate.
 
 ### Theme
 
