@@ -76,6 +76,9 @@ const en = {
     noResponses: "No responses yet.",
     matchingBadge: (n: number) =>
       `${n} matching job${n === 1 ? "" : "s"}`,
+    prev: "← Previous",
+    next: "Next →",
+    pageOf: (p: number, t: number) => `Page ${p} of ${t}`,
   },
   home: {
     heroTitle1: "The tradespeople Sri Lanka",
@@ -975,6 +978,9 @@ const si: Dict = {
     responsesCount: (n: number) => `ප්‍රතිචාර ${n}`,
     noResponses: "තවම ප්‍රතිචාර නැත.",
     matchingBadge: (n: number) => `ගැලපෙන රැකියා ${n}`,
+    prev: "← පෙර",
+    next: "ඊළඟ →",
+    pageOf: (p: number, t: number) => `පිටුව ${p} / ${t}`,
   },
   home: {
     heroTitle1: "විශ්වාසවන්ත කාර්මිකයන්,",

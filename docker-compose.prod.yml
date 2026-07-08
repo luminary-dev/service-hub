@@ -181,8 +181,12 @@ services:
       AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required}
       WEB_ORIGIN: ${WEB_ORIGIN:?WEB_ORIGIN is required}
       REDIS_URL: redis://redis:6379
-      # Once #201 lands, set TRUSTED_PROXY_HOPS to match the Caddy→web→gateway
-      # chain so the rate limiter reads the real client IP, not a forged XFF.
+      # Trusted reverse-proxy hops in front of the gateway (#201). The socket
+      # peer counts as the first hop, so with the Caddy → web → gateway chain
+      # this is 2: the rate limiter then reads the real client IP from
+      # X-Forwarded-For (right-to-left, skipping these hops) instead of a
+      # client-forgeable value. See docs/RATE_LIMITING.md.
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-2}
     depends_on:
       redis:
         condition: service_healthy

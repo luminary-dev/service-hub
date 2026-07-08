@@ -201,13 +201,17 @@ intentionally deferred to v0.2 — the platform is free to use in v0.1.
 Reviews live in the profile's Reviews section (`ReviewSection`), backed by
 review-service.
 
-- **Who can review.** Any signed-in, non-owner user can submit a review;
-  anonymous visitors see a "sign in to review" prompt.
-- **Verified-after-interaction.** A review is stamped **Verified** when the
-  reviewer previously sent that provider an inquiry (checked server-side via an
-  internal `inquiries/exists` call). This is *evidence, not a hard gate* — if
-  the check is unavailable the review is simply not marked verified. On
-  re-review the badge is only ever upgraded, never stripped.
+- **Who can review.** A signed-in, non-owner user can submit a review **only
+  after a real interaction** — having previously sent that provider an inquiry
+  through the platform. Anonymous visitors see a "sign in to review" prompt.
+- **Interaction-gated (#25).** Review creation is hard-gated server-side on the
+  reviewer having a prior inquiry with the provider (checked via an internal
+  `inquiries/exists` call to provider-service). No interaction ⇒ the create is
+  rejected with **403** ("You can only review a provider you've contacted. Send
+  them an inquiry first."). Because this is a write-path gate it *fails loudly*:
+  if the interaction check is unavailable the request returns **502** rather
+  than silently allowing an unverified review. Every review that passes the
+  gate is therefore stamped **Verified**.
 - **One review per (provider, customer)** — re-submitting replaces the rating
   and comment (1–5 stars, comment 3–1000 chars) and appends photos.
 - **Review photos** — up to **3** per review (JPEG/PNG/WebP), submitted

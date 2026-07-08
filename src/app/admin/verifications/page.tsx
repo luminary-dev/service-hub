@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { FaShieldHalved } from "@/components/icons";
 import { apiJson } from "@/lib/api";
@@ -17,23 +18,54 @@ import MarkQueueViewed from "@/components/admin/MarkQueueViewed";
 // next request — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
 
-export default async function AdminVerificationsPage() {
+const PAGE_SIZE = 20;
+
+export default async function AdminVerificationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   const session = await getSession();
   if (!session) redirect("/login");
   if (!isAdminRole(session.role)) redirect("/");
 
+  const params = await searchParams;
+  const page = Math.max(1, Number(params.page) || 1);
+
+  // Pagination (#255) happens in provider-service; page/pageSize pass straight
+  // through the gateway and `total` drives the controls + queue badge.
+  const query = new URLSearchParams({
+    page: String(page),
+    pageSize: String(PAGE_SIZE),
+  });
+
   const [locale, data] = await Promise.all([
     getLocale(),
-    apiJson<{ providers: PendingVerification[] }>("/api/admin/verifications"),
+    apiJson<{
+      providers: PendingVerification[];
+      total: number;
+      page: number;
+      pageSize: number;
+    }>(`/api/admin/verifications?${query.toString()}`),
   ]);
   const pending = data?.providers ?? [];
+  const total = data?.total ?? 0;
+  const pageSize = data?.pageSize ?? PAGE_SIZE;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const t = dict[locale];
 
   const docCount = pending.reduce((n, p) => n + p.verificationDocs.length, 0);
 
+  function pageLink(target: number) {
+    const sp = new URLSearchParams(query);
+    sp.set("page", String(target));
+    return `/admin/verifications?${sp.toString()}`;
+  }
+
   return (
     <div>
-      <MarkQueueViewed queue="verifications" count={pending.length} />
+      {/* Badge baseline (#233) tracks the full pending total, not the page. */}
+      <MarkQueueViewed queue="verifications" count={total} />
       <PageHeader
         tag="VER"
         eyebrow={t.admin.indexTitle}
@@ -42,7 +74,7 @@ export default async function AdminVerificationsPage() {
       >
         <StatReadout
           stats={[
-            { label: "PENDING", value: pending.length },
+            { label: "PENDING", value: total },
             { label: "DOCS", value: docCount },
           ]}
         />
@@ -57,6 +89,24 @@ export default async function AdminVerificationsPage() {
             <div className="hazard mb-6 h-1.5 w-full rounded-full" />
             <VerificationQueue items={pending} />
           </>
+        )}
+
+        {totalPages > 1 && (
+          <div className="mt-10 flex items-center justify-center gap-2">
+            {page > 1 && (
+              <Link href={pageLink(page - 1)} className="btn-secondary">
+                {t.browse.prev}
+              </Link>
+            )}
+            <span className="px-3 text-sm text-ink-500">
+              {t.browse.pageOf(page, totalPages)}
+            </span>
+            {page < totalPages && (
+              <Link href={pageLink(page + 1)} className="btn-secondary">
+                {t.browse.next}
+              </Link>
+            )}
+          </div>
         )}
       </div>
     </div>

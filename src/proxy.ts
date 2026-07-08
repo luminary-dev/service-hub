@@ -26,6 +26,16 @@ import { LOCALE_HEADER } from "@/lib/links";
 // { request: { headers } } option) that src/lib/locale.ts getLocale() reads
 // with priority over the `lang` cookie. The browser keeps the /si URL.
 // Unknown paths under /si fall through to the app's not-found (in Sinhala).
+//
+// 3. x-locale is a trusted signal (#204): the proxy is the trust boundary, so
+// it OWNS the x-locale request header. getUrlLocale() derives the URL locale
+// from this header and must describe the URL being served, not a client
+// preference — so the only thing that may set it to "si" is the /si prefix
+// above. Because the matcher now runs on every page route, we overwrite any
+// client-supplied x-locale to "en" on non-/si routes; otherwise a spoofed
+// `X-Locale: si` on an English-root URL (e.g. /providers) would render Sinhala
+// and emit a canonical pointing at /si. The `lang` cookie still drives the
+// rendered locale via getLocale(), which reads the cookie directly.
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
@@ -39,10 +49,26 @@ export function proxy(request: NextRequest) {
     });
   }
 
-  const gateway = process.env.GATEWAY_URL ?? "http://localhost:4000";
-  return NextResponse.rewrite(new URL(pathname + search, gateway));
+  if (pathname.startsWith("/api/")) {
+    const gateway = process.env.GATEWAY_URL ?? "http://localhost:4000";
+    return NextResponse.rewrite(new URL(pathname + search, gateway));
+  }
+
+  // Any other (English-root) page route: strip a client-forgeable x-locale and
+  // pin it to "en" so the URL — not the header — is the authoritative locale.
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set(LOCALE_HEADER, "en");
+  return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
 export const config = {
-  matcher: ["/api/:path*", "/si", "/si/:path*"],
+  matcher: [
+    "/api/:path*",
+    "/si",
+    "/si/:path*",
+    // Trust boundary for x-locale (#204): run on all page routes so a spoofed
+    // header is always overwritten. Exclude API (handled above), Next internals
+    // and metadata assets — they never read x-locale and don't need the proxy.
+    "/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)",
+  ],
 };

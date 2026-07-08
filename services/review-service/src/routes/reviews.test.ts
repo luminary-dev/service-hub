@@ -1,0 +1,137 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// The create path talks to provider-service via `s2s` for two things: the
+// provider summary and the interaction (inquiry) check. Mock only `s2s` and
+// keep the rest of lib/http real so the app's internal-secret middleware still
+// runs (tests must present the secret, like a sibling service would).
+vi.mock("../lib/http", async (importActual) => {
+  const actual = await importActual<typeof import("../lib/http")>();
+  return { ...actual, s2s: vi.fn() };
+});
+
+// The DB is never hit in these tests — the interaction gate decides the
+// outcome before (or instead of) any write. `$transaction` runs the callback
+// against a stub tx so the happy path can complete without Postgres. Defined
+// via vi.hoisted so the (hoisted) vi.mock factory below can reference them.
+const { upsert, createMany } = vi.hoisted(() => ({
+  upsert: vi.fn(async (_args: unknown) => ({ id: "rev_1" })),
+  createMany: vi.fn(async (_args: unknown) => ({ count: 0 })),
+}));
+vi.mock("../db", () => ({
+  db: {
+    $transaction: (fn: (tx: unknown) => unknown) =>
+      fn({ review: { upsert }, reviewPhoto: { createMany } }),
+    review: { upsert, findUnique: vi.fn() },
+    reviewPhoto: { createMany },
+  },
+}));
+
+import { app } from "../app";
+import { s2s } from "../lib/http";
+
+const SECRET = "dev-internal-secret";
+const PROVIDER_ID = "prov_1";
+const REVIEWER_ID = "user_reviewer";
+
+const s2sMock = vi.mocked(s2s);
+
+function providerSummaryResponse() {
+  return new Response(
+    JSON.stringify({
+      provider: { id: PROVIDER_ID, userId: "user_owner", suspended: false },
+    }),
+    { status: 200, headers: { "content-type": "application/json" } }
+  );
+}
+
+function inquiryExistsResponse(exists: boolean) {
+  return new Response(JSON.stringify({ exists }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+// Route s2s calls by path: the provider summary vs. the inquiry-exists check.
+function wireS2s({
+  interaction,
+}: {
+  interaction: "exists" | "none" | "fail-status" | "fail-throw";
+}) {
+  s2sMock.mockImplementation(async (_baseUrl: string, path: string) => {
+    if (path.includes("/summary")) return providerSummaryResponse();
+    if (path.includes("/internal/inquiries/exists")) {
+      if (interaction === "exists") return inquiryExistsResponse(true);
+      if (interaction === "none") return inquiryExistsResponse(false);
+      if (interaction === "fail-status")
+        return new Response("boom", { status: 503 });
+      throw new Error("network down");
+    }
+    throw new Error(`unexpected s2s path: ${path}`);
+  });
+}
+
+function postReview(headers: Record<string, string> = {}) {
+  const form = new FormData();
+  form.set("rating", "5");
+  form.set("comment", "Excellent, punctual and tidy work.");
+  return app.request(`/api/providers/${PROVIDER_ID}/reviews`, {
+    method: "POST",
+    headers: { "x-internal-secret": SECRET, "x-user-id": REVIEWER_ID, ...headers },
+    body: form,
+  });
+}
+
+beforeEach(() => {
+  s2sMock.mockReset();
+  upsert.mockClear();
+  createMany.mockClear();
+});
+
+describe("POST /api/providers/:id/reviews — interaction gate (#25)", () => {
+  it("allows a review when the reviewer has a prior inquiry with the provider", async () => {
+    wireS2s({ interaction: "exists" });
+    const res = await postReview();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    // Persisted as a verified-customer review.
+    expect(upsert).toHaveBeenCalledTimes(1);
+    const arg = upsert.mock.calls[0][0] as unknown as {
+      create: { verified: boolean };
+      update: { verified: boolean };
+    };
+    expect(arg.create.verified).toBe(true);
+    expect(arg.update.verified).toBe(true);
+  });
+
+  it("rejects with 403 when the reviewer has no interaction with the provider", async () => {
+    wireS2s({ interaction: "none" });
+    const res = await postReview();
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toMatch(/only review a provider you've contacted/i);
+    // Nothing is written when the gate blocks.
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it("fails loudly with 502 when the interaction check returns a server error", async () => {
+    wireS2s({ interaction: "fail-status" });
+    const res = await postReview();
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Upstream service unavailable" });
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it("fails loudly with 502 when the interaction check request throws", async () => {
+    wireS2s({ interaction: "fail-throw" });
+    const res = await postReview();
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Upstream service unavailable" });
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it("requires authentication before any interaction check", async () => {
+    wireS2s({ interaction: "exists" });
+    const res = await postReview({ "x-user-id": "" });
+    expect(res.status).toBe(401);
+    expect(s2sMock).not.toHaveBeenCalled();
+  });
+});

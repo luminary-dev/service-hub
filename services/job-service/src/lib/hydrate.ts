@@ -3,6 +3,7 @@
 // callers fall back to "Unknown" rather than failing the whole request.
 import { s2s } from "./http";
 import { log } from "./log";
+import { capBatchIds } from "./query";
 
 const IDENTITY_URL = process.env.IDENTITY_SERVICE_URL ?? "http://localhost:4001";
 const PROVIDER_URL = process.env.PROVIDER_SERVICE_URL ?? "http://localhost:4002";
@@ -12,9 +13,10 @@ export async function fetchUsers(
   ids: string[]
 ): Promise<Map<string, { name: string; email: string }>> {
   const map = new Map<string, { name: string; email: string }>();
-  if (ids.length === 0) return map;
+  const batch = capBatchIds(ids);
+  if (batch.length === 0) return map;
   try {
-    const res = await s2s(IDENTITY_URL, `/internal/users?ids=${ids.join(",")}`);
+    const res = await s2s(IDENTITY_URL, `/internal/users?ids=${batch.join(",")}`);
     if (!res.ok) return map;
     const data = (await res.json()) as {
       users: { id: string; name: string; email: string }[];
@@ -31,9 +33,10 @@ export async function fetchProviders(
   ids: string[]
 ): Promise<Map<string, { contactName: string | null; contactPhone: string | null }>> {
   const map = new Map<string, { contactName: string | null; contactPhone: string | null }>();
-  if (ids.length === 0) return map;
+  const batch = capBatchIds(ids);
+  if (batch.length === 0) return map;
   try {
-    const res = await s2s(PROVIDER_URL, `/internal/providers?ids=${ids.join(",")}`);
+    const res = await s2s(PROVIDER_URL, `/internal/providers?ids=${batch.join(",")}`);
     if (!res.ok) return map;
     const data = (await res.json()) as {
       providers: { id: string; contactName: string | null; contactPhone: string | null }[];
