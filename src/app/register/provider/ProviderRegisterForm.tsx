@@ -27,10 +27,18 @@ const emptyService: ServiceInput = {
 
 export default function ProviderRegisterForm({
   categories,
+  authed = false,
 }: {
   categories: CategoryOption[];
+  // Authenticated "complete your provider profile" mode (#398): the user is
+  // already signed in (typically a fresh social signup), so the account step is
+  // skipped and we POST the profile to /api/auth/complete-provider instead of
+  // creating a new account via /api/auth/register.
+  authed?: boolean;
 }) {
-  const [step, setStep] = useState(0);
+  // In authed mode the account step (0) is skipped entirely.
+  const minStep = authed ? 1 : 0;
+  const [step, setStep] = useState(minStep);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
@@ -113,36 +121,49 @@ export default function ProviderRegisterForm({
     }
     setLoading(true);
     setError("");
-    const res = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        role: "PROVIDER",
-        name: form.name.trim(),
-        email: form.email.trim(),
-        phone: form.phone.trim(),
-        password: form.password,
-        category: form.category,
-        headline: form.headline.trim(),
-        bio: form.bio.trim(),
-        district: form.district,
-        city: form.city.trim(),
-        experience: Number(form.experience) || 0,
-        whatsapp: form.whatsapp.trim(),
-        phone2: form.phone2.trim(),
-        facebook: form.facebook.trim(),
-        instagram: form.instagram.trim(),
-        tiktok: form.tiktok.trim(),
-        youtube: form.youtube.trim(),
-        website: form.website.trim(),
-        services: services.map((s) => ({
-          title: s.title.trim(),
-          description: s.description.trim() || undefined,
-          price: Number(s.price),
-          priceType: s.priceType,
-        })),
-      }),
-    });
+    // Shared profile fields. In authed mode name/email/password/role are
+    // omitted — the API takes name/email from the signed-in user and only
+    // flips the role.
+    const profile = {
+      phone: form.phone.trim(),
+      category: form.category,
+      headline: form.headline.trim(),
+      bio: form.bio.trim(),
+      district: form.district,
+      city: form.city.trim(),
+      experience: Number(form.experience) || 0,
+      whatsapp: form.whatsapp.trim(),
+      phone2: form.phone2.trim(),
+      facebook: form.facebook.trim(),
+      instagram: form.instagram.trim(),
+      tiktok: form.tiktok.trim(),
+      youtube: form.youtube.trim(),
+      website: form.website.trim(),
+      services: services.map((s) => ({
+        title: s.title.trim(),
+        description: s.description.trim() || undefined,
+        price: Number(s.price),
+        priceType: s.priceType,
+      })),
+    };
+    const res = await fetch(
+      authed ? "/api/auth/complete-provider" : "/api/auth/register",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          authed
+            ? profile
+            : {
+                role: "PROVIDER",
+                name: form.name.trim(),
+                email: form.email.trim(),
+                password: form.password,
+                ...profile,
+              },
+        ),
+      },
+    );
     setLoading(false);
     if (res.ok) {
       router.push("/dashboard?welcome=1");
@@ -596,12 +617,12 @@ export default function ProviderRegisterForm({
         )}
 
         <div className="mt-6 flex items-center justify-between">
-          {step > 0 ? (
+          {step > minStep ? (
             <button
               type="button"
               onClick={() => {
                 setError("");
-                setStep((s) => s - 1);
+                setStep((s) => Math.max(s - 1, minStep));
               }}
               className="btn-ghost"
             >

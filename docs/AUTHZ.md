@@ -25,6 +25,25 @@ roles). An earlier unused admin value was dropped from the role CHECK set
 and the helper predicates live in
 [`src/lib/roles.ts`](../src/lib/roles.ts):
 
+### Sign-in methods (#398)
+
+A user authenticates with **email + password** (bcrypt) or **social login**
+(Google OAuth, via `arctic`, inside identity-service). Either way identity-service
+mints the same `sh_session` JWT — social login only resolves a verified identity;
+roles, revocation (`sessionVersion`), and S2S trust are unchanged.
+
+- Linked social identities live in the `Account` table (`(provider,
+  providerAccountId)` → `userId`); a user may hold both a password and one or
+  more OAuth identities.
+- **Auto-linking** only happens on a provider-**verified** email — an existing
+  account is claimed by a matching Google email; an unverified email is refused.
+- Social signups have **no password** (`User.passwordHash` is nullable):
+  password login returns the uniform 401, change-password directs them to the
+  reset flow, and delete-account skips the password re-auth (the session is it).
+- A first-time social signup starts as `CUSTOMER`; the `/welcome` chooser lets
+  them convert to `PROVIDER` via `POST /api/auth/complete-provider` (which flips
+  the role and bumps `sessionVersion`).
+
 ```
 ADMIN_ROLES = ["ADMIN", "SUPPORT"]
 

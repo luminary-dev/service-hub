@@ -14,6 +14,7 @@ import { authRoutes } from "./auth";
 import { hashToken } from "../lib/tokens";
 import { sendVerificationEmail, sendPasswordResetEmail } from "../lib/verification";
 import { eraseUserData } from "../lib/erase";
+import { createProviderProfile } from "../lib/providers";
 
 // Stateful-enough Prisma double: canned per-test return values + call assertions
 // (mirrors the vi.fn()/stubFetch style already used in providers.test.ts).
@@ -457,6 +458,69 @@ describe("POST /api/auth/logout-all", () => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /api/auth/complete-provider (#398)
+// ---------------------------------------------------------------------------
+describe("POST /api/auth/complete-provider", () => {
+  const providerBody = {
+    phone: "0771234567",
+    category: "electrician",
+    headline: "Experienced electrician",
+    bio: "Twenty-plus characters of provider bio for validation.",
+    district: "Colombo",
+    city: "Colombo",
+    experience: 5,
+    services: [{ title: "Wiring", price: 1500, priceType: "FIXED" }],
+  };
+
+  it("401s an unauthenticated request", async () => {
+    const res = await post("/api/auth/complete-provider", providerBody);
+    expect(res.status).toBe(401);
+  });
+
+  it("creates the profile, flips role to PROVIDER, and re-issues the session", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "a@b.lk",
+      name: "Ann",
+      role: "CUSTOMER",
+    });
+    vi.mocked(createProviderProfile).mockResolvedValue("prov-1");
+    db.user.update.mockResolvedValue({
+      id: "u1",
+      name: "Ann",
+      role: "PROVIDER",
+      sessionVersion: 1,
+    });
+
+    const res = await post("/api/auth/complete-provider", providerBody, AUTH_HEADERS);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      user: { id: "u1", name: "Ann", role: "PROVIDER" },
+      providerId: "prov-1",
+    });
+    // Role flip revokes the old CUSTOMER token; a fresh cookie keeps them in.
+    expect(db.user.update).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      // slPhone normalizes the input to E.164 before it reaches the handler.
+      data: { role: "PROVIDER", phone: "+94771234567", sessionVersion: { increment: 1 } },
+    });
+    expect(res.headers.get("set-cookie")).toContain("sh_session=");
+  });
+
+  it("409s an account that is already a provider", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "a@b.lk",
+      name: "Ann",
+      role: "PROVIDER",
+    });
+    const res = await post("/api/auth/complete-provider", providerBody, AUTH_HEADERS);
+    expect(res.status).toBe(409);
+    expect(createProviderProfile).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // POST /api/auth/delete-account
 // ---------------------------------------------------------------------------
 describe("POST /api/auth/delete-account", () => {
@@ -467,10 +531,33 @@ describe("POST /api/auth/delete-account", () => {
     expect(res.status).toBe(401);
   });
 
-  it("400s when the password is missing", async () => {
+  it("400s a password account when the password is missing", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "a@b.lk",
+      role: "CUSTOMER",
+      passwordHash: currentHash,
+    });
     const res = await post("/api/auth/delete-account", {}, AUTH_HEADERS);
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: "Invalid input" });
+    expect(await res.json()).toEqual({ error: "Incorrect password." });
+    expect(eraseUserData).not.toHaveBeenCalled();
+  });
+
+  // Social-only accounts (#398) have no password; the valid session is the
+  // re-auth, so an empty body deletes.
+  it("lets a social-only account (no password) delete with just a session", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "a@b.lk",
+      role: "CUSTOMER",
+      passwordHash: null,
+    });
+    const res = await post("/api/auth/delete-account", {}, AUTH_HEADERS);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(eraseUserData).toHaveBeenCalledWith("u1", null);
+    expect(db.user.delete).toHaveBeenCalledWith({ where: { id: "u1" } });
   });
 
   it("401s when the user no longer exists", async () => {

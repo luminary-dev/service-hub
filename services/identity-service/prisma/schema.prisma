@@ -9,7 +9,11 @@ datasource db {
 model User {
   id            String    @id @default(cuid())
   email         String    @unique
-  passwordHash  String
+  // Nullable since social-login (#398): an account created via an OAuth
+  // provider has no password until the user sets one through the reset flow.
+  // Password-based routes (login/change-password/delete-account) guard for
+  // null before calling bcrypt.
+  passwordHash  String?
   name          String
   phone         String?
   // Role is a plain string, not a Postgres/Prisma enum — there never was a
@@ -39,6 +43,26 @@ model User {
 
   passwordResetTokens     PasswordResetToken[]
   emailVerificationTokens EmailVerificationToken[]
+  accounts                Account[]
+}
+
+// Linked social identities (#398). One row per (provider, providerAccountId);
+// a user may hold several (e.g. password + Google). Kept in identity-service
+// because it owns the User row and is the sole minter of the session JWT.
+model Account {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // OAuth provider key, e.g. "google". Not an enum — same rationale as
+  // User.role (migrations are hand-written; no native enum to extend).
+  provider          String
+  // The provider's stable subject id for this user (Google `sub`). Never the
+  // email, which can change and be reassigned.
+  providerAccountId String
+  createdAt         DateTime @default(now())
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
 }
 
 // Minimal audit trail for self-service account deletion (#123): who was

@@ -9,7 +9,7 @@ import { createSession, destroySession } from "../lib/session";
 import { hashToken } from "../lib/tokens";
 import { eraseUserData } from "../lib/erase";
 import { isLockedOut, recordFailure } from "../lib/lockout";
-import { passwordSchema, registerSchema } from "../lib/register-schema";
+import { passwordSchema, providerSchema, registerSchema } from "../lib/register-schema";
 import { categoryValidator } from "../lib/categories";
 import {
   createProviderProfile,
@@ -136,6 +136,102 @@ authRoutes.post("/register", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /api/auth/complete-provider — turn the signed-in user (typically a fresh
+// social signup that chose "I offer services") into a PROVIDER by creating the
+// provider profile and flipping the role. Reuses the provider registration
+// fields minus the account fields (name/email come from the existing user).
+// ---------------------------------------------------------------------------
+const completeProviderSchema = providerSchema.omit({
+  role: true,
+  email: true,
+  password: true,
+  name: true,
+});
+
+authRoutes.post("/complete-provider", async (c) => {
+  const auth = getAuth(c);
+  if (!auth) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = completeProviderSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json(
+      { error: parsed.error.issues[0]?.message ?? "Invalid input" },
+      400
+    );
+  }
+  const data = parsed.data;
+
+  if (!(await categoryValidator.isValidCategory(data.category))) {
+    return c.json({ error: "Invalid category" }, 400);
+  }
+
+  const user = await db.user.findUnique({ where: { id: auth.userId } });
+  if (!user) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  if (user.role === "PROVIDER") {
+    return c.json({ error: "This account is already a provider." }, 409);
+  }
+  // ADMIN/SUPPORT staff shouldn't self-convert into a provider listing.
+  if (user.role !== "CUSTOMER") {
+    return c.json({ error: "This account cannot become a provider." }, 403);
+  }
+
+  // Idempotency guard against a double-submit creating two profiles: if a
+  // profile already exists for this user (best-effort lookup), reuse it.
+  let providerId = await getProviderIdByUser(user.id);
+  if (!providerId) {
+    try {
+      providerId = await createProviderProfile({
+        userId: user.id,
+        name: user.name,
+        email: user.email,
+        phone: data.phone,
+        category: data.category,
+        headline: data.headline,
+        bio: data.bio,
+        district: data.district,
+        city: data.city,
+        experience: data.experience,
+        whatsapp: data.whatsapp || null,
+        phone2: data.phone2 || null,
+        facebook: data.facebook || null,
+        instagram: data.instagram || null,
+        tiktok: data.tiktok || null,
+        youtube: data.youtube || null,
+        website: data.website || null,
+        services: data.services,
+      });
+    } catch (e) {
+      log.error("provider creation failed", { context: "complete-provider", err: e });
+      return c.json({ error: "Upstream service unavailable" }, 502);
+    }
+  }
+
+  // Flip the role and bump sessionVersion so the old CUSTOMER token is revoked
+  // and the fresh cookie below carries PROVIDER.
+  const updated = await db.user.update({
+    where: { id: user.id },
+    data: { role: "PROVIDER", phone: data.phone, sessionVersion: { increment: 1 } },
+  });
+
+  await createSession(c, {
+    userId: updated.id,
+    role: updated.role,
+    name: updated.name,
+    sv: updated.sessionVersion,
+  });
+
+  return c.json({
+    user: { id: updated.id, name: updated.name, role: updated.role },
+    providerId,
+  });
+});
+
+// ---------------------------------------------------------------------------
 // POST /api/auth/login
 // ---------------------------------------------------------------------------
 const loginSchema = z.object({
@@ -158,6 +254,13 @@ authRoutes.post("/login", async (c) => {
     where: { email: parsed.data.email },
   });
   if (!user) {
+    await bcrypt.compare(parsed.data.password, DUMMY_HASH);
+    return c.json({ error: "Invalid email or password" }, 401);
+  }
+
+  // Social-only account (#398): no password set. Same uniform 401 as a wrong
+  // password, with a dummy compare so the timing doesn't reveal the difference.
+  if (!user.passwordHash) {
     await bcrypt.compare(parsed.data.password, DUMMY_HASH);
     return c.json({ error: "Invalid email or password" }, 401);
   }
@@ -248,7 +351,9 @@ authRoutes.post("/logout-all", async (c) => {
 // locally, so a retry can finish the job — a still-loggable-in account beats
 // an orphaned half-deleted one.
 // ---------------------------------------------------------------------------
-const deleteAccountSchema = z.object({ password: z.string().min(1) });
+// password is optional: social-only accounts (#398) have none, so the valid
+// session is the re-auth. Password accounts must still confirm (checked below).
+const deleteAccountSchema = z.object({ password: z.string().min(1).optional() });
 
 authRoutes.post("/delete-account", async (c) => {
   const auth = getAuth(c);
@@ -266,8 +371,13 @@ authRoutes.post("/delete-account", async (c) => {
   if (!user) {
     return c.json({ error: "Unauthorized" }, 401);
   }
-  if (!(await bcrypt.compare(parsed.data.password, user.passwordHash))) {
-    return c.json({ error: "Incorrect password." }, 400);
+  if (user.passwordHash) {
+    if (
+      !parsed.data.password ||
+      !(await bcrypt.compare(parsed.data.password, user.passwordHash))
+    ) {
+      return c.json({ error: "Incorrect password." }, 400);
+    }
   }
 
   // providerId must be resolved BEFORE the provider profile is erased —
@@ -340,6 +450,15 @@ authRoutes.post("/change-password", async (c) => {
   const user = await db.user.findUnique({ where: { id: auth.userId } });
   if (!user) {
     return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  // Social-only account (#398): no current password to confirm against. Direct
+  // them to the reset flow, which can set a first password from an email token.
+  if (!user.passwordHash) {
+    return c.json(
+      { error: "No password is set for this account. Use ‘forgot password’ to create one." },
+      400
+    );
   }
 
   const ok = await bcrypt.compare(parsed.data.currentPassword, user.passwordHash);
