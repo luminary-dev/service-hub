@@ -20,6 +20,14 @@ ENV NODE_ENV=production
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
+# sharp (#351): npm can silently drop a platform-specific *optional* dependency
+# on a transient fetch error, which intermittently left the prebuilt libvips
+# binary out of the image and crashed the service at boot with ERR_DLOPEN_FAILED.
+# Reinstall sharp's prebuilt binary as REQUIRED packages (build fails loudly
+# instead of shipping a broken image), then prove the native module loads.
+COPY scripts/install-sharp-binary.cjs ./scripts/
+RUN node scripts/install-sharp-binary.cjs \
+ && node -e "require('sharp')"
 COPY --from=build /app/dist ./dist
 
 # Local-disk fallback storage lives under /app/data (named volumes mount here
