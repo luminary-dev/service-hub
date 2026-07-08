@@ -1,22 +1,42 @@
-name: Add issues to project board
+name: Sync issues & PRs to project board
 
-# Syncs every newly opened issue onto the org-wide Service Hub board
-# (https://github.com/orgs/luminary-dev/projects/1) with Status=Backlog and
-# the Service field set for this repo. Adding is idempotent — an issue can
-# only appear on the board once — and the built-in auto-add workflow must
-# stay OFF to keep a single sync path.
+# Syncs every newly opened issue AND pull request onto the org-wide Service Hub
+# board (https://github.com/orgs/luminary-dev/projects/1) with Status=Backlog
+# and the Service field set for this repo, and assigns the item to whoever
+# opened it — the board's built-in Assignees field mirrors the issue/PR
+# assignees, so the creator shows up as the assignee on the board too.
+# Adding is idempotent (an item can only appear on the board once), and the
+# built-in auto-add workflow must stay OFF to keep a single sync path.
 on:
   issues:
+    types: [opened, reopened]
+  pull_request:
     types: [opened, reopened]
 
 permissions:
   contents: read
+  issues: write
+  pull-requests: write
 
 jobs:
-  add-to-board:
+  sync-to-board:
     runs-on: ubuntu-latest
     steps:
-      - name: Add issue to board
+      - name: Assign the creator
+        # The opener becomes the assignee (self-assignment is allowed). The
+        # project board's Assignees field follows this automatically.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            gh pr edit "${{ github.event.pull_request.number }}" --repo "$REPO" --add-assignee "$ACTOR" || true
+          else
+            gh issue edit "${{ github.event.issue.number }}" --repo "$REPO" --add-assignee "$ACTOR" || true
+          fi
+
+      - name: Add to board
         id: add
         uses: actions/add-to-project@v2.0.0
         with:
