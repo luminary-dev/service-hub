@@ -17,10 +17,21 @@ Colors are OKLCH ramps declared under `@theme`, exposed to Tailwind as
 
 A 50–900 ramp. Roles (from the code comments):
 
-- **700** — the solid fill for primary buttons.
+- **800** — the solid fill for primary buttons in light mode (white text on
+  `brand-700` is only ~4.27:1, below WCAG AA for normal text; `brand-800` lifts
+  it to ~6.43:1). In dark mode the button flips back to the bright `brand-700`
+  fill, which carries dark `ink-50` text at ~6.9:1.
+- **700** — the bright solid fill for primary buttons in dark mode (and the
+  brand ink for the mono `.eyebrow` label on the page background).
 - **600** — links and icons.
-- **800** — darker hover / text-on-tint.
+- **900** — darkest step; primary-button hover in light mode (~8.95:1).
 - **50–100** — soft tints behind spec chips and badges.
+
+White text on a brand fill only clears AA (4.5:1) from `brand-800` down in light
+mode, so solid brand surfaces that carry white/near-white text (primary buttons,
+the chat header, own-message bubbles) use `brand-800` in light and keep the
+bright `brand-600`/`brand-700` fills only in dark mode, where the dark text
+inverts the contrast.
 
 ### Ink — cool steel / graphite neutrals
 

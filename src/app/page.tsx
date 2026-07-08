@@ -143,7 +143,7 @@ export default async function HomePage() {
             <div className="tech-corners relative aspect-[4/5] overflow-hidden border border-ink-300 bg-ink-100">
               <Image
                 src="/images/workers/hero-worker2.jpg"
-                alt="A builder in safety gear holding a hammer"
+                alt={t.home.heroWorkerAlt}
                 fill
                 priority
                 sizes="(min-width: 1024px) 460px, 100vw"
@@ -216,7 +216,7 @@ export default async function HomePage() {
       <section className="relative overflow-hidden bg-[#111827] text-white">
         <Image
           src="/images/workers/hero-tea.jpg"
-          alt="Tea pluckers working on a Sri Lankan estate"
+          alt={t.home.heroTeaAlt}
           fill
           sizes="100vw"
           className="object-cover object-center opacity-70"

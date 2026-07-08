@@ -155,13 +155,13 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
               <div
                 className={
                   mine
-                    ? "max-w-[80%] rounded-2xl rounded-br-sm bg-brand-600 px-4 py-2.5 text-sm text-white dark:text-ink-50"
+                    ? "max-w-[80%] rounded-2xl rounded-br-sm bg-brand-800 px-4 py-2.5 text-sm text-white dark:bg-brand-600 dark:text-ink-50"
                     : "max-w-[80%] rounded-2xl rounded-bl-sm bg-ink-100 px-4 py-2.5 text-sm text-ink-800"
                 }
               >
                 <p className="whitespace-pre-line break-words">{m.body}</p>
                 <p
-                  className={`mt-1 font-mono text-[11px] tabular-nums ${mine ? "text-white/80 dark:text-ink-50/80" : "text-ink-500"}`}
+                  className={`mt-1 font-mono text-[11px] tabular-nums ${mine ? "text-white/90 dark:text-ink-50/90" : "text-ink-500"}`}
                 >
                   {mine ? t.messages.you : counterpart} ·{" "}
                   {formatDate(m.createdAt, locale, {
