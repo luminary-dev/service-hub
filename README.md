@@ -43,7 +43,19 @@ Or run the entire stack (Postgres, Redis, all services, web) in containers:
 
 ```bash
 docker compose up -d --build
+
+# The container images run as NODE_ENV=production, so the demo seed is an
+# explicit opt-in (unlike `npm run setup` above, which seeds for you). Seed the
+# four data services once the stack is up:
+for s in identity-service provider-service review-service job-service; do
+  docker compose exec -e SEED_DEMO_DATA=true "$s" npm run db:seed
+done
 ```
+
+Two lines you'll see during that seed are expected, not errors: each service
+prints `.env not found. Continuing without it.` (containers read their config
+from Compose, not a `.env` file), and `job-service` prints `no seed data` — the
+job board starts empty by design (jobs are customer-created at runtime).
 
 Ports: web `:3000`, gateway `:4000`, backend services `:4001`–`:4007`. Postgres
 listens on host port **5433** (5432 is often taken by a local install); Redis is
