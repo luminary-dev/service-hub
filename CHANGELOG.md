@@ -11,7 +11,67 @@ move entries from **Unreleased** into a versioned section as part of that PR.
 
 ## [Unreleased]
 
-_Nothing yet._
+Hardening, operations and admin work on top of the initial release, plus the
+move to Cloudflare R2 for storage and the UI 2.0 redesign.
+
+### Added
+
+- **Admin suite** — two-tier admin roles (**SUPPORT** read + report
+  resolve/dismiss; **ADMIN** full access) gating privileged actions end-to-end
+  (web + backend), an append-only audit log of every admin action, user
+  impersonation for support, bulk actions, user management, job management,
+  quality-score views, on-demand auto-flagging of low-quality / heavily-reported
+  providers, content restore, and in-app notification badges for new
+  verification requests and reports (see [docs/ADMIN.md](docs/ADMIN.md)).
+- **Cloudflare R2 storage** — media-service stores processed images in R2
+  (S3-compatible, private bucket) when the `R2_*` vars are set, falling back to
+  local disk in development.
+- **UI 2.0 redesign** — a refreshed, blueprint-themed design system across the
+  web app with light / dark modes (see [docs/DESIGN.md](docs/DESIGN.md)).
+- **CI coverage + e2e jobs** — per-package coverage collection with a low
+  ratchet-floor threshold (#262) and a compose-stack e2e smoke job that boots
+  the whole stack on pull requests (#241).
+- **Deploy health-gate + rollback** — the deploy workflow gates on health
+  checks and rolls back on failure, and releases are tagged as part of the
+  `dev → prod` flow.
+- **Project docs & governance** — `LICENSE`, a `SECURITY.md` disclosure
+  policy, a pull-request template, and the `docs/` technical reference
+  (architecture, authz, admin, security, design, deployment, operations,
+  backups, rate limiting, testing).
+
+### Changed
+
+- **Dropped Vercel Blob** — all file storage now goes through media-service
+  (R2 or local disk); the Vercel Blob dependency and code path were removed.
+- **Production Docker & ops** — multi-stage, non-root service images with
+  pinned base images (tracked by a Docker Dependabot config), graceful
+  shutdown on `SIGTERM`, and production resource limits + log rotation in the
+  compose file.
+- **Branch model** — moved to a `dev → prod` release flow; CI now runs on both
+  `dev` and `prod`.
+
+### Fixed
+
+- **Data integrity** — registration maps the Prisma `P2002` unique-violation to
+  a clean "email already registered" error, inquiry creation runs in a single
+  transaction, batch endpoints enforce input caps, the review table gained a
+  covering index, and the provider directory query is now bounded.
+- **DB-readiness `/healthz`** — service health checks now verify database
+  connectivity instead of always returning ok, so the deploy health-gate and
+  compose `--wait` reflect real readiness.
+
+### Security
+
+- **Constant-time S2S secret comparison** — the internal shared-secret check is
+  now timing-safe.
+- **HSTS** — the gateway sets `Strict-Transport-Security` in production.
+- **Chat-service hardening** — the assistant endpoint now requires an
+  authenticated session, is rate-limited, and caps request body size.
+- **Password policy** — registration and reset enforce a minimum-strength
+  password policy.
+- **Web session verification** — the web app pins JWT verification to `HS256`
+  and honours session revocation (`sessionVersion`), so revoked sessions stop
+  working immediately.
 
 ## [0.1.0] - 2026-07-07
 
