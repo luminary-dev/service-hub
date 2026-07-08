@@ -3,15 +3,17 @@
 > [!WARNING]
 > This repository is a **read-only mirror** of [`services/notification-service`](https://github.com/luminary-dev/service-hub/tree/main/services/notification-service) in the service-hub monorepo. Do not push or open PRs here — changes land via monorepo PRs and are synced out with `npm run sync:repos`. Direct pushes are blocked by branch protection.
 
-Stateless email service for Service Hub (Baas.lk), listening on `:4005`. It
-owns the transactional email templates (English and Sinhala) ported from the
-monolith and sends them via [Resend](https://resend.com) when `RESEND_API_KEY`
-is set — otherwise it logs the email to the console and reports
-`delivered: false`, so the whole flow works locally without any account.
+Stateless email service for Service Hub (Baas.lk), listening on `:4005`. It owns
+the transactional email templates (English and Sinhala) and sends them via
+[Resend](https://resend.com) when `RESEND_API_KEY` is set — otherwise it logs the
+email to the console and reports `delivered: false`, so the whole flow works
+locally without any account. User-controlled values are HTML-escaped and links
+are scheme-validated before rendering.
 
-It has no database. It is internal-only: every request (except `/healthz`)
-must carry `x-internal-secret: $INTERNAL_API_SECRET`, or it is rejected with
-`403 { "error": "Forbidden" }`.
+No database. Internal-only: every request except `/healthz` must carry
+`x-internal-secret: $INTERNAL_API_SECRET` (constant-time checked), or it is
+rejected with `403 { "error": "Forbidden" }`. See
+[EMAIL_SETUP.md](../../docs/EMAIL_SETUP.md) for enabling real delivery.
 
 ## Endpoints
 
@@ -20,22 +22,24 @@ must carry `x-internal-secret: $INTERNAL_API_SECRET`, or it is rejected with
 | `GET` | `/healthz` | — | `200 { ok: true, service: "notification-service" }` |
 | `POST` | `/internal/email/verify` | `{ to, url, locale? }` | `200 { ok: true, delivered: boolean }` |
 | `POST` | `/internal/email/password-reset` | `{ to, url, locale? }` | `200 { ok: true, delivered: boolean }` |
+| `POST` | `/internal/email/inquiry` | `{ to, url, customerName, locale? }` | `200 { ok: true, delivered: boolean }` |
 | `POST` | `/internal/email/job-response` | `{ to, url, providerName, jobTitle, locale? }` | `200 { ok: true, delivered: boolean }` |
 
+- Each endpoint maps to a template in `src/lib/email.ts`: verify-email
+  (24h link), password-reset (1h link), new-inquiry, and job-response — all
+  rendered EN + SI through a shared branded `layout()`.
 - `locale` is `"en"` or `"si"`; it defaults to `"en"` and any other value is
   coerced to `"en"`.
 - Invalid bodies return `400 { "error": "Invalid input" }`.
 
 ## Environment
 
-See `.env.example`:
-
 | var | default | purpose |
 |---|---|---|
 | `PORT` | `4005` | listen port |
-| `INTERNAL_API_SECRET` | `dev-internal-secret` | shared secret for internal calls |
-| `RESEND_API_KEY` | *(empty)* | Resend API key; when unset, emails are logged to the console |
-| `EMAIL_FROM` | `Baas.lk <onboarding@resend.dev>` | From address for outgoing email |
+| `INTERNAL_API_SECRET` | `dev-internal-secret` (required in production) | shared secret for internal calls |
+| `RESEND_API_KEY` | *(empty)* | Resend API key; when unset, emails are logged to the console (`delivered: false`) |
+| `EMAIL_FROM` | `Baas.lk <onboarding@resend.dev>` | From address (must be on a verified domain for real delivery) |
 
 ## Run
 
