@@ -1,19 +1,104 @@
 # Deployment
 
 Production runs the same containers as dev, but from **pre-built images** pulled
-from GHCR, behind a **Caddy** TLS reverse proxy, on a single Docker host.
+from GHCR, behind a **Caddy** TLS reverse proxy, on a single Docker host. For the
+day-two operational detail (image internals, health checks, resource limits, CI,
+backups, monitoring) see [OPERATIONS.md](OPERATIONS.md).
 
-- **Branch model** — work merges to `dev`; releasing is a PR `dev → prod`. The
-  push to `prod` is the deploy trigger. (See [contributing](https://luminary-dev.gitbook.io/service-hub) / issue #212.)
+- **Branch model** — work merges to `dev` (integration); releasing is a PR
+  `dev → prod`. The push to `prod` is the deploy trigger.
 - **CD** — `.github/workflows/deploy.yml` builds and pushes an image per service +
   web to `ghcr.io/luminary-dev/service-hub-<name>` (tagged `prod` and the commit
-  SHA), then, if enabled, redeploys the host over SSH.
-- **Compose** — `docker-compose.prod.yml` (images, `restart: unless-stopped`,
+  SHA), then, if enabled, redeploys the host over SSH with a health gate and
+  automatic rollback.
+- **Releases** — `.github/workflows/release.yml`: a `v*` git tag publishes
+  semver-tagged images and cuts a GitHub Release.
+- **Compose** — `docker-compose.prod.yml` (GHCR images, `restart: unless-stopped`,
   required-secret enforcement, internal-only network + Caddy on 80/443).
 
 Status: image publishing works today. The **deploy step and the server itself
 are gated on #110** (production host, domain, TLS) — until then the pipeline
 builds and publishes images but does not deploy.
+
+## Branch model & rulesets
+
+Two long-lived branches, both protected by strict rulesets:
+
+- **`dev`** — the integration branch. Feature/fix branches open PRs into `dev`.
+- **`prod`** — the deploy branch. Releasing is a PR `dev → prod`; the merge (a
+  push to `prod`) is what triggers the Deploy workflow.
+
+Both branches require a **PR with review** and demand that **all required CI
+checks pass and are up to date** with the branch tip before merge — you cannot
+merge a stale PR that never saw the latest commits. CI (`ci.yml`) and the
+security scans (`security-scan.yml`) run on pushes and PRs to both `dev` and
+`prod`, so `prod` re-validates the exact merge commit before it deploys.
+
+## CD pipeline (`deploy.yml`)
+
+Triggered on **push to `prod`** (and `workflow_dispatch`). Two jobs:
+
+1. **`build-and-push`** — a matrix over web + all eight services. Each is built
+   with Buildx (web from the repo root, each service from `services/<name>`) and
+   pushed to `ghcr.io/luminary-dev/service-hub-<image>` tagged both `:prod` and
+   `:<commit-sha>`, using a per-image GitHub Actions layer cache. This job runs
+   unconditionally, so images are always published even before a server exists.
+
+2. **`deploy`** — gated on the repo variable **`DEPLOY_ENABLED == 'true'`** and
+   the `production` GitHub Environment; runs under a `deploy-prod` concurrency
+   group (no cancel-in-progress) so two deploys never overlap. It:
+   - reads the currently-deployed `IMAGE_TAG` from the server's `.env`
+     (`PREV_TAG`) **before** overwriting it, so a bad rollout can be reverted;
+   - **renders `$APP_DIR/.env` from GitHub secrets**, piped over the encrypted
+     SSH channel (never printed to the log), and pins `IMAGE_TAG=<this sha>`;
+   - `git fetch origin prod && git reset --hard origin/prod`, then
+     `docker compose -f docker-compose.prod.yml pull`;
+   - **health-gates the rollout**: `up -d --remove-orphans --wait
+     --wait-timeout 180` blocks until every container with a healthcheck is
+     healthy and none has exited. A crash-loop or a failed `prisma migrate
+     deploy` fails the deploy instead of silently replacing the running stack;
+   - **auto-rolls-back on failure**: rewrites `IMAGE_TAG` back to `PREV_TAG`,
+     re-pulls, brings the previous images up, and exits non-zero;
+   - **prunes only after a healthy rollout** (`docker image prune -f`), so the
+     previous image stays on disk and rollback remains a one-liner.
+
+## Releases (`release.yml`)
+
+Pushing a semver git tag (e.g. `v0.1.0`) runs the Release workflow:
+
+- publishes a versioned image per service + web to GHCR, tagged `:<tag>` and
+  `:latest` (in addition to the `:prod` / `:<sha>` tags `deploy.yml` pushes),
+  reusing the same per-image layer cache;
+- cuts a **GitHub Release** with auto-generated notes (`gh release create <tag>
+  --generate-notes --verify-tag`).
+
+This gives a durable, human-readable release marker and lets any running
+container be mapped back to a released version.
+
+## Secrets: GitHub is the source of truth
+
+The repo is public, so nothing sensitive lives in the tree. All runtime config
+is stored as **GitHub Actions repo secrets**, and the deploy job **renders the
+server's `.env` from them on every deploy** (piped over SSH, never logged). So
+the manual `.env` used for a first bring-up is only needed before CD is enabled;
+once CD runs, it owns the server `.env`.
+
+App secrets (set with `gh secret set <NAME>`):
+
+- **Required**: `AUTH_SECRET`, `INTERNAL_API_SECRET`, `POSTGRES_PASSWORD`,
+  `WEB_ORIGIN`, `DOMAIN`. `docker-compose.prod.yml` guards each with `${VAR:?}`,
+  so the stack refuses to start if any is missing.
+- **Optional** (features degrade gracefully when unset): `ACME_EMAIL`,
+  `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `EMAIL_FROM`, `R2_ENDPOINT`,
+  `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`.
+
+Deploy/SSH secrets: `PROD_SSH_HOST`, `PROD_SSH_USER`, `PROD_SSH_KEY` (a deploy
+key), `PROD_APP_DIR` (the checkout path on the host).
+
+Repo variable: `DEPLOY_ENABLED` (`true` un-gates the `deploy` job).
+
+See [`.env.prod.example`](../.env.prod.example) for the full annotated list of
+runtime variables and how each degrades when unset.
 
 ## One-time server setup (#110)
 
@@ -27,7 +112,7 @@ builds and publishes images but does not deploy.
    ```
    Generate the secrets: `openssl rand -base64 32` for `AUTH_SECRET`,
    `INTERNAL_API_SECRET`, and `POSTGRES_PASSWORD`.
-4. Log in to GHCR so the host can pull the private images:
+4. Log in to GHCR so the host can pull the images:
    ```bash
    echo "$GHCR_TOKEN" | docker login ghcr.io -u <user> --password-stdin
    ```
@@ -38,47 +123,45 @@ builds and publishes images but does not deploy.
      npm run create-admin -- --email you@baas.lk --password '...'
    ```
 
-Each DB service applies its migrations on start; the demo seed refuses to run
-under `NODE_ENV=production`.
+Migrations **auto-apply on start**: each DB-owning service runs `start:migrate`
+(`prisma migrate deploy && node dist/index.js`) as its container command, so a
+fresh database is brought to the current schema before the service accepts
+traffic. The demo seed **refuses to run under `NODE_ENV=production`** (which the
+prod images set) unless you explicitly override with `SEED_DEMO_DATA=true` —
+production should never carry demo data.
 
-## Secrets: GitHub is the source of truth
-
-The repo is public, so nothing sensitive lives in the tree. All runtime config
-is stored as **GitHub Actions repo secrets**, and the deploy job **renders the
-server's `.env` from them on every deploy** (piped over SSH, never logged). So
-the manual `.env` in step 3 is only needed for a manual first bring-up before CD
-is enabled — once CD runs, it owns the server `.env`.
-
-App secrets (set with `gh secret set <NAME>`):
-
-- Required: `AUTH_SECRET`, `INTERNAL_API_SECRET`, `POSTGRES_PASSWORD`,
-  `WEB_ORIGIN`, `DOMAIN`
-- Optional: `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `EMAIL_FROM`, `ACME_EMAIL`,
-  `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`
-
-Deploy/SSH secrets: `PROD_SSH_HOST`, `PROD_SSH_USER`, `PROD_SSH_KEY` (a deploy
-key), `PROD_APP_DIR` (the checkout path on the host).
-
-## Enabling automated deploys
-
-Once the host exists, set the variable **`DEPLOY_ENABLED = true`** (un-gates the
-`deploy` job) and the `PROD_SSH_*` secrets above. After that, merging
-`dev → prod` builds the images, renders the server `.env` from the secrets, then
-`git reset --hard origin/prod && docker compose -f docker-compose.prod.yml pull && up -d`.
+Once the host exists, set `DEPLOY_ENABLED = true` and the `PROD_SSH_*` secrets;
+from then on merging `dev → prod` builds the images and redeploys the host
+automatically (see the CD pipeline above).
 
 ## Releasing
 
 ```
-PR dev → prod  →  CI passes  →  merge  →  images built + host redeployed
+PR dev → prod  →  CI + security scans pass  →  merge  →  images built + host redeployed (health-gated)
 ```
-After a release, sync the read-only service mirrors from `prod`:
-`npm run sync:repos`.
+
+To cut a versioned release, tag a `prod` commit: `git tag v0.1.0 && git push
+origin v0.1.0` (fires `release.yml`). After a release, sync the read-only
+service mirrors from `prod`:
+
+```bash
+npm run sync:repos          # scripts/sync-service-repos.sh
+```
+
+This git-subtree-splits each `services/<name>` directory to its standalone
+`luminary-dev/service-hub-<name>` mirror (the monorepo stays canonical; the
+mirrors are read-only, individually buildable copies). Run it from the
+monorepo's `prod` branch so the mirrors reflect production.
 
 ## Rollback
 
-- Fast: set `IMAGE_TAG=<previous-sha>` in the host `.env` and
-  `docker compose -f docker-compose.prod.yml up -d`.
-- Clean: revert the `dev → prod` merge; the next push re-deploys the prior state.
+- **Automatic** — a failed health-gated rollout rolls itself back to the
+  previous image tag (see the CD pipeline); no action needed.
+- **Manual, fast** — set `IMAGE_TAG=<previous-sha>` in the host `.env` and
+  `docker compose -f docker-compose.prod.yml up -d`. The previous image is still
+  on disk (pruning only happens after a healthy deploy).
+- **Manual, clean** — revert the `dev → prod` merge; the next push re-deploys the
+  prior state.
 
 ## Still required before a public launch
 

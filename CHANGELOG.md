@@ -11,6 +11,9 @@ move entries from **Unreleased** into a versioned section as part of that PR.
 
 ## [Unreleased]
 
+Hardening, operations and admin work on top of the initial release, plus the
+move to Cloudflare R2 for storage and the UI 2.0 redesign.
+
 ### Added
 
 - **Admin dashboard** — an analytics / metrics home for `/admin` (key totals and
@@ -33,7 +36,7 @@ move entries from **Unreleased** into a versioned section as part of that PR.
 - **Bulk actions** — multi-select suspend / unsuspend on the providers list and
   resolve / dismiss on the reports list.
 - **Automated flagging** — an admin-run pass that flags high-report / low-rated
-  providers into the moderation queue.
+  providers into the moderation queue, with content restore.
 - **In-app notification badges** — counts on the admin nav for new verification
   requests and open reports.
 - **Provider impersonation ("view as")** — support / admin can view the app as a
@@ -41,10 +44,24 @@ move entries from **Unreleased** into a versioned section as part of that PR.
 - **Admin job management** — an admin view of posted jobs and provider responses.
 - **Tiered admin roles** — a `SUPPORT` role with read access to every admin view
   plus report resolve / dismiss, distinct from full `ADMIN`; web and backend
-  authorization gates kept in lockstep (see [docs/AUTHZ.md](docs/AUTHZ.md)).
+  authorization gates kept in lockstep (see [docs/AUTHZ.md](docs/AUTHZ.md) and
+  [docs/ADMIN.md](docs/ADMIN.md)).
+- **Cloudflare R2 storage** — media-service stores processed images in R2
+  (S3-compatible, private bucket) when the `R2_*` vars are set, falling back to
+  local disk in development.
 - **UI 2.0 shared primitives** (`src/components/ui/`) — `PageHeader`,
   `StatReadout`, `EmptyState` and `Field` / `FormRow`, the reusable blueprint
   building blocks (see [docs/DESIGN.md](docs/DESIGN.md)).
+- **CI coverage + e2e jobs** — per-package coverage collection with a low
+  ratchet-floor threshold (#262) and a compose-stack e2e smoke job that boots
+  the whole stack on pull requests (#241).
+- **Deploy health-gate + rollback** — the deploy workflow gates on health
+  checks and rolls back on failure, and releases are tagged as part of the
+  `dev → prod` flow.
+- **Project docs & governance** — `LICENSE`, a `SECURITY.md` disclosure
+  policy, a pull-request template, `CONTRIBUTING.md`, and the `docs/` technical
+  reference (architecture, authz, admin, security, design, deployment,
+  operations, backups, rate limiting, testing).
 
 ### Changed
 
@@ -56,6 +73,37 @@ move entries from **Unreleased** into a versioned section as part of that PR.
   provider dashboard, the jobs pages, and the full admin portal (shell,
   dashboard, providers, verifications, reports, categories). Full light / dark
   parity and the English / Sinhala toggle are preserved throughout.
+- **Dropped Vercel Blob** — all file storage now goes through media-service
+  (R2 or local disk); the Vercel Blob dependency and code path were removed.
+- **Production Docker & ops** — multi-stage, non-root service images with
+  pinned base images (tracked by a Docker Dependabot config), graceful
+  shutdown on `SIGTERM`, and production resource limits + log rotation in the
+  compose file.
+- **Branch model** — moved to a `dev → prod` release flow; CI now runs on both
+  `dev` and `prod`.
+
+### Fixed
+
+- **Data integrity** — registration maps the Prisma `P2002` unique-violation to
+  a clean "email already registered" error, inquiry creation runs in a single
+  transaction, batch endpoints enforce input caps, the review table gained a
+  covering index, and the provider directory query is now bounded.
+- **DB-readiness `/healthz`** — service health checks now verify database
+  connectivity instead of always returning ok, so the deploy health-gate and
+  compose `--wait` reflect real readiness.
+
+### Security
+
+- **Constant-time S2S secret comparison** — the internal shared-secret check is
+  now timing-safe.
+- **HSTS** — the gateway sets `Strict-Transport-Security` in production.
+- **Chat-service hardening** — the assistant endpoint now requires an
+  authenticated session, is rate-limited, and caps request body size.
+- **Password policy** — registration and reset enforce a minimum-strength
+  password policy.
+- **Web session verification** — the web app pins JWT verification to `HS256`
+  and honours session revocation (`sessionVersion`), so revoked sessions stop
+  working immediately.
 
 ## [0.1.0] - 2026-07-07
 

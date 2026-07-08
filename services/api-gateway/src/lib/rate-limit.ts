@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { getConnInfo } from "@hono/node-server/conninfo";
 import type { Context, Next } from "hono";
 import { Redis } from "ioredis";
 
@@ -47,10 +48,66 @@ export function checkRateLimit(key: string, rule: RateRule, now = Date.now()) {
   };
 }
 
+// How many trusted reverse-proxy hops sit in front of the gateway. The socket
+// peer counts as the first hop, so 0 = trust nothing but the transport peer
+// (the default — safe when the gateway is directly exposed or its topology is
+// unknown). In production this is set to the real chain length (Caddy → web →
+// gateway ⇒ 2) so the limiter reads the client IP the outermost trusted proxy
+// inserted. See docs/RATE_LIMITING.md.
+export function trustedProxyHops(env = process.env): number {
+  const raw = env.TRUSTED_PROXY_HOPS;
+  const n = raw === undefined ? 0 : Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+// Resolve the client IP to key rate limits on.
+//
+// The leftmost X-Forwarded-For token is always client-forgeable (#201): an
+// attacker who rotates it lands every request in a fresh bucket and defeats the
+// per-IP limits. So we never trust the left edge. Instead:
+//   - hops === 0 (or no XFF): key on `socketPeer`, the transport-layer address
+//     the client cannot forge.
+//   - hops > 0: the chain in front of us has appended exactly `hops` entries
+//     (one per trusted proxy), the last of which our socket peer added. Reading
+//     from the RIGHT and skipping those trusted hops lands on the value the
+//     OUTERMOST trusted proxy inserted — i.e. the real client — at index
+//     `length - hops`. Anything the client prepended sits further left and is
+//     ignored. A chain shorter than `hops` (index < 0) means the request did
+//     not traverse the expected proxies, so we fall back to the socket peer
+//     rather than trusting attacker-controlled data.
+export function resolveClientIp(
+  forwarded: string | undefined,
+  hops: number,
+  socketPeer: string | undefined
+): string {
+  if (hops > 0 && forwarded) {
+    const parts = forwarded
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const idx = parts.length - hops;
+    if (idx >= 0 && parts[idx]) return parts[idx];
+  }
+  return socketPeer || "unknown";
+}
+
 export function clientIp(c: Context): string {
-  const forwarded = c.req.header("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0].trim();
-  return c.req.header("x-real-ip") ?? "unknown";
+  return resolveClientIp(
+    c.req.header("x-forwarded-for"),
+    trustedProxyHops(),
+    socketPeer(c)
+  );
+}
+
+// Transport-layer peer address. getConnInfo needs the Node server binding on
+// the Hono context, which is absent under app.request() / non-node runtimes —
+// guard so callers degrade to "unknown" instead of throwing.
+function socketPeer(c: Context): string | undefined {
+  try {
+    return getConnInfo(c).remote.address;
+  } catch {
+    return undefined;
+  }
 }
 
 // ---------------------------------------------------------------------------

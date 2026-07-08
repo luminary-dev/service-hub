@@ -1,4 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  beforeEach,
+  afterEach,
+  vi,
+} from "vitest";
 import { SignJWT } from "jose";
 import { app } from "./app";
 import { clearSessionVersionCache } from "./lib/session-version";
@@ -48,6 +57,21 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+// The gateway keys rate limits on the socket peer by default and only trusts
+// X-Forwarded-For when TRUSTED_PROXY_HOPS > 0 (#201). Under app.request() there
+// is no socket peer, so the suite as a whole simulates the gateway sitting
+// behind a single trusted proxy that stamps XFF — that makes each request's
+// X-Forwarded-For its authoritative client IP, matching how these tests use it.
+// The "forged X-Forwarded-For" block below overrides this back to the default.
+const ORIGINAL_TRUSTED_PROXY_HOPS = process.env.TRUSTED_PROXY_HOPS;
+beforeAll(() => {
+  process.env.TRUSTED_PROXY_HOPS = "1";
+});
+afterAll(() => {
+  if (ORIGINAL_TRUSTED_PROXY_HOPS === undefined) delete process.env.TRUSTED_PROXY_HOPS;
+  else process.env.TRUSTED_PROXY_HOPS = ORIGINAL_TRUSTED_PROXY_HOPS;
 });
 
 describe("GET /healthz", () => {
@@ -172,6 +196,34 @@ describe("rate limiting", () => {
       });
       expect(res.status).toBe(200);
     }
+  });
+});
+
+describe("rate limiting: forged X-Forwarded-For (#201)", () => {
+  // With TRUSTED_PROXY_HOPS unset (default 0) the gateway ignores XFF entirely
+  // and keys on the socket peer, so an attacker rotating the header cannot mint
+  // fresh buckets. Under app.request() every request shares the same (absent)
+  // socket peer, so a rotated XFF stays in one bucket and still gets limited.
+  let savedHops: string | undefined;
+  beforeAll(() => {
+    savedHops = process.env.TRUSTED_PROXY_HOPS;
+    delete process.env.TRUSTED_PROXY_HOPS;
+  });
+  afterAll(() => {
+    if (savedHops === undefined) delete process.env.TRUSTED_PROXY_HOPS;
+    else process.env.TRUSTED_PROXY_HOPS = savedHops;
+  });
+
+  it("rotating a spoofed XFF cannot escape the limit", async () => {
+    const mk = (ip: string) =>
+      app.request("/api/auth/login", {
+        method: "POST",
+        headers: { "sec-fetch-site": "same-origin", "x-forwarded-for": ip },
+      });
+    // authStrict allows 8; each request forges a brand-new client IP.
+    for (let i = 0; i < 8; i++) expect((await mk(`10.0.0.${i}`)).status).toBe(200);
+    // A never-seen forged IP is still blocked — the key never used the header.
+    expect((await mk("10.0.0.250")).status).toBe(429);
   });
 });
 
