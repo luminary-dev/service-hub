@@ -1,10 +1,10 @@
 // Admin dashboard analytics (#219): signup counts over time by role, for the
-// /admin home page's signups chart. Same gate as provider-service's admin
-// routes: x-user-role=ADMIN, forwarded by the gateway after JWT verification,
-// otherwise 403.
+// /admin home page's signups chart. A read-only endpoint, so open to the
+// SUPPORT tier as well as full ADMIN (#226); role forwarded by the gateway
+// after JWT verification, otherwise 403.
 import { Hono } from "hono";
 import { db } from "../db";
-import { getAuth } from "../lib/http";
+import { isSupportOrAdmin } from "../lib/http";
 
 export const adminRoutes = new Hono();
 
@@ -19,8 +19,7 @@ function dayKey(d: Date): string {
 // Admin accounts (created via the create-admin script, not self-registration)
 // are excluded from both series.
 adminRoutes.get("/signups", async (c) => {
-  const auth = getAuth(c);
-  if (auth?.role !== "ADMIN") {
+  if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 

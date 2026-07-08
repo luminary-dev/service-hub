@@ -2,10 +2,9 @@
 // target user's session to reproduce/debug an issue from their perspective.
 //
 // Security posture (see AGENTS.md / issue #234):
-//  - Gated to role === "ADMIN" today. The plain CUSTOMER/PROVIDER/ADMIN role
-//    set is still all identity-service has on this branch; tiered admin
-//    roles (#226) haven't merged yet. Once SUPERADMIN exists this check
-//    should tighten to SUPERADMIN-only.
+//  - ADMIN-only (#226): impersonation is destructive/high-risk, so it is
+//    gated with isFullAdmin. The SUPPORT tier (read + report resolve/dismiss)
+//    can never impersonate.
 //  - Issues a short-lived (15m) token in a distinct `impersonation_session`
 //    cookie (see lib/session.ts) — it never touches the admin's own
 //    `sh_session` cookie, so ending impersonation is just clearing the extra
@@ -15,7 +14,7 @@
 //    reconciled with the general admin audit log once #227 merges.
 import { Hono } from "hono";
 import { db } from "../db";
-import { getAuth } from "../lib/http";
+import { getAuth, isFullAdmin } from "../lib/http";
 import { log } from "../lib/log";
 import {
   createImpersonationSession,
@@ -35,6 +34,10 @@ export const adminImpersonationRoutes = new Hono();
 // collide with it.
 // ---------------------------------------------------------------------------
 adminImpersonationRoutes.post("/end", async (c) => {
+  if (!isFullAdmin(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
   const active = await readImpersonationSession(c);
   destroyImpersonationSession(c);
 
@@ -82,7 +85,7 @@ adminImpersonationRoutes.post("/:userId", async (c) => {
   if (!auth) {
     return c.json({ error: "Unauthorized" }, 401);
   }
-  if (auth.role !== "ADMIN") {
+  if (!isFullAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -98,8 +101,8 @@ adminImpersonationRoutes.post("/:userId", async (c) => {
   if (target.id === auth.userId) {
     return c.json({ error: "Cannot impersonate your own account" }, 400);
   }
-  // Defense in depth beyond the SUPERADMIN-tightening note above: never let
-  // one admin session ride in as another admin.
+  // Defense in depth beyond the ADMIN-only gate above: never let one admin
+  // session ride in as another admin.
   if (target.role === "ADMIN") {
     return c.json({ error: "Cannot impersonate an admin account" }, 400);
   }
