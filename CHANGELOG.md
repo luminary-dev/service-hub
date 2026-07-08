@@ -11,7 +11,51 @@ move entries from **Unreleased** into a versioned section as part of that PR.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **Admin dashboard** — an analytics / metrics home for `/admin` (key totals and
+  trend charts) in place of the bare index.
+- **Customer / user management** — an admin page to browse and manage customer
+  and user accounts.
+- **Provider quality score** — a computed signal (review rating folded against
+  open reports) surfaced as a badge on the admin provider list and detail.
+- **Moderation audit log** — an append-only record of admin moderation actions
+  (verify / suspend / report resolution) with actor, target and timestamp.
+- **Moderation toasts** — success / error toast feedback on every admin action.
+- **Reports queue: filtering + resolution audit trail** — filter the abuse-report
+  queue by target type and status, with a recorded who / when / outcome trail on
+  each resolution.
+- **Providers list: search, filter, sort & pagination** — server-side search
+  (name / contact), filters (category, city, verification status, suspended),
+  sort (newest / most reviews) and paging for the admin providers list.
+- **Verification queue upgrades** — bulk approve, an SLA age indicator on pending
+  requests, and an optional rejection reason stored for the provider.
+- **Bulk actions** — multi-select suspend / unsuspend on the providers list and
+  resolve / dismiss on the reports list.
+- **Automated flagging** — an admin-run pass that flags high-report / low-rated
+  providers into the moderation queue.
+- **In-app notification badges** — counts on the admin nav for new verification
+  requests and open reports.
+- **Provider impersonation ("view as")** — support / admin can view the app as a
+  provider for debugging; each impersonation is recorded.
+- **Admin job management** — an admin view of posted jobs and provider responses.
+- **Tiered admin roles** — a `SUPPORT` role with read access to every admin view
+  plus report resolve / dismiss, distinct from full `ADMIN`; web and backend
+  authorization gates kept in lockstep (see [docs/AUTHZ.md](docs/AUTHZ.md)).
+- **UI 2.0 shared primitives** (`src/components/ui/`) — `PageHeader`,
+  `StatReadout`, `EmptyState` and `Field` / `FormRow`, the reusable blueprint
+  building blocks (see [docs/DESIGN.md](docs/DESIGN.md)).
+
+### Changed
+
+- **UI 2.0 redesign rollout** — the blueprint / technical design language,
+  previously only on the home, providers listing and provider-registration
+  pages, now covers the rest of the app: the global chrome (navbar, menus,
+  footer, banners), the auth pages (login, register, password reset, email
+  verification), the public provider profile, the customer account portal, the
+  provider dashboard, the jobs pages, and the full admin portal (shell,
+  dashboard, providers, verifications, reports, categories). Full light / dark
+  parity and the English / Sinhala toggle are preserved throughout.
 
 ## [0.1.0] - 2026-07-07
 
