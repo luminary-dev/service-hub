@@ -7,6 +7,7 @@ import { useLocale, useT } from "@/components/I18nProvider";
 import { localizedHref } from "@/lib/links";
 import PasswordInput from "@/components/PasswordInput";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
+import FacebookSignInButton from "@/components/FacebookSignInButton";
 import { Field } from "@/components/ui/Field";
 
 export default function LoginPage() {
@@ -129,8 +130,9 @@ export default function LoginPage() {
           {t.oauth.divider}
           <span className="h-px flex-1 bg-ink-200" />
         </div>
-        <div className="mt-6">
+        <div className="mt-6 space-y-3">
           <GoogleSignInButton label={t.oauth.continueWithGoogle} />
+          <FacebookSignInButton label={t.oauth.continueWithFacebook} />
         </div>
 
         <p className="mt-6 text-center text-sm text-ink-500">

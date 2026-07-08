@@ -1,53 +1,43 @@
 // Social login plumbing (#398). identity-service stays the sole minter of the
-// sh_session JWT: OAuth here only resolves a verified identity, then the route
-// upserts the user and calls createSession like every other auth path.
-import { Google } from "arctic";
+// sh_session JWT: an OAuth adapter only resolves a verified identity, then the
+// route upserts the user and calls createSession like every other auth path.
+//
+// Providers differ enough that each is a small adapter behind one interface:
+// Google uses PKCE + an OIDC id_token; Facebook uses no PKCE and a Graph-API
+// profile lookup. The route code stays provider-agnostic.
+import { Google, Facebook } from "arctic";
 import { decodeJwt } from "jose";
 
-// Google is the only provider in the first cut; Facebook is a fast follow-up
-// (arctic ships a `Facebook` client with the same shape).
-export const OAUTH_PROVIDERS = ["google"] as const;
+export const OAUTH_PROVIDERS = ["google", "facebook"] as const;
 export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
-
-export function isOAuthProvider(v: string): v is OAuthProvider {
-  return (OAUTH_PROVIDERS as readonly string[]).includes(v);
-}
-
-// OpenID scopes — `openid email profile` yields sub / email / email_verified /
-// name in the id_token, so we never need a second userinfo round-trip.
-export const GOOGLE_SCOPES = ["openid", "email", "profile"];
-
-export function isGoogleConfigured(): boolean {
-  return Boolean(
-    process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
-  );
-}
-
-// The redirect URI must byte-match what's registered in the Google console.
-// Derived from the public web origin so dev (localhost:3000) and prod (baas.lk)
-// both work off one registration each.
-export function googleRedirectUri(origin: string): string {
-  return `${origin.replace(/\/$/, "")}/api/auth/oauth/google/callback`;
-}
-
-export function getGoogleClient(origin: string): Google {
-  return new Google(
-    process.env.GOOGLE_CLIENT_ID as string,
-    process.env.GOOGLE_CLIENT_SECRET as string,
-    googleRedirectUri(origin)
-  );
-}
 
 export type OAuthIdentity = {
   providerAccountId: string;
   email: string | null;
+  // Whether we trust the email enough to auto-link it to an existing account.
   emailVerified: boolean;
   name: string | null;
 };
 
+export type OAuthAdapter = {
+  // Both client credentials present → the provider button is live.
+  isConfigured(): boolean;
+  // Google needs the PKCE verifier; Facebook ignores it.
+  createAuthorizationURL(origin: string, state: string, codeVerifier: string): URL;
+  fetchIdentity(
+    origin: string,
+    code: string,
+    codeVerifier: string
+  ): Promise<OAuthIdentity>;
+};
+
+function callbackUri(origin: string, provider: OAuthProvider): string {
+  return `${origin.replace(/\/$/, "")}/api/auth/oauth/${provider}/callback`;
+}
+
 // Google returns a signed id_token from its token endpoint over TLS; arctic has
 // already completed the code exchange, so decoding (not re-verifying) the
-// claims is the standard, safe way to read the subject/email here.
+// claims is the standard, safe way to read subject/email here.
 export function parseGoogleIdToken(idToken: string): OAuthIdentity {
   const claims = decodeJwt(idToken);
   const emailVerified =
@@ -58,4 +48,77 @@ export function parseGoogleIdToken(idToken: string): OAuthIdentity {
     emailVerified,
     name: typeof claims.name === "string" ? claims.name : null,
   };
+}
+
+const google: OAuthAdapter = {
+  isConfigured: () =>
+    Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+  createAuthorizationURL: (origin, state, codeVerifier) =>
+    new Google(
+      process.env.GOOGLE_CLIENT_ID as string,
+      process.env.GOOGLE_CLIENT_SECRET as string,
+      callbackUri(origin, "google")
+    ).createAuthorizationURL(state, codeVerifier, ["openid", "email", "profile"]),
+  fetchIdentity: async (origin, code, codeVerifier) => {
+    const tokens = await new Google(
+      process.env.GOOGLE_CLIENT_ID as string,
+      process.env.GOOGLE_CLIENT_SECRET as string,
+      callbackUri(origin, "google")
+    ).validateAuthorizationCode(code, codeVerifier);
+    return parseGoogleIdToken(tokens.idToken());
+  },
+};
+
+const facebook: OAuthAdapter = {
+  isConfigured: () =>
+    Boolean(
+      process.env.FACEBOOK_CLIENT_ID && process.env.FACEBOOK_CLIENT_SECRET
+    ),
+  // Facebook doesn't use PKCE — the verifier is accepted for a uniform route
+  // signature but ignored.
+  createAuthorizationURL: (origin, state) =>
+    new Facebook(
+      process.env.FACEBOOK_CLIENT_ID as string,
+      process.env.FACEBOOK_CLIENT_SECRET as string,
+      callbackUri(origin, "facebook")
+    ).createAuthorizationURL(state, ["email", "public_profile"]),
+  fetchIdentity: async (origin, code) => {
+    const tokens = await new Facebook(
+      process.env.FACEBOOK_CLIENT_ID as string,
+      process.env.FACEBOOK_CLIENT_SECRET as string,
+      callbackUri(origin, "facebook")
+    ).validateAuthorizationCode(code);
+    // Facebook has no id_token; read the profile from the Graph API. `email`
+    // may be absent (the user has none, or denied the permission).
+    const res = await fetch(
+      `https://graph.facebook.com/me?fields=id,name,email&access_token=${encodeURIComponent(
+        tokens.accessToken()
+      )}`
+    );
+    if (!res.ok) {
+      throw new Error(`facebook graph lookup failed: ${res.status}`);
+    }
+    const data = (await res.json()) as {
+      id: string;
+      name?: string;
+      email?: string;
+    };
+    return {
+      providerAccountId: String(data.id),
+      email: typeof data.email === "string" ? data.email : null,
+      // Facebook verifies the email on file, so a returned address is treated
+      // as verified for auto-linking (a slightly weaker guarantee than Google's
+      // explicit email_verified claim — see docs/AUTHZ.md).
+      emailVerified: typeof data.email === "string",
+      name: typeof data.name === "string" ? data.name : null,
+    };
+  },
+};
+
+const ADAPTERS: Record<OAuthProvider, OAuthAdapter> = { google, facebook };
+
+export function getAdapter(name: string): OAuthAdapter | null {
+  return (OAUTH_PROVIDERS as readonly string[]).includes(name)
+    ? ADAPTERS[name as OAuthProvider]
+    : null;
 }

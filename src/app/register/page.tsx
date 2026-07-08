@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { FaHouse, FaScrewdriverWrench } from "@/components/icons";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
+import FacebookSignInButton from "@/components/FacebookSignInButton";
 import { dict } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
 
@@ -74,8 +75,9 @@ export default async function RegisterChoicePage() {
             {t.oauth.divider}
             <span className="h-px flex-1 bg-ink-200" />
           </div>
-          <div className="mt-6">
+          <div className="mt-6 space-y-3">
             <GoogleSignInButton label={t.oauth.continueWithGoogle} />
+            <FacebookSignInButton label={t.oauth.continueWithFacebook} />
           </div>
         </div>
 

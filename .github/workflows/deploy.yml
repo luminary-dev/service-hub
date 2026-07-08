@@ -97,6 +97,8 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          FACEBOOK_CLIENT_ID: ${{ secrets.FACEBOOK_CLIENT_ID }}
+          FACEBOOK_CLIENT_SECRET: ${{ secrets.FACEBOOK_CLIENT_SECRET }}
         run: |
           install -m 600 /dev/stdin "$HOME/deploy_key" <<< "$SSH_KEY"
           SSH=(ssh -o StrictHostKeyChecking=accept-new -i "$HOME/deploy_key" "$SSH_USER@$HOST")
@@ -110,7 +112,8 @@ jobs:
             for k in AUTH_SECRET INTERNAL_API_SECRET POSTGRES_PASSWORD WEB_ORIGIN \
                      DOMAIN ACME_EMAIL ANTHROPIC_API_KEY RESEND_API_KEY EMAIL_FROM \
                      R2_ENDPOINT R2_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY \
-                     GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET; do
+                     GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET \
+                     FACEBOOK_CLIENT_ID FACEBOOK_CLIENT_SECRET; do
               printf '%s=%s\n' "$k" "${!k}"
             done
             printf 'IMAGE_TAG=%s\n' "$TAG"
