@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { hasSuperAdminAccess } from "@/lib/roles";
+import { hasFullAdminAccess } from "@/lib/roles";
 import { useT } from "../I18nProvider";
 import { useToast } from "../ToastProvider";
 
@@ -28,10 +28,10 @@ export default function AdminProviderActions({
   const t = useT();
   const toast = useToast();
   const router = useRouter();
-  // Verify/suspend affect a provider's public visibility — treated as a
-  // SUPERADMIN-only action alongside delete and category edits (#226).
+  // Verify/suspend affect a provider's public visibility — treated as an
+  // ADMIN-only action alongside delete and category edits (#226).
   // SUPPORT gets read access plus report resolve/dismiss only.
-  const allowed = hasSuperAdminAccess(role);
+  const allowed = hasFullAdminAccess(role);
 
   async function act(action: keyof typeof ACTION_MESSAGES) {
     if (!allowed) return;

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useT, useLocale } from "../I18nProvider";
 import { categoryLabelLoc } from "@/lib/i18n";
 import { qualityChipClasses } from "@/lib/quality";
-import { hasSuperAdminAccess } from "@/lib/roles";
+import { hasFullAdminAccess } from "@/lib/roles";
 import Avatar from "../Avatar";
 import AdminProviderActions from "./AdminProviderActions";
 
@@ -46,9 +46,9 @@ export default function AdminProvidersList({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState(false);
 
-  // Suspend/unsuspend is SUPERADMIN-only (#226), same gate as the per-row
+  // Suspend/unsuspend is ADMIN-only (#226), same gate as the per-row
   // AdminProviderActions — SUPPORT admins don't get the multi-select toolbar.
-  const canAct = hasSuperAdminAccess(role);
+  const canAct = hasFullAdminAccess(role);
   const allSelected = providers.length > 0 && selected.size === providers.length;
 
   function toggle(id: string) {

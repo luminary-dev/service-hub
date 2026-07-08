@@ -13,16 +13,17 @@ model User {
   name          String
   phone         String?
   // Role is a plain string, not a Postgres/Prisma enum — there never was a
-  // native enum type to extend. Valid values: CUSTOMER, PROVIDER, and the
-  // admin tier (#226) ADMIN | SUPPORT | SUPERADMIN. ADMIN is kept as a
-  // full-access alias of SUPERADMIN for backward compatibility (existing
-  // admin accounts keep working unmodified); SUPPORT is a new, more
-  // limited tier (read access + report resolve/dismiss — see
-  // src/lib/roles.ts in the web app for the exact gating). A CHECK
-  // constraint enforcing this set is added by migration
-  // 20260707130000_admin_role_tiers, not represented here since it isn't
-  // diffed by `prisma migrate dev` in this project (migrations are
-  // hand-written).
+  // native enum type to extend. Valid values: CUSTOMER, PROVIDER, ADMIN,
+  // SUPPORT. The two admin tiers (#226): ADMIN is full access (deletes,
+  // category edits, role changes, user management, impersonation); SUPPORT
+  // is a limited tier (read access to every admin endpoint + report
+  // resolve/dismiss — see src/lib/roles.ts in the web app for the exact
+  // gating). There is no separate super-admin tier: ADMIN is the
+  // full-access role. A CHECK constraint enforcing this set is maintained
+  // by the migrations under prisma/migrations (20260707130000_admin_role_tiers
+  // added it; 20260708200000_drop_superadmin_role narrowed it to the four
+  // values above), not represented here since it isn't diffed by
+  // `prisma migrate dev` in this project (migrations are hand-written).
   role          String    @default("CUSTOMER")
   emailVerified DateTime?
   // Session revocation: tokens carry the version they were minted with (sv

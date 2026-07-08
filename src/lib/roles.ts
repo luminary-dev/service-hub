@@ -1,17 +1,13 @@
 // Admin role tiers (#226). Admin access used to be a single flat `ADMIN`
 // role with no distinction between low-risk actions (resolving a report)
 // and high-risk ones (deleting content, editing categories, changing
-// roles). This introduces two tiers on top of the legacy role:
+// roles). There are now two admin tiers:
 //
-// - `SUPPORT`    — read access to every /admin page, plus resolving or
-//                  dismissing abuse reports. Nothing destructive.
-// - `SUPERADMIN` — full access: deletes, category edits, role changes,
-//                  user management, and everything SUPPORT can do.
-//
-// `ADMIN` is kept as-is and treated as SUPERADMIN-equivalent so existing
-// admin accounts (there is no migration path to re-tag them) don't lose
-// access.
-export const ADMIN_ROLES = ["ADMIN", "SUPERADMIN", "SUPPORT"] as const;
+// - `ADMIN`   — full access: deletes, category edits, role changes, user
+//               management, and everything SUPPORT can do.
+// - `SUPPORT` — read access to every /admin page, plus resolving or
+//               dismissing abuse reports. Nothing destructive.
+export const ADMIN_ROLES = ["ADMIN", "SUPPORT"] as const;
 
 export type AdminRole = (typeof ADMIN_ROLES)[number];
 
@@ -25,14 +21,13 @@ export function isAdminRole(
 }
 
 // Full access — delete actions, category edits, role changes, user
-// management. ADMIN is a full-access legacy alias for backward
-// compatibility.
-export function hasSuperAdminAccess(role: string | null | undefined): boolean {
-  return role === "ADMIN" || role === "SUPERADMIN";
+// management. Only `ADMIN` qualifies.
+export function hasFullAdminAccess(role: string | null | undefined): boolean {
+  return role === "ADMIN";
 }
 
-// Read access plus resolving/dismissing abuse reports. Superadmins
-// implicitly have everything SUPPORT has.
+// Read access plus resolving/dismissing abuse reports. Admins implicitly
+// have everything SUPPORT has.
 export function hasSupportAccess(role: string | null | undefined): boolean {
-  return hasSuperAdminAccess(role) || role === "SUPPORT";
+  return hasFullAdminAccess(role) || role === "SUPPORT";
 }
