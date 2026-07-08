@@ -13,11 +13,10 @@ import { isAdminRole } from "@/lib/roles";
 // first regardless) and risks an unrelated regression. New pages don't need
 // to repeat the check; this layout is the safety net.
 //
-// Coarse-grained only: SUPPORT, SUPERADMIN, and the legacy ADMIN role may
-// all enter /admin (read access at minimum). Finer-grained gating of
-// specific destructive actions (delete, category edits, ...) lives in
-// src/lib/roles.ts (hasSuperAdminAccess / hasSupportAccess) and is applied
-// per-component.
+// Coarse-grained only: both ADMIN and SUPPORT may enter /admin (read
+// access at minimum). Finer-grained gating of specific destructive
+// actions (delete, category edits, ...) lives in src/lib/roles.ts
+// (hasFullAdminAccess / hasSupportAccess) and is applied per-component.
 export default async function AdminLayout({
   children,
 }: Readonly<{

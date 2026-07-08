@@ -49,6 +49,16 @@ export function getAuth(c: Context): AuthUser | null {
   };
 }
 
+// Admin authorization tiers (#226). ADMIN = full access; SUPPORT = read +
+// resolve/dismiss reports only (nothing destructive).
+export function isFullAdmin(c: Context): boolean {
+  return getAuth(c)?.role === "ADMIN";
+}
+export function isSupportOrAdmin(c: Context): boolean {
+  const r = getAuth(c)?.role;
+  return r === "ADMIN" || r === "SUPPORT";
+}
+
 export function getLocale(c: Context): "en" | "si" {
   return c.req.header("x-locale") === "si" ? "si" : "en";
 }

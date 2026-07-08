@@ -1,19 +1,15 @@
 // Admin user-management endpoints (#220): search/list, detail, lock/unlock +
-// manual role change, and force-logout. Gated to x-user-role=ADMIN forwarded
-// by the gateway, same pattern as provider-service's admin routes.
+// manual role change, and force-logout. Reads (list/detail) are open to the
+// SUPPORT tier; the destructive writes (role change, lock, force-logout)
+// require full ADMIN (#226). Roles are forwarded by the gateway.
 import { Hono } from "hono";
 import { z } from "zod";
-import type { Context } from "hono";
 import { db } from "../db";
-import { getAuth } from "../lib/http";
+import { getAuth, isFullAdmin, isSupportOrAdmin } from "../lib/http";
 import { isLockedOut, MANUAL_LOCK_UNTIL } from "../lib/lockout";
 import { fetchProvidersByIds } from "../lib/providers";
 
 export const adminUsersRoutes = new Hono();
-
-function isAdmin(c: Context): boolean {
-  return getAuth(c)?.role === "ADMIN";
-}
 
 const PAGE_SIZE = 20;
 
@@ -49,7 +45,7 @@ function serializeUser(u: UserRow) {
 // GET /api/admin/users?q=&page= — search by email/name (case-insensitive
 // contains), newest first, paginated.
 adminUsersRoutes.get("/api/admin/users", async (c) => {
-  if (!isAdmin(c)) {
+  if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -87,7 +83,7 @@ adminUsersRoutes.get("/api/admin/users", async (c) => {
 // names/phones from provider-service; degrades to null per-favorite on a
 // provider-service outage).
 adminUsersRoutes.get("/api/admin/users/:id", async (c) => {
-  if (!isAdmin(c)) {
+  if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -127,12 +123,12 @@ const patchSchema = z
 // the only admin session.
 adminUsersRoutes.patch("/api/admin/users/:id", async (c) => {
   const auth = getAuth(c);
-  if (!auth || auth.role !== "ADMIN") {
+  if (!isFullAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
   const id = c.req.param("id");
-  if (id === auth.userId) {
+  if (id === auth?.userId) {
     return c.json({ error: "Cannot modify your own account here" }, 400);
   }
 
@@ -166,12 +162,12 @@ adminUsersRoutes.patch("/api/admin/users/:id", async (c) => {
 // token minted before this moment fails the gateway's revocation check.
 adminUsersRoutes.post("/api/admin/users/:id/force-logout", async (c) => {
   const auth = getAuth(c);
-  if (!auth || auth.role !== "ADMIN") {
+  if (!isFullAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
   const id = c.req.param("id");
-  if (id === auth.userId) {
+  if (id === auth?.userId) {
     return c.json({ error: "Cannot force-logout your own account" }, 400);
   }
 

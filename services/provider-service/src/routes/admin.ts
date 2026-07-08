@@ -1,10 +1,12 @@
-// Admin moderation endpoints. All require x-user-role=ADMIN (forwarded by the
-// gateway after JWT verification), otherwise 403 { error: "Forbidden" }.
+// Admin moderation endpoints (#226). Reads and report resolve/dismiss are
+// open to the SUPPORT tier (isSupportOrAdmin); destructive writes require
+// full ADMIN (isFullAdmin). Roles are forwarded by the gateway after JWT
+// verification; unauthorized requests get 403 { error: "Forbidden" }.
 import { Hono } from "hono";
 import { z } from "zod";
 import type { Context } from "hono";
 import { db } from "../db";
-import { getAuth } from "../lib/http";
+import { getAuth, isFullAdmin, isSupportOrAdmin } from "../lib/http";
 import { fetchProviderReviews, fetchRatings } from "../lib/clients";
 import { computeQualityScore } from "../lib/quality-score";
 import {
@@ -13,10 +15,6 @@ import {
 } from "../lib/admin-list";
 
 export const adminRoutes = new Hono();
-
-function isAdmin(c: Context): boolean {
-  return getAuth(c)?.role === "ADMIN";
-}
 
 // Moderation audit trail (#227): fire-and-record after every write below.
 // Best-effort — a logging failure must never roll back or block the
@@ -44,7 +42,7 @@ async function logAudit(
 // paginated. Every row carries contact info, local photo counts and review
 // counts hydrated from review-service (degrades to 0).
 adminRoutes.get("/api/admin/providers", async (c) => {
-  if (!isAdmin(c)) {
+  if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -116,7 +114,7 @@ adminRoutes.get("/api/admin/providers", async (c) => {
 // Moderation detail: provider + contact + photos + reviews hydrated from
 // review-service with reviewer names (degrades to []).
 adminRoutes.get("/api/admin/providers/:id", async (c) => {
-  if (!isAdmin(c)) {
+  if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -157,7 +155,7 @@ adminRoutes.get("/api/admin/providers/:id", async (c) => {
 
 // Pending verification queue, oldest submission first, with documents.
 adminRoutes.get("/api/admin/verifications", async (c) => {
-  if (!isAdmin(c)) {
+  if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -180,7 +178,7 @@ const actionSchema = z.object({
 });
 
 adminRoutes.patch("/api/admin/providers/:id", async (c) => {
-  if (!isAdmin(c)) {
+  if (!isFullAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -229,7 +227,7 @@ const batchSuspendSchema = z.object({
 // ids are silently skipped by `updateMany` — the response `count` tells the
 // caller how many rows actually changed.
 adminRoutes.patch("/api/admin/providers", async (c) => {
-  if (!isAdmin(c)) {
+  if (!isFullAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -252,7 +250,7 @@ const verificationActionSchema = z.object({
 });
 
 adminRoutes.patch("/api/admin/verifications/:id", async (c) => {
-  if (!isAdmin(c)) {
+  if (!isFullAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -293,7 +291,7 @@ const verificationBulkSchema = z.object({
 });
 
 adminRoutes.patch("/api/admin/verifications", async (c) => {
-  if (!isAdmin(c)) {
+  if (!isFullAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -318,7 +316,7 @@ adminRoutes.patch("/api/admin/verifications", async (c) => {
 });
 
 adminRoutes.delete("/api/admin/photos/:id", async (c) => {
-  if (!isAdmin(c)) {
+  if (!isFullAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -340,7 +338,7 @@ adminRoutes.delete("/api/admin/photos/:id", async (c) => {
 });
 
 adminRoutes.patch("/api/admin/photos/:id/restore", async (c) => {
-  if (!isAdmin(c)) {
+  if (!isFullAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
   const id = c.req.param("id");
@@ -377,7 +375,7 @@ const LOCAL_TARGET_TYPES = ["PROVIDER", "WORK_PHOTO"] as const;
 // straight through from the admin frontend's filter dropdowns. Unrecognized
 // values are ignored (treated as "all").
 adminRoutes.get("/api/admin/reports", async (c) => {
-  if (!isAdmin(c)) {
+  if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -471,7 +469,7 @@ adminRoutes.get("/api/admin/reports", async (c) => {
 const reportStatusSchema = z.object({ status: z.enum(["RESOLVED", "DISMISSED"]) });
 
 adminRoutes.patch("/api/admin/reports/:id", async (c) => {
-  if (!isAdmin(c)) {
+  if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -511,7 +509,7 @@ const batchReportStatusSchema = z.object({
 // Bulk resolve/dismiss (#231): batch variant of the single-report PATCH
 // above, for the reports list's multi-select toolbar.
 adminRoutes.patch("/api/admin/reports", async (c) => {
-  if (!isAdmin(c)) {
+  if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -544,7 +542,7 @@ adminRoutes.patch("/api/admin/reports", async (c) => {
 // load/focus.
 // ---------------------------------------------------------------------------
 adminRoutes.get("/api/admin/notifications/counts", async (c) => {
-  if (!isAdmin(c)) {
+  if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -564,7 +562,7 @@ adminRoutes.get("/api/admin/notifications/counts", async (c) => {
 // ---------------------------------------------------------------------------
 
 adminRoutes.get("/api/admin/stats", async (c) => {
-  if (!isAdmin(c)) {
+  if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -629,7 +627,7 @@ const categoryUpdateSchema = z
 
 // Management list: every category, inactive included.
 adminRoutes.get("/api/admin/categories", async (c) => {
-  if (!isAdmin(c)) {
+  if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
   const categories = await db.category.findMany({
@@ -639,7 +637,7 @@ adminRoutes.get("/api/admin/categories", async (c) => {
 });
 
 adminRoutes.post("/api/admin/categories", async (c) => {
-  if (!isAdmin(c)) {
+  if (!isFullAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -671,7 +669,7 @@ adminRoutes.post("/api/admin/categories", async (c) => {
 });
 
 adminRoutes.patch("/api/admin/categories/:slug", async (c) => {
-  if (!isAdmin(c)) {
+  if (!isFullAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -711,7 +709,7 @@ adminRoutes.patch("/api/admin/categories/:slug", async (c) => {
 const AUDIT_LOG_TAKE = 200;
 
 adminRoutes.get("/api/admin/audit-log", async (c) => {
-  if (!isAdmin(c)) {
+  if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 

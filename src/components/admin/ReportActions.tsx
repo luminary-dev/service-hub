@@ -16,8 +16,8 @@ const STATUS_MESSAGES = {
 // /api/admin/review-reports/:id — the caller passes the full path).
 //
 // Resolving/dismissing reports is explicitly part of the SUPPORT tier
-// (#226) — gated with hasSupportAccess rather than hasSuperAdminAccess so
-// SUPPORT, SUPERADMIN and the legacy ADMIN role can all act here.
+// (#226) — gated with hasSupportAccess rather than hasFullAdminAccess so
+// both ADMIN and SUPPORT can act here.
 export default function ReportActions({
   endpoint,
   role,

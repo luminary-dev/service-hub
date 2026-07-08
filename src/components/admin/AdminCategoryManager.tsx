@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { FaPlus } from "@/components/icons";
 import { Field, FormRow } from "@/components/ui/Field";
-import { hasSuperAdminAccess } from "@/lib/roles";
+import { hasFullAdminAccess } from "@/lib/roles";
 import { useT } from "../I18nProvider";
 import { useToast } from "../ToastProvider";
 
@@ -28,7 +28,7 @@ type EditState = {
 // editing, and an add form. There is deliberately no delete — deactivating
 // hides a category from public lists while existing providers keep the slug.
 //
-// Category edits are explicitly a SUPERADMIN-only action (#226) — SUPPORT
+// Category edits are explicitly an ADMIN-only action (#226) — SUPPORT
 // gets read access here (the list itself) plus report resolve/dismiss
 // elsewhere, nothing that mutates the marketplace's category set.
 export default function AdminCategoryManager({
@@ -41,7 +41,7 @@ export default function AdminCategoryManager({
   const t = useT();
   const toast = useToast();
   const router = useRouter();
-  const canManage = hasSuperAdminAccess(role);
+  const canManage = hasFullAdminAccess(role);
   const [pending, setPending] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [edit, setEdit] = useState<EditState>({

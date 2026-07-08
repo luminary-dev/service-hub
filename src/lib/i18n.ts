@@ -512,7 +512,7 @@ const en = {
     bulkResolve: "Resolve selected",
     bulkDismiss: "Dismiss selected",
     // Tiered admin roles (#226): shown wherever a SUPPORT-tier admin hits
-    // an action gated to SUPERADMIN (delete, category edits, verify/suspend).
+    // an action gated to ADMIN (delete, category edits, verify/suspend).
     insufficientPermissions: "Insufficient permissions",
     // Filtering (#223)
     reportsFilterTypeLabel: "Target type",

@@ -1,24 +1,20 @@
 // Admin billing endpoints (#221 v1: flat 10% commission default — a starting
 // point to unblock admin visibility, not a finalized pricing decision) and
-// admin job-management endpoints (#222). All require x-user-role=ADMIN
-// (forwarded by the gateway after JWT verification), otherwise 403
-// { error: "Forbidden" }.
+// admin job-management endpoints (#222). Reads (transactions/jobs lists +
+// detail) are open to the SUPPORT tier; the destructive transaction status
+// write requires full ADMIN (#226). Roles are forwarded by the gateway after
+// JWT verification, otherwise 403 { error: "Forbidden" }.
 import { Hono } from "hono";
 import { z } from "zod";
-import type { Context } from "hono";
 import type { Transaction } from "@prisma/client";
 import { db } from "../db";
-import { getAuth, s2s } from "../lib/http";
+import { isFullAdmin, isSupportOrAdmin, s2s } from "../lib/http";
 import { fetchUsers, fetchProviders } from "../lib/hydrate";
 import { log } from "../lib/log";
 
 export const adminRoutes = new Hono();
 
 const PROVIDER_URL = process.env.PROVIDER_SERVICE_URL ?? "http://localhost:4002";
-
-function isAdmin(c: Context): boolean {
-  return getAuth(c)?.role === "ADMIN";
-}
 
 const TRANSACTION_STATUSES = ["PENDING", "PAID", "REFUNDED"] as const;
 
@@ -66,7 +62,7 @@ const listQuerySchema = z.object({
 // optionally filtered by status. Job title (local table) and provider name
 // (S2S, best-effort) are hydrated for display.
 adminRoutes.get("/api/admin/transactions", async (c) => {
-  if (!isAdmin(c)) {
+  if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -106,7 +102,7 @@ const updateSchema = z.object({ status: z.enum(["PAID", "REFUNDED"]) });
 
 // PATCH /api/admin/transactions/:id — mark a transaction paid or refunded.
 adminRoutes.patch("/api/admin/transactions/:id", async (c) => {
-  if (!isAdmin(c)) {
+  if (!isFullAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -131,7 +127,7 @@ export const admin = new Hono();
 // Job list (#222): newest first, optionally filtered by status/category, with
 // the customer name and a response count hydrated for the row.
 admin.get("/api/admin/jobs", async (c) => {
-  if (!isAdmin(c)) {
+  if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -163,7 +159,7 @@ admin.get("/api/admin/jobs", async (c) => {
 // info hydrated from identity-service / provider-service (degrades to
 // "Unknown" / null on any upstream failure — never fails the admin view).
 admin.get("/api/admin/jobs/:id", async (c) => {
-  if (!isAdmin(c)) {
+  if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 

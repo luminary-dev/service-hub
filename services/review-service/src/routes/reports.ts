@@ -6,7 +6,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
 import { logAudit } from "../lib/audit";
-import { getAuth } from "../lib/http";
+import { getAuth, isSupportOrAdmin } from "../lib/http";
 
 export const reports = new Hono();
 
@@ -98,8 +98,8 @@ const LOCAL_TARGET_TYPE = "REVIEW";
 // straight through from the admin frontend's filter dropdowns. Unrecognized
 // values are ignored (treated as "all").
 reports.get("/api/admin/review-reports", async (c) => {
-  const auth = getAuth(c);
-  if (auth?.role !== "ADMIN") {
+  // Read access — open to the SUPPORT tier as well as full ADMIN (#226).
+  if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -169,8 +169,7 @@ reports.get("/api/admin/review-reports", async (c) => {
 // with provider-service's GET /api/admin/notifications/counts, which the
 // frontend sums client-side into the reports badge total.
 reports.get("/api/admin/review-reports/count", async (c) => {
-  const auth = getAuth(c);
-  if (auth?.role !== "ADMIN") {
+  if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
   const openReports = await db.report.count({ where: { status: "OPEN" } });
@@ -180,8 +179,9 @@ reports.get("/api/admin/review-reports/count", async (c) => {
 const reportStatusSchema = z.object({ status: z.enum(["RESOLVED", "DISMISSED"]) });
 
 reports.patch("/api/admin/review-reports/:id", async (c) => {
+  // Resolve/dismiss is part of the SUPPORT tier (#226).
   const auth = getAuth(c);
-  if (auth?.role !== "ADMIN") {
+  if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -223,8 +223,9 @@ const batchReportStatusSchema = z.object({
 // the reports list's multi-select toolbar. Stamps resolvedBy/resolvedAt on
 // every affected row, same as the single-report path (#223 audit trail).
 reports.patch("/api/admin/review-reports", async (c) => {
+  // Bulk resolve/dismiss is part of the SUPPORT tier (#226).
   const auth = getAuth(c);
-  if (auth?.role !== "ADMIN") {
+  if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -255,8 +256,7 @@ reports.patch("/api/admin/review-reports", async (c) => {
 const AUDIT_LOG_TAKE = 200;
 
 reports.get("/api/admin/review-audit-log", async (c) => {
-  const auth = getAuth(c);
-  if (auth?.role !== "ADMIN") {
+  if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -295,8 +295,7 @@ reports.get("/api/admin/review-audit-log", async (c) => {
 // ---------------------------------------------------------------------------
 
 reports.get("/api/admin/review-stats", async (c) => {
-  const auth = getAuth(c);
-  if (auth?.role !== "ADMIN") {
+  if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
   const openReports = await db.report.count({ where: { status: "OPEN" } });

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { FaTrash } from "@/components/icons";
-import { hasSuperAdminAccess } from "@/lib/roles";
+import { hasFullAdminAccess } from "@/lib/roles";
 import { useT } from "../I18nProvider";
 import { useToast } from "../ToastProvider";
 
@@ -18,9 +18,9 @@ export default function AdminDeleteButton({
   const t = useT();
   const toast = useToast();
   const router = useRouter();
-  // Delete is a destructive, SUPERADMIN-only action (#226) — SUPPORT gets
+  // Delete is a destructive, ADMIN-only action (#226) — SUPPORT gets
   // read access plus report resolve/dismiss, nothing destructive.
-  const allowed = hasSuperAdminAccess(role);
+  const allowed = hasFullAdminAccess(role);
 
   async function remove() {
     if (!allowed) return;
