@@ -14,7 +14,7 @@ export type PersonaContext = {
 
 // A tool run yields the string the model sees as its tool_result, and may also
 // carry an out-of-band event streamed straight to the browser — never fed back
-// to the model. create_inquiry uses this to surface a confirmation card the
+// to the model. propose_inquiry uses this to surface a confirmation card the
 // *user* must act on; the model itself never performs the write.
 export type ToolOutcome = {
   result: string;
