@@ -63,3 +63,17 @@ npm install
 npm run dev        # tsx watch on :4006
 npm run typecheck / npm test / npm run build / npm start
 ```
+
+## Docker build (sharp native binary)
+
+`sharp` needs a platform-specific prebuilt binary (its native `.node` plus the
+bundled `libvips-cpp.so`), shipped as *optional* npm dependencies. npm can
+silently drop an optional dep on a transient fetch error (npm/cli#4828), which
+used to intermittently ship an image whose sharp crashed at boot with
+`ERR_DLOPEN_FAILED` (#351). The `runtime` stage of the `Dockerfile` therefore
+runs `scripts/install-sharp-binary.cjs` to reinstall that binary as a
+**required** package (build fails loudly instead of producing a broken image),
+then smoke-tests `require('sharp')`. libc + CPU are detected at build time, so
+the same Dockerfile works for both `linuxmusl-x64` (CI) and `linuxmusl-arm64`
+(Apple-Silicon dev). No change is needed here when Dependabot bumps `sharp` —
+the binary's version is read from sharp's own `optionalDependencies`.
