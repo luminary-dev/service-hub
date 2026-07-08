@@ -4,7 +4,7 @@ import { requireInternalSecret } from "./lib/http";
 import { log } from "./lib/log";
 import { getRequestId, requestLogger } from "./lib/logging";
 import { jobs } from "./routes/jobs";
-import { admin, adminRoutes } from "./routes/admin";
+import { admin } from "./routes/admin";
 import { internal } from "./routes/internal";
 
 export const app = new Hono();
@@ -31,7 +31,6 @@ app.use("*", requireInternalSecret);
 app.route("/api/jobs", jobs);
 app.route("/", admin);
 app.route("/internal", internal);
-app.route("/", adminRoutes);
 
 // Fallbacks mirror the monolith's Next.js behavior.
 app.notFound((c) => c.json({ error: "Not found" }, 404));

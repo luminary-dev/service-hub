@@ -111,7 +111,7 @@ export default async function AdminReportsPage({
             they stay reachable even when the current filter yields nothing. */}
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <ReportsFilterBar targetType={targetType} status={status} />
-          <RunFlaggingButton />
+          <RunFlaggingButton role={session.role} />
         </div>
 
         <AdminReportsList rows={rows} role={session.role} />
