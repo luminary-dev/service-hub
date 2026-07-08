@@ -49,9 +49,22 @@ type MyJob = {
   }[];
 };
 
-export default async function JobsPage() {
+// Both listings are paginated by the job-service (#203): a bounded page plus
+// the full-set `total` so we can render page controls without loading
+// everything. `page`/`pageSize` echo the normalized request.
+type Page<T> = { jobs: T[]; total: number; page: number; pageSize: number };
+
+export default async function JobsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   const session = await getSession();
   if (!session) redirect("/login");
+
+  const params = await searchParams;
+  const boardPage = Math.max(1, Number(params.boardPage) || 1);
+  const minePage = Math.max(1, Number(params.minePage) || 1);
 
   // The board subtitle needs the caller's provider category/district, which
   // the dashboard endpoint carries (it also confirms a provider profile
@@ -70,24 +83,64 @@ export default async function JobsPage() {
 
   const [boardData, mineData] = await Promise.all([
     provider
-      ? apiJson<{ jobs: BoardJob[] }>("/api/jobs/board")
+      ? apiJson<Page<BoardJob>>(`/api/jobs/board?page=${boardPage}`)
       : Promise.resolve(null),
-    apiJson<{ jobs: MyJob[] }>("/api/jobs/mine"),
+    apiJson<Page<MyJob>>(`/api/jobs/mine?page=${minePage}`),
   ]);
   const board = boardData?.jobs ?? [];
   const myJobs = mineData?.jobs ?? [];
   const openCount = myJobs.filter((j) => j.status === "OPEN").length;
+
+  // Total-set counts for the header readout; the lists themselves show one
+  // page. RESPONDED/OPEN stay best-effort over the visible page (the service
+  // exposes no total for those derived counts).
+  const boardTotal = boardData?.total ?? board.length;
+  const mineTotal = mineData?.total ?? myJobs.length;
+  const boardPageSize = boardData?.pageSize ?? board.length;
+  const minePageSize = mineData?.pageSize ?? myJobs.length;
+  const boardTotalPages = Math.max(1, Math.ceil(boardTotal / (boardPageSize || 1)));
+  const mineTotalPages = Math.max(1, Math.ceil(mineTotal / (minePageSize || 1)));
+
+  // Build an href that changes one section's page while preserving the other.
+  function pageHref(key: "boardPage" | "minePage", value: number) {
+    const sp = new URLSearchParams();
+    if (boardPage > 1) sp.set("boardPage", String(boardPage));
+    if (minePage > 1) sp.set("minePage", String(minePage));
+    sp.set(key, String(value));
+    return `/jobs?${sp.toString()}`;
+  }
+
+  function pager(key: "boardPage" | "minePage", current: number, totalPages: number) {
+    if (totalPages <= 1) return null;
+    return (
+      <div className="mt-8 flex items-center justify-center gap-2">
+        {current > 1 && (
+          <Link href={pageHref(key, current - 1)} className="btn-secondary">
+            {t.prev}
+          </Link>
+        )}
+        <span className="px-3 text-sm text-ink-500">
+          {t.pageOf(current, totalPages)}
+        </span>
+        {current < totalPages && (
+          <Link href={pageHref(key, current + 1)} className="btn-secondary">
+            {t.next}
+          </Link>
+        )}
+      </div>
+    );
+  }
 
   // Instrument readout in the header band — board-focused for providers,
   // posting-focused for customers. Labels are decorative mono captions
   // (matching the registry header), values are localized counts.
   const stats = provider
     ? [
-        { label: "MATCHING", value: board.length },
+        { label: "MATCHING", value: boardTotal },
         { label: "RESPONDED", value: board.filter((j) => j.responded).length },
       ]
     : [
-        { label: "POSTED", value: myJobs.length },
+        { label: "POSTED", value: mineTotal },
         { label: "OPEN", value: openCount },
       ];
 
@@ -163,6 +216,7 @@ export default async function JobsPage() {
                 ))}
               </InView>
             )}
+            {pager("boardPage", boardPage, boardTotalPages)}
           </section>
         )}
 
@@ -259,6 +313,7 @@ export default async function JobsPage() {
                 ))}
               </InView>
             )}
+            {pager("minePage", minePage, mineTotalPages)}
           </section>
         )}
       </div>

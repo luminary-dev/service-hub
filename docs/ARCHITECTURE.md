@@ -366,7 +366,8 @@ flagging — gated `isFullAdmin`; every write is recorded to `AdminAuditLog`):
   soft-deleted) + **`quality`** (quality score #229: computed on the fly via
   `lib/quality-score.ts` from rating/reviewCount/openReportCount — a 0-100
   signal, not persisted).
-- `GET /api/admin/verifications` — PENDING queue + docs.
+- `GET /api/admin/verifications` — PENDING queue + docs; paginated
+  (`page`/`pageSize`, default 20, capped 100) → `{ providers, total, page, pageSize }` (#255).
 - `PATCH /api/admin/providers/:id` — `{ action: verify|unverify|suspend|
   unsuspend }`.
 - `PATCH /api/admin/providers` — **bulk** suspend/unsuspend `{ ids, suspended }`
@@ -377,9 +378,11 @@ flagging — gated `isFullAdmin`; every write is recorded to `AdminAuditLog`):
   reason? }` (only PENDING rows touched) → `{ status, count }` (#225).
 - `DELETE /api/admin/photos/:id` — SOFT delete;
   `PATCH /api/admin/photos/:id/restore`.
-- `GET /api/admin/reports` — OPEN first + bounded closed tail; optional
-  `status`/`targetType` filters; each row hydrated with a target summary
-  (provider name / photo url + owner; null when hard-deleted).
+- `GET /api/admin/reports` — OPEN first, then closed; optional
+  `status`/`targetType` filters; paginated (`page`/`pageSize`, default 20,
+  capped 100) → `{ reports, total, page, pageSize }` (#255); each row hydrated
+  with a target summary (provider name / photo url + owner; null when
+  hard-deleted).
 - `PATCH /api/admin/reports/:id` — `{ status: RESOLVED|DISMISSED }` (stamps
   `resolvedBy`/`resolvedAt`).
 - `PATCH /api/admin/reports` — **bulk** resolve/dismiss `{ ids, status }` (#231).
@@ -427,7 +430,9 @@ URLs resolve at `/api/files/provider/*`.
 - `PATCH /api/admin/reviews/:id/restore` — ADMIN; clears `deletedAt` (audited).
 - `GET /api/admin/review-reports` — moderation queue (same shape as
   provider-service's; target = rating/comment/providerId/authorId + `removed`);
-  optional `status`/`targetType` filters.
+  optional `status`/`targetType` filters; paginated (`page`/`pageSize`, default
+  20, capped 100) → `{ reports, total, page, pageSize }`, matching
+  provider-service so the merged admin queue pages both in lockstep (#255).
 - `GET /api/admin/review-reports/count` — `{ openReports }` (nav badge, #233).
 - `PATCH /api/admin/review-reports/:id` — `{ status }` (stamps
   `resolvedBy`/`resolvedAt`, audited).
@@ -448,10 +453,13 @@ Review-photo bytes resolve at `/api/files/review/*`.
 - `PATCH /api/jobs/:id` — owner only; status OPEN|CLOSED.
 - `POST /api/jobs/:id/responses` — session; provider gate (S2S by-user, 403);
   open + dup checks; best-effort email to customer → `{ ok: true }`.
-- `GET /api/jobs/board` — provider gate: OPEN jobs matching category+district,
-  excluding own, with customer names + `responded` → `{ jobs }`.
-- `GET /api/jobs/mine` — own jobs with responses hydrated with provider
-  `{name, phone}` → `{ jobs }`.
+- `GET /api/jobs/board?page&pageSize` — provider gate: OPEN jobs matching
+  category+district, excluding own, with customer names + `responded`.
+  Paginated (default 20, max 50; `take` aliases `pageSize`) →
+  `{ jobs, total, page, pageSize }`.
+- `GET /api/jobs/mine?page&pageSize` — own jobs with responses hydrated with
+  provider `{name, phone}`. Paginated (same bounds) →
+  `{ jobs, total, page, pageSize }`.
 
 Admin (read-only oversight, gated `isSupportOrAdmin`):
 - `GET /api/admin/jobs?status&category` — list with customer name + response
@@ -528,6 +536,12 @@ with `delivered: false`.
   `${GATEWAY_URL}/api/:path*` at **request** time, so `GATEWAY_URL` is a pure
   runtime env var (unset → `http://localhost:4000`). Client components keep
   calling `/api/*` unchanged.
+- The proxy is also the trust boundary for the `x-locale` request header
+  (#67/#204): `/si*` URLs rewrite to the unprefixed route with `x-locale: si`;
+  every other page route has `x-locale` overwritten to `en`. It runs on all page
+  routes (matcher excludes only `/api`, `_next/*` and metadata assets) so a
+  client-supplied `X-Locale` can never reach `getUrlLocale()`. The `lang` cookie
+  still drives the rendered locale via `getLocale()`, which reads it directly.
 - Server components fetch the gateway directly (`src/lib/api.ts`: `GATEWAY_URL` +
   forwarded `cookie`, `cache: "no-store"`); `src/app/sitemap.ts` fetches
   `/api/providers/ids`.
