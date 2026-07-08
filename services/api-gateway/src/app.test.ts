@@ -611,6 +611,27 @@ describe("proxying", () => {
     expect(await res.json()).toEqual({ error: "Invalid email or password" });
   });
 
+  it("passes upstream 3xx redirects through instead of following them (#398)", async () => {
+    // OAuth start returns a 302 to Google + state/PKCE cookies; the gateway must
+    // hand that redirect to the browser, not chase it server-side.
+    upstreamResponse = () =>
+      new Response(null, {
+        status: 302,
+        headers: {
+          location: "https://accounts.google.com/o/oauth2/v2/auth?client_id=x",
+          "set-cookie": "oauth_state=s1; Path=/; HttpOnly",
+        },
+      });
+    const res = await app.request("/api/auth/oauth/google/start", {
+      headers: { "x-forwarded-for": "198.51.100.71" },
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toContain("accounts.google.com");
+    expect(res.headers.get("set-cookie")).toContain("oauth_state=");
+    // The upstream fetch must be issued in manual-redirect mode.
+    expect(upstreamRequests[0]?.redirect).toBe("manual");
+  });
+
   it("404s unknown paths and never forwards /internal", async () => {
     for (const path of ["/api/unknown", "/api/jobs/internal/jobs/count", "/nope"]) {
       const res = await app.request(path);
