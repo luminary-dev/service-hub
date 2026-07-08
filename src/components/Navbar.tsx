@@ -42,11 +42,14 @@ export default async function Navbar() {
             {t.nav.find}
           </Link>
           {session ? (
-            <Link href="/jobs" className={navLink}>
+            <Link href={localizedHref("/jobs", locale)} className={navLink}>
               {t.nav.jobs}
             </Link>
           ) : (
-            <Link href="/register/provider" className={navLink}>
+            <Link
+              href={localizedHref("/register/provider", locale)}
+              className={navLink}
+            >
               {t.nav.offer}
             </Link>
           )}
@@ -63,11 +66,14 @@ export default async function Navbar() {
             <UserMenu name={session.name} role={session.role} />
           ) : (
             <>
-              <Link href="/login" className="btn-ghost hidden sm:inline-flex">
+              <Link
+                href={localizedHref("/login", locale)}
+                className="btn-ghost hidden sm:inline-flex"
+              >
                 {t.nav.signIn}
               </Link>
               <Link
-                href="/register"
+                href={localizedHref("/register", locale)}
                 className="btn-primary hidden !px-4 !py-2 md:inline-flex"
               >
                 {t.nav.getStarted}

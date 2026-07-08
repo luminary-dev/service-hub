@@ -272,7 +272,7 @@ p {
   }
 
   .btn-primary {
-    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-md bg-brand-700 px-5 py-2.5 font-display text-sm font-semibold text-white transition-[background-color,transform,filter] dark:text-ink-50 duration-200 ease-snap hover:bg-brand-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-md bg-brand-800 dark:bg-brand-700 px-5 py-2.5 font-display text-sm font-semibold text-white transition-[background-color,transform,filter] dark:text-ink-50 duration-200 ease-snap hover:bg-brand-900 dark:hover:bg-brand-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .btn-secondary {

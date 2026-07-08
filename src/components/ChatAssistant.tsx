@@ -114,11 +114,11 @@ export default function ChatAssistant() {
             if (e.key === "Escape") setOpen(false);
           }}
         >
-          <div className="border-b border-ink-100 bg-brand-600 px-4 py-3 dark:border-ink-200">
+          <div className="border-b border-ink-100 bg-brand-800 px-4 py-3 dark:border-ink-200 dark:bg-brand-600">
             <p className="font-semibold text-white dark:text-ink-50">
               {t.assistant.title}
             </p>
-            <p className="text-xs text-white/80 dark:text-ink-50/80">
+            <p className="text-xs text-white/90 dark:text-ink-50/90">
               {t.assistant.subtitle}
             </p>
           </div>
