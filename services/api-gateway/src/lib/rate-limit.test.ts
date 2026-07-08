@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { checkRateLimit } from "./rate-limit";
+import { afterEach, describe, it, expect } from "vitest";
+import { checkRateLimit, resolveClientIp, trustedProxyHops } from "./rate-limit";
 
 const rule = { limit: 3, windowMs: 1000 };
 
@@ -42,6 +42,85 @@ describe("checkRateLimit (sliding window)", () => {
     checkRateLimit("test:a", rule, now);
     expect(checkRateLimit("test:a", rule, now).success).toBe(false);
     expect(checkRateLimit("test:b", rule, now).success).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Client-IP resolution (#201): X-Forwarded-For is only trusted from the RIGHT,
+// skipping exactly TRUSTED_PROXY_HOPS trusted hops. The leftmost (forgeable)
+// token must never decide the rate-limit key.
+// ---------------------------------------------------------------------------
+describe("resolveClientIp", () => {
+  const SOCKET = "198.51.100.7";
+
+  it("uses the socket peer and ignores XFF when hops = 0", () => {
+    expect(resolveClientIp("1.1.1.1, 2.2.2.2", 0, SOCKET)).toBe(SOCKET);
+    // A forged XFF cannot escape the socket-peer bucket.
+    expect(resolveClientIp("10.0.0.1", 0, SOCKET)).toBe(SOCKET);
+    expect(resolveClientIp("10.0.0.99", 0, SOCKET)).toBe(SOCKET);
+  });
+
+  it("uses the socket peer when XFF is absent", () => {
+    expect(resolveClientIp(undefined, 2, SOCKET)).toBe(SOCKET);
+    expect(resolveClientIp("", 2, SOCKET)).toBe(SOCKET);
+  });
+
+  it("with hops = 1 takes the rightmost (peer-inserted) entry", () => {
+    expect(resolveClientIp("203.0.113.5", 1, SOCKET)).toBe("203.0.113.5");
+    // A prepended forgery is left of the trusted entry and ignored.
+    expect(resolveClientIp("1.2.3.4, 203.0.113.5", 1, SOCKET)).toBe("203.0.113.5");
+  });
+
+  it("with hops = 2 skips one trusted hop from the right to reach the client", () => {
+    // Real chain: client → Caddy → web → gateway. XFF = [client, caddy].
+    expect(resolveClientIp("203.0.113.9, 172.16.0.2", 2, SOCKET)).toBe("203.0.113.9");
+    // Client prepends junk; indexing from the right still lands on the client.
+    expect(resolveClientIp("9.9.9.9, 203.0.113.9, 172.16.0.2", 2, SOCKET)).toBe(
+      "203.0.113.9"
+    );
+  });
+
+  it("trims whitespace and drops empty tokens", () => {
+    expect(resolveClientIp(" 203.0.113.9 , 172.16.0.2 ", 2, SOCKET)).toBe(
+      "203.0.113.9"
+    );
+    expect(resolveClientIp("203.0.113.9,,172.16.0.2", 2, SOCKET)).toBe("203.0.113.9");
+  });
+
+  it("falls back to the socket peer when the chain is shorter than hops", () => {
+    // Only one entry but two trusted hops expected → not the expected topology.
+    expect(resolveClientIp("203.0.113.9", 2, SOCKET)).toBe(SOCKET);
+  });
+
+  it("returns 'unknown' only when there is no trustworthy source", () => {
+    expect(resolveClientIp(undefined, 0, undefined)).toBe("unknown");
+    expect(resolveClientIp("203.0.113.9", 2, undefined)).toBe("unknown");
+  });
+});
+
+describe("trustedProxyHops", () => {
+  const OLD = process.env.TRUSTED_PROXY_HOPS;
+  afterEach(() => {
+    if (OLD === undefined) delete process.env.TRUSTED_PROXY_HOPS;
+    else process.env.TRUSTED_PROXY_HOPS = OLD;
+  });
+
+  it("defaults to 0 when unset", () => {
+    expect(trustedProxyHops({})).toBe(0);
+  });
+
+  it("parses a positive integer", () => {
+    expect(trustedProxyHops({ TRUSTED_PROXY_HOPS: "2" })).toBe(2);
+  });
+
+  it("clamps negatives and rejects non-numeric values to 0", () => {
+    expect(trustedProxyHops({ TRUSTED_PROXY_HOPS: "-3" })).toBe(0);
+    expect(trustedProxyHops({ TRUSTED_PROXY_HOPS: "abc" })).toBe(0);
+  });
+
+  it("reads process.env by default", () => {
+    process.env.TRUSTED_PROXY_HOPS = "3";
+    expect(trustedProxyHops()).toBe(3);
   });
 });
 

@@ -104,6 +104,9 @@ team.
   *Reject selected* (bulk reject shares one reason textarea). Sends
   `PATCH /api/admin/verifications` with `{ ids, action, reason? }` (1–200 ids;
   only rows still `PENDING` are touched).
+- **Pagination.** Server-side, 20 per page (#255); prev/next controls with a
+  page indicator. The PENDING header stat and the hub badge baseline track the
+  full `total`, not the current page.
 
 Any admin-tier user can act on this queue.
 
@@ -116,10 +119,15 @@ Route: **`/admin/reports`** (`src/app/admin/reports/page.tsx`,
 Merges two backends into one queue, sorted **open first, then newest first**:
 `GET /api/admin/reports` (provider-service — `PROVIDER` and `WORK_PHOTO`
 targets) and `GET /api/admin/review-reports` (review-service — `REVIEW`
-targets). Header stats: open / resolved / total.
+targets). Header stats: open / total.
 
 - **Filters** (URL-backed): target type (all / provider / photo / review) and
   status (all / open / resolved / dismissed).
+- **Pagination.** Both backends are paginated 20 per page (#255); the page
+  requests the same page N from each and merges the results, so a page can hold
+  up to 20 rows from each source. Prev/next controls span the deeper source's
+  page count. The open-count stat and hub badge come from the dedicated count
+  endpoints (accurate across the whole queue, not just the current page).
 - **Per-row actions** — gated by `hasSupportAccess`: *Resolve* and *Dismiss*
   send `PATCH` to the matching endpoint (`/api/admin/reports/{id}` or
   `/api/admin/review-reports/{id}`) with `{ status: "RESOLVED" | "DISMISSED" }`.

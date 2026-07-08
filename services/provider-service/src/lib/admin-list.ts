@@ -39,6 +39,43 @@ function toPositiveInt(raw: string | null | undefined, fallback: number): number
   return Number.isFinite(n) && n >= 1 ? n : fallback;
 }
 
+export type Pagination = { page: number; pageSize: number };
+
+// Shared page/pageSize normalization for the admin list endpoints: page is
+// clamped to >= 1, pageSize defaults to 20 and is capped at 100 (these are
+// internal moderation tools, not public directories, so a caller can't ask
+// the database — or review-service — for an unbounded page).
+export function normalizePagination(params: {
+  page?: string | null;
+  pageSize?: string | null;
+}): Pagination {
+  const page = toPositiveInt(params.page, 1);
+  const pageSize = Math.min(
+    ADMIN_MAX_PAGE_SIZE,
+    toPositiveInt(params.pageSize, ADMIN_DEFAULT_PAGE_SIZE)
+  );
+  return { page, pageSize };
+}
+
+// The reports queue is a single "OPEN rows first, then closed rows" list, but
+// the two groups are separate queries. Given the page window (skip/take) and
+// how many OPEN rows exist in total, this returns the skip/take for each
+// sub-query so a page can be sliced out of the virtual concatenation without
+// loading either group in full.
+export function sliceOpenClosed(
+  skip: number,
+  take: number,
+  openTotal: number
+): { openSkip: number; openTake: number; closedSkip: number; closedTake: number } {
+  const openTake = Math.max(0, Math.min(take, openTotal - skip));
+  return {
+    openSkip: openTake > 0 ? skip : 0,
+    openTake,
+    closedSkip: Math.max(0, skip - openTotal),
+    closedTake: take - openTake,
+  };
+}
+
 // Normalizes the raw query params for GET /api/admin/providers: page >= 1,
 // pageSize defaults to 20 and is capped at 100 (this is an internal
 // moderation tool, not a public-facing directory), sort falls back to
@@ -54,11 +91,10 @@ export function normalizeAdminListQuery(params: {
   page?: string | null;
   pageSize?: string | null;
 }): AdminListQuery {
-  const page = toPositiveInt(params.page, 1);
-  const pageSize = Math.min(
-    ADMIN_MAX_PAGE_SIZE,
-    toPositiveInt(params.pageSize, ADMIN_DEFAULT_PAGE_SIZE)
-  );
+  const { page, pageSize } = normalizePagination({
+    page: params.page,
+    pageSize: params.pageSize,
+  });
   const sort = ADMIN_SORT_KEYS.includes(params.sort as AdminSortKey)
     ? (params.sort as AdminSortKey)
     : ADMIN_DEFAULT_SORT;
