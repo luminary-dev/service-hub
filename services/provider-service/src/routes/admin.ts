@@ -533,6 +533,103 @@ adminRoutes.patch("/api/admin/reports", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// Auto-flagging (#232): sweep every active provider and open a SYSTEM report
+// for any that crosses a quality/report-volume threshold, so risky providers
+// surface in the moderation queue without a human scanning the whole roster.
+// It creates records, so it's a full-ADMIN action. Admin-triggered (there is
+// no cron/worker infra yet) from the reports page; a real scheduler can hit
+// the same route later.
+//
+// A provider is flagged when its quality score (#229) drops below
+// FLAG_QUALITY_BELOW, or it has FLAG_OPEN_USER_REPORTS_AT+ open USER-source
+// reports. Dedupe: providers that already carry an OPEN SYSTEM report are
+// skipped so repeated runs don't pile up duplicate flags.
+// ---------------------------------------------------------------------------
+const FLAG_QUALITY_BELOW = 40;
+const FLAG_OPEN_USER_REPORTS_AT = 3;
+
+adminRoutes.post("/api/admin/flagging/run", async (c) => {
+  if (!isFullAdmin(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const providers = await db.provider.findMany({
+    where: { suspended: false },
+    select: { id: true },
+  });
+  if (providers.length === 0) {
+    return c.json({ flagged: 0 });
+  }
+
+  const providerIds = providers.map((p) => p.id);
+
+  // Open USER-report counts per provider, providers already carrying an OPEN
+  // SYSTEM flag (dedupe set), and rating/reviewCount — all as grouped/batched
+  // queries rather than one-per-provider.
+  const [userReportGroups, systemFlagGroups, ratings] = await Promise.all([
+    db.report.groupBy({
+      by: ["targetId"],
+      where: {
+        targetType: "PROVIDER",
+        targetId: { in: providerIds },
+        status: "OPEN",
+        source: "USER",
+      },
+      _count: { _all: true },
+    }),
+    db.report.groupBy({
+      by: ["targetId"],
+      where: {
+        targetType: "PROVIDER",
+        targetId: { in: providerIds },
+        status: "OPEN",
+        source: "SYSTEM",
+      },
+      _count: { _all: true },
+    }),
+    fetchRatings(providerIds),
+  ]);
+
+  const openUserReportsById = new Map(
+    userReportGroups.map((g) => [g.targetId, g._count._all])
+  );
+  const alreadyFlagged = new Set(systemFlagGroups.map((g) => g.targetId));
+
+  const toFlag = providers.filter((p) => {
+    if (alreadyFlagged.has(p.id)) return false;
+    const openUserReportCount = openUserReportsById.get(p.id) ?? 0;
+    const { qualityScore } = computeQualityScore({
+      rating: ratings[p.id]?.rating ?? 0,
+      reviewCount: ratings[p.id]?.count ?? 0,
+      openReportCount: openUserReportCount,
+    });
+    return (
+      qualityScore < FLAG_QUALITY_BELOW ||
+      openUserReportCount >= FLAG_OPEN_USER_REPORTS_AT
+    );
+  });
+
+  if (toFlag.length === 0) {
+    return c.json({ flagged: 0 });
+  }
+
+  await db.report.createMany({
+    data: toFlag.map((p) => ({
+      targetType: "PROVIDER",
+      targetId: p.id,
+      reporterId: null,
+      reason: "auto-flag: low quality score / high report volume",
+      status: "OPEN",
+      source: "SYSTEM",
+    })),
+  });
+
+  await logAudit(c, "run-flagging", "PROVIDER", "batch", `flagged ${toFlag.length}`);
+
+  return c.json({ flagged: toFlag.length });
+});
+
+// ---------------------------------------------------------------------------
 // Admin hub notification badges (#233): lightweight aggregate counts for the
 // nav cards on /admin — pending verifications and open reports. This is
 // provider-service's slice only; review-service owns reports filed against

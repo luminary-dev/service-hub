@@ -4,7 +4,6 @@ import {
   FaArrowRight,
   FaBriefcase,
   FaClock,
-  FaFileLines,
   FaFlag,
   FaIdCard,
   FaShieldHalved,
@@ -134,12 +133,6 @@ export default async function AdminHomePage() {
       icon: FaIdCard,
       title: t.usersLink,
       desc: t.usersDesc,
-    },
-    {
-      href: "/admin/billing",
-      icon: FaFileLines,
-      title: t.billingLink,
-      desc: t.billingDesc,
     },
   ];
 

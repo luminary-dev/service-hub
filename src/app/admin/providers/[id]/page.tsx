@@ -14,6 +14,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import StatReadout from "@/components/ui/StatReadout";
 import AdminProviderActions from "@/components/admin/AdminProviderActions";
 import AdminDeleteButton from "@/components/admin/AdminDeleteButton";
+import AdminRestoreButton from "@/components/admin/AdminRestoreButton";
 
 // Caching (#57): admin-only moderation view; edits must be visible on the
 // next request — stays fully dynamic (no-store).
@@ -41,8 +42,17 @@ type AdminProviderDetail = {
     comment: string;
     createdAt: string;
     user: { name: string };
+    // Moderation view includes soft-deleted reviews (#32) so admins can
+    // restore them; null means the review is live.
+    deletedAt: string | null;
   }[];
-  photos: { id: string; url: string; caption: string | null }[];
+  photos: {
+    id: string;
+    url: string;
+    caption: string | null;
+    // Soft-deleted photos (#32) stay in the moderation view for restore.
+    deletedAt: string | null;
+  }[];
 };
 
 export default async function AdminProviderModeratePage({
@@ -165,13 +175,25 @@ export default async function AdminProviderModeratePage({
                         {r.user.name}
                       </span>
                       <Stars rating={r.rating} />
+                      {r.deletedAt && (
+                        <span className="chip bg-red-50 text-red-700 ring-1 ring-red-200">
+                          {t.reportContentRemoved}
+                        </span>
+                      )}
                     </div>
                     <p className="mt-1 text-sm text-ink-600">{r.comment}</p>
                   </div>
-                  <AdminDeleteButton
-                    endpoint={`/api/admin/reviews/${r.id}`}
-                    role={session.role}
-                  />
+                  {r.deletedAt ? (
+                    <AdminRestoreButton
+                      endpoint={`/api/admin/reviews/${r.id}/restore`}
+                      role={session.role}
+                    />
+                  ) : (
+                    <AdminDeleteButton
+                      endpoint={`/api/admin/reviews/${r.id}`}
+                      role={session.role}
+                    />
+                  )}
                 </li>
               ))}
             </InView>
@@ -202,19 +224,35 @@ export default async function AdminProviderModeratePage({
                   key={ph.id}
                   className="overflow-hidden border border-ink-300 bg-ink-100"
                 >
-                  <img
-                    src={ph.url}
-                    alt={ph.caption ?? "Work photo"}
-                    className="aspect-square w-full object-cover"
-                  />
+                  <div className="relative">
+                    <img
+                      src={ph.url}
+                      alt={ph.caption ?? "Work photo"}
+                      className={`aspect-square w-full object-cover ${
+                        ph.deletedAt ? "opacity-40" : ""
+                      }`}
+                    />
+                    {ph.deletedAt && (
+                      <span className="chip absolute left-2 top-2 bg-red-50 text-red-700 ring-1 ring-red-200">
+                        {t.reportContentRemoved}
+                      </span>
+                    )}
+                  </div>
                   <div className="flex items-center justify-between gap-2 border-t border-ink-300 px-2 py-1.5">
                     <span className="truncate font-mono text-[10px] uppercase tracking-wider text-ink-500">
                       {ph.caption ?? "—"}
                     </span>
-                    <AdminDeleteButton
-                      endpoint={`/api/admin/photos/${ph.id}`}
-                      role={session.role}
-                    />
+                    {ph.deletedAt ? (
+                      <AdminRestoreButton
+                        endpoint={`/api/admin/photos/${ph.id}/restore`}
+                        role={session.role}
+                      />
+                    ) : (
+                      <AdminDeleteButton
+                        endpoint={`/api/admin/photos/${ph.id}`}
+                        role={session.role}
+                      />
+                    )}
                   </div>
                 </div>
               ))}

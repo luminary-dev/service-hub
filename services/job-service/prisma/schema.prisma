@@ -19,12 +19,6 @@ model JobRequest {
   description String
   budget      Int? // optional, LKR
   status      String        @default("OPEN") // OPEN | CLOSED
-  // The price the customer and provider settled on once the job is done.
-  // Nullable/set out-of-band for now (#221 v1: flat 10% commission default —
-  // no product decision yet on *how* a price gets agreed/recorded). Lives
-  // here rather than on JobResponse because `status` — the field that
-  // signals a job reaching a terminal state (CLOSED) — is on JobRequest.
-  agreedPrice Decimal?      @db.Decimal(12, 2)
   createdAt   DateTime      @default(now())
   responses   JobResponse[]
 
@@ -41,27 +35,5 @@ model JobResponse {
   createdAt    DateTime   @default(now())
 
   @@unique([jobRequestId, providerId])
-  @@index([providerId])
-}
-
-// Billing v1 (#221): a flat default commission model so admin has visibility
-// before a real pricing/product decision is made — NOT a finalized business
-// decision. One row per completed job. `jobRequestId`/`providerId` are kept
-// as plain ids (no FK/relation), unlike JobResponse's cascade-on-delete FK to
-// JobRequest: a financial ledger row should outlive its job row (e.g.
-// account-erasure deletes JobRequest — see routes/internal.ts) rather than
-// silently vanish with it.
-model Transaction {
-  id               String   @id @default(cuid())
-  jobRequestId     String
-  providerId       String
-  amount           Decimal  @db.Decimal(12, 2) // = JobRequest.agreedPrice at creation time
-  commissionRate   Decimal  @default(0.10) @db.Decimal(4, 3) // flat 10% default (v1)
-  commissionAmount Decimal  @db.Decimal(12, 2) // = amount * commissionRate
-  status           String   @default("PENDING") // PENDING | PAID | REFUNDED
-  createdAt        DateTime @default(now())
-
-  @@index([status])
-  @@index([jobRequestId])
   @@index([providerId])
 }
