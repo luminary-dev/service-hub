@@ -115,10 +115,14 @@ Start with `docs/README.md` (the docs index) and `docs/ARCHITECTURE.md`.
 ./scripts/setup.sh            # one-time
 ./scripts/dev-all.sh          # run all services + web on the host, OR:
 docker compose up -d --build  # run the full stack in Docker
-# seed demo data (prod images refuse unless overridden):
-docker compose exec -e SEED_DEMO_DATA=true identity-service npm run db:seed
+# ...then seed the 4 data services (container images run NODE_ENV=production,
+# so the demo seed must be opted into explicitly — `scripts/setup.sh` seeds for
+# you on the host path, but the container path does not):
+for s in identity-service provider-service review-service job-service; do
+  docker compose exec -e SEED_DEMO_DATA=true "$s" npm run db:seed
+done
 ```
-Demo accounts (all password `password123`): `admin@baas.lk` (ADMIN), plus demo providers and customers.
+Demo accounts (all password `password123`): `admin@baas.lk` (ADMIN), plus demo providers and customers. During the container-path seed, `.env not found` (config comes from Compose, not a file) and `job-service: no seed data` (the board starts empty) are both expected.
 
 **Local data is disposable.** We don't preserve or migrate data between runs on
 localhost — migrations rebuild the schema on a fresh DB every time. To get a

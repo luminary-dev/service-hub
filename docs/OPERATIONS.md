@@ -178,8 +178,17 @@ To run everything in containers instead (closest to prod):
 
 ```bash
 docker compose up -d --build      # dev compose: builds locally, all services + web
+# the container images run NODE_ENV=production, so seed the 4 data services
+# explicitly (setup.sh seeds for you on the host path; the container path does not):
+for s in identity-service provider-service review-service job-service; do
+  docker compose exec -e SEED_DEMO_DATA=true "$s" npm run db:seed
+done
 npm run e2e                       # scripts/e2e-smoke.sh against the running stack
 ```
+
+During that seed, `.env not found. Continuing without it.` (containers read
+config from Compose, not a `.env` file) and `job-service: no seed data` (the job
+board is intentionally empty — jobs are customer-created) are both expected.
 
 **Local data is disposable.** We do not preserve or migrate data between runs —
 the seeds are dummy data only. When a run's state gets in the way, reset to a
@@ -191,10 +200,11 @@ reseeds the four databases:
 ./scripts/dev-reset.sh            # down -v → up -d --build → reseed
 ```
 
-Seed demo data (`admin@baas.lk` etc., password `password123`) is created by
-`setup.sh`. Under the prod images / `NODE_ENV=production` the seed refuses unless
-`SEED_DEMO_DATA=true` is set (this is how the CI e2e job and a manual
-container seed opt in). `scripts/baseline-migrations.sh` is a one-time helper for
+Seed demo data (`admin@baas.lk` etc., password `password123`) is created
+automatically by `setup.sh` on the host path. Under the prod/container images
+(`NODE_ENV=production`) the seed refuses unless `SEED_DEMO_DATA=true` is set, so
+the container path seeds via the explicit per-service loop above (the same
+opt-in the CI e2e job uses). `scripts/baseline-migrations.sh` is a one-time helper for
 older dev DBs created with `prisma db push` (marks the `0_init` baseline applied
 so `migrate deploy` stops erroring with P3005); fresh DBs never need it.
 
