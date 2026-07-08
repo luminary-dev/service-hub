@@ -38,7 +38,7 @@ req() { # req <jar> <method> <path> [curl args...]
 }
 
 echo "== Health =="
-for port in 4000 4001 4002 4003 4004 4005; do
+for port in 4000 4001 4002 4003 4004 4005 4006; do
   check "healthz :$port" "$(curl -sS "http://localhost:$port/healthz")" '"ok":true'
 done
 
