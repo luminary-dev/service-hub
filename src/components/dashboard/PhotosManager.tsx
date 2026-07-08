@@ -284,7 +284,9 @@ export default function PhotosManager({
             </button>
             <p className="mt-1.5 text-xs text-ink-500">{ph.pictureHint}</p>
             {avatarError && (
-              <p className="mt-1.5 text-sm text-red-600">{avatarError}</p>
+              <p role="alert" className="mt-1.5 text-sm text-red-600">
+                {avatarError}
+              </p>
             )}
           </div>
         </div>
