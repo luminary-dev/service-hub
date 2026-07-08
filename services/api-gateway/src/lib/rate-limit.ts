@@ -13,6 +13,9 @@ export const RATE_LIMITS = {
   inquiry: { limit: 6, windowMs: 10 * 60_000 }, // inquiry creation — anti-spam
   review: { limit: 10, windowMs: 60 * 60_000 }, // review submission
   message: { limit: 30, windowMs: 10 * 60_000 }, // thread messages - conversational
+  // Phone-number reveal (#64): generous enough for a human browsing several
+  // profiles, tight enough to blunt a crawler harvesting the whole directory.
+  contactReveal: { limit: 20, windowMs: 10 * 60_000 },
 } as const;
 
 // In-memory sliding-window store. This state is per-instance and resets on
@@ -236,6 +239,8 @@ const LIMITED_ROUTES: { pattern: RegExp; name: string; rule: RateRule }[] = [
   { pattern: /^\/api\/auth\/resend-verification$/, name: "auth-resend", rule: RATE_LIMITS.resend },
   { pattern: /^\/api\/jobs$/, name: "job-post", rule: RATE_LIMITS.inquiry },
   { pattern: /^\/api\/providers\/[^/]+\/inquiries$/, name: "inquiry", rule: RATE_LIMITS.inquiry },
+  // Phone-number reveal (#64) — anti-scraping budget on the number-reveal POST.
+  { pattern: /^\/api\/providers\/[^/]+\/contact$/, name: "contact-reveal", rule: RATE_LIMITS.contactReveal },
   { pattern: /^\/api\/jobs\/[^/]+\/responses$/, name: "job-response", rule: RATE_LIMITS.review },
   { pattern: /^\/api\/providers\/[^/]+\/reviews$/, name: "review", rule: RATE_LIMITS.review },
   // Thread messages (#13) are conversational - wider budget than one-shot forms.

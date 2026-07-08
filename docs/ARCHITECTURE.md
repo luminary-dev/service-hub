@@ -206,7 +206,9 @@ Public entry. Responsibilities:
    `POST /api/auth/login|forgot-password|reset-password|change-password|delete-account`
    → authStrict; `POST /api/auth/register` → authSignup;
    `POST /api/auth/resend-verification` → resend; `POST /api/jobs` and
-   `POST /api/providers/:id/inquiries` → inquiry; `POST /api/jobs/:id/responses`
+   `POST /api/providers/:id/inquiries` → inquiry;
+   `POST /api/providers/:id/contact` → contactReveal (phone-number reveal, #64);
+   `POST /api/jobs/:id/responses`
    and `POST /api/providers/:id/reviews` → review;
    `POST /api/providers/:id/report`, `POST /api/photos/:id/report` and
    `POST /api/reviews/:id/report` → report. 429 body/headers identical to the
@@ -287,8 +289,12 @@ by service:
 - **chat-service (:4007)** — the streaming Claude marketplace assistant at
   `POST /internal/chat/:persona/stream`, reached only via the web app's
   `/agent/chat` proxy (never through the gateway, which would buffer the stream).
-  Requires `ANTHROPIC_API_KEY` (unset → 503); model `claude-opus-4-8`; tools
-  `search_providers` + `create_inquiry` call back through the gateway.
+  Requires `ANTHROPIC_API_KEY` (unset → 503); model `claude-opus-4-8`. Its tools
+  are read-only from the user's perspective: `search_providers` queries the
+  public directory, and `propose_inquiry` only streams a draft to the browser —
+  the actual inquiry write happens out-of-band when the user confirms the card
+  in the web app (a normal authenticated `POST /api/providers/:id/inquiries`),
+  never as a model-invoked action (#202).
 
 ## Admin surface (roles and audit)
 

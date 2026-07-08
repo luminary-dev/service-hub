@@ -71,4 +71,87 @@ describe("ChatAssistant", () => {
     // The user's own message stays visible after the failure.
     expect(screen.getByText("I need a plumber")).toBeTruthy();
   });
+
+  // #202: a proposal event renders a confirmation card, and NO inquiry is
+  // written until the user taps Confirm — which fires the authenticated POST
+  // itself. This is the out-of-band gate the model cannot bypass.
+  function sseStream(events: object[]) {
+    const enc = new TextEncoder();
+    const payload = events
+      .map((e) => `data: ${JSON.stringify(e)}\n\n`)
+      .join("");
+    let sent = false;
+    return {
+      getReader() {
+        return {
+          read: async () =>
+            sent
+              ? { done: true, value: undefined }
+              : ((sent = true), { done: false, value: enc.encode(payload) }),
+        };
+      },
+    };
+  }
+
+  const proposal = {
+    providerId: "prov-1",
+    providerName: "Kamal Plumbing",
+    name: "Nimal",
+    phone: "0771234567",
+    message: "My kitchen sink is leaking badly.",
+  };
+
+  async function openWithProposal() {
+    fetchMock.mockImplementation((url: string) => {
+      if (url === "/agent/chat") {
+        return Promise.resolve({
+          ok: true,
+          body: sseStream([
+            { type: "proposal", proposal },
+            { type: "text", text: "Review the card and tap Confirm to send." },
+          ]),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ inquiry: {} }) });
+    });
+    const { container } = render(<ChatAssistant />);
+    fireEvent.click(screen.getByRole("button", { name: t.open }));
+    fireEvent.change(screen.getByLabelText(t.placeholder), {
+      target: { value: "plumber in Nugegoda" },
+    });
+    fireEvent.submit(container.querySelector("form")!);
+    await screen.findByText(t.confirmTitle);
+  }
+
+  it("renders a confirmation card and does not send until the user confirms", async () => {
+    await openWithProposal();
+    // The card is shown but no inquiry POST has fired — only /agent/chat.
+    expect(
+      fetchMock.mock.calls.filter((c) => String(c[0]).includes("/inquiries"))
+    ).toHaveLength(0);
+    expect(screen.getByText(proposal.message)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: t.confirm }));
+    await screen.findByText(t.sent);
+
+    const call = fetchMock.mock.calls.find((c) =>
+      String(c[0]).includes("/inquiries")
+    );
+    expect(call?.[0]).toBe("/api/providers/prov-1/inquiries");
+    expect(JSON.parse(call![1].body)).toMatchObject({
+      name: "Nimal",
+      phone: "0771234567",
+      message: proposal.message,
+      source: "chat-agent",
+    });
+  });
+
+  it("cancelling a proposal sends nothing", async () => {
+    await openWithProposal();
+    fireEvent.click(screen.getByRole("button", { name: t.cancel }));
+    await screen.findByText(t.cancelled);
+    expect(
+      fetchMock.mock.calls.filter((c) => String(c[0]).includes("/inquiries"))
+    ).toHaveLength(0);
+  });
 });

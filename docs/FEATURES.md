@@ -111,8 +111,12 @@ optional favorite button.
 **`/providers/[id]`** (`GET /api/providers/:id/full`) renders the public
 profile: hero (avatar, category, verified badge, availability, location,
 rating), action chips (favorite, share, report), a stats readout, contact links
-(phone, WhatsApp, socials, website), and four spec sections — **About,
+(a **tap-to-reveal** phone/WhatsApp button plus socials and website), and four
+spec sections — **About,
 Services, Photos, Reviews** — with an inquiry form in the sticky sidebar.
+Phone numbers are withheld from the public payload and fetched on the reveal tap
+via a rate-limited endpoint (#64), so crawlers can't harvest the directory's
+numbers from page HTML.
 Suspended providers 404 for everyone except admins.
 
 ### Open Graph images
@@ -240,14 +244,15 @@ suspended profiles.
 
 ## AI chat assistant
 
-A marketplace concierge that helps customers find a provider and (with explicit
-confirmation) send an inquiry, in English or Sinhala.
+A marketplace concierge that helps customers find a provider and draft an
+inquiry, which the customer then sends themselves, in English or Sinhala.
 
 - **Where it runs.** The assistant runs entirely server-side in **chat-service**
   (internal-only), keeping `ANTHROPIC_API_KEY` out of the web runtime. The web
   route `POST /agent/chat` is a thin proxy to
   `POST /internal/chat/marketplace/stream`, streaming Server-Sent Events back to
-  the browser and forwarding the user's cookie, IP, and locale.
+  the browser and forwarding only the locale. No session cookie is forwarded
+  into the LLM-driven service, because nothing there acts on the user's behalf.
 - **Model & loop.** Uses Claude (`claude-opus-4-8`) with a server-side tool
   loop: it streams text, and when the model requests a tool it runs it, feeds
   the result back, and continues — up to a safety bound (`MAX_LOOPS = 6`), with a
@@ -255,14 +260,22 @@ confirmation) send an inquiry, in English or Sinhala.
 - **Tools the model can call:**
   - `search_providers(category?, district?, q?)` — queries the public directory
     and returns up to 5 matches.
-  - `create_inquiry(providerId, name, phone, message, confirmed)` — refuses
-    unless `confirmed === true`, then posts a real inquiry tagged
-    `source: "chat-agent"` carrying the user's identity.
+  - `propose_inquiry(providerId, providerName?, name, phone, message)` — does
+    **not** write anything. It streams a draft to the browser as an out-of-band
+    `proposal` event; the browser renders a confirmation card. The model cannot
+    send an inquiry.
+- **Out-of-band confirmation (#202).** The real inquiry is created only when the
+  **user taps "Confirm & send"** on that card, which fires a normal
+  authenticated same-origin `POST /api/providers/:id/inquiries` (the same
+  endpoint the plain inquiry form uses, tagged `source: "chat-agent"`) with the
+  exact fields the card showed. Confirmation is a user action captured **outside
+  the model's control** — a prompt-injected or manipulated model can propose a
+  draft but can never send it, since the write path is not a tool it can invoke.
 - **Persona & safety.** The system prompt scopes it to Baas.lk, asks for at most
   1–2 things per turn (trade, district, job), suggests up to 3 providers, and
-  treats tool-result data as untrusted (it cannot be used to authorize sending
-  an inquiry). It won't negotiate prices or bookings, keeps replies short, and
-  answers in Sinhala when the locale is `si`.
+  treats tool-result data as untrusted (it can never send an inquiry — only the
+  user's tap on the card does). It won't negotiate prices or bookings, keeps
+  replies short, and answers in Sinhala when the locale is `si`.
 - **Session-gated & rate-limited.** The web proxy requires a signed-in session
   (401 otherwise) and enforces a per-user sliding window of **15 requests / 60 s**
   (429 on exceed).

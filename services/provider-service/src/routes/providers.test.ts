@@ -88,12 +88,18 @@ describe("GET /api/providers/:id — suspended visibility gate", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.provider.id).toBe("p1");
-    // Contact exposed as `user`.
+    // Contact exposed as `user` — WITHOUT the phone (#64): the public payload
+    // never carries raw phone digits, only the name/email + has* booleans.
     expect(body.provider.user).toEqual({
       name: "Nimal Perera",
-      phone: "0770000000",
       email: "n@baas.lk",
     });
+    expect(body.provider.user).not.toHaveProperty("phone");
+    expect(body.provider).not.toHaveProperty("contactPhone");
+    expect(body.provider).not.toHaveProperty("whatsapp");
+    expect(body.provider).not.toHaveProperty("phone2");
+    // The provider HAS a phone, so the UI shows a reveal affordance.
+    expect(body.provider.hasPhone).toBe(true);
   });
 
   it("hides a suspended provider from an anonymous visitor (404)", async () => {
@@ -140,6 +146,47 @@ describe("GET /api/providers/:id/full — suspended gate mirrors detail", () => 
     expect(body.provider.id).toBe("p1");
     expect(body.provider).toHaveProperty("reviews");
     expect(body.provider).toHaveProperty("avgResponseMs");
+    // Phone digits are withheld from the public profile payload (#64).
+    expect(body.provider).not.toHaveProperty("contactPhone");
+    expect(body.provider).not.toHaveProperty("whatsapp");
+    expect(body.provider).not.toHaveProperty("phone2");
+    expect(body.provider.user).not.toHaveProperty("phone");
+    expect(body.provider.hasPhone).toBe(true);
+  });
+});
+
+describe("POST /api/providers/:id/contact — phone reveal (#64)", () => {
+  it("returns the raw numbers on the explicit reveal action", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({
+      contactPhone: "0770000000",
+      whatsapp: "0771111111",
+      phone2: null,
+      suspended: false,
+    });
+    const res = await req("/api/providers/p1/contact", { method: "POST" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      phone: "0770000000",
+      whatsapp: "0771111111",
+      phone2: null,
+    });
+  });
+
+  it("hides a suspended provider's numbers from the public (404)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({
+      contactPhone: "0770000000",
+      whatsapp: null,
+      phone2: null,
+      suspended: true,
+    });
+    const res = await req("/api/providers/p1/contact", { method: "POST" });
+    expect(res.status).toBe(404);
+  });
+
+  it("404 when the provider does not exist", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(null);
+    const res = await req("/api/providers/nope/contact", { method: "POST" });
+    expect(res.status).toBe(404);
   });
 });
 

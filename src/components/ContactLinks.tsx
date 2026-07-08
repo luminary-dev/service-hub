@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import type { IconType } from "@/components/icons";
 import {
   FaFacebookF,
@@ -8,15 +11,25 @@ import {
   FaWhatsapp,
   FaYoutube,
 } from "@/components/icons";
+import { useT } from "./I18nProvider";
 
 function normalizeUrl(v: string) {
   return v.startsWith("http") ? v : `https://${v}`;
 }
 
+// The digits fetched on demand from POST /api/providers/:id/contact.
+type Contact = { phone: string | null; whatsapp: string | null; phone2: string | null };
+
+// Phone/WhatsApp numbers are PII and easy to scrape, so the server keeps them
+// out of the profile payload (#64) — it only tells us whether each exists
+// (has* flags). We reveal the real digits on an explicit tap, fetching them
+// from a rate-limited endpoint, so anonymous page HTML never carries them.
+// Social links are public handles, not phone numbers, so they render inline.
 export default function ContactLinks(props: {
-  phone: string | null;
-  whatsapp: string | null;
-  phone2: string | null;
+  providerId: string;
+  hasPhone: boolean;
+  hasWhatsapp: boolean;
+  hasPhone2: boolean;
   facebook: string | null;
   instagram: string | null;
   tiktok: string | null;
@@ -24,6 +37,29 @@ export default function ContactLinks(props: {
   website: string | null;
   altLabel?: string;
 }) {
+  const t = useT();
+  const [contact, setContact] = useState<Contact | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+
+  const hasAnyNumber = props.hasPhone || props.hasWhatsapp || props.hasPhone2;
+
+  async function reveal() {
+    setLoading(true);
+    setError(false);
+    try {
+      const res = await fetch(`/api/providers/${props.providerId}/contact`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error("reveal failed");
+      setContact((await res.json()) as Contact);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   const socials: { label: string; value: string | null; icon: IconType; bg: string }[] = [
     { label: "Facebook", value: props.facebook, icon: FaFacebookF, bg: "bg-blue-600" },
     {
@@ -39,27 +75,47 @@ export default function ContactLinks(props: {
 
   return (
     <div className="flex flex-col items-start gap-3 sm:items-end">
-      <div className="flex flex-wrap gap-2">
-        {props.phone && (
-          <a href={`tel:${props.phone}`} className="btn-primary !px-4 !py-2">
-            <FaPhone className="h-3.5 w-3.5" /> {props.phone}
-          </a>
-        )}
-        {props.whatsapp && (
-          <a
-            href={`https://wa.me/${props.whatsapp.replace(/[^0-9]/g, "")}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 rounded-full bg-[#25D366] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2"
-          >
-            <FaWhatsapp className="h-4 w-4" /> WhatsApp
-          </a>
-        )}
-      </div>
-      {props.phone2 && (
-        <p className="text-sm text-ink-500">
-          {props.altLabel ?? "Alt:"} {props.phone2}
+      {hasAnyNumber && !contact && (
+        <button
+          type="button"
+          onClick={reveal}
+          disabled={loading}
+          className="btn-primary !px-4 !py-2"
+        >
+          <FaPhone className="h-3.5 w-3.5" />
+          {loading ? t.profile.revealing : t.profile.showNumber}
+        </button>
+      )}
+      {error && (
+        <p role="alert" className="text-sm text-red-600">
+          {t.profile.revealError}
         </p>
+      )}
+      {contact && (
+        <>
+          <div className="flex flex-wrap gap-2">
+            {contact.phone && (
+              <a href={`tel:${contact.phone}`} className="btn-primary !px-4 !py-2">
+                <FaPhone className="h-3.5 w-3.5" /> {contact.phone}
+              </a>
+            )}
+            {contact.whatsapp && (
+              <a
+                href={`https://wa.me/${contact.whatsapp.replace(/[^0-9]/g, "")}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-full bg-[#25D366] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2"
+              >
+                <FaWhatsapp className="h-4 w-4" /> WhatsApp
+              </a>
+            )}
+          </div>
+          {contact.phone2 && (
+            <p className="text-sm text-ink-500">
+              {props.altLabel ?? "Alt:"} {contact.phone2}
+            </p>
+          )}
+        </>
       )}
       {socials.length > 0 && (
         <div className="flex gap-2">

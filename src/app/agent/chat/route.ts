@@ -1,10 +1,13 @@
 // Thin streaming proxy to chat-service (#11). The assistant itself — the
 // ANTHROPIC_API_KEY, the Claude tool loop, the personas — lives in
 // chat-service (internal, behind the internal secret). This route forwards
-// the browser's message body plus the end-user's cookie, real IP and locale,
-// and pipes the SSE stream straight back. Kept outside the gateway-proxied
-// /api/* prefix because the gateway buffers; a direct web→chat stream doesn't.
-import { cookies, headers } from "next/headers";
+// the browser's message body plus the locale, and pipes the SSE stream
+// straight back. The assistant never acts on the user's behalf (it only
+// searches the public directory and proposes drafts the user confirms in the
+// app), so no session cookie is forwarded into the LLM-driven service. Kept
+// outside the gateway-proxied /api/* prefix because the gateway buffers; a
+// direct web→chat stream doesn't.
+import { cookies } from "next/headers";
 import { getSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -60,14 +63,8 @@ export async function POST(request: Request) {
     return Response.json({ error: "Message too large" }, { status: 413 });
   }
 
-  const [cookieStore, headerStore] = await Promise.all([cookies(), headers()]);
+  const cookieStore = await cookies();
   const locale = cookieStore.get("lang")?.value === "si" ? "si" : "en";
-  const cookie = cookieStore
-    .getAll()
-    .map((c) => `${c.name}=${c.value}`)
-    .join("; ");
-  const clientIp =
-    headerStore.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
   const body = await request.text();
   if (body.length > MAX_BODY_BYTES) {
     return Response.json({ error: "Message too large" }, { status: 413 });
@@ -82,8 +79,6 @@ export async function POST(request: Request) {
         headers: {
           "content-type": "application/json",
           "x-internal-secret": INTERNAL_API_SECRET,
-          "x-forwarded-cookie": cookie,
-          "x-client-ip": clientIp,
           "x-locale": locale,
         },
         body,

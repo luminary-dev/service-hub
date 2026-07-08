@@ -49,8 +49,6 @@ chatRoutes.post("/internal/chat/:persona/stream", async (c) => {
 
   const ctx: PersonaContext = {
     locale: c.req.header("x-locale") === "si" ? "si" : "en",
-    cookie: c.req.header("x-forwarded-cookie") ?? "",
-    forwardedFor: c.req.header("x-client-ip") ?? "unknown",
     gatewayUrl: GATEWAY_URL,
   };
 
@@ -92,15 +90,18 @@ chatRoutes.post("/internal/chat/:persona/stream", async (c) => {
           const results: Anthropic.ToolResultBlockParam[] = [];
           for (const tool of toolUses) {
             send({ type: "tool", name: tool.name });
-            const result = await persona.runTool(
+            const outcome = await persona.runTool(
               tool.name,
               tool.input as Record<string, unknown>,
               ctx
             );
+            // Out-of-band event (e.g. an inquiry proposal card): streamed to the
+            // browser only, never added to the model's message history.
+            if (outcome.clientEvent) send(outcome.clientEvent);
             results.push({
               type: "tool_result",
               tool_use_id: tool.id,
-              content: result,
+              content: outcome.result,
             });
           }
           messages.push({ role: "user", content: results });
