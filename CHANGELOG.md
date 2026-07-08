@@ -16,18 +16,42 @@ move to Cloudflare R2 for storage and the UI 2.0 redesign.
 
 ### Added
 
-- **Admin suite** — two-tier admin roles (**SUPPORT** read + report
-  resolve/dismiss; **ADMIN** full access) gating privileged actions end-to-end
-  (web + backend), an append-only audit log of every admin action, user
-  impersonation for support, bulk actions, user management, job management,
-  quality-score views, on-demand auto-flagging of low-quality / heavily-reported
-  providers, content restore, and in-app notification badges for new
-  verification requests and reports (see [docs/ADMIN.md](docs/ADMIN.md)).
+- **Admin dashboard** — an analytics / metrics home for `/admin` (key totals and
+  trend charts) in place of the bare index.
+- **Customer / user management** — an admin page to browse and manage customer
+  and user accounts.
+- **Provider quality score** — a computed signal (review rating folded against
+  open reports) surfaced as a badge on the admin provider list and detail.
+- **Moderation audit log** — an append-only record of admin moderation actions
+  (verify / suspend / report resolution) with actor, target and timestamp.
+- **Moderation toasts** — success / error toast feedback on every admin action.
+- **Reports queue: filtering + resolution audit trail** — filter the abuse-report
+  queue by target type and status, with a recorded who / when / outcome trail on
+  each resolution.
+- **Providers list: search, filter, sort & pagination** — server-side search
+  (name / contact), filters (category, city, verification status, suspended),
+  sort (newest / most reviews) and paging for the admin providers list.
+- **Verification queue upgrades** — bulk approve, an SLA age indicator on pending
+  requests, and an optional rejection reason stored for the provider.
+- **Bulk actions** — multi-select suspend / unsuspend on the providers list and
+  resolve / dismiss on the reports list.
+- **Automated flagging** — an admin-run pass that flags high-report / low-rated
+  providers into the moderation queue, with content restore.
+- **In-app notification badges** — counts on the admin nav for new verification
+  requests and open reports.
+- **Provider impersonation ("view as")** — support / admin can view the app as a
+  provider for debugging; each impersonation is recorded.
+- **Admin job management** — an admin view of posted jobs and provider responses.
+- **Tiered admin roles** — a `SUPPORT` role with read access to every admin view
+  plus report resolve / dismiss, distinct from full `ADMIN`; web and backend
+  authorization gates kept in lockstep (see [docs/AUTHZ.md](docs/AUTHZ.md) and
+  [docs/ADMIN.md](docs/ADMIN.md)).
 - **Cloudflare R2 storage** — media-service stores processed images in R2
   (S3-compatible, private bucket) when the `R2_*` vars are set, falling back to
   local disk in development.
-- **UI 2.0 redesign** — a refreshed, blueprint-themed design system across the
-  web app with light / dark modes (see [docs/DESIGN.md](docs/DESIGN.md)).
+- **UI 2.0 shared primitives** (`src/components/ui/`) — `PageHeader`,
+  `StatReadout`, `EmptyState` and `Field` / `FormRow`, the reusable blueprint
+  building blocks (see [docs/DESIGN.md](docs/DESIGN.md)).
 - **CI coverage + e2e jobs** — per-package coverage collection with a low
   ratchet-floor threshold (#262) and a compose-stack e2e smoke job that boots
   the whole stack on pull requests (#241).
@@ -35,12 +59,20 @@ move to Cloudflare R2 for storage and the UI 2.0 redesign.
   checks and rolls back on failure, and releases are tagged as part of the
   `dev → prod` flow.
 - **Project docs & governance** — `LICENSE`, a `SECURITY.md` disclosure
-  policy, a pull-request template, and the `docs/` technical reference
-  (architecture, authz, admin, security, design, deployment, operations,
-  backups, rate limiting, testing).
+  policy, a pull-request template, `CONTRIBUTING.md`, and the `docs/` technical
+  reference (architecture, authz, admin, security, design, deployment,
+  operations, backups, rate limiting, testing).
 
 ### Changed
 
+- **UI 2.0 redesign rollout** — the blueprint / technical design language,
+  previously only on the home, providers listing and provider-registration
+  pages, now covers the rest of the app: the global chrome (navbar, menus,
+  footer, banners), the auth pages (login, register, password reset, email
+  verification), the public provider profile, the customer account portal, the
+  provider dashboard, the jobs pages, and the full admin portal (shell,
+  dashboard, providers, verifications, reports, categories). Full light / dark
+  parity and the English / Sinhala toggle are preserved throughout.
 - **Dropped Vercel Blob** — all file storage now goes through media-service
   (R2 or local disk); the Vercel Blob dependency and code path were removed.
 - **Production Docker & ops** — multi-stage, non-root service images with
