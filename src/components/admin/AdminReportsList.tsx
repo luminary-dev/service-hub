@@ -4,10 +4,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { FaFlag } from "@/components/icons";
 import { useT, useLocale } from "../I18nProvider";
 import { formatDate } from "@/lib/format";
 import { hasSupportAccess } from "@/lib/roles";
 import Stars from "../Stars";
+import InView from "../InView";
+import EmptyState from "../ui/EmptyState";
 import ReportActions from "./ReportActions";
 
 // The moderation queue (#50) merges two sources — provider-service owns
@@ -156,7 +159,11 @@ export default function AdminReportsList({
     reason in tr.reasons ? tr.reasons[reason as keyof typeof tr.reasons] : reason;
 
   if (rows.length === 0) {
-    return <p className="mt-8 text-sm text-ink-500">{t.reportsEmpty}</p>;
+    return (
+      <div className="mt-6">
+        <EmptyState icon={FaFlag} title={t.reportsEmpty} />
+      </div>
+    );
   }
 
   return (
@@ -207,9 +214,13 @@ export default function AdminReportsList({
         </label>
       )}
 
-      <ul className="mt-3 space-y-3">
+      {/* Active caution rail: open reports are awaiting moderation. */}
+      {openRows.length > 0 && (
+        <div className="hazard mb-6 mt-6 h-1.5 w-full rounded-full" />
+      )}
+      <InView as="ul" stagger className="mt-3 space-y-3">
         {rows.map((r) => (
-          <li key={key(r)} className="card p-4">
+          <li key={key(r)} className="tech-corners card p-4">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="flex min-w-0 items-start gap-3">
                 {canAct && r.status === "OPEN" && (
@@ -223,11 +234,12 @@ export default function AdminReportsList({
                 )}
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="chip bg-ink-100 text-ink-600">
+                    <span className="chip bg-ink-100 font-mono uppercase tracking-[0.08em] text-ink-600">
                       {typeLabel[r.targetType]}
                     </span>
                     {r.status === "OPEN" && (
                       <span className="chip bg-amber-50 text-amber-700 ring-1 ring-amber-200">
+                        <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-amber-600" />
                         {t.openTag}
                       </span>
                     )}
@@ -250,12 +262,18 @@ export default function AdminReportsList({
                       {r.details}
                     </p>
                   )}
-                  <p className="mt-2 text-xs text-ink-500">
-                    {formatDate(r.createdAt, locale)} · {t.reportedBy}{" "}
-                    {r.reporterId ?? t.reportAnonymous}
+                  <p className="mt-2 flex flex-wrap items-center gap-1.5 font-mono text-xs text-ink-500">
+                    <span className="tabular-nums text-ink-600">
+                      {formatDate(r.createdAt, locale)}
+                    </span>
+                    <span className="text-ink-300">·</span>
+                    <span className="text-ink-400">{t.reportedBy}</span>
+                    <span className="text-ink-600">
+                      {r.reporterId ?? t.reportAnonymous}
+                    </span>
                   </p>
                   {r.status !== "OPEN" && r.resolvedBy && r.resolvedAt && (
-                    <p className="mt-1 text-xs text-ink-500">
+                    <p className="mt-1 font-mono text-xs text-ink-500">
                       {t.reportResolvedMeta(
                         r.resolvedBy,
                         formatDate(r.resolvedAt, locale)
@@ -276,7 +294,7 @@ export default function AdminReportsList({
               )}
             </div>
 
-            <div className="mt-3 rounded-xl bg-ink-50 p-3">
+            <div className="mt-3 rounded-xl border border-dashed border-ink-200 bg-ink-50 p-3">
               {r.target === null ? (
                 <p className="text-sm text-ink-500">{t.reportTargetGone}</p>
               ) : r.source === "review" ? (
@@ -296,7 +314,7 @@ export default function AdminReportsList({
                   </div>
                   <Link
                     href={`/admin/providers/${r.target.providerId}`}
-                    className="shrink-0 text-sm font-medium text-brand-700 hover:text-brand-800"
+                    className="shrink-0 text-sm font-semibold text-brand-700 transition-colors duration-200 ease-snap hover:text-brand-800"
                   >
                     {t.moderate}
                   </Link>
@@ -331,7 +349,7 @@ export default function AdminReportsList({
                   </div>
                   <Link
                     href={`/admin/providers/${r.target.providerId}`}
-                    className="shrink-0 text-sm font-medium text-brand-700 hover:text-brand-800"
+                    className="shrink-0 text-sm font-semibold text-brand-700 transition-colors duration-200 ease-snap hover:text-brand-800"
                   >
                     {t.moderate}
                   </Link>
@@ -340,7 +358,7 @@ export default function AdminReportsList({
             </div>
           </li>
         ))}
-      </ul>
+      </InView>
     </div>
   );
 }

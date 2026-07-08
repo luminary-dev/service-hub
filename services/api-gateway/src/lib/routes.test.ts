@@ -9,6 +9,18 @@ describe("resolveRoute (routing table)", () => {
     expect(resolveRoute("/api/favorites/prov-1")).toEqual({ service: "identity", path: "/api/favorites/prov-1" });
   });
 
+  it("routes admin user management to identity-service (#220 carve-out)", () => {
+    expect(resolveRoute("/api/admin/users")).toEqual({ service: "identity", path: "/api/admin/users" });
+    expect(resolveRoute("/api/admin/users/user-1")).toEqual({
+      service: "identity",
+      path: "/api/admin/users/user-1",
+    });
+    expect(resolveRoute("/api/admin/users/user-1/force-logout")).toEqual({
+      service: "identity",
+      path: "/api/admin/users/user-1/force-logout",
+    });
+  });
+
   it("routes account history to the owning services", () => {
     expect(resolveRoute("/api/account/inquiries")).toEqual({
       service: "provider",
@@ -89,6 +101,32 @@ describe("resolveRoute (routing table)", () => {
     });
   });
 
+  it("routes the admin audit logs to their owning services (#227)", () => {
+    expect(resolveRoute("/api/admin/audit-log")).toEqual({
+      service: "provider",
+      path: "/api/admin/audit-log",
+    });
+    expect(resolveRoute("/api/admin/review-audit-log")).toEqual({
+      service: "review",
+      path: "/api/admin/review-audit-log",
+    });
+  });
+
+  it("routes admin impersonation ('view as', #234) to identity-service", () => {
+    expect(resolveRoute("/api/admin/impersonate/user_1")).toEqual({
+      service: "identity",
+      path: "/api/admin/impersonate/user_1",
+    });
+    expect(resolveRoute("/api/admin/impersonate/someone%40example.com")).toEqual({
+      service: "identity",
+      path: "/api/admin/impersonate/someone%40example.com",
+    });
+    expect(resolveRoute("/api/admin/impersonate/end")).toEqual({
+      service: "identity",
+      path: "/api/admin/impersonate/end",
+    });
+  });
+
   it("routes the admin billing queue to job-service (#221)", () => {
     expect(resolveRoute("/api/admin/transactions")).toEqual({
       service: "job",
@@ -97,6 +135,14 @@ describe("resolveRoute (routing table)", () => {
     expect(resolveRoute("/api/admin/transactions/txn-1")).toEqual({
       service: "job",
       path: "/api/admin/transactions/txn-1",
+    });
+  });
+
+  it("routes admin job management to job-service (#222)", () => {
+    expect(resolveRoute("/api/admin/jobs")).toEqual({ service: "job", path: "/api/admin/jobs" });
+    expect(resolveRoute("/api/admin/jobs/job-1")).toEqual({
+      service: "job",
+      path: "/api/admin/jobs/job-1",
     });
   });
 

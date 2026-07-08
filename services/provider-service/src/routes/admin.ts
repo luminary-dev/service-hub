@@ -18,6 +18,27 @@ function isAdmin(c: Context): boolean {
   return getAuth(c)?.role === "ADMIN";
 }
 
+// Moderation audit trail (#227): fire-and-record after every write below.
+// Best-effort — a logging failure must never roll back or block the
+// moderation action itself, so errors are swallowed.
+async function logAudit(
+  c: Context,
+  action: string,
+  targetType: string,
+  targetId: string,
+  reason?: string | null
+): Promise<void> {
+  const adminId = getAuth(c)?.userId;
+  if (!adminId) return;
+  try {
+    await db.adminAuditLog.create({
+      data: { adminId, action, targetType, targetId, reason: reason || null },
+    });
+  } catch {
+    // best-effort
+  }
+}
+
 // Moderation list (#224): search by name/contact, filter by category, city,
 // verification status and suspended state, sort by newest or most reviews,
 // paginated. Every row carries contact info, local photo counts and review
@@ -194,6 +215,7 @@ adminRoutes.patch("/api/admin/providers/:id", async (c) => {
   }
 
   await db.provider.update({ where: { id }, data });
+  await logAudit(c, parsed.data.action, "PROVIDER", id);
   return c.json({ ok: true });
 });
 
@@ -255,6 +277,7 @@ adminRoutes.patch("/api/admin/verifications/:id", async (c) => {
       rejectionReason: approved ? null : parsed.data.reason || null,
     },
   });
+  await logAudit(c, approved ? "verify" : "reject-verification", "PROVIDER", id);
 
   return c.json({ status: approved ? "VERIFIED" : "REJECTED" });
 });
@@ -311,6 +334,7 @@ adminRoutes.delete("/api/admin/photos/:id", async (c) => {
     where: { id },
     data: { deletedAt: new Date() },
   });
+  await logAudit(c, "delete-photo", "WORK_PHOTO", id);
 
   return c.json({ ok: true });
 });
@@ -319,10 +343,12 @@ adminRoutes.patch("/api/admin/photos/:id/restore", async (c) => {
   if (!isAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
+  const id = c.req.param("id");
   await db.workPhoto.updateMany({
-    where: { id: c.req.param("id") },
+    where: { id },
     data: { deletedAt: null },
   });
+  await logAudit(c, "restore-photo", "WORK_PHOTO", id);
   return c.json({ ok: true });
 });
 
@@ -455,9 +481,10 @@ adminRoutes.patch("/api/admin/reports/:id", async (c) => {
     return c.json({ error: "Invalid input" }, 400);
   }
 
+  const id = c.req.param("id");
   // Audit trail (#223): stamp who closed the report and when.
   const { count } = await db.report.updateMany({
-    where: { id: c.req.param("id") },
+    where: { id },
     data: {
       status: parsed.data.status,
       resolvedBy: getAuth(c)?.userId ?? null,
@@ -467,6 +494,12 @@ adminRoutes.patch("/api/admin/reports/:id", async (c) => {
   if (count === 0) {
     return c.json({ error: "Report not found" }, 404);
   }
+  await logAudit(
+    c,
+    parsed.data.status === "RESOLVED" ? "resolve-report" : "dismiss-report",
+    "REPORT",
+    id
+  );
   return c.json({ ok: true });
 });
 
@@ -633,6 +666,7 @@ adminRoutes.post("/api/admin/categories", async (c) => {
       sortOrder: parsed.data.sortOrder ?? 0,
     },
   });
+  await logAudit(c, "create-category", "CATEGORY", category.slug);
   return c.json({ category });
 });
 
@@ -664,5 +698,47 @@ adminRoutes.patch("/api/admin/categories/:slug", async (c) => {
       ...(data.sortOrder !== undefined ? { sortOrder: data.sortOrder } : {}),
     },
   });
+  await logAudit(c, "edit-category", "CATEGORY", slug);
   return c.json({ category: updated });
+});
+
+// ---------------------------------------------------------------------------
+// Audit log (#227): read-only history of every moderation write above.
+// review-service keeps its own log for the actions it owns, exposed at
+// GET /api/admin/review-audit-log — the admin frontend merges both.
+// ---------------------------------------------------------------------------
+
+const AUDIT_LOG_TAKE = 200;
+
+adminRoutes.get("/api/admin/audit-log", async (c) => {
+  if (!isAdmin(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const adminId = c.req.query("adminId") || undefined;
+  const action = c.req.query("action") || undefined;
+  const from = c.req.query("from");
+  const to = c.req.query("to");
+
+  const createdAt: { gte?: Date; lte?: Date } = {};
+  if (from) {
+    const d = new Date(from);
+    if (!Number.isNaN(d.getTime())) createdAt.gte = d;
+  }
+  if (to) {
+    const d = new Date(to);
+    if (!Number.isNaN(d.getTime())) createdAt.lte = d;
+  }
+
+  const entries = await db.adminAuditLog.findMany({
+    where: {
+      ...(adminId ? { adminId } : {}),
+      ...(action ? { action } : {}),
+      ...(createdAt.gte || createdAt.lte ? { createdAt } : {}),
+    },
+    orderBy: { createdAt: "desc" },
+    take: AUDIT_LOG_TAKE,
+  });
+
+  return c.json({ entries });
 });

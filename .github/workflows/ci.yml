@@ -104,7 +104,7 @@ jobs:
           fi
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-${{ matrix.package }}
           path: ${{ matrix.package == 'web' && 'coverage' || format('services/{0}/coverage', matrix.package) }}

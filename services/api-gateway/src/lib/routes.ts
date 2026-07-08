@@ -44,8 +44,32 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
   ) {
     return { service: "review", path: pathname };
   }
+  // Moderation audit trail (#227): review-service's log of the actions it
+  // owns (review delete, report resolve/dismiss); the provider/category/photo
+  // log at /api/admin/audit-log falls through to provider-service below.
+  if (pathname === "/api/admin/review-audit-log") {
+    return { service: "review", path: pathname };
+  }
   if (pathname.startsWith("/api/reviews/")) {
     return { service: "review", path: pathname };
+  }
+
+  // User management (#220) is identity-service data; carved out of the
+  // generic /api/admin/ fallback below the same way review-service's queues
+  // are.
+  if (pathname === "/api/admin/users" || pathname.startsWith("/api/admin/users/")) {
+    return { service: "identity", path: pathname };
+  }
+
+  // Admin impersonation ("view as", #234) — identity-service owns User rows
+  // and mints/clears the impersonation cookie, so both the start (:userId)
+  // and end routes belong there rather than falling through to provider-
+  // service with the rest of /api/admin/*.
+  if (
+    pathname === "/api/admin/impersonate/end" ||
+    /^\/api\/admin\/impersonate\/[^/]+$/.test(pathname)
+  ) {
+    return { service: "identity", path: pathname };
   }
 
   // Billing admin queue (#221) — transactions are job-service data (they
@@ -66,6 +90,15 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
   }
   if (pathname === "/api/admin/review-stats") {
     return { service: "review", path: pathname };
+  }
+
+  // Admin job management (#222): job-service owns JobRequest/JobResponse; the
+  // rest of /api/admin/ falls through to provider-service below.
+  if (
+    pathname === "/api/admin/jobs" ||
+    pathname.startsWith("/api/admin/jobs/")
+  ) {
+    return { service: "job", path: pathname };
   }
 
   // Everything else under /api/admin/, including the notification-badge
