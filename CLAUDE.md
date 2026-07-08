@@ -26,6 +26,16 @@ Start with `docs/README.md` (the docs index) and `docs/ARCHITECTURE.md`.
 3. **Never merge a PR unless ALL checks pass, there are no conflicts, and the branch is up to date with `dev`.** No `--admin` bypass of failing/queued checks. The `dev` and `prod` rulesets are strict (up-to-date + required review + all CI green). Merge only when the state is genuinely CLEAN.
 4. **No AI attribution.** Do not add `Co-Authored-By:` trailers to commits or "Generated with …" footers to PR bodies.
 
+## The loop (every task)
+
+1. Read this file + `docs/README.md` and the docs for the area you're touching.
+2. **Verify current reality** — read the routes/schema/env you'll change; don't trust memory.
+3. Make the change on a branch (see naming below), matching surrounding style.
+4. **Update the docs** you affected in the same branch.
+5. Verify locally: `typecheck && test && build` for every touched package (web also `lint`).
+6. Open a PR (Conventional-Commit title, `Closes #n`, fill the template).
+7. Merge **only** when every check is green, there are no conflicts, and the branch is up to date. Then confirm the docs match what shipped.
+
 ## Branch naming
 
 - Work on an issue: `issue-<number>-<kebab-slug>` (e.g. `issue-231-bulk-actions`).
@@ -80,6 +90,7 @@ Start with `docs/README.md` (the docs index) and `docs/ARCHITECTURE.md`.
 - Branch model: work merges to `dev`; releasing is a PR `dev → prod`; the push to `prod` is the deploy trigger.
 - CD builds/publishes GHCR images, then (when `DEPLOY_ENABLED=true`) deploys over SSH with a health-gate and auto-rollback. A `v*` git tag cuts a versioned release.
 - After a release, sync the read-only service mirrors: `npm run sync:repos`.
+- Each service is **mirrored read-only** to its own `luminary-dev/<service>` repo. Never push or open PRs there — all changes land via monorepo PRs and are synced out. Direct pushes to mirrors are blocked by branch protection.
 
 ## Local dev quickstart
 
