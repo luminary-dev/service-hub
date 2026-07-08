@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useT } from "@/components/I18nProvider";
+import { useLocale, useT } from "@/components/I18nProvider";
+import { localizedHref } from "@/lib/links";
 import PasswordInput from "@/components/PasswordInput";
 import { Field } from "@/components/ui/Field";
 
@@ -14,6 +15,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const router = useRouter();
   const t = useT();
+  const locale = useLocale();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -27,7 +29,12 @@ export default function LoginPage() {
     setLoading(false);
     if (res.ok) {
       const data = await res.json();
-      router.push(data.user.role === "PROVIDER" ? "/dashboard" : "/providers");
+      router.push(
+        localizedHref(
+          data.user.role === "PROVIDER" ? "/dashboard" : "/providers",
+          locale,
+        ),
+      );
       router.refresh();
     } else {
       const data = await res.json().catch(() => ({}));
@@ -75,7 +82,7 @@ export default function LoginPage() {
                   {t.login.password}
                 </label>
                 <Link
-                  href="/forgot-password"
+                  href={localizedHref("/forgot-password", locale)}
                   className="text-xs font-medium text-brand-600 hover:text-brand-700"
                 >
                   {t.login.forgot}
@@ -108,7 +115,7 @@ export default function LoginPage() {
         <p className="mt-6 text-center text-sm text-ink-500">
           {t.login.newTo}{" "}
           <Link
-            href="/register"
+            href={localizedHref("/register", locale)}
             className="font-semibold text-brand-600 hover:text-brand-700"
           >
             {t.login.create}
