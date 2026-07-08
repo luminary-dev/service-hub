@@ -27,21 +27,21 @@ beforeEach(() => {
 // Minimal valid images produced by sharp (deterministic, no fixtures on disk).
 // Returned as Uint8Array so they slot straight into a File/Blob part.
 async function jpeg(): Promise<Uint8Array<ArrayBuffer>> {
-  return new Uint8Array(await sharp({ create: { width: 8, height: 8, channels: 3, background: { r: 10, g: 20, b: 30 } } }).jpeg().toBuffer()
+  return Uint8Array.from(await sharp({ create: { width: 8, height: 8, channels: 3, background: { r: 10, g: 20, b: 30 } } }).jpeg().toBuffer()
   );
 }
 async function png(): Promise<Uint8Array<ArrayBuffer>> {
-  return new Uint8Array(await sharp({ create: { width: 8, height: 8, channels: 4, background: { r: 1, g: 2, b: 3, alpha: 1 } } }).png().toBuffer()
+  return Uint8Array.from(await sharp({ create: { width: 8, height: 8, channels: 4, background: { r: 1, g: 2, b: 3, alpha: 1 } } }).png().toBuffer()
   );
 }
 async function webp(): Promise<Uint8Array<ArrayBuffer>> {
-  return new Uint8Array(await sharp({ create: { width: 8, height: 8, channels: 3, background: { r: 4, g: 5, b: 6 } } }).webp().toBuffer()
+  return Uint8Array.from(await sharp({ create: { width: 8, height: 8, channels: 3, background: { r: 4, g: 5, b: 6 } } }).webp().toBuffer()
   );
 }
 
 // A JPEG carrying EXIF, to prove the store→serve round trip strips metadata.
 async function jpegWithExif(): Promise<Uint8Array<ArrayBuffer>> {
-  return new Uint8Array(await sharp({ create: { width: 8, height: 8, channels: 3, background: { r: 200, g: 50, b: 50 } } })
+  return Uint8Array.from(await sharp({ create: { width: 8, height: 8, channels: 3, background: { r: 200, g: 50, b: 50 } } })
       .jpeg()
       .withExif({ IFD0: { Software: "test-suite", ImageDescription: "sensitive-marker" } })
       .toBuffer()
@@ -143,7 +143,7 @@ describe("POST /internal/media/store", () => {
 
   it("rejects a non-image payload with 400", async () => {
     const res = await postStore(
-      storeForm({ namespace: "provider", prefix: "uploads", file: new File([new Uint8Array(Buffer.from("<svg/>"))], "x.jpg", { type: "image/jpeg" }) })
+      storeForm({ namespace: "provider", prefix: "uploads", file: new File([Uint8Array.from(Buffer.from("<svg/>"))], "x.jpg", { type: "image/jpeg" }) })
     );
     expect(res.status).toBe(400);
     expect((await res.json()) as { error: string }).toHaveProperty("error");

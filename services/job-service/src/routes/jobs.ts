@@ -7,6 +7,7 @@ import { log } from "../lib/log";
 import { jobSchema, jobResponseSchema } from "../lib/job-schema";
 import { categoryValidator } from "../lib/categories";
 import { fetchUsers, fetchProviders } from "../lib/hydrate";
+import { normalizeListQuery } from "../lib/query";
 
 const PROVIDER_URL = process.env.PROVIDER_SERVICE_URL ?? "http://localhost:4002";
 const NOTIFICATION_URL = process.env.NOTIFICATION_SERVICE_URL ?? "http://localhost:4005";
@@ -83,23 +84,41 @@ jobs.get("/board", async (c) => {
     );
   }
 
-  const board = await db.jobRequest.findMany({
-    where: {
-      status: "OPEN",
-      category: provider.category,
-      district: provider.district,
-      NOT: { customerId: auth.userId },
-    },
-    orderBy: { createdAt: "desc" },
-    include: {
-      responses: { where: { providerId: provider.id }, select: { id: true } },
-    },
+  // Pagination (#203): the board is unbounded otherwise — cap the page and
+  // count the full match set so the web board can page through on demand.
+  const { page, pageSize } = normalizeListQuery({
+    page: c.req.query("page") ?? null,
+    pageSize: c.req.query("pageSize") ?? null,
+    take: c.req.query("take") ?? null,
   });
+
+  const where = {
+    status: "OPEN" as const,
+    category: provider.category,
+    district: provider.district,
+    NOT: { customerId: auth.userId },
+  };
+
+  const [board, total] = await Promise.all([
+    db.jobRequest.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      include: {
+        responses: { where: { providerId: provider.id }, select: { id: true } },
+      },
+    }),
+    db.jobRequest.count({ where }),
+  ]);
 
   const customerIds = [...new Set(board.map((j) => j.customerId))];
   const users = await fetchUsers(customerIds);
 
   return c.json({
+    total,
+    page,
+    pageSize,
     jobs: board.map((job) => ({
       id: job.id,
       title: job.title,
@@ -122,11 +141,26 @@ jobs.get("/mine", async (c) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  const myJobs = await db.jobRequest.findMany({
-    where: { customerId: auth.userId },
-    orderBy: { createdAt: "desc" },
-    include: { responses: { orderBy: { createdAt: "desc" } } },
+  // Pagination (#203): a customer's job history grows without bound — cap the
+  // page and count the total so the web my-jobs list can page through.
+  const { page, pageSize } = normalizeListQuery({
+    page: c.req.query("page") ?? null,
+    pageSize: c.req.query("pageSize") ?? null,
+    take: c.req.query("take") ?? null,
   });
+
+  const where = { customerId: auth.userId };
+
+  const [myJobs, total] = await Promise.all([
+    db.jobRequest.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      include: { responses: { orderBy: { createdAt: "desc" } } },
+    }),
+    db.jobRequest.count({ where }),
+  ]);
 
   const providerIds = [
     ...new Set(myJobs.flatMap((j) => j.responses.map((r) => r.providerId))),
@@ -134,6 +168,9 @@ jobs.get("/mine", async (c) => {
   const providers = await fetchProviders(providerIds);
 
   return c.json({
+    total,
+    page,
+    pageSize,
     jobs: myJobs.map((job) => ({
       id: job.id,
       title: job.title,

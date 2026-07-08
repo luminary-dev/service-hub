@@ -122,11 +122,17 @@ Each service is self-contained (own `package.json`, lockfile, Prisma schema, Doc
 
 ## Production notes
 
-- Set a strong shared `AUTH_SECRET` (identity signs; gateway + web verify) and a strong `INTERNAL_API_SECRET` (all services + gateway); never expose service ports publicly — only the gateway. Secrets live in the environment, never in the repo (see [docs/SECURITY.md](docs/SECURITY.md)).
+- Set a strong shared `AUTH_SECRET` (identity signs; gateway + web verify) and a strong `INTERNAL_API_SECRET` (all services + gateway); never expose service ports publicly — only the gateway. Secrets live in the environment, never in the repo (see [SECURITY.md](SECURITY.md)).
 - Uploads use Cloudflare R2 (S3-compatible, private bucket) when the four `R2_*` vars are set; otherwise local disk served via the gateway (`/api/files/*`) — fine for a single node, use R2 when scaling out.
 - Rate limits are Redis-backed and shared across gateway instances (`REDIS_URL`), with a per-instance in-memory fallback when Redis is unavailable (see [docs/RATE_LIMITING.md](docs/RATE_LIMITING.md)).
 - **Email (password reset & verification) is NOT delivering to real users yet** — it needs a verified sending domain + `RESEND_API_KEY` on notification-service. See [docs/EMAIL_SETUP.md](docs/EMAIL_SETUP.md).
 - Releases follow a `dev → prod` branch model: changes land on `dev`, and a `dev → prod` PR cuts a tagged release; production runs pre-built GHCR images (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) and [docs/OPERATIONS.md](docs/OPERATIONS.md)).
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before your first change — it covers local
+setup, the branch/PR workflow, Conventional Commits, and the merge rules. The full
+engineering contract (for humans and AI assistants alike) is in [CLAUDE.md](CLAUDE.md).
 
 ## Documentation
 
@@ -136,7 +142,7 @@ The monorepo `docs/` folder is the canonical technical + process reference; narr
 - [docs/FEATURES.md](docs/FEATURES.md) — product feature reference, per surface
 - [docs/AUTHZ.md](docs/AUTHZ.md) — authentication, sessions and the role/permission model
 - [docs/ADMIN.md](docs/ADMIN.md) — admin panel: tiered roles, audit log, moderation, impersonation
-- [docs/SECURITY.md](docs/SECURITY.md) — security model, secrets, and service hardening
+- [SECURITY.md](SECURITY.md) — security model, secrets, and service hardening
 - [docs/RATE_LIMITING.md](docs/RATE_LIMITING.md) — the Redis-backed distributed rate limiter
 - [docs/DESIGN.md](docs/DESIGN.md) — the design system, theming and i18n
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — the `dev → prod` release flow and production topology

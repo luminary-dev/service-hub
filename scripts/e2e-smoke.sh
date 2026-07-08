@@ -38,7 +38,7 @@ req() { # req <jar> <method> <path> [curl args...]
 }
 
 echo "== Health =="
-for port in 4000 4001 4002 4003 4004 4005; do
+for port in 4000 4001 4002 4003 4004 4005 4006; do
   check "healthz :$port" "$(curl -sS "http://localhost:$port/healthz")" '"ok":true'
 done
 
@@ -77,6 +77,11 @@ check "favorite remove" "$(req cust DELETE "/api/favorites/$PROV_ID" | jq -r '.f
 echo "== Inquiries + reviews =="
 check "inquiry create" "$(req cust POST "/api/providers/$PROV_ID/inquiries" -H 'content-type: application/json' \
   -d '{"name":"E2E Customer","phone":"0770000001","message":"This is an end to end inquiry message."}' \
+  | jq -r '.inquiry.status')" "NEW"
+# The review gate (#25) requires a real prior interaction with the SAME provider,
+# so establish an inquiry to prov_sampath before reviewing it.
+check "inquiry to review target" "$(req cust POST "/api/providers/prov_sampath/inquiries" -H 'content-type: application/json' \
+  -d '{"name":"E2E Customer","phone":"0770000001","message":"Interested in your services before I leave a review."}' \
   | jq -r '.inquiry.status')" "NEW"
 check "review create" "$(req cust POST "/api/providers/prov_sampath/reviews" \
   -F rating=5 -F comment='Great work, E2E approved!' | jq -r '.ok')" "true"

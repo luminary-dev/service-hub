@@ -7,6 +7,7 @@ import { z } from "zod";
 import { db } from "../db";
 import { logAudit } from "../lib/audit";
 import { getAuth, isSupportOrAdmin } from "../lib/http";
+import { normalizePagination, sliceOpenClosed } from "../lib/pagination";
 
 export const reports = new Hono();
 
@@ -77,10 +78,6 @@ reports.post("/api/reviews/:id/report", async (c) => {
 // /api/admin/reports, under its own path so the gateway can route by owner.
 // ---------------------------------------------------------------------------
 
-// The closed tail is bounded — the queue view is about what's OPEN; recently
-// handled reports are kept for context, not as a full audit browser.
-const CLOSED_REPORTS_TAKE = 100;
-
 const REPORT_STATUSES = ["OPEN", "RESOLVED", "DISMISSED"] as const;
 // This queue only ever holds REVIEW reports — provider/work-photo reports
 // live at provider-service. A PROVIDER/WORK_PHOTO filter is valid overall
@@ -88,45 +85,88 @@ const REPORT_STATUSES = ["OPEN", "RESOLVED", "DISMISSED"] as const;
 // never matches here, so it short-circuits to an empty list below.
 const LOCAL_TARGET_TYPE = "REVIEW";
 
-// OPEN reports first (newest first), then recently closed ones. Every report
-// carries a hydrated target summary from the local Review table (rating,
-// comment, provider/author ids); `target` is null when the review has since
-// been hard-deleted (account erasure). Soft-deleted reviews still hydrate,
-// flagged with removed=true, so an admin can see a report was already handled.
+// OPEN reports first (newest first), then closed ones (newest first). Every
+// report carries a hydrated target summary from the local Review table
+// (rating, comment, provider/author ids); `target` is null when the review has
+// since been hard-deleted (account erasure). Soft-deleted reviews still
+// hydrate, flagged with removed=true, so an admin can see a report was already
+// handled.
 //
 // Filtering (#223): optional `status` and `targetType` query params, passed
 // straight through from the admin frontend's filter dropdowns. Unrecognized
 // values are ignored (treated as "all").
+//
+// Pagination (#255): the OPEN group was previously unbounded (only the closed
+// tail was capped). Now every response is a normalized page/pageSize window
+// with `total`, matching provider-service's /api/admin/reports so the admin
+// frontend can paginate the two merged queues in lockstep.
 reports.get("/api/admin/review-reports", async (c) => {
   // Read access — open to the SUPPORT tier as well as full ADMIN (#226).
   if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
+  const { page, pageSize } = normalizePagination({
+    page: c.req.query("page") ?? null,
+    pageSize: c.req.query("pageSize") ?? null,
+  });
+  const skip = (page - 1) * pageSize;
+
   const statusParam = c.req.query("status");
   const status = REPORT_STATUSES.find((s) => s === statusParam);
   const targetTypeParam = c.req.query("targetType");
   if (targetTypeParam && targetTypeParam !== LOCAL_TARGET_TYPE) {
-    return c.json({ reports: [] });
+    return c.json({ reports: [], total: 0, page, pageSize });
   }
 
-  const rows = status
-    ? await db.report.findMany({
-        where: { status },
+  let total: number;
+  let rows: Awaited<ReturnType<typeof db.report.findMany>>;
+  if (status) {
+    const where = { status };
+    const [count, found] = await Promise.all([
+      db.report.count({ where }),
+      db.report.findMany({
+        where,
         orderBy: { createdAt: "desc" },
-        ...(status === "OPEN" ? {} : { take: CLOSED_REPORTS_TAKE }),
-      })
-    : await Promise.all([
-        db.report.findMany({
-          where: { status: "OPEN" },
-          orderBy: { createdAt: "desc" },
-        }),
-        db.report.findMany({
-          where: { status: { not: "OPEN" } },
-          orderBy: { createdAt: "desc" },
-          take: CLOSED_REPORTS_TAKE,
-        }),
-      ]).then(([open, closed]) => [...open, ...closed]);
+        skip,
+        take: pageSize,
+      }),
+    ]);
+    total = count;
+    rows = found;
+  } else {
+    // No status filter: OPEN group first, then closed. Count each group so the
+    // page window can be sliced across the two ordered queries.
+    const [openTotal, closedTotal] = await Promise.all([
+      db.report.count({ where: { status: "OPEN" } }),
+      db.report.count({ where: { status: { not: "OPEN" } } }),
+    ]);
+    total = openTotal + closedTotal;
+    const { openSkip, openTake, closedSkip, closedTake } = sliceOpenClosed(
+      skip,
+      pageSize,
+      openTotal
+    );
+    const [openRows, closedRows] = await Promise.all([
+      openTake > 0
+        ? db.report.findMany({
+            where: { status: "OPEN" },
+            orderBy: { createdAt: "desc" },
+            skip: openSkip,
+            take: openTake,
+          })
+        : Promise.resolve([]),
+      closedTake > 0
+        ? db.report.findMany({
+            where: { status: { not: "OPEN" } },
+            orderBy: { createdAt: "desc" },
+            skip: closedSkip,
+            take: closedTake,
+          })
+        : Promise.resolve([]),
+    ]);
+    rows = [...openRows, ...closedRows];
+  }
 
   const reviewIds = rows.map((r) => r.targetId);
   const reviews = reviewIds.length
@@ -161,7 +201,7 @@ reports.get("/api/admin/review-reports", async (c) => {
     };
   });
 
-  return c.json({ reports: result });
+  return c.json({ reports: result, total, page, pageSize });
 });
 
 // Lightweight count for the admin hub notification badge (#233) — avoids
