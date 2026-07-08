@@ -1,12 +1,14 @@
-name: Sync issues & PRs to project board
+name: Project board sync
 
-# Syncs every newly opened issue AND pull request onto the org-wide Service Hub
-# board (https://github.com/orgs/luminary-dev/projects/1) with Status=Backlog
-# and the Service field set for this repo, and assigns the item to whoever
-# opened it — the board's built-in Assignees field mirrors the issue/PR
-# assignees, so the creator shows up as the assignee on the board too.
-# Adding is idempotent (an item can only appear on the board once), and the
-# built-in auto-add workflow must stay OFF to keep a single sync path.
+# The board tracks ISSUES as the units of work. A pull request is never a
+# separate card: if it resolves an issue (via `Closes #n`) GitHub links it
+# under that issue automatically, and we mirror the assignee onto the linked
+# issue so the board card shows who's working it. A PR that resolves no issue
+# gets no card — it just gets its author assigned and merges (that's fine for
+# trivial chores; substantive work should have an issue first).
+#
+# The built-in project auto-add workflow must stay OFF — this is the single
+# sync path (double-adding would duplicate board items).
 on:
   issues:
     types: [opened, reopened]
@@ -19,24 +21,12 @@ permissions:
   pull-requests: write
 
 jobs:
-  sync-to-board:
+  # ── Issues: the board's work items ──────────────────────────────────────
+  add-issue-to-board:
+    if: github.event_name == 'issues'
     runs-on: ubuntu-latest
     steps:
-      - name: Assign the creator
-        # The opener becomes the assignee (self-assignment is allowed). The
-        # project board's Assignees field follows this automatically.
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          ACTOR: ${{ github.actor }}
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            gh pr edit "${{ github.event.pull_request.number }}" --repo "$REPO" --add-assignee "$ACTOR" || true
-          else
-            gh issue edit "${{ github.event.issue.number }}" --repo "$REPO" --add-assignee "$ACTOR" || true
-          fi
-
-      - name: Add to board
+      - name: Add issue to board
         id: add
         uses: actions/add-to-project@v2.0.0
         with:
@@ -61,3 +51,41 @@ jobs:
                 value: { singleSelectOptionId: "fa10f78e" }
               }) { clientMutationId }
             }'
+
+  # ── PRs: not board cards. Assign the author; mirror onto the resolved issue ─
+  assign-pr-and-linked-issue:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assign the PR to its author
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+          PR: ${{ github.event.pull_request.number }}
+        run: gh pr edit "$PR" --repo "$REPO" --add-assignee "$ACTOR" || true
+
+      - name: Mirror the assignee onto any issue this PR closes
+        # PRs are not added to the board; instead the issue(s) the PR resolves
+        # (Closes #n) get the PR author as assignee, so the board card reflects
+        # who's doing the work. No linked issue → nothing to do here.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+          OWNER: ${{ github.repository_owner }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          name="${REPO#*/}"
+          nums=$(gh api graphql -f owner="$OWNER" -f repo="$name" -F num="$PR" -f query='
+            query($owner:String!, $repo:String!, $num:Int!) {
+              repository(owner:$owner, name:$repo) {
+                pullRequest(number:$num) {
+                  closingIssuesReferences(first:20) { nodes { number } }
+                }
+              }
+            }' --jq '.data.repository.pullRequest.closingIssuesReferences.nodes[].number')
+          for n in $nums; do
+            echo "Assigning issue #$n to $ACTOR (resolved by PR #$PR)"
+            gh issue edit "$n" --repo "$REPO" --add-assignee "$ACTOR" || true
+          done
