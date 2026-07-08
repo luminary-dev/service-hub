@@ -1,0 +1,74 @@
+name: Move closed issues to Done
+
+# Keeps the org project board honest: when an issue is closed its board card
+# moves to Status=Done. Runs automatically on every issue close, and a manual
+# `workflow_dispatch` sweeps ALL currently-closed issues to Done (retroactive
+# cleanup). Uses the same PAT as the add-to-project workflow. The "Done" option
+# id is resolved by name at runtime so it survives board edits.
+on:
+  issues:
+    types: [closed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PROJECT_ID: PVT_kwDOD0HlNc4Bcax8
+  STATUS_FIELD_ID: PVTSSF_lADOD0HlNc4Bcax8zhXDxPc
+
+jobs:
+  to-done:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set closed issues to Done
+        env:
+          GH_TOKEN: ${{ secrets.ADD_TO_PROJECT_PAT }}
+        run: |
+          set -euo pipefail
+
+          # Resolve the "Done" single-select option id by name.
+          DONE=$(gh api graphql -f pid="$PROJECT_ID" -f query='
+            query($pid:ID!){ node(id:$pid){ ... on ProjectV2 {
+              field(name:"Status"){ ... on ProjectV2SingleSelectField { options { id name } } }
+            } } }' --jq '.data.node.field.options[] | select(.name=="Done") | .id')
+          if [ -z "$DONE" ]; then echo "No 'Done' status option on the board — nothing to do."; exit 0; fi
+
+          set_done() { # $1 = project item id
+            gh api graphql -f pid="$PROJECT_ID" -f fid="$STATUS_FIELD_ID" -f opt="$DONE" -f item="$1" -f query='
+              mutation($pid:ID!, $fid:ID!, $opt:String!, $item:ID!) {
+                updateProjectV2ItemFieldValue(input: {
+                  projectId: $pid, fieldId: $fid, itemId: $item,
+                  value: { singleSelectOptionId: $opt }
+                }) { clientMutationId }
+              }' >/dev/null
+          }
+
+          # Every board item that is a CLOSED issue and not already Done → Done.
+          gh api graphql --paginate -f pid="$PROJECT_ID" -f query='
+            query($pid:ID!, $endCursor:String) {
+              node(id:$pid) { ... on ProjectV2 {
+                items(first:100, after:$endCursor) {
+                  pageInfo { hasNextPage endCursor }
+                  nodes {
+                    id
+                    fieldValueByName(name:"Status") {
+                      ... on ProjectV2ItemFieldSingleSelectValue { name }
+                    }
+                    content {
+                      __typename
+                      ... on Issue { number state }
+                    }
+                  }
+                }
+              } }
+            }' --jq '.data.node.items.nodes[]
+                     | select(.content.__typename=="Issue" and .content.state=="CLOSED"
+                              and ((.fieldValueByName.name // "") != "Done"))
+                     | [.id, (.content.number|tostring)] | @tsv' \
+          | while IFS=$'\t' read -r item num; do
+              echo "Issue #$num closed → Done"
+              set_done "$item"
+            done
+
+          echo "Board sync complete."
