@@ -448,10 +448,13 @@ Review-photo bytes resolve at `/api/files/review/*`.
 - `PATCH /api/jobs/:id` — owner only; status OPEN|CLOSED.
 - `POST /api/jobs/:id/responses` — session; provider gate (S2S by-user, 403);
   open + dup checks; best-effort email to customer → `{ ok: true }`.
-- `GET /api/jobs/board` — provider gate: OPEN jobs matching category+district,
-  excluding own, with customer names + `responded` → `{ jobs }`.
-- `GET /api/jobs/mine` — own jobs with responses hydrated with provider
-  `{name, phone}` → `{ jobs }`.
+- `GET /api/jobs/board?page&pageSize` — provider gate: OPEN jobs matching
+  category+district, excluding own, with customer names + `responded`.
+  Paginated (default 20, max 50; `take` aliases `pageSize`) →
+  `{ jobs, total, page, pageSize }`.
+- `GET /api/jobs/mine?page&pageSize` — own jobs with responses hydrated with
+  provider `{name, phone}`. Paginated (same bounds) →
+  `{ jobs, total, page, pageSize }`.
 
 Admin (read-only oversight, gated `isSupportOrAdmin`):
 - `GET /api/admin/jobs?status&category` — list with customer name + response
