@@ -64,6 +64,17 @@ Start with `docs/README.md` (the docs index) and `docs/ARCHITECTURE.md`.
 - When **closing** an issue in a `luminary-dev` repo, assign **@dhanikaa**.
 - Use the templates in `.github/ISSUE_TEMPLATE/`.
 
+## Project board & assignees
+
+- Every new issue **and** pull request is auto-synced onto the org board
+  (`luminary-dev/projects/1`) by `.github/workflows/add-to-project.yml` with
+  `Status=Backlog` + the `Service` field, and the **opener is auto-assigned**.
+- **The assignee is whoever created the PR/issue** — on the PR/issue itself and,
+  because the Projects v2 board mirrors assignees, on the board too. Don't
+  reassign someone else's open PR to yourself; own what you open.
+- Keep GitHub's built-in project auto-add workflow **OFF** — the workflow above
+  is the single sync path (double-adding would duplicate board items).
+
 ## Verifying changes
 
 - For each package you touched: `npm run typecheck && npm test && npm run build`. For the web app also `npm run lint`.
@@ -102,3 +113,16 @@ docker compose up -d --build  # run the full stack in Docker
 docker compose exec -e SEED_DEMO_DATA=true identity-service npm run db:seed
 ```
 Demo accounts (all password `password123`): `admin@baas.lk` (ADMIN), plus demo providers and customers.
+
+**Local data is disposable.** We don't preserve or migrate data between runs on
+localhost — migrations rebuild the schema on a fresh DB every time. To get a
+clean stack, wipe the volumes and reseed:
+
+```bash
+./scripts/dev-reset.sh        # docker compose down -v → up -d --build → reseed
+```
+
+Don't commit local data files (the gitignored `services/*/data`, DB dumps,
+etc.). Seeds must contain **dummy data only** — no production config, secrets,
+real users, or business logic (the one exception is the guard that refuses to
+seed demo accounts under `NODE_ENV=production`).
