@@ -19,6 +19,7 @@ the security posture. Per-service API detail lives in each
 | Doc | What's in it |
 | --- | --- |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | The microservice split: the gateway, the backend services + web, per-service Postgres ownership, and the internal-HTTP (S2S) contract with the shared secret. |
+| [API.md](API.md) | The consolidated endpoint reference — every public `/api/*` route (method, auth/role, params, response) and every internal `/internal/*` S2S route, derived from the gateway routing table and the service handlers. |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Production topology — pre-built GHCR images behind Caddy on a single Docker host, the `dev → prod` branch/CD model, and `docker-compose.prod.yml`. |
 | [OPERATIONS.md](OPERATIONS.md) | Day-2 operations runbook: health checks, logs, restarts, migrations and routine maintenance. |
 | [AUTHZ.md](AUTHZ.md) | The authorization model — session JWTs, tiered roles, identity-header forwarding, and how each service enforces access. |
