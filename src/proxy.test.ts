@@ -53,7 +53,7 @@ describe("proxy", () => {
     expect(getRewrittenUrl(response)).toBe("http://localhost:4000/api/auth/me");
   });
 
-  it("only matches /api/* and /si paths", () => {
+  it("matches /api/*, /si, and page routes — but not Next internals/assets", () => {
     expect(
       unstable_doesMiddlewareMatch({ config, url: "/api/providers" }),
     ).toBe(true);
@@ -61,13 +61,46 @@ describe("proxy", () => {
     expect(
       unstable_doesMiddlewareMatch({ config, url: "/si/providers" }),
     ).toBe(true);
-    expect(unstable_doesMiddlewareMatch({ config, url: "/" })).toBe(false);
+    // Page routes now match too (#204): the proxy owns x-locale everywhere.
+    expect(unstable_doesMiddlewareMatch({ config, url: "/" })).toBe(true);
     expect(
       unstable_doesMiddlewareMatch({ config, url: "/dashboard" }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       unstable_doesMiddlewareMatch({ config, url: "/sinhala-page" }),
+    ).toBe(true);
+    // Next internals and metadata assets stay excluded.
+    expect(
+      unstable_doesMiddlewareMatch({ config, url: "/_next/static/chunk.js" }),
     ).toBe(false);
+    expect(
+      unstable_doesMiddlewareMatch({ config, url: "/favicon.ico" }),
+    ).toBe(false);
+  });
+
+  describe("x-locale trust boundary (#204)", () => {
+    it("overwrites a spoofed x-locale to 'en' on an English-root route", () => {
+      const response = proxy(
+        new NextRequest("http://localhost:3000/providers", {
+          headers: { "x-locale": "si" },
+        }),
+      );
+      // Not a rewrite/redirect — the request passes through to the app, but the
+      // forged header is neutralised before getUrlLocale() can read it.
+      expect(isRewrite(response)).toBe(false);
+      expect(response.headers.get("x-middleware-request-x-locale")).toBe("en");
+    });
+
+    it("pins x-locale to 'en' when the client sends none", () => {
+      const response = proxy(new NextRequest("http://localhost:3000/providers"));
+      expect(response.headers.get("x-middleware-request-x-locale")).toBe("en");
+    });
+
+    it("does not send page routes to the gateway", () => {
+      process.env.GATEWAY_URL = "http://api-gateway:4000";
+      const response = proxy(new NextRequest("http://localhost:3000/dashboard"));
+      expect(isRewrite(response)).toBe(false);
+    });
   });
 
   describe("/si locale prefix (#67)", () => {

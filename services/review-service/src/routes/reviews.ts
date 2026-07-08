@@ -15,26 +15,35 @@ const PROVIDER_SERVICE_URL = process.env.PROVIDER_SERVICE_URL ?? "http://localho
 
 type ProviderSummary = { id: string; userId: string; suspended: boolean };
 
-// Verified badge: the review is backed by a real interaction if the reviewer
-// previously sent this provider an inquiry through the platform. Evidence,
-// not a hard gate — plenty of real customers call the provider directly using
-// the public phone number — and a peer outage must not block reviews, so
-// failures degrade to unverified.
+// Review gate (#25): a review must be backed by a real interaction — the
+// reviewer having sent this provider an inquiry through the platform. The
+// inquiry is owned by provider-service (see its /internal/inquiries/exists,
+// which matches on providerId+userId; anonymous inquiries carry no userId and
+// never match). This is now a HARD gate on the write path, not just a badge:
+// no interaction => the create is rejected (403). Because it decides whether a
+// write is allowed, it fails loudly — a genuine upstream failure throws so the
+// caller returns 502 rather than silently allowing (or silently blocking) a
+// review. The single idempotent-GET retry lives in `s2s`.
+class InteractionCheckError extends Error {}
+
 async function hasPriorInteraction(
   providerId: string,
   userId: string
 ): Promise<boolean> {
+  let res: Response;
   try {
-    const res = await s2s(
+    res = await s2s(
       PROVIDER_SERVICE_URL,
       `/internal/inquiries/exists?providerId=${encodeURIComponent(providerId)}&userId=${encodeURIComponent(userId)}`
     );
-    if (!res.ok) return false;
-    const data = (await res.json()) as { exists?: boolean };
-    return data.exists === true;
-  } catch {
-    return false;
+  } catch (e) {
+    throw new InteractionCheckError(`inquiry check request failed: ${String(e)}`);
   }
+  if (!res.ok) {
+    throw new InteractionCheckError(`inquiry check returned ${res.status}`);
+  }
+  const data = (await res.json()) as { exists?: boolean };
+  return data.exists === true;
 }
 
 export const reviews = new Hono();
@@ -102,6 +111,27 @@ reviews.post("/api/providers/:id/reviews", async (c) => {
     return c.json({ error: "You cannot review your own profile" }, 400);
   }
 
+  // Gate on a real interaction (#25): a review is only creatable by someone who
+  // has sent this provider an inquiry through the platform. Checked BEFORE any
+  // form parsing / photo upload so a blocked review never stores files. A
+  // genuine upstream failure fails loudly (502) — never allow a review we
+  // couldn't verify, and never silently swallow a peer outage on a write gate.
+  let interacted: boolean;
+  try {
+    interacted = await hasPriorInteraction(id, auth.userId);
+  } catch {
+    return c.json({ error: "Upstream service unavailable" }, 502);
+  }
+  if (!interacted) {
+    return c.json(
+      {
+        error:
+          "You can only review a provider you've contacted. Send them an inquiry first.",
+      },
+      403
+    );
+  }
+
   const form = await c.req.formData().catch(() => null);
   if (!form) {
     return c.json({ error: "Invalid input" }, 400);
@@ -117,8 +147,6 @@ reviews.post("/api/providers/:id/reviews", async (c) => {
   const files = form
     .getAll("photos")
     .filter((f): f is File => f instanceof File && f.size > 0);
-
-  const verified = await hasPriorInteraction(id, auth.userId);
 
   // Validate and upload photos BEFORE mutating the review, so a rejected photo
   // batch (over the cap, or one media rejects) can't leave the rating/comment
@@ -155,12 +183,12 @@ reviews.post("/api/providers/:id/reviews", async (c) => {
   await db.$transaction(async (tx) => {
     const review = await tx.review.upsert({
       where: { providerId_userId: { providerId: id, userId: auth.userId } },
-      create: { providerId: id, userId: auth.userId, verified, ...parsed.data },
-      // On re-review only ever upgrade the badge: a provider-service outage
-      // (verified=false here) must not strip a previously earned one. deletedAt
-      // is deliberately untouched — editing a moderated review must not
-      // resurrect it (the admin's removal stands until restored).
-      update: { ...parsed.data, ...(verified ? { verified } : {}) },
+      // Reaching here means the interaction gate passed, so every review we
+      // write is a verified customer's. deletedAt is deliberately untouched —
+      // editing a moderated review must not resurrect it (the admin's removal
+      // stands until restored).
+      create: { providerId: id, userId: auth.userId, verified: true, ...parsed.data },
+      update: { ...parsed.data, verified: true },
       select: { id: true },
     });
     if (photoUrls.length > 0) {
