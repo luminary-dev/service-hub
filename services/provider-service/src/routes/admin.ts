@@ -12,6 +12,8 @@ import { computeQualityScore } from "../lib/quality-score";
 import {
   buildAdminProvidersWhere,
   normalizeAdminListQuery,
+  normalizePagination,
+  sliceOpenClosed,
 } from "../lib/admin-list";
 
 export const adminRoutes = new Hono();
@@ -154,23 +156,36 @@ adminRoutes.get("/api/admin/providers/:id", async (c) => {
 });
 
 // Pending verification queue, oldest submission first, with documents.
+// Paginated (#255): the queue grows unbounded otherwise, so `take`/`skip` are
+// derived from a normalized page/pageSize and the total is returned alongside.
 adminRoutes.get("/api/admin/verifications", async (c) => {
   if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
-  const rows = await db.provider.findMany({
-    where: { verificationStatus: "PENDING" },
-    orderBy: { updatedAt: "asc" },
-    include: { verificationDocs: true },
+  const { page, pageSize } = normalizePagination({
+    page: c.req.query("page") ?? null,
+    pageSize: c.req.query("pageSize") ?? null,
   });
+
+  const where = { verificationStatus: "PENDING" };
+  const [total, rows] = await Promise.all([
+    db.provider.count({ where }),
+    db.provider.findMany({
+      where,
+      orderBy: { updatedAt: "asc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      include: { verificationDocs: true },
+    }),
+  ]);
 
   const providers = rows.map((p) => ({
     ...p,
     user: { name: p.contactName, email: p.contactEmail },
   }));
 
-  return c.json({ providers });
+  return c.json({ providers, total, page, pageSize });
 });
 
 const actionSchema = z.object({
@@ -355,10 +370,6 @@ adminRoutes.patch("/api/admin/photos/:id/restore", async (c) => {
 // (review reports live at review-service under /api/admin/review-reports).
 // ---------------------------------------------------------------------------
 
-// The closed tail is bounded — the queue view is about what's OPEN; recently
-// handled reports are kept for context, not as a full audit browser.
-const CLOSED_REPORTS_TAKE = 100;
-
 const REPORT_STATUSES = ["OPEN", "RESOLVED", "DISMISSED"] as const;
 // This queue only ever holds PROVIDER/WORK_PHOTO reports — REVIEW reports
 // live at review-service. A REVIEW filter is valid overall (the admin
@@ -366,18 +377,30 @@ const REPORT_STATUSES = ["OPEN", "RESOLVED", "DISMISSED"] as const;
 // matches here, so it short-circuits to an empty list below.
 const LOCAL_TARGET_TYPES = ["PROVIDER", "WORK_PHOTO"] as const;
 
-// OPEN reports first (newest first), then recently closed ones. Every report
-// carries a hydrated target summary from local tables — provider name for
-// PROVIDER targets, photo url + owner for WORK_PHOTO targets — and `target`
-// is null when the target has since been hard-deleted.
+// OPEN reports first (newest first), then closed ones (newest first). Every
+// report carries a hydrated target summary from local tables — provider name
+// for PROVIDER targets, photo url + owner for WORK_PHOTO targets — and
+// `target` is null when the target has since been hard-deleted.
 //
 // Filtering (#223): optional `status` and `targetType` query params, passed
 // straight through from the admin frontend's filter dropdowns. Unrecognized
 // values are ignored (treated as "all").
+//
+// Pagination (#255): the OPEN group was previously unbounded (only the closed
+// tail was capped), so the queue grew linearly. Now every response is a
+// normalized page/pageSize window with `total`; the OPEN-first ordering is
+// preserved by slicing the virtual "open ++ closed" list across the two
+// group queries (see sliceOpenClosed).
 adminRoutes.get("/api/admin/reports", async (c) => {
   if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
+
+  const { page, pageSize } = normalizePagination({
+    page: c.req.query("page") ?? null,
+    pageSize: c.req.query("pageSize") ?? null,
+  });
+  const skip = (page - 1) * pageSize;
 
   const statusParam = c.req.query("status");
   const status = REPORT_STATUSES.find((s) => s === statusParam);
@@ -385,27 +408,61 @@ adminRoutes.get("/api/admin/reports", async (c) => {
   if (targetTypeParam && !LOCAL_TARGET_TYPES.includes(targetTypeParam as never)) {
     // A REVIEW (or otherwise unknown) filter never matches provider-service
     // reports.
-    return c.json({ reports: [] });
+    return c.json({ reports: [], total: 0, page, pageSize });
   }
   const targetType = targetTypeParam as (typeof LOCAL_TARGET_TYPES)[number] | undefined;
+  const targetFilter = targetType ? { targetType } : {};
 
-  const rows = status
-    ? await db.report.findMany({
-        where: { status, ...(targetType ? { targetType } : {}) },
+  let total: number;
+  let rows: Awaited<ReturnType<typeof db.report.findMany>>;
+  if (status) {
+    const where = { status, ...targetFilter };
+    const [count, found] = await Promise.all([
+      db.report.count({ where }),
+      db.report.findMany({
+        where,
         orderBy: { createdAt: "desc" },
-        ...(status === "OPEN" ? {} : { take: CLOSED_REPORTS_TAKE }),
-      })
-    : await Promise.all([
-        db.report.findMany({
-          where: { status: "OPEN", ...(targetType ? { targetType } : {}) },
-          orderBy: { createdAt: "desc" },
-        }),
-        db.report.findMany({
-          where: { status: { not: "OPEN" }, ...(targetType ? { targetType } : {}) },
-          orderBy: { createdAt: "desc" },
-          take: CLOSED_REPORTS_TAKE,
-        }),
-      ]).then(([open, closed]) => [...open, ...closed]);
+        skip,
+        take: pageSize,
+      }),
+    ]);
+    total = count;
+    rows = found;
+  } else {
+    // No status filter: OPEN group first, then closed. Count each group so the
+    // page window can be sliced across the two ordered queries.
+    const openWhere = { status: "OPEN", ...targetFilter };
+    const closedWhere = { status: { not: "OPEN" }, ...targetFilter };
+    const [openTotal, closedTotal] = await Promise.all([
+      db.report.count({ where: openWhere }),
+      db.report.count({ where: closedWhere }),
+    ]);
+    total = openTotal + closedTotal;
+    const { openSkip, openTake, closedSkip, closedTake } = sliceOpenClosed(
+      skip,
+      pageSize,
+      openTotal
+    );
+    const [openRows, closedRows] = await Promise.all([
+      openTake > 0
+        ? db.report.findMany({
+            where: openWhere,
+            orderBy: { createdAt: "desc" },
+            skip: openSkip,
+            take: openTake,
+          })
+        : Promise.resolve([]),
+      closedTake > 0
+        ? db.report.findMany({
+            where: closedWhere,
+            orderBy: { createdAt: "desc" },
+            skip: closedSkip,
+            take: closedTake,
+          })
+        : Promise.resolve([]),
+    ]);
+    rows = [...openRows, ...closedRows];
+  }
 
   const providerIds = rows
     .filter((r) => r.targetType === "PROVIDER")
@@ -463,7 +520,7 @@ adminRoutes.get("/api/admin/reports", async (c) => {
     return { ...r, target };
   });
 
-  return c.json({ reports });
+  return c.json({ reports, total, page, pageSize });
 });
 
 const reportStatusSchema = z.object({ status: z.enum(["RESOLVED", "DISMISSED"]) });
