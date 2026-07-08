@@ -131,6 +131,8 @@ const en = {
       "“Transformed our bare backyard into a beautiful tropical garden. Worth every rupee.”",
     cardQuoteBy: "— Tharindu, Kandy",
     cardAnswered: "Inquiry answered in 2 hours",
+    heroWorkerAlt: "A builder in safety gear holding a hammer",
+    heroTeaAlt: "Tea pluckers working on a Sri Lankan estate",
   },
   search: {
     placeholder: "What do you need? e.g. wiring, brake repair…",
@@ -1033,6 +1035,8 @@ const si: Dict = {
       "“අපේ හිස් වත්ත ලස්සන නිවර්තන උයනක් කළා. හැම රුපියලක්ම වටිනවා.”",
     cardQuoteBy: "— තරිඳු, මහනුවර",
     cardAnswered: "පැය 2කින් පිළිතුරු ලැබුණා",
+    heroWorkerAlt: "ආරක්ෂිත උපකරණ පැළඳ මිටියක් අතැතිව සිටින ගොඩනැගිලි කම්කරුවෙක්",
+    heroTeaAlt: "ශ්‍රී ලාංකික තේ වතුයායක වැඩ කරන තේ දළු නෙළන්නන්",
   },
   search: {
     placeholder: "ඔබට අවශ්‍ය කුමක්ද? උදා: වයරින්, බ්‍රේක්…",
