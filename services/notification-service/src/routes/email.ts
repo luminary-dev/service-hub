@@ -1,6 +1,7 @@
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import {
+  changeEmail,
   inquiryEmail,
   jobResponseEmail,
   passwordResetEmail,
@@ -53,6 +54,15 @@ emailRoutes.post("/password-reset", async (c) => {
   if (!parsed.success) return c.json({ error: "Invalid input" }, 400);
   const { to, url, locale } = parsed.data;
   const { subject, html } = passwordResetEmail(url, coerceLocale(locale));
+  const { delivered } = await sendMail({ to, subject, html });
+  return c.json({ ok: true, delivered });
+});
+
+emailRoutes.post("/change-email", async (c) => {
+  const parsed = baseSchema.safeParse(await readBody(c));
+  if (!parsed.success) return c.json({ error: "Invalid input" }, 400);
+  const { to, url, locale } = parsed.data;
+  const { subject, html } = changeEmail(url, coerceLocale(locale));
   const { delivered } = await sendMail({ to, subject, html });
   return c.json({ ok: true, delivered });
 });
