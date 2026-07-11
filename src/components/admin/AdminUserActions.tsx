@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useT } from "../I18nProvider";
 
-type Role = "CUSTOMER" | "PROVIDER" | "ADMIN";
+type Role = "CUSTOMER" | "PROVIDER" | "ADMIN" | "SUPPORT";
 
 export default function AdminUserActions({
   userId,
@@ -43,6 +43,7 @@ export default function AdminUserActions({
     { value: "CUSTOMER", label: t.roleCustomer },
     { value: "PROVIDER", label: t.roleProvider },
     { value: "ADMIN", label: t.roleAdmin },
+    { value: "SUPPORT", label: t.roleSupport },
   ];
 
   return (
