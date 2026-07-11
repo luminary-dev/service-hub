@@ -146,31 +146,37 @@ export default function ProviderRegisterForm({
         priceType: s.priceType,
       })),
     };
-    const res = await fetch(
-      authed ? "/api/auth/complete-provider" : "/api/auth/register",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          authed
-            ? profile
-            : {
-                role: "PROVIDER",
-                name: form.name.trim(),
-                email: form.email.trim(),
-                password: form.password,
-                ...profile,
-              },
-        ),
-      },
-    );
-    setLoading(false);
-    if (res.ok) {
-      router.push("/dashboard?welcome=1");
-      router.refresh();
-    } else {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? r.createFailed);
+    try {
+      const res = await fetch(
+        authed ? "/api/auth/complete-provider" : "/api/auth/register",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            authed
+              ? profile
+              : {
+                  role: "PROVIDER",
+                  name: form.name.trim(),
+                  email: form.email.trim(),
+                  password: form.password,
+                  ...profile,
+                },
+          ),
+        },
+      );
+      if (res.ok) {
+        router.push("/dashboard?welcome=1");
+        router.refresh();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? r.createFailed);
+      }
+    } catch {
+      // Network failure — recover instead of wedging the submit button (#431).
+      setError(r.createFailed);
+    } finally {
+      setLoading(false);
     }
   }
 

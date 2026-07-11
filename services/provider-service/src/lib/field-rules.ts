@@ -5,6 +5,12 @@
 import { z } from "zod";
 import { DISTRICTS } from "./constants";
 
+// Email is normalized (trim + lowercase) before validation so a case/whitespace
+// difference can never fork one person into two accounts or break a login. All
+// stored + looked-up emails go through this, and OAuth lowercases to match, so
+// address comparison is effectively case-insensitive (#431).
+export const emailAddress = z.string().trim().toLowerCase().email();
+
 // Districts stay a static enum; categories are validated dynamically against
 // provider-service's Category table (see lib/categories.ts) since #135/#60.
 export const districtEnum = z.enum([...DISTRICTS] as [string, ...string[]]);

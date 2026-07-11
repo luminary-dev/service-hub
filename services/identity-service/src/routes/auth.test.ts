@@ -266,6 +266,45 @@ describe("POST /api/auth/forgot-password", () => {
 // ---------------------------------------------------------------------------
 // POST /api/auth/reset-password
 // ---------------------------------------------------------------------------
+// Email case-insensitivity (#431): schema normalization means a mixed-case /
+// padded address resolves to the same account on register and login.
+describe("email normalization", () => {
+  it("stores a lower-cased email on register", async () => {
+    db.user.findUnique.mockResolvedValue(null);
+    db.user.create.mockResolvedValue({
+      id: "u1",
+      name: "Cased User",
+      role: "CUSTOMER",
+      sessionVersion: 0,
+    });
+    const res = await post("/api/auth/register", {
+      role: "CUSTOMER",
+      name: "Cased User",
+      email: "  Mixed@Case.COM ",
+      phone: "0771234567",
+      password: STRONG_PASSWORD,
+    });
+    expect(res.status).toBe(200);
+    expect(db.user.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ email: "mixed@case.com" }),
+      })
+    );
+  });
+
+  it("looks up a lower-cased email on login", async () => {
+    db.user.findUnique.mockResolvedValue(null);
+    const res = await post("/api/auth/login", {
+      email: "USER@Example.COM",
+      password: "whatever",
+    });
+    expect(res.status).toBe(401);
+    expect(db.user.findUnique).toHaveBeenCalledWith({
+      where: { email: "user@example.com" },
+    });
+  });
+});
+
 describe("POST /api/auth/reset-password", () => {
   it("400s when the new password fails the policy", async () => {
     const res = await post("/api/auth/reset-password", {
