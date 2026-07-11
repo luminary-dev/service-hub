@@ -711,6 +711,7 @@ const en = {
     errGeneric: "Sign-in with Google failed. Please try again.",
     errEmail: "Your Google account didn’t share a verified email address.",
     errUnavailable: "Google sign-in isn’t available right now.",
+    dataUse: "We only use your name and email to set up your account — nothing is posted on your behalf.",
   },
   welcome: {
     badge: "WELCOME",
@@ -1686,6 +1687,7 @@ const si: Dict = {
     errGeneric: "Google සමඟ පිවිසීම අසාර්ථකයි. නැවත උත්සාහ කරන්න.",
     errEmail: "ඔබේ Google ගිණුම තහවුරු කළ විද්‍යුත් තැපෑලක් බෙදා නොගත්තේය.",
     errUnavailable: "Google පිවිසීම දැන් ලබා ගත නොහැක.",
+    dataUse: "ඔබේ ගිණුම සෑදීමට අපි භාවිතා කරන්නේ ඔබේ නම සහ විද්‍යුත් තැපෑල පමණි — ඔබ වෙනුවෙන් කිසිවක් පළ නොකෙරේ.",
   },
   welcome: {
     badge: "සාදරයෙන් පිළිගනිමු",

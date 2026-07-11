@@ -5,6 +5,7 @@ import { z } from "zod";
 import { isCommonPassword } from "./common-passwords";
 import {
   districtEnum,
+  emailAddress,
   optionalSlPhone,
   optionalWebUrl,
   priceRupees,
@@ -32,7 +33,7 @@ export const passwordSchema = z
 
 const baseSchema = z.object({
   name: z.string().min(2).max(80),
-  email: z.string().email(),
+  email: emailAddress,
   password: passwordSchema,
   phone: slPhone,
 });

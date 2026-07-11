@@ -10,6 +10,7 @@ import { hashToken } from "../lib/tokens";
 import { eraseUserData } from "../lib/erase";
 import { isLockedOut, recordFailure } from "../lib/lockout";
 import { passwordSchema, providerSchema, registerSchema } from "../lib/register-schema";
+import { emailAddress } from "../lib/field-rules";
 import { categoryValidator } from "../lib/categories";
 import {
   createProviderProfile,
@@ -284,7 +285,7 @@ authRoutes.post("/leave-provider", async (c) => {
 // POST /api/auth/login
 // ---------------------------------------------------------------------------
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: emailAddress,
   password: z.string().min(1),
 });
 
@@ -604,7 +605,7 @@ authRoutes.post("/resend-verification", async (c) => {
 // ---------------------------------------------------------------------------
 // POST /api/auth/forgot-password
 // ---------------------------------------------------------------------------
-const forgotSchema = z.object({ email: z.string().email() });
+const forgotSchema = z.object({ email: emailAddress });
 
 authRoutes.post("/forgot-password", async (c) => {
   const body = await c.req.json().catch(() => null);

@@ -25,17 +25,23 @@ function ResetForm() {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const res = await fetch("/api/auth/reset-password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, password }),
-    });
-    setLoading(false);
-    if (res.ok) {
-      setDone(true);
-    } else {
-      const d = await res.json().catch(() => ({}));
-      setError(d.error ?? t.reset.genericError);
+    try {
+      const res = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, password }),
+      });
+      if (res.ok) {
+        setDone(true);
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setError(d.error ?? t.reset.genericError);
+      }
+    } catch {
+      // Network failure — recover instead of wedging the button (#431).
+      setError(t.reset.genericError);
+    } finally {
+      setLoading(false);
     }
   }
 

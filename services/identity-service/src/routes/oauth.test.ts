@@ -102,6 +102,16 @@ describe("GET /api/auth/oauth/google/callback", () => {
     expect(res.headers.get("location")).toBe(`${ORIGIN}/login?error=oauth`);
   });
 
+  it("treats a provider error (cancelled consent) as a quiet return, not a failure", async () => {
+    const res = await get(
+      "/api/auth/oauth/google/callback?error=access_denied&state=s1",
+      goodCookie
+    );
+    expect(res.status).toBe(302);
+    // Back to /login with no scary error banner (#431).
+    expect(res.headers.get("location")).toBe(`${ORIGIN}/login`);
+  });
+
   it("rejects an unverified provider email", async () => {
     parseGoogleIdToken.mockReturnValue({ ...VERIFIED, emailVerified: false });
     const res = await get(cbUrl, goodCookie);
