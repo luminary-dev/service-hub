@@ -233,6 +233,7 @@ Public entry. Responsibilities:
    containing `/internal` (raw or percent-encoded) is never forwarded → `404`.
    - `/api/files/provider/*`, `/api/files/review/*` → media `/files/*`
    - `/api/account/inquiries` → provider; `/api/account/reviews` → review
+   - `/api/account/profile`, `/api/account/email/{change,confirm}` → identity
    - `/api/providers/:id/reviews` → review
    - `/api/admin/reviews/*`, `/api/admin/review-reports*`,
      `/api/admin/review-audit-log`, `/api/admin/review-stats` → review
