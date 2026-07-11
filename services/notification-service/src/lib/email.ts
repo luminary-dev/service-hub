@@ -75,6 +75,10 @@ const T: Record<
     verifyHeading: string;
     verifyBody: string;
     verifyButton: string;
+    changeSubject: string;
+    changeHeading: string;
+    changeBody: string;
+    changeButton: string;
   }
 > = {
   en: {
@@ -88,6 +92,11 @@ const T: Record<
     verifyBody:
       "Thanks for joining Baas.lk. Please confirm your email address. This link expires in 24 hours.",
     verifyButton: "Verify email",
+    changeSubject: "Confirm your new Baas.lk email",
+    changeHeading: "Confirm your new email address",
+    changeBody:
+      "We received a request to change the email address on your Baas.lk account to this one. Confirm to complete the change. This link expires in 1 hour. If you did not request this, you can safely ignore this email — your address will not change.",
+    changeButton: "Confirm new email",
   },
   si: {
     resetSubject: "ඔබේ Baas.lk මුරපදය යළි සකසන්න",
@@ -100,6 +109,11 @@ const T: Record<
     verifyBody:
       "Baas.lk හා එක්වීම ගැන ස්තූතියි. කරුණාකර ඔබේ විද්‍යුත් තැපැල් ලිපිනය තහවුරු කරන්න. මෙම සබැඳිය පැය 24කින් කල් ඉකුත් වේ.",
     verifyButton: "විද්‍යුත් තැපෑල තහවුරු කරන්න",
+    changeSubject: "ඔබේ නව Baas.lk විද්‍යුත් තැපෑල තහවුරු කරන්න",
+    changeHeading: "ඔබේ නව විද්‍යුත් තැපැල් ලිපිනය තහවුරු කරන්න",
+    changeBody:
+      "ඔබේ Baas.lk ගිණුමේ විද්‍යුත් තැපැල් ලිපිනය මෙයට වෙනස් කිරීමට ඉල්ලීමක් ලැබුණා. වෙනස්කම සම්පූර්ණ කිරීමට තහවුරු කරන්න. මෙම සබැඳිය පැය 1කින් කල් ඉකුත් වේ. ඔබ මෙය ඉල්ලා නොමැති නම්, මෙම විද්‍යුත් තැපෑල නොසලකා හැරිය හැක — ඔබේ ලිපිනය වෙනස් නොවේ.",
+    changeButton: "නව විද්‍යුත් තැපෑල තහවුරු කරන්න",
   },
 };
 
@@ -116,6 +130,14 @@ export function verifyEmail(url: string, locale: Locale = "en") {
   return {
     subject: t.verifySubject,
     html: layout(t.verifyHeading, t.verifyBody, t.verifyButton, url),
+  };
+}
+
+export function changeEmail(url: string, locale: Locale = "en") {
+  const t = T[locale] ?? T.en;
+  return {
+    subject: t.changeSubject,
+    html: layout(t.changeHeading, t.changeBody, t.changeButton, url),
   };
 }
 
