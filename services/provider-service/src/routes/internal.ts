@@ -100,16 +100,46 @@ internalRoutes.post("/internal/providers", async (c) => {
     return c.json({ id: provider.id });
   } catch (e) {
     // userId is unique: a retried/concurrent registration for the same user
-    // must be idempotent, not an unhandled 500. Return the existing id.
+    // must be idempotent, not an unhandled 500. Return the existing id. If the
+    // profile was self-deactivated (#403 downgrade), becoming a provider again
+    // reactivates it — only a self-downgraded user (role CUSTOMER) can reach
+    // complete-provider, so this never un-suspends an admin suspension.
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
       const existing = await db.provider.findUnique({
         where: { userId: data.userId },
-        select: { id: true },
+        select: { id: true, suspended: true },
       });
-      if (existing) return c.json({ id: existing.id });
+      if (existing) {
+        if (existing.suspended) {
+          await db.provider.update({
+            where: { id: existing.id },
+            data: { suspended: false },
+          });
+        }
+        return c.json({ id: existing.id });
+      }
     }
     throw e;
   }
+});
+
+// Self-service downgrade (#403): a provider closing their own profile. Hides
+// it from every public listing (the `suspended` flag the admin path already
+// uses). Idempotent — a missing profile is a no-op { ok: true } so identity's
+// role flip can proceed. Reversible: becoming a provider again unsuspends it
+// via the /internal/providers create path below.
+internalRoutes.post("/internal/providers/by-user/:userId/deactivate", async (c) => {
+  const userId = c.req.param("userId");
+  const provider = await db.provider.findUnique({
+    where: { userId },
+    select: { id: true },
+  });
+  if (!provider) return c.json({ ok: true, deactivated: false });
+  await db.provider.update({
+    where: { id: provider.id },
+    data: { suspended: true },
+  });
+  return c.json({ ok: true, deactivated: true });
 });
 
 // Login / job-board gate: the provider owned by a user, if any.
