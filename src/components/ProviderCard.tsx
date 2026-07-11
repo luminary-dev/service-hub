@@ -16,20 +16,33 @@ import {
 } from "@/lib/i18n";
 import { localizedHref } from "@/lib/links";
 
-// Real trade photography (public/images/workers) keyed by category slug -
-// used in place of the flat placeholder cover art when a provider hasn't
-// uploaded their own photo. Categories without a shot keep the placeholder.
-const TRADE_PHOTOS: Record<string, string> = {
-  mechanic: "/images/workers/mechanic.jpg",
-  electrician: "/images/workers/electrician.jpg",
-  plumber: "/images/workers/plumber.jpg",
-  carpenter: "/images/workers/carpenter.jpg",
-  mason: "/images/workers/mason.jpg",
-  painter: "/images/workers/painter.jpg",
-  welder: "/images/workers/welder.jpg",
-  "garden-designer": "/images/workers/garden-designer.jpg",
-  roofer: "/images/workers/roofer.jpg",
+// Real trade photography (public/images/workers) keyed by category slug — a
+// fallback cover when a provider hasn't uploaded their own. Each category has a
+// POOL of variants so same-trade providers don't all share one image; the
+// specific one is chosen deterministically per provider id (tradePhoto below).
+// Categories without a pool keep the flat placeholder. Landscape (1536x1024) to
+// match the card's banner crop.
+const TRADE_PHOTOS: Record<string, string[]> = {
+  mechanic: [1, 2, 3].map((n) => `/images/workers/mechanic-${n}.jpg`),
+  electrician: [1, 2, 3].map((n) => `/images/workers/electrician-${n}.jpg`),
+  plumber: [1, 2, 3].map((n) => `/images/workers/plumber-${n}.jpg`),
+  carpenter: [1, 2, 3].map((n) => `/images/workers/carpenter-${n}.jpg`),
+  mason: [1, 2, 3].map((n) => `/images/workers/mason-${n}.jpg`),
+  painter: [1, 2, 3].map((n) => `/images/workers/painter-${n}.jpg`),
+  welder: [1, 2, 3].map((n) => `/images/workers/welder-${n}.jpg`),
+  "garden-designer": [1, 2, 3].map((n) => `/images/workers/garden-designer-${n}.jpg`),
+  roofer: [1, 2, 3].map((n) => `/images/workers/roofer-${n}.jpg`),
 };
+
+// Stable per-provider pick from the category pool: the same provider always
+// shows the same cover, but two carpenters get different ones.
+function tradePhoto(category: string, seed: string): string | undefined {
+  const pool = TRADE_PHOTOS[category];
+  if (!pool || pool.length === 0) return undefined;
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return pool[h % pool.length];
+}
 
 // Card payload as served by `GET /api/providers` on the gateway
 // (provider-service's ProviderCardDTO). Dates arrive as ISO strings; rating
@@ -81,7 +94,7 @@ export default function ProviderCard({
   const cover =
     p.coverPhoto && !isSvg(p.coverPhoto)
       ? p.coverPhoto
-      : TRADE_PHOTOS[p.category] ?? p.coverPhoto;
+      : tradePhoto(p.category, p.id) ?? p.coverPhoto;
   return (
     <div className="relative">
       {showFavorite && (
@@ -118,13 +131,6 @@ export default function ProviderCard({
             {categoryLabelLoc(p.category, locale)}
           </span>
 
-          {/* experience "stamp" */}
-          {p.experience > 0 && (
-            <span className="absolute bottom-3 left-3 rounded-md bg-black/45 px-2 py-1 font-mono text-[10px] font-semibold tabular-nums text-white backdrop-blur-sm">
-              {t.card.yrs(p.experience)}
-            </span>
-          )}
-
           {/* availability */}
           {away ? (
             <span className="chip absolute bottom-3 right-3 bg-white/95 text-amber-700 dark:bg-ink-50/90">
@@ -144,7 +150,7 @@ export default function ProviderCard({
         {/* -- Body -- */}
         <div className="p-4">
           <div className="flex items-start gap-3">
-            <div className="-mt-10 rounded-full border-4 border-surface shadow-[0_4px_12px_rgba(34,29,24,0.12)]">
+            <div className="relative z-10 -mt-10 rounded-full border-4 border-surface shadow-[0_4px_12px_rgba(34,29,24,0.12)]">
               <Avatar name={p.name} url={p.avatarUrl} size={56} />
             </div>
             <div className="min-w-0 flex-1 pt-1.5">
@@ -159,6 +165,7 @@ export default function ProviderCard({
               </h3>
               <p className="mt-0.5 truncate font-mono text-[11px] uppercase tracking-wider text-ink-500">
                 {p.city} · {districtLabelLoc(p.district, locale)}
+                {p.experience > 0 && <> · {t.card.yrs(p.experience)}</>}
               </p>
             </div>
           </div>
