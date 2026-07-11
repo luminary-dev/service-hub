@@ -13,8 +13,10 @@ import { passwordSchema, providerSchema, registerSchema } from "../lib/register-
 import { categoryValidator } from "../lib/categories";
 import {
   createProviderProfile,
+  deactivateProviderProfile,
   getProviderIdByUser,
 } from "../lib/providers";
+import { logAudit } from "../lib/audit";
 import {
   sendPasswordResetEmail,
   sendVerificationEmail,
@@ -232,6 +234,53 @@ authRoutes.post("/complete-provider", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /api/auth/leave-provider
+// ---------------------------------------------------------------------------
+// Counterpart to complete-provider (#403): a provider reverting to a plain
+// customer. Owns the request/cookie so it can re-issue the session as CUSTOMER
+// with no re-login (an S2S call can't touch the caller's cookie). Suspend/hide,
+// not delete — reviews/inquiries/job responses are retained and re-upgrading
+// restores the profile.
+authRoutes.post("/leave-provider", async (c) => {
+  const auth = getAuth(c);
+  if (!auth) return c.json({ error: "Unauthorized" }, 401);
+
+  const user = await db.user.findUnique({ where: { id: auth.userId } });
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+  if (user.role !== "PROVIDER") {
+    return c.json({ error: "You are not a provider." }, 409);
+  }
+
+  // Hide the profile FIRST (write-path gate). If provider-service is down we
+  // return 502 and leave the role untouched, so the two services never disagree
+  // ("still a provider in listings but a customer in identity").
+  try {
+    await deactivateProviderProfile(user.id);
+  } catch (e) {
+    log.error("provider deactivate failed", { context: "leave-provider", err: e });
+    return c.json({ error: "Upstream service unavailable" }, 502);
+  }
+
+  // Flip role → CUSTOMER and bump sessionVersion (old PROVIDER token revoked);
+  // the fresh cookie below keeps this session signed in as a customer.
+  const updated = await db.user.update({
+    where: { id: user.id },
+    data: { role: "CUSTOMER", sessionVersion: { increment: 1 } },
+  });
+
+  await createSession(c, {
+    userId: updated.id,
+    role: updated.role,
+    name: updated.name,
+    sv: updated.sessionVersion,
+  });
+
+  await logAudit(c, "LEAVE_PROVIDER", "USER", updated.id);
+
+  return c.json({ user: { id: updated.id, name: updated.name, role: updated.role } });
+});
+
+// ---------------------------------------------------------------------------
 // POST /api/auth/login
 // ---------------------------------------------------------------------------
 const loginSchema = z.object({
@@ -418,6 +467,8 @@ authRoutes.get("/me", async (c) => {
       id: user.id,
       name: user.name,
       email: user.email,
+      phone: user.phone,
+      emailVerified: user.emailVerified,
       role: user.role,
       providerId,
     },

@@ -43,6 +43,7 @@ model User {
 
   passwordResetTokens     PasswordResetToken[]
   emailVerificationTokens EmailVerificationToken[]
+  emailChangeTokens       EmailChangeToken[]
   accounts                Account[]
 }
 
@@ -92,6 +93,26 @@ model ImpersonationLog {
   @@index([targetUserId])
 }
 
+// Audit trail for identity-owned actions (#403 and future user-management
+// writes). Same shape as provider-service / review-service's AdminAuditLog so
+// the admin frontend can merge them; identity previously kept none. For a
+// self-service action (a provider closing their own profile) `adminId` is the
+// acting user themselves. No relation to User — an audit record must survive
+// account deletion, same rationale as AccountDeletion / ImpersonationLog above.
+model AdminAuditLog {
+  id         String   @id @default(cuid())
+  adminId    String
+  action     String
+  targetType String
+  targetId   String
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  @@index([adminId])
+  @@index([action])
+  @@index([createdAt])
+}
+
 // providerId references a Provider owned by provider-service; no FK across
 // service boundaries — existence is checked over S2S HTTP at write time.
 model Favorite {
@@ -122,6 +143,22 @@ model EmailVerificationToken {
   tokenHash String   @unique
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// Change-email flow (#396): a pending move of a user's address to `newEmail`,
+// confirmed by clicking a link sent TO the new address (so the user must prove
+// control of it before the switch). Single active token per user, 1h TTL,
+// hash-only storage — same shape as the verification/reset tokens above.
+model EmailChangeToken {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  newEmail  String
   expiresAt DateTime
   createdAt DateTime @default(now())
 

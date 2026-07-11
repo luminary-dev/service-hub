@@ -14,7 +14,10 @@ import { authRoutes } from "./auth";
 import { hashToken } from "../lib/tokens";
 import { sendVerificationEmail, sendPasswordResetEmail } from "../lib/verification";
 import { eraseUserData } from "../lib/erase";
-import { createProviderProfile } from "../lib/providers";
+import {
+  createProviderProfile,
+  deactivateProviderProfile,
+} from "../lib/providers";
 
 // Stateful-enough Prisma double: canned per-test return values + call assertions
 // (mirrors the vi.fn()/stubFetch style already used in providers.test.ts).
@@ -50,7 +53,9 @@ vi.mock("../lib/erase", () => ({ eraseUserData: vi.fn() }));
 vi.mock("../lib/providers", () => ({
   getProviderIdByUser: vi.fn(async () => null),
   createProviderProfile: vi.fn(),
+  deactivateProviderProfile: vi.fn(),
 }));
+vi.mock("../lib/audit", () => ({ logAudit: vi.fn() }));
 
 // Mount the auth routes on a bare app — no gateway/internal-secret middleware,
 // so we drive the handlers directly. Auth is simulated with the x-user-* headers
@@ -517,6 +522,50 @@ describe("POST /api/auth/complete-provider", () => {
     const res = await post("/api/auth/complete-provider", providerBody, AUTH_HEADERS);
     expect(res.status).toBe(409);
     expect(createProviderProfile).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/leave-provider (#403)
+// ---------------------------------------------------------------------------
+describe("POST /api/auth/leave-provider", () => {
+  const PROVIDER_HEADERS = { ...AUTH_HEADERS, "x-user-role": "PROVIDER" };
+
+  it("hides the profile, flips role to CUSTOMER, and re-issues the session", async () => {
+    db.user.findUnique.mockResolvedValue({ id: "u1", name: "Ann", role: "PROVIDER" });
+    vi.mocked(deactivateProviderProfile).mockResolvedValue();
+    db.user.update.mockResolvedValue({
+      id: "u1",
+      name: "Ann",
+      role: "CUSTOMER",
+      sessionVersion: 2,
+    });
+
+    const res = await post("/api/auth/leave-provider", {}, PROVIDER_HEADERS);
+    expect(res.status).toBe(200);
+    expect(deactivateProviderProfile).toHaveBeenCalledWith("u1");
+    expect(db.user.update).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      data: { role: "CUSTOMER", sessionVersion: { increment: 1 } },
+    });
+    expect(res.headers.get("set-cookie")).toContain("sh_session=");
+  });
+
+  it("409s an account that is not a provider", async () => {
+    db.user.findUnique.mockResolvedValue({ id: "u1", name: "Ann", role: "CUSTOMER" });
+    const res = await post("/api/auth/leave-provider", {}, AUTH_HEADERS);
+    expect(res.status).toBe(409);
+    expect(deactivateProviderProfile).not.toHaveBeenCalled();
+    expect(db.user.update).not.toHaveBeenCalled();
+  });
+
+  it("502s and leaves the role untouched when provider-service is down", async () => {
+    db.user.findUnique.mockResolvedValue({ id: "u1", name: "Ann", role: "PROVIDER" });
+    vi.mocked(deactivateProviderProfile).mockRejectedValue(new Error("peer down"));
+
+    const res = await post("/api/auth/leave-provider", {}, PROVIDER_HEADERS);
+    expect(res.status).toBe(502);
+    expect(db.user.update).not.toHaveBeenCalled();
   });
 });
 

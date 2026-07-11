@@ -41,6 +41,21 @@ export async function providerExists(providerId: string): Promise<boolean> {
   return true;
 }
 
+// Self-service downgrade (#403): hide the caller's provider profile from public
+// listings. Write-path gate — throws on failure so the caller (leave-provider)
+// returns 502 and does NOT flip the role, keeping identity and provider-service
+// consistent (either the profile is hidden and the role flips, or neither).
+export async function deactivateProviderProfile(userId: string): Promise<void> {
+  const res = await s2s(
+    PROVIDER_SERVICE_URL,
+    `/internal/providers/by-user/${encodeURIComponent(userId)}/deactivate`,
+    { method: "POST" }
+  );
+  if (!res.ok) {
+    throw new Error(`provider-service responded ${res.status}`);
+  }
+}
+
 export type ProviderSummary = {
   id: string;
   contactName: string;

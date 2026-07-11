@@ -3,7 +3,12 @@
 import { db } from "../db";
 import { s2s } from "./http";
 import { log } from "./log";
-import { createToken, VERIFY_TOKEN_TTL_MS, RESET_TOKEN_TTL_MS } from "./tokens";
+import {
+  createToken,
+  VERIFY_TOKEN_TTL_MS,
+  RESET_TOKEN_TTL_MS,
+  EMAIL_CHANGE_TOKEN_TTL_MS,
+} from "./tokens";
 
 const NOTIFICATION_SERVICE_URL =
   process.env.NOTIFICATION_SERVICE_URL ?? "http://localhost:4005";
@@ -11,7 +16,10 @@ const NOTIFICATION_SERVICE_URL =
 export type Locale = "en" | "si";
 
 async function sendEmail(
-  path: "/internal/email/verify" | "/internal/email/password-reset",
+  path:
+    | "/internal/email/verify"
+    | "/internal/email/password-reset"
+    | "/internal/email/change-email",
   body: { to: string; url: string; locale: Locale }
 ) {
   const res = await s2s(NOTIFICATION_SERVICE_URL, path, {
@@ -68,4 +76,28 @@ export async function sendPasswordResetEmail(
   } catch (e) {
     log.error("email send failed", { context: "forgot-password", err: e });
   }
+}
+
+// Change-email (#396): rotates the user's single email-change token (1h TTL,
+// pending `newEmail` stored alongside) and emails the confirmation link TO the
+// new address, proving the user controls it before the switch. Delivery errors
+// propagate — the caller surfaces "could not send" so the user can retry.
+export async function sendEmailChangeConfirmation(
+  userId: string,
+  newEmail: string,
+  origin: string,
+  locale: Locale = "en"
+) {
+  await db.emailChangeToken.deleteMany({ where: { userId } });
+  const { raw, hash } = createToken();
+  await db.emailChangeToken.create({
+    data: {
+      tokenHash: hash,
+      userId,
+      newEmail,
+      expiresAt: new Date(Date.now() + EMAIL_CHANGE_TOKEN_TTL_MS),
+    },
+  });
+  const url = `${origin}/verify-email-change?token=${raw}`;
+  await sendEmail("/internal/email/change-email", { to: newEmail, url, locale });
 }
