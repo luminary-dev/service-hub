@@ -18,6 +18,9 @@ const en = {
     dashboard: "Dashboard",
     saved: "Saved",
     jobs: "Jobs",
+    postJob: "Post a job",
+    myInquiries: "My inquiries",
+    becomeProvider: "Become a provider",
     admin: "Admin",
     signOut: "Sign out",
     openMenu: "Open menu",
@@ -195,6 +198,39 @@ const en = {
     reviewsEmpty:
       "You haven't written any reviews yet. Share your experience after your next job.",
     verifiedReview: "Verified",
+    // Account details / self-service (#396)
+    detailsTitle: "Account details",
+    profileTitle: "Profile",
+    nameLabel: "Name",
+    phoneLabel: "Phone",
+    saveProfile: "Save changes",
+    savingProfile: "Saving…",
+    profileSaved: "Profile updated.",
+    emailTitle: "Email address",
+    emailCurrent: "Current email",
+    emailNew: "New email address",
+    emailVerifiedTag: "Verified",
+    emailUnverifiedTag: "Unverified",
+    changeEmail: "Change email",
+    changingEmail: "Sending…",
+    emailChangeSent: (email: string) =>
+      `We've sent a confirmation link to ${email}. Click it to finish changing your email.`,
+    genericError: "Something went wrong. Please try again.",
+    // Become a provider (#401)
+    becomeProviderTitle: "Offer your services",
+    becomeProviderBody:
+      "List your services and start receiving inquiries and job requests from customers. Your customer account stays exactly as it is.",
+    becomeProviderCta: "Become a provider",
+    // Close provider profile (#403)
+    leaveProviderTitle: "Close provider profile",
+    leaveProviderBody:
+      "Hide your provider profile from listings and switch back to a customer account. Your reviews, inquiries and history are kept — you can reactivate by becoming a provider again.",
+    leaveProviderCta: "Close my provider profile",
+    leaveProviderConfirm:
+      "Close your provider profile? It will be removed from listings and your account will become a customer account. You can reactivate later.",
+    leavingProvider: "Closing…",
+    leaveProviderDone: "Your provider profile has been closed.",
+    cancel: "Cancel",
   },
   security: {
     link: "Account security",
@@ -499,6 +535,7 @@ const en = {
     roleCustomer: "Customer",
     roleProvider: "Provider",
     roleAdmin: "Admin",
+    roleSupport: "Support",
     lockedTag: "Locked",
     lock: "Lock",
     unlock: "Unlock",
@@ -729,6 +766,14 @@ const en = {
     bannerSending: "Sending…",
     bannerSent: "Verification email sent.",
     bannerError: "Could not send. Try again.",
+    // Change-email confirmation (#396)
+    changeVerifying: "Confirming your new email…",
+    changeSuccessTitle: "Email changed",
+    changeSuccessBody: "Your email address has been updated.",
+    changeFailTitle: "Could not change email",
+    changeFailBody:
+      "This confirmation link is invalid or has expired. Request a new email change from your account.",
+    goAccount: "Go to account",
   },
   choose: {
     title: "Join Baas.lk",
@@ -957,6 +1002,9 @@ const si: Dict = {
     dashboard: "පාලක පුවරුව",
     saved: "සුරකින ලද",
     jobs: "රැකියා",
+    postJob: "රැකියාවක් පළ කරන්න",
+    myInquiries: "මගේ විමසීම්",
+    becomeProvider: "වෘත්තිකයෙකු වන්න",
     admin: "පරිපාලක",
     signOut: "ඉවත් වන්න",
     openMenu: "මෙනුව විවෘත කරන්න",
@@ -1136,6 +1184,39 @@ const si: Dict = {
     reviewsEmpty:
       "ඔබ තවම සමාලෝචනයක් ලියා නැත. ඊළඟ වැඩෙන් පසු ඔබේ අත්දැකීම බෙදාගන්න.",
     verifiedReview: "සත්‍යාපිතයි",
+    // Account details / self-service (#396)
+    detailsTitle: "ගිණුම් විස්තර",
+    profileTitle: "පැතිකඩ",
+    nameLabel: "නම",
+    phoneLabel: "දුරකථනය",
+    saveProfile: "වෙනස්කම් සුරකින්න",
+    savingProfile: "සුරකිමින්…",
+    profileSaved: "පැතිකඩ යාවත්කාලීන කරන ලදී.",
+    emailTitle: "විද්‍යුත් තැපැල් ලිපිනය",
+    emailCurrent: "වත්මන් විද්‍යුත් තැපෑල",
+    emailNew: "නව විද්‍යුත් තැපැල් ලිපිනය",
+    emailVerifiedTag: "සත්‍යාපිතයි",
+    emailUnverifiedTag: "සත්‍යාපනය නොකළ",
+    changeEmail: "විද්‍යුත් තැපෑල වෙනස් කරන්න",
+    changingEmail: "යවමින්…",
+    emailChangeSent: (email: string) =>
+      `${email} වෙත තහවුරු කිරීමේ සබැඳියක් යවා ඇත. විද්‍යුත් තැපෑල වෙනස් කිරීම සම්පූර්ණ කිරීමට එය ක්ලික් කරන්න.`,
+    genericError: "යම් දෝෂයක් ඇති විය. නැවත උත්සාහ කරන්න.",
+    // Become a provider (#401)
+    becomeProviderTitle: "ඔබේ සේවා ලබා දෙන්න",
+    becomeProviderBody:
+      "ඔබේ සේවා ලැයිස්තුගත කර පාරිභෝගිකයන්ගෙන් විමසීම් සහ රැකියා ඉල්ලීම් ලබා ගැනීම ආරම්භ කරන්න. ඔබේ පාරිභෝගික ගිණුම එලෙසම පවතී.",
+    becomeProviderCta: "වෘත්තිකයෙකු වන්න",
+    // Close provider profile (#403)
+    leaveProviderTitle: "වෘත්තික පැතිකඩ වසන්න",
+    leaveProviderBody:
+      "ඔබේ වෘත්තික පැතිකඩ ලැයිස්තු වලින් සඟවා නැවත පාරිභෝගික ගිණුමකට මාරු වන්න. ඔබේ සමාලෝචන, විමසීම් සහ ඉතිහාසය තබා ගැනේ — නැවත වෘත්තිකයෙකු වීමෙන් එය සක්‍රිය කළ හැක.",
+    leaveProviderCta: "මගේ වෘත්තික පැතිකඩ වසන්න",
+    leaveProviderConfirm:
+      "ඔබේ වෘත්තික පැතිකඩ වසන්නද? එය ලැයිස්තු වලින් ඉවත් කර ඔබේ ගිණුම පාරිභෝගික ගිණුමක් බවට පත් වේ. පසුව නැවත සක්‍රිය කළ හැක.",
+    leavingProvider: "වසමින්…",
+    leaveProviderDone: "ඔබේ වෘත්තික පැතිකඩ වසා ඇත.",
+    cancel: "අවලංගු කරන්න",
   },
   security: {
     link: "ගිණුම් ආරක්ෂාව",
@@ -1434,6 +1515,7 @@ const si: Dict = {
     roleCustomer: "පාරිභෝගික",
     roleProvider: "වෘත්තික",
     roleAdmin: "පරිපාලක",
+    roleSupport: "සහාය",
     lockedTag: "අගුලු දමා ඇත",
     lock: "අගුලු දමන්න",
     unlock: "අගුල හරින්න",
@@ -1659,6 +1741,14 @@ const si: Dict = {
     bannerSending: "යවමින්…",
     bannerSent: "තහවුරු කිරීමේ විද්‍යුත් තැපෑල එවන ලදී.",
     bannerError: "එවීමට නොහැකි විය. නැවත උත්සාහ කරන්න.",
+    // Change-email confirmation (#396)
+    changeVerifying: "ඔබේ නව විද්‍යුත් තැපෑල තහවුරු කරමින්…",
+    changeSuccessTitle: "විද්‍යුත් තැපෑල වෙනස් විය",
+    changeSuccessBody: "ඔබේ විද්‍යුත් තැපැල් ලිපිනය යාවත්කාලීන කර ඇත.",
+    changeFailTitle: "විද්‍යුත් තැපෑල වෙනස් කළ නොහැකි විය",
+    changeFailBody:
+      "මෙම තහවුරු කිරීමේ සබැඳිය වලංගු නැත හෝ කල් ඉකුත්ය. ඔබේ ගිණුමෙන් නව විද්‍යුත් තැපැල් වෙනසක් ඉල්ලන්න.",
+    goAccount: "ගිණුමට යන්න",
   },
   choose: {
     title: "Baas.lk සමඟ එක්වන්න",

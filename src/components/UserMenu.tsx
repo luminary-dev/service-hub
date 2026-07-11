@@ -111,7 +111,7 @@ export default function UserMenu({
                 {t.nav.dashboard}
               </Link>
             )}
-            {role === "ADMIN" && (
+            {(role === "ADMIN" || role === "SUPPORT") && (
               <Link
                 href="/admin"
                 onClick={() => setOpen(false)}
@@ -134,6 +134,28 @@ export default function UserMenu({
             >
               {t.nav.find}
             </Link>
+            {/* Customer actions are session-gated, not role-gated (#402): a
+                PROVIDER can post jobs / inquire / review too. Surface the
+                post-a-job entry point for both customers and providers. */}
+            {(role === "CUSTOMER" || role === "PROVIDER") && (
+              <Link
+                href="/jobs/new"
+                onClick={() => setOpen(false)}
+                className="block rounded-md px-3 py-2 text-sm text-ink-700 transition-colors duration-200 ease-snap hover:bg-ink-100 hover:text-brand-700"
+              >
+                {t.nav.postJob}
+              </Link>
+            )}
+            {/* Become a provider (#401): entry point for existing customers. */}
+            {role === "CUSTOMER" && (
+              <Link
+                href="/welcome/provider"
+                onClick={() => setOpen(false)}
+                className="block rounded-md px-3 py-2 text-sm text-ink-700 transition-colors duration-200 ease-snap hover:bg-ink-100 hover:text-brand-700"
+              >
+                {t.nav.becomeProvider}
+              </Link>
+            )}
           </div>
           <button
             type="button"

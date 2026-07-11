@@ -36,6 +36,38 @@ below. For admin/moderation flows see [ADMIN.md](ADMIN.md).
   the profile goes live immediately. Signup is rate-limited (see
   [RATE_LIMITING.md](RATE_LIMITING.md)).
 
+### Account self-service (`/account`)
+
+Customer actions (post a job, send an inquiry, favorite, review) are gated on
+an authenticated session, **not** on the `CUSTOMER` role — so a PROVIDER can use
+the site as a customer too (#402). The nav/user menu surfaces the post-a-job
+entry point for both roles; `/jobs/new`, `/account` and `/providers` never
+redirect a provider away (only `/dashboard` and the job board stay
+provider-only).
+
+The **Account details** section on `/account` (`AccountDetails`) lets any
+signed-in user:
+
+- **Edit name/phone** — `PUT /api/account/profile` (re-issues the session so the
+  header/menu name updates without a re-login).
+- **Change email** — `POST /api/account/email/change` emails a 1h confirmation
+  link **to the new address**; clicking it (`/verify-email-change`) posts
+  `POST /api/account/email/confirm`, which switches the address and marks it
+  verified. The current session stays valid (email isn't in the JWT).
+
+Role transitions are also surfaced here (and in the user menu):
+
+- **Become a provider** (`CUSTOMER` only) — a CTA routing to the authed provider
+  wizard at `/welcome/provider`, which posts `POST /api/auth/complete-provider`
+  (creates the profile, flips role → `PROVIDER`, re-issues the session). No
+  re-login; lands on `/dashboard`.
+- **Close provider profile** (`PROVIDER` only) — a confirm-gated danger action
+  (`CloseProviderProfile`) posting `POST /api/auth/leave-provider`. **Suspend/hide,
+  not delete**: the `Provider` row is marked `suspended` (dropped from every
+  public listing), role reverts to `CUSTOMER`, and the session is re-issued (no
+  re-login). Reviews, inquiries and job responses are retained; becoming a
+  provider again reactivates the same profile. Audit-logged in identity-service.
+
 ### Provider dashboard & profile editing
 
 **`/dashboard`** (`src/app/dashboard/page.tsx`) is the provider's workspace.
