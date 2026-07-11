@@ -120,6 +120,14 @@ owning service applies. The two agree.
 | Jobs oversight, audit log | ADMIN | `role === "ADMIN"` (page) | `isSupportOrAdmin` (job/provider/review-service) |
 | Impersonation ("view as") | ADMIN | `role === "ADMIN"` (page) | `isFullAdmin` (identity-service) |
 
+Role changes (including assigning **`SUPPORT`**) go through
+`PATCH /api/admin/users/:id`; the target role enum is
+`CUSTOMER | PROVIDER | ADMIN | SUPPORT`, and any actual role change bumps
+`sessionVersion` so the affected user's existing tokens are revoked and the new
+role takes effect on their next request. A SUPPORT account can also be
+bootstrapped without the UI via `create-admin -- --support` (see
+`services/identity-service/prisma/create-admin.js`).
+
 The **users, jobs, audit-log and impersonate** pages redirect any non-`ADMIN`
 session at the page level (`session.role !== "ADMIN"`), so in practice they are
 ADMIN-only surfaces today even though the underlying read endpoints for jobs and

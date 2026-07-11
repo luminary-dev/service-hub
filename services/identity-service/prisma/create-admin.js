@@ -4,6 +4,10 @@
 //
 //   ADMIN_EMAIL=you@baas.lk ADMIN_PASSWORD='...' npm run create-admin
 //   npm run create-admin -- --email you@baas.lk --password '...' [--name "Ops"]
+//
+// Pass --support to create/promote a SUPPORT-tier account instead of ADMIN
+// (read-only admin views + report triage, nothing destructive):
+//   npm run create-admin -- --email ops@baas.lk --password '...' --support
 const { PrismaClient } = require("@prisma/client");
 const { PrismaPg } = require("@prisma/adapter-pg");
 const bcrypt = require("bcryptjs");
@@ -17,12 +21,15 @@ const { values } = parseArgs({
     email: { type: "string" },
     password: { type: "string" },
     name: { type: "string" },
+    support: { type: "boolean" },
   },
 });
 
 const email = values.email ?? process.env.ADMIN_EMAIL;
 const password = values.password ?? process.env.ADMIN_PASSWORD;
-const name = values.name ?? process.env.ADMIN_NAME ?? "Administrator";
+const role = values.support ? "SUPPORT" : "ADMIN";
+const name =
+  values.name ?? process.env.ADMIN_NAME ?? (role === "SUPPORT" ? "Support" : "Administrator");
 
 if (!email || !password) {
   console.error(
@@ -45,14 +52,14 @@ async function main() {
     // bump sessionVersion so any session under the old password dies.
     await db.user.update({
       where: { id: existing.id },
-      data: { role: "ADMIN", passwordHash, sessionVersion: { increment: 1 } },
+      data: { role, passwordHash, sessionVersion: { increment: 1 } },
     });
-    console.log(`Promoted ${email} to ADMIN and reset the password.`);
+    console.log(`Promoted ${email} to ${role} and reset the password.`);
   } else {
     await db.user.create({
-      data: { email, name, passwordHash, role: "ADMIN", emailVerified: new Date() },
+      data: { email, name, passwordHash, role, emailVerified: new Date() },
     });
-    console.log(`Created ADMIN account ${email}.`);
+    console.log(`Created ${role} account ${email}.`);
   }
 }
 
