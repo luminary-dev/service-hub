@@ -12,6 +12,7 @@ import bcrypt from "bcryptjs";
 import { Hono } from "hono";
 import { authRoutes } from "./auth";
 import { hashToken } from "../lib/tokens";
+import { MAX_FAILED_LOGINS, LOCKOUT_MS } from "../lib/lockout";
 import { sendVerificationEmail, sendPasswordResetEmail } from "../lib/verification";
 import { eraseUserData } from "../lib/erase";
 import {
@@ -314,6 +315,122 @@ describe("email normalization", () => {
     expect(res.status).toBe(401);
     expect(db.user.findUnique).toHaveBeenCalledWith({
       where: { email: "user@example.com" },
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/login — failed-login lockout counter (security hardening)
+// ---------------------------------------------------------------------------
+// The counter must advance via an atomic DB increment, never a
+// read-modify-write from a pre-read snapshot: concurrent wrong-password
+// attempts would otherwise both read N and both write N+1, so a parallel
+// guesser advances the counter by 1 instead of N and reaches the lockout
+// threshold far more slowly than intended.
+describe("POST /api/auth/login (lockout counter)", () => {
+  const loginUser = {
+    id: "u1",
+    email: "a@b.lk",
+    name: "Test User",
+    role: "CUSTOMER",
+    passwordHash: currentHash,
+    failedLogins: 0,
+    lockedUntil: null,
+    sessionVersion: 0,
+    avatarUrl: null,
+  };
+
+  it("increments the failed-login counter atomically on a wrong password", async () => {
+    db.user.findUnique.mockResolvedValue({ ...loginUser, failedLogins: 2 });
+    // The atomic increment returns the resulting count; below threshold → no lock.
+    db.user.update.mockResolvedValueOnce({ failedLogins: 3 });
+
+    const res = await post("/api/auth/login", {
+      email: "a@b.lk",
+      password: "wrong-password",
+    });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "Invalid email or password" });
+
+    // The failure is recorded as an atomic increment, not an overwrite.
+    expect(db.user.update).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      data: { failedLogins: { increment: 1 } },
+      select: { failedLogins: true },
+    });
+    // Below the threshold: no lock is applied (only the increment ran).
+    expect(db.user.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("locks the account once the incremented count reaches the threshold", async () => {
+    db.user.findUnique.mockResolvedValue({
+      ...loginUser,
+      failedLogins: MAX_FAILED_LOGINS - 1,
+    });
+    // The increment tips the counter to the threshold.
+    db.user.update.mockResolvedValueOnce({ failedLogins: MAX_FAILED_LOGINS });
+    db.user.update.mockResolvedValueOnce({});
+
+    const res = await post("/api/auth/login", {
+      email: "a@b.lk",
+      password: "wrong-password",
+    });
+    expect(res.status).toBe(401);
+
+    // First call: atomic increment. Second call: set the lock window derived
+    // from the resulting count.
+    expect(db.user.update).toHaveBeenNthCalledWith(1, {
+      where: { id: "u1" },
+      data: { failedLogins: { increment: 1 } },
+      select: { failedLogins: true },
+    });
+    const lockCall = db.user.update.mock.calls[1][0] as {
+      where: { id: string };
+      data: { lockedUntil: Date };
+    };
+    expect(lockCall.where).toEqual({ id: "u1" });
+    expect(lockCall.data.lockedUntil).toBeInstanceOf(Date);
+    expect(lockCall.data.lockedUntil.getTime()).toBeGreaterThan(
+      Date.now() + LOCKOUT_MS - 5_000
+    );
+  });
+
+  it("returns the uniform 401 (no lock) for a locked account without touching the counter", async () => {
+    db.user.findUnique.mockResolvedValue({
+      ...loginUser,
+      failedLogins: MAX_FAILED_LOGINS,
+      lockedUntil: new Date(Date.now() + LOCKOUT_MS),
+    });
+    const res = await post("/api/auth/login", {
+      email: "a@b.lk",
+      password: CURRENT_PASSWORD,
+    });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "Invalid email or password" });
+    // Locked branch does not increment or reset the counter.
+    expect(db.user.update).not.toHaveBeenCalled();
+  });
+
+  it("resets the counter and lock on a successful login", async () => {
+    db.user.findUnique.mockResolvedValue({
+      ...loginUser,
+      failedLogins: 3,
+      lockedUntil: null,
+    });
+    db.user.update.mockResolvedValue({});
+
+    const res = await post("/api/auth/login", {
+      email: "a@b.lk",
+      password: CURRENT_PASSWORD,
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      user: { id: "u1", name: "Test User", role: "CUSTOMER" },
+      providerId: null,
+    });
+    expect(db.user.update).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      data: { failedLogins: 0, lockedUntil: null },
     });
   });
 });
