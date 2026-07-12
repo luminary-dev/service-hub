@@ -518,6 +518,30 @@ p {
   animation: heroRise 0.5s var(--ease-snap) both;
 }
 
+/* Whole-slider float — a slow, smooth drift (gentle x+y sway) rather than a
+   metronome bob, so the plate appears to flow. translate3d keeps it on the GPU. */
+@keyframes heroFloat {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  25% {
+    transform: translate3d(4px, -7px, 0);
+  }
+  50% {
+    transform: translate3d(0, -10px, 0);
+  }
+  75% {
+    transform: translate3d(-4px, -5px, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+.hero-float {
+  animation: heroFloat 11s ease-in-out infinite;
+  will-change: transform;
+}
+
 /* Soft brand halo that breathes behind the active tick. */
 @keyframes heroTickGlow {
   0%,
@@ -536,7 +560,8 @@ p {
 
 @media (prefers-reduced-motion: reduce) {
   .hero-rise,
-  .hero-tick-active {
+  .hero-tick-active,
+  .hero-float {
     animation: none !important;
   }
 }

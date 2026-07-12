@@ -85,7 +85,7 @@ export default function HeroSlider() {
 
   return (
     <figure
-      className="floaty group relative select-none"
+      className="hero-float group relative select-none"
       role="group"
       aria-roledescription="carousel"
       aria-label={t.sliderRegion}
