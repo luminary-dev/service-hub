@@ -33,6 +33,7 @@ type DashboardProvider = {
   awayUntil: string | null;
   verificationStatus: string;
   avatarUrl: string | null;
+  coverPhoto: string | null;
   whatsapp: string | null;
   phone2: string | null;
   facebook: string | null;
@@ -168,6 +169,7 @@ export default async function DashboardPage({
           available: provider.available,
           awayUntil: provider.awayUntil,
           avatarUrl: provider.avatarUrl,
+          coverPhoto: provider.coverPhoto,
           whatsapp: provider.whatsapp ?? "",
           phone2: provider.phone2 ?? "",
           facebook: provider.facebook ?? "",

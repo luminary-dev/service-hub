@@ -28,6 +28,7 @@ const data: DashboardData = {
   available: true,
   awayUntil: null,
   avatarUrl: null,
+  coverPhoto: null,
   whatsapp: "",
   phone2: "",
   facebook: "",

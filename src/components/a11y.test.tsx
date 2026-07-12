@@ -76,6 +76,7 @@ const cardFixture: ProviderCardDTO = {
   userId: "user_1",
   name: "Sunil Perera",
   category: "electrician",
+  categoryImageUrl: null,
   headline: "House wiring and repairs across Colombo",
   district: "Colombo",
   city: "Nugegoda",

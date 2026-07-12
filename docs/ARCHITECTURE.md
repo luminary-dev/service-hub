@@ -1,7 +1,7 @@
 # Service Hub — Microservice Architecture
 
-Service Hub (Baas.lk) is split into **eight backend services** plus an API
-gateway, with the Next.js 16 app as a pure frontend. This repo is the
+Service Hub (Baas.lk) is split into **seven backend services** plus an API
+gateway (eight Hono services in all), with the Next.js 16 app as a pure frontend. This repo is the
 **canonical monorepo**; each service under `services/` is also mirrored to its
 own repository in the `luminary-dev` org via `git subtree` (see
 `scripts/sync-service-repos.sh`).
@@ -355,7 +355,7 @@ by service:
 
 - `docker compose up -d postgres` then `npm run dev:all` (root script starts all
   eight services + web via `concurrently`), or `docker compose up --build` for
-  the full stack (postgres + redis + 8 services + web). `npm run db:setup`
+  the full stack (postgres + redis + 8 services + web). `npm run setup`
   pushes schemas + seeds all services (deterministic IDs; `password123`
   accounts).
 - Ops scripts under `scripts/`: `dev-all.sh`, `setup.sh`, `dev-reset.sh`

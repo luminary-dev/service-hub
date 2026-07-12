@@ -55,12 +55,27 @@ const cardInclude = {
   },
 };
 
-function toCardDTO(p: CardRow, r: RatingEntry | undefined) {
+// Cover-image fallback map (#436): slug → category cover, resolved once per
+// request and attached to each card so the web can fall back
+// provider cover → category image → placeholder without a per-card lookup.
+async function categoryImageMap(): Promise<Map<string, string | null>> {
+  const rows = await db.category.findMany({
+    select: { slug: true, imageUrl: true },
+  });
+  return new Map(rows.map((c) => [c.slug, c.imageUrl]));
+}
+
+function toCardDTO(
+  p: CardRow,
+  r: RatingEntry | undefined,
+  categoryImages?: Map<string, string | null>
+) {
   return {
     id: p.id,
     userId: p.userId,
     name: p.contactName,
     category: p.category,
+    categoryImageUrl: categoryImages?.get(p.category) ?? null,
     headline: p.headline,
     district: p.district,
     city: p.city,
@@ -73,7 +88,9 @@ function toCardDTO(p: CardRow, r: RatingEntry | undefined) {
     verifiedAt: p.verifiedAt,
     createdAt: p.createdAt,
     avatarUrl: p.avatarUrl,
-    coverPhoto: p.photos[0]?.url ?? null,
+    // Dedicated cover (#435) wins; otherwise fall back to the first work photo,
+    // then (in the web card) to the category image.
+    coverPhoto: p.coverPhoto ?? p.photos[0]?.url ?? null,
     photos: p.photos.slice(0, 1).map((ph) => ({ url: ph.url, caption: ph.caption })),
     services: p.services
       .slice(0, 1)
@@ -142,7 +159,8 @@ providersRoutes.get("/api/providers", async (c) => {
     const byId = new Map(rows.map((p) => [p.id, p]));
     const ordered = ids.flatMap((id) => byId.get(id) ?? []);
     const ratings = await fetchRatings(ordered.map((p) => p.id));
-    const providers = ordered.map((p) => toCardDTO(p, ratings[p.id]));
+    const catImages = await categoryImageMap();
+    const providers = ordered.map((p) => toCardDTO(p, ratings[p.id], catImages));
     return c.json({
       providers,
       total: providers.length,
@@ -200,6 +218,7 @@ providersRoutes.get("/api/providers", async (c) => {
     });
   }
   const ratings = await fetchRatings(rows.map((p) => p.id));
+  const catImages = await categoryImageMap();
 
   const enriched: (Sortable & { dto: ReturnType<typeof toCardDTO> })[] = rows.map((p) => {
     const r = ratings[p.id];
@@ -213,7 +232,7 @@ providersRoutes.get("/api/providers", async (c) => {
       experience: p.experience,
       createdAt: p.createdAt,
       verified: p.verificationStatus === "VERIFIED",
-      dto: toCardDTO(p, r),
+      dto: toCardDTO(p, r, catImages),
     };
   });
 
