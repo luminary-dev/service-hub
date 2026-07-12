@@ -61,6 +61,8 @@ the upstream that owns the handler.
 | `POST /api/auth/delete-account` | authenticated | Re-auth with `{ password }` (optional for social-only accounts, which have none — the session is the re-auth); fans out S2S erase to provider/review/job (any failure → 502, nothing deleted), then deletes the User + records `AccountDeletion`. |
 | `GET /api/auth/me` | public | `{ user: null }` when signed out, else `{ user: { id, name, email, phone, emailVerified, role, providerId } }`. |
 | `PUT /api/account/profile` | authenticated | `{ name, phone }` — edits the caller's own name/phone (phone normalized to E.164) and re-issues the cookie so the cached display name updates. Any role. |
+| `POST /api/account/avatar` | authenticated | Multipart profile-photo upload (#434, any role) → media-service `user` namespace (R2 in prod). Sets `User.avatarUrl` and syncs the denormalized copy to the caller's provider profile (if any). jpeg/png/webp ≤5MB → `{ avatarUrl }`. |
+| `DELETE /api/account/avatar` | authenticated | Clears the caller's `avatarUrl` (and the provider copy) → `{ ok: true }`. |
 | `POST /api/account/email/change` | authenticated | `{ email }` — starts a change-email flow: emails a 1h confirmation link **to the new address**. 400 if it's the current address, 409 if already taken. Does not change the address yet. |
 | `POST /api/account/email/confirm` | public | `{ token }` — consumes the change-email token and switches the address (sets `emailVerified`). Session is unaffected (email isn't in the JWT). 409 if the address was taken since the request. |
 | `POST /api/auth/change-password` | authenticated | `{ currentPassword, newPassword }`; re-auth, bumps `sessionVersion`, re-issues cookie. |
@@ -117,7 +119,8 @@ Every route requires a provider owned by the authenticated user (else
 | `POST /api/provider/services` | role: PROVIDER (owner) | Add a service `{ title, description?, price, priceType }` → `{ service }`. |
 | `PUT /api/provider/services/:id` | role: PROVIDER (owner) | Update own service (404 if not owned). |
 | `DELETE /api/provider/services/:id` | role: PROVIDER (owner) | Delete own service. |
-| `POST /api/provider/photos` | role: PROVIDER (owner) | Multipart upload; `kind=avatar` sets `avatarUrl`, else creates a WorkPhoto. 5 MB, jpeg/png/webp. |
+| `POST /api/provider/photos` | role: PROVIDER (owner) | Multipart upload; `kind=cover` sets the dedicated `coverPhoto` (#435), else creates a WorkPhoto. (`kind=avatar` still handled but the web now uploads avatars via `/api/account/avatar`.) 5 MB, jpeg/png/webp. |
+| `DELETE /api/provider/cover` | role: PROVIDER (owner) | Clears the dedicated cover (#435) → the card falls back to the first work photo / category image. |
 | `PATCH /api/provider/photos/order` | role: PROVIDER (owner) | `{ ids }` → `sortOrder`; ids not owned are ignored. |
 | `DELETE /api/provider/photos/:id` | role: PROVIDER (owner) | Hard-delete own photo + remove the file. |
 | `GET /api/provider/inquiries` | role: PROVIDER (owner) | Own inquiries with `unreadCount`. |
@@ -221,8 +224,9 @@ each service enforces the tier. **Reads and report resolve/dismiss** gate on
 | `GET /api/admin/notifications/counts` | SUPPORT+ | `{ pendingVerifications, openReports }` (nav badges). |
 | `GET /api/admin/stats` | SUPPORT+ | Provider active/suspended totals, pendingVerifications, openReports (provider half), category distribution. |
 | `GET /api/admin/categories` | SUPPORT+ | Every category, inactive included. |
-| `POST /api/admin/categories` | ADMIN | Create `{ slug (^[a-z0-9-]{2,40}$), labelEn, labelSi, icon?, active?, sortOrder? }` (409 on dup). |
-| `PATCH /api/admin/categories/:slug` | ADMIN | Update labels/icon/active/sortOrder (no hard delete — deactivate). |
+| `POST /api/admin/categories` | ADMIN | Create `{ slug (^[a-z0-9-]{2,40}$), labelEn, labelSi, icon?, imageUrl?, active?, sortOrder? }` (409 on dup). `imageUrl` is a relative media path (#436). |
+| `PATCH /api/admin/categories/:slug` | ADMIN | Update labels/icon/`imageUrl`/active/sortOrder (no hard delete — deactivate). |
+| `POST /api/admin/categories/image` | ADMIN | Multipart cover upload (#436) → media-service `category` namespace (R2 in prod); returns `{ url }` to save via create/patch. jpeg/png/webp, 5MB. |
 | `GET /api/admin/audit-log` | SUPPORT+ | Moderation history, `adminId`/`action`/`from`/`to` filters, newest first, take 200. |
 | `POST /api/admin/flagging/run` | ADMIN | Auto-flagging sweep (#232): opens a deduped SYSTEM report for each active provider with quality < 40 or ≥ 3 open USER reports → `{ flagged }`. |
 

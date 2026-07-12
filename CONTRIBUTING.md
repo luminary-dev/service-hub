@@ -32,7 +32,9 @@ docker compose up -d --build  # run the full stack in Docker
 Seed demo data (prod images refuse unless overridden):
 
 ```bash
-docker compose exec -e SEED_DEMO_DATA=true identity-service npm run db:seed
+for s in identity-service provider-service review-service job-service; do
+  docker compose exec -e SEED_DEMO_DATA=true "$s" npm run db:seed
+done
 ```
 
 Demo accounts (password `password123`): `admin@baas.lk` (ADMIN), plus demo
