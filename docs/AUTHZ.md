@@ -52,6 +52,19 @@ OIDC id_token; Facebook uses no PKCE and a Graph-API profile lookup.
   them convert to `PROVIDER` via `POST /api/auth/complete-provider` (which flips
   the role and bumps `sessionVersion`).
 
+**Account enumeration is closed on the public auth entry points.** Login
+returns a uniform 401 (with a dummy bcrypt compare so timing doesn't leak),
+forgot-password always answers `{ ok: true }`, and **registration** (#373) no
+longer 409s a taken email: a duplicate signup returns a generic `200
+{ ok: true }` (no error, no `409 "already exists"` tell), creates no duplicate
+user, and instead emails the real owner an "account already exists" notice
+out-of-band (via notification-service) nudging them to sign in / reset. A dummy
+bcrypt hash equalizes the taken-email branch with the create path's hashing cost
+and the mail is fire-and-forget, so the branch isn't an obvious faster/earlier
+return. (A genuinely new signup still creates the account and returns its
+session, exactly as before — the same "success reveals nothing you didn't
+already cause" property login has.)
+
 ```
 ADMIN_ROLES = ["ADMIN", "SUPPORT"]
 

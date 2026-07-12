@@ -79,6 +79,10 @@ const T: Record<
     changeHeading: string;
     changeBody: string;
     changeButton: string;
+    existsSubject: string;
+    existsHeading: string;
+    existsBody: string;
+    existsButton: string;
   }
 > = {
   en: {
@@ -97,6 +101,11 @@ const T: Record<
     changeBody:
       "We received a request to change the email address on your Baas.lk account to this one. Confirm to complete the change. This link expires in 1 hour. If you did not request this, you can safely ignore this email — your address will not change.",
     changeButton: "Confirm new email",
+    existsSubject: "You already have a Baas.lk account",
+    existsHeading: "You already have an account",
+    existsBody:
+      "Someone tried to sign up for Baas.lk with this email address, but an account already exists. If it was you, sign in below — or reset your password if you have forgotten it. If it was not you, you can safely ignore this email; no new account was created and nothing has changed.",
+    existsButton: "Sign in",
   },
   si: {
     resetSubject: "ඔබේ Baas.lk මුරපදය යළි සකසන්න",
@@ -114,6 +123,11 @@ const T: Record<
     changeBody:
       "ඔබේ Baas.lk ගිණුමේ විද්‍යුත් තැපැල් ලිපිනය මෙයට වෙනස් කිරීමට ඉල්ලීමක් ලැබුණා. වෙනස්කම සම්පූර්ණ කිරීමට තහවුරු කරන්න. මෙම සබැඳිය පැය 1කින් කල් ඉකුත් වේ. ඔබ මෙය ඉල්ලා නොමැති නම්, මෙම විද්‍යුත් තැපෑල නොසලකා හැරිය හැක — ඔබේ ලිපිනය වෙනස් නොවේ.",
     changeButton: "නව විද්‍යුත් තැපෑල තහවුරු කරන්න",
+    existsSubject: "ඔබට දැනටමත් Baas.lk ගිණුමක් ඇත",
+    existsHeading: "ඔබට දැනටමත් ගිණුමක් ඇත",
+    existsBody:
+      "යමෙකු මෙම විද්‍යුත් තැපැල් ලිපිනය සමඟ Baas.lk සඳහා ලියාපදිංචි වීමට උත්සාහ කළ නමුත්, දැනටමත් ගිණුමක් පවතී. එය ඔබ නම්, පහතින් පිවිසෙන්න — නැතහොත් මුරපදය අමතක වී ඇත්නම් එය යළි සකසන්න. එය ඔබ නොවේ නම්, මෙම විද්‍යුත් තැපෑල නොසලකා හැරිය හැක; නව ගිණුමක් සෑදී නැත, කිසිවක් වෙනස් වී නැත.",
+    existsButton: "පිවිසෙන්න",
   },
 };
 
@@ -138,6 +152,19 @@ export function changeEmail(url: string, locale: Locale = "en") {
   return {
     subject: t.changeSubject,
     html: layout(t.changeHeading, t.changeBody, t.changeButton, url),
+  };
+}
+
+// Account-already-exists (#373): sent when someone tries to register an email
+// that already has an account. Registration returns the same generic success
+// either way (anti-enumeration), so this out-of-band mail is how a genuine
+// owner learns of the attempt and is nudged to sign in / reset. `url` points at
+// the sign-in page.
+export function accountExistsEmail(url: string, locale: Locale = "en") {
+  const t = T[locale] ?? T.en;
+  return {
+    subject: t.existsSubject,
+    html: layout(t.existsHeading, t.existsBody, t.existsButton, url),
   };
 }
 
