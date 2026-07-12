@@ -21,6 +21,9 @@ export type SessionPayload = {
   userId: string;
   role: string;
   name: string;
+  // Profile photo carried in the JWT (#434 follow-up) so the top-nav avatar
+  // renders without a per-page /me fetch. Absent → fall back to initials.
+  avatar?: string | null;
   // Set only when the active session is an impersonation session; holds the
   // admin userId that started it. Absent for a normal sh_session.
   impersonatedBy?: string;
@@ -75,6 +78,7 @@ export async function getSession(): Promise<SessionPayload | null> {
       userId,
       role: payload.role as string,
       name: payload.name as string,
+      avatar: typeof payload.avatar === "string" ? payload.avatar : null,
     };
   } catch {
     return null;

@@ -63,7 +63,7 @@ export default async function Navbar() {
             <span aria-hidden className="mx-1 h-5 w-px bg-ink-300" />
           </div>
           {session ? (
-            <UserMenu name={session.name} role={session.role} />
+            <UserMenu name={session.name} role={session.role} avatarUrl={session.avatar} />
           ) : (
             <>
               <Link
