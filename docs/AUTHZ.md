@@ -87,6 +87,61 @@ and the "customer" actions are gated on *being signed in*, not on the role:
   provider-owned surfaces (dashboard, profile, job responses) and the admin
   tiers.
 
+## Session revocation (#374)
+
+Sessions are stateless JWTs (7-day TTL), so revoking one before it expires needs
+an out-of-band signal. Every user carries a `User.sessionVersion`; each token
+embeds the version it was minted with (`sv`), and identity-service **bumps** the
+version on every revocation path:
+
+- password change and password reset (`auth.ts`),
+- logout-everywhere (`POST /api/auth/logout-all`),
+- admin **force-logout**, **lock**, and **role change** (`admin-users.ts`).
+
+The gateway rejects any token whose `sv` is below the user's current version
+(`lib/proxy.ts` → `sessionVersionOk`). It resolves the current version from two
+sources, in order:
+
+1. **Shared Redis revocation list (authoritative).** On every bump identity
+   publishes the new min-valid version to `revocation:<userId>` (a helper,
+   `identity-service/src/lib/revocation.ts`, on the **same Redis the gateway
+   uses for rate limiting**). The key carries a TTL of **8 days** (the 7-day
+   session lifetime plus a buffer) so entries self-expire once every token
+   minted before the bump has already expired. The gateway reads this key
+   **without calling identity**, so a revoked token is rejected **even during an
+   identity-service outage** — the previous fail-open gap (a revoked token
+   honored for the outage duration once the ~60s cache expired) is closed for
+   any user with a revocation entry.
+2. **Identity lookup + in-memory cache (fallback).** When Redis has **no entry**
+   for the user (the common case — most users never revoke a session) the
+   gateway falls back to the S2S call to identity's
+   `/internal/users/:id/session-version`, cached ~60s per user. This path still
+   **fails open** if identity is unreachable, so an identity outage never signs
+   the whole user base out.
+
+Publishing is **best-effort**: identity writes to Redis after the DB bump has
+committed, and a Redis error is swallowed and logged loudly (`log.error`) rather
+than turned into a 500 for the user changing their password. The mutation still
+succeeds and the gateway still catches the revocation via the fallback (2) until
+the next successful publish.
+
+**Residuals (accepted).**
+
+- *Redis fully down.* The gateway degrades to (2) — today's behavior: a revoked
+  token can be honored for up to the ~60s cache TTL **if identity is also down**.
+  With identity up, revocation is immediate as before. The gateway logs the
+  degraded Redis lookup once (edge-triggered `warn`, an alerting hook).
+- *A single failed publish.* That one revocation isn't in the Redis list until
+  the next successful bump for that user; the gateway still enforces it via the
+  identity fallback. Logged loudly on the identity side.
+- *A stale (present-but-lower) entry* can only arise from a failed publish; a
+  successful publish always overwrites with the latest version, and the gateway
+  trusts a present entry over the identity lookup by design (that is what buys
+  outage-survival).
+
+Impersonation tokens (#234/#358) run the **same** `sessionVersionOk` check for
+both the target and the admin, so they inherit the Redis-first behavior too.
+
 ## How gating works
 
 Authorization is enforced in two layers.

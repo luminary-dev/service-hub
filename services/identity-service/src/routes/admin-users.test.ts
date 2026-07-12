@@ -10,20 +10,26 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import { adminUsersRoutes } from "./admin-users";
 
-const { db, logAudit, deactivateProviderProfile, reactivateProviderProfile } =
-  vi.hoisted(() => ({
-    db: {
-      user: {
-        findUnique: vi.fn(),
-        findMany: vi.fn(),
-        count: vi.fn(),
-        update: vi.fn(),
-      },
+const {
+  db,
+  logAudit,
+  deactivateProviderProfile,
+  reactivateProviderProfile,
+  publishRevocation,
+} = vi.hoisted(() => ({
+  db: {
+    user: {
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      count: vi.fn(),
+      update: vi.fn(),
     },
-    logAudit: vi.fn(async () => {}),
-    deactivateProviderProfile: vi.fn(async () => {}),
-    reactivateProviderProfile: vi.fn(async () => {}),
-  }));
+  },
+  logAudit: vi.fn(async () => {}),
+  deactivateProviderProfile: vi.fn(async () => {}),
+  reactivateProviderProfile: vi.fn(async () => {}),
+  publishRevocation: vi.fn(async () => {}),
+}));
 
 vi.mock("../db", () => ({ db }));
 vi.mock("../lib/audit", () => ({ logAudit }));
@@ -33,6 +39,7 @@ vi.mock("../lib/providers", () => ({
   deactivateProviderProfile,
   reactivateProviderProfile,
 }));
+vi.mock("../lib/revocation", () => ({ publishRevocation }));
 
 const app = new Hono();
 app.route("/", adminUsersRoutes);
@@ -314,5 +321,59 @@ describe("POST /api/admin/users/:id/force-logout", () => {
     const res = await forceLogout("admin1");
     expect(res.status).toBe(400);
     expect(logAudit).not.toHaveBeenCalled();
+  });
+});
+
+// The gateway can enforce a revocation without calling identity only if the new
+// min-valid version reaches the shared Redis list — assert every bump publishes
+// it, and that the no-bump paths don't (#374).
+describe("Redis revocation-list publishing (#374)", () => {
+  const row = (over: Record<string, unknown>) => ({
+    id: "u2",
+    email: "u@baas.lk",
+    name: "User",
+    phone: null,
+    role: "CUSTOMER",
+    emailVerified: null,
+    sessionVersion: 1,
+    failedLogins: 0,
+    lockedUntil: null,
+    createdAt: new Date(),
+    ...over,
+  });
+
+  it("publishes the new version on a role change", async () => {
+    db.user.findUnique.mockResolvedValue({ id: "u2", role: "CUSTOMER" });
+    db.user.update.mockResolvedValue(row({ role: "SUPPORT", sessionVersion: 2 }));
+    await patch("u2", { role: "SUPPORT" });
+    expect(publishRevocation).toHaveBeenCalledWith("u2", 2);
+  });
+
+  it("publishes the new version on a lock", async () => {
+    db.user.findUnique.mockResolvedValue({ id: "u2", role: "CUSTOMER" });
+    db.user.update.mockResolvedValue(row({ sessionVersion: 4 }));
+    await patch("u2", { action: "lock" });
+    expect(publishRevocation).toHaveBeenCalledWith("u2", 4);
+  });
+
+  it("publishes the new version on a force-logout", async () => {
+    db.user.findUnique.mockResolvedValue({ id: "u2", role: "CUSTOMER" });
+    db.user.update.mockResolvedValue({ id: "u2", sessionVersion: 3 });
+    await forceLogout("u2");
+    expect(publishRevocation).toHaveBeenCalledWith("u2", 3);
+  });
+
+  it("does NOT publish on an unlock (no bump)", async () => {
+    db.user.findUnique.mockResolvedValue({ id: "u2", role: "CUSTOMER" });
+    db.user.update.mockResolvedValue(row({ sessionVersion: 1 }));
+    await patch("u2", { action: "unlock" });
+    expect(publishRevocation).not.toHaveBeenCalled();
+  });
+
+  it("does NOT publish when the role is unchanged (no bump)", async () => {
+    db.user.findUnique.mockResolvedValue({ id: "u2", role: "SUPPORT" });
+    db.user.update.mockResolvedValue(row({ role: "SUPPORT", sessionVersion: 1 }));
+    await patch("u2", { role: "SUPPORT" });
+    expect(publishRevocation).not.toHaveBeenCalled();
   });
 });

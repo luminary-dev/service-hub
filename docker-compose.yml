@@ -35,6 +35,11 @@ services:
       PORT: 4001
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/identity_db
       AUTH_SECRET: ${AUTH_SECRET:-dev-only-secret}
+      # Shared session-revocation list (#374): identity publishes each
+      # sessionVersion bump here so the gateway can enforce revocations without
+      # calling identity. Unset → publishing is a no-op (gateway falls back to
+      # its identity lookup).
+      REDIS_URL: redis://redis:6379
       # Social login (#398) — optional; unset → "Continue with Google" disabled.
       # For the Docker path, put these in the repo-root .env (compose reads that
       # for substitution); the host path (dev-all.sh) reads the service .env.
@@ -46,6 +51,8 @@ services:
       - "4001:4001"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck: &node-healthcheck
       test: ["CMD-SHELL", "wget -qO- http://localhost:$$PORT/healthz > /dev/null || exit 1"]

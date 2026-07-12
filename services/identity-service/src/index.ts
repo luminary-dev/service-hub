@@ -2,6 +2,7 @@ import "./load-env";
 import { serve } from "@hono/node-server";
 import { app } from "./app";
 import { db } from "./db";
+import { closeRevocationRedis } from "./lib/revocation";
 
 const port = Number(process.env.PORT ?? 4001);
 
@@ -25,6 +26,7 @@ function shutdown(signal: string) {
   server.close(async () => {
     try {
       await db.$disconnect();
+      await closeRevocationRedis();
     } catch (err) {
       console.error("identity-service error during shutdown", err);
     }

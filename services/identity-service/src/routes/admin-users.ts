@@ -14,6 +14,7 @@ import {
   fetchProvidersByIds,
   reactivateProviderProfile,
 } from "../lib/providers";
+import { publishRevocation } from "../lib/revocation";
 
 export const adminUsersRoutes = new Hono();
 
@@ -202,6 +203,13 @@ adminUsersRoutes.patch("/api/admin/users/:id", async (c) => {
 
   const updated = await db.user.update({ where: { id }, data });
 
+  // A lock or a role change bumped sessionVersion — mirror it into the shared
+  // revocation list (#374) so the gateway cuts the user's tokens off even if
+  // identity is unreachable. (Unlock doesn't bump, so it needs no publish.)
+  if (parsed.data.action === "lock" || roleChange) {
+    await publishRevocation(updated.id, updated.sessionVersion);
+  }
+
   // Best-effort audit trail on the sensitive mutations (#362, security-audit
   // M7). logAudit swallows its own errors, so this never blocks the action.
   if (parsed.data.action === "lock") {
@@ -238,6 +246,10 @@ adminUsersRoutes.post("/api/admin/users/:id/force-logout", async (c) => {
     where: { id },
     data: { sessionVersion: { increment: 1 } },
   });
+
+  // Mirror the bump into the shared revocation list (#374) so the gateway
+  // rejects every existing token even if identity is unreachable.
+  await publishRevocation(updated.id, updated.sessionVersion);
 
   // Best-effort audit trail (#362, security-audit M7); never blocks the action.
   await logAudit(c, "FORCE_LOGOUT", "USER", id);

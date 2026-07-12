@@ -125,6 +125,54 @@ describe("trustedProxyHops", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Startup misconfiguration check (#374): warn (never crash) when
+// TRUSTED_PROXY_HOPS looks wrong for the deployed topology.
+// ---------------------------------------------------------------------------
+import { checkProxyConfig } from "./rate-limit";
+
+describe("checkProxyConfig", () => {
+  const fakeLogger = () => ({ warn: vi.fn() } as unknown as typeof import("./log").log);
+
+  it("warns in production when hops is unset (0)", () => {
+    const logger = fakeLogger();
+    checkProxyConfig({ NODE_ENV: "production" }, logger);
+    expect(logger.warn).toHaveBeenCalledOnce();
+    expect((logger.warn as ReturnType<typeof vi.fn>).mock.calls[0][0]).toMatch(
+      /TRUSTED_PROXY_HOPS/
+    );
+  });
+
+  it("warns in production when hops is explicitly 0", () => {
+    const logger = fakeLogger();
+    checkProxyConfig({ NODE_ENV: "production", TRUSTED_PROXY_HOPS: "0" }, logger);
+    expect(logger.warn).toHaveBeenCalledOnce();
+  });
+
+  it("stays quiet in production when hops is correctly set", () => {
+    const logger = fakeLogger();
+    checkProxyConfig({ NODE_ENV: "production", TRUSTED_PROXY_HOPS: "2" }, logger);
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("does not warn outside production even when hops is 0", () => {
+    const logger = fakeLogger();
+    checkProxyConfig({ NODE_ENV: "development" }, logger);
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("warns on a set-but-invalid value (coerces to 0) regardless of environment", () => {
+    const dev = fakeLogger();
+    checkProxyConfig({ NODE_ENV: "development", TRUSTED_PROXY_HOPS: "two" }, dev);
+    expect(dev.warn).toHaveBeenCalledOnce();
+    expect((dev.warn as ReturnType<typeof vi.fn>).mock.calls[0][0]).toMatch(/not a valid/);
+
+    const negative = fakeLogger();
+    checkProxyConfig({ NODE_ENV: "development", TRUSTED_PROXY_HOPS: "-2" }, negative);
+    expect(negative.warn).toHaveBeenCalledOnce();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Redis-backed window, exercised against a minimal in-process fake that
 // implements real sorted-set semantics for the commands we use.
 // ---------------------------------------------------------------------------
@@ -165,6 +213,9 @@ function fakeRedis(): RedisCommands & { sets: Map<string, Map<string, number>> }
     },
     async pexpire() {
       return 1;
+    },
+    async get() {
+      return null;
     },
   };
 }
