@@ -14,6 +14,13 @@ category has a `slug`, English label (`labelEn`), Sinhala label (`labelSi`),
   `POST /api/admin/categories` (409 on duplicate slug).
 - **Edit** — inline edit of EN/SI labels, icon, sort order →
   `PATCH /api/admin/categories/{slug}`.
+- **Icon** — a **dropdown picker** of a curated set of trade icons (the
+  `Fa…` names in `src/lib/constants.ts` → `CATEGORY_ICONS`) with a live preview,
+  **not** a free-text field. Optional: leaving it on "Default" derives the icon
+  from the slug (`categoryIcon()`), falling back to a generic tools icon for a
+  slug the static map doesn't know. When set, the UI resolves it by name
+  (`iconByName`) and honors it wherever a category record is rendered
+  (`CategoryIcon`).
 - **Cover image (#436)** — upload a per-category cover via
   `POST /api/admin/categories/image` (full-admin only; multipart → media-service
   `category` namespace, R2 in prod; jpeg/png/webp ≤5MB). It becomes the card

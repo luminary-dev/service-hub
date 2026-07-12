@@ -2,17 +2,22 @@ import type { IconType } from "@/components/icons";
 import {
   FaBolt,
   FaBorderAll,
+  FaBriefcase,
   FaBroom,
   FaBug,
   FaFire,
+  FaGlobe,
   FaHammer,
+  FaHouse,
   FaHouseChimney,
   FaLeaf,
   FaPaintRoller,
   FaPlug,
   FaScrewdriverWrench,
+  FaShieldHalved,
   FaShower,
   FaSnowflake,
+  FaTags,
   FaTrowel,
   FaTruck,
   FaVideo,
@@ -63,6 +68,44 @@ export function categoryLabel(slug: string) {
 
 export function categoryIcon(slug: string): IconType {
   return CATEGORIES.find((c) => c.slug === slug)?.icon ?? FaScrewdriverWrench;
+}
+
+// Curated set of category icons an admin can assign to a category (stored as
+// the icon *name* in Category.icon). Keeping it a short, trade-relevant list
+// (not every exported icon) makes the admin picker a sensible menu, and lets
+// the UI resolve an admin-chosen icon by name — see `iconByName`. `#436`.
+export const CATEGORY_ICONS: Record<string, IconType> = {
+  FaWrench,
+  FaScrewdriverWrench,
+  FaBolt,
+  FaShower,
+  FaHammer,
+  FaTrowel,
+  FaPaintRoller,
+  FaLeaf,
+  FaSnowflake,
+  FaPlug,
+  FaFire,
+  FaHouseChimney,
+  FaHouse,
+  FaBorderAll,
+  FaVideo,
+  FaShieldHalved,
+  FaBug,
+  FaBroom,
+  FaTruck,
+  FaBriefcase,
+  FaTags,
+  FaGlobe,
+};
+
+// The picker options, in insertion order.
+export const CATEGORY_ICON_NAMES: readonly string[] = Object.keys(CATEGORY_ICONS);
+
+// Resolve an admin-assigned icon name to its component. Null for unset / unknown
+// names, so callers can fall back to the slug-based `categoryIcon`.
+export function iconByName(name: string | null | undefined): IconType | null {
+  return name ? CATEGORY_ICONS[name] ?? null : null;
 }
 
 export function priceTypeLabel(value: string) {

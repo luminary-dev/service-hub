@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { FaPlus } from "@/components/icons";
+import CategoryIcon from "@/components/CategoryIcon";
+import { CATEGORY_ICON_NAMES } from "@/lib/constants";
 import { Field, FormRow } from "@/components/ui/Field";
 import { hasFullAdminAccess } from "@/lib/roles";
 import { useT } from "../I18nProvider";
@@ -213,14 +215,28 @@ export default function AdminCategoryManager({
                     />
                   </Field>
                   <Field label={t.admin.catIcon} htmlFor="cat-catIcon">
-                    <input
-                      id="cat-catIcon"
-                      className="input w-36"
-                      value={edit.icon}
-                      onChange={(e) =>
-                        setEdit((f) => ({ ...f, icon: e.target.value }))
-                      }
-                    />
+                    <div className="flex items-center gap-2">
+                      <CategoryIcon
+                        slug={editing ?? ""}
+                        icon={edit.icon || null}
+                        className="h-5 w-5 shrink-0 text-ink-500"
+                      />
+                      <select
+                        id="cat-catIcon"
+                        className="input w-40"
+                        value={edit.icon}
+                        onChange={(e) =>
+                          setEdit((f) => ({ ...f, icon: e.target.value }))
+                        }
+                      >
+                        <option value="">{t.admin.catIconDefault}</option>
+                        {CATEGORY_ICON_NAMES.map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </Field>
                   <Field label={t.admin.catSortOrder} htmlFor="cat-catSortOrder">
                     <input
@@ -314,11 +330,14 @@ export default function AdminCategoryManager({
                       <span className="tabular-nums text-ink-600">
                         {c.sortOrder}
                       </span>
+                      <span className="text-ink-300">·</span>
+                      <CategoryIcon
+                        slug={c.slug}
+                        icon={c.icon}
+                        className="h-4 w-4 text-ink-500"
+                      />
                       {c.icon ? (
-                        <>
-                          <span className="text-ink-300">·</span>
-                          <span className="text-ink-600">{c.icon}</span>
-                        </>
+                        <span className="text-ink-600">{c.icon}</span>
                       ) : null}
                     </p>
                     </div>
@@ -385,15 +404,28 @@ export default function AdminCategoryManager({
             />
           </Field>
           <Field label={t.admin.catIcon} htmlFor="cat-catIcon-1">
-            <input
-              id="cat-catIcon-1"
-              className="input"
-              value={addForm.icon}
-              onChange={(e) =>
-                setAddForm((f) => ({ ...f, icon: e.target.value }))
-              }
-              placeholder="FaWrench"
-            />
+            <div className="flex items-center gap-2">
+              <CategoryIcon
+                slug={addForm.slug}
+                icon={addForm.icon || null}
+                className="h-5 w-5 shrink-0 text-ink-500"
+              />
+              <select
+                id="cat-catIcon-1"
+                className="input"
+                value={addForm.icon}
+                onChange={(e) =>
+                  setAddForm((f) => ({ ...f, icon: e.target.value }))
+                }
+              >
+                <option value="">{t.admin.catIconDefault}</option>
+                {CATEGORY_ICON_NAMES.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </div>
           </Field>
           <Field label={t.admin.catLabelEn} htmlFor="cat-catLabelEn-1">
             <input
