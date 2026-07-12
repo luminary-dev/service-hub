@@ -18,17 +18,22 @@ export function isLockedOut(lockedUntil: Date | null, now = new Date()): boolean
   return lockedUntil !== null && lockedUntil > now;
 }
 
-// State transition for a failed attempt. At the threshold the account locks
-// for LOCKOUT_MS; each further failure after a window expires re-locks
-// immediately (the count only resets on a successful login).
-export function recordFailure(
-  failedLogins: number,
+// Lock window for a failed attempt, given the failure count *after* the
+// attempt has been recorded. At/above the threshold the account locks for
+// LOCKOUT_MS; each further failure after a window expires re-locks immediately
+// (the count only resets on a successful login). Returns null when no lock
+// applies.
+//
+// The caller MUST increment the counter atomically in the DB first (see the
+// login handler) and pass the resulting value here. A read-modify-write from a
+// pre-read snapshot loses concurrent increments: parallel wrong-password
+// attempts each read N and write N+1, so the counter advances by 1 instead of
+// N and reaches MAX_FAILED_LOGINS far more slowly — weakening the lockout.
+export function lockUntilFor(
+  newFailedLogins: number,
   now = new Date()
-): { failedLogins: number; lockedUntil: Date | null } {
-  const failed = failedLogins + 1;
-  return {
-    failedLogins: failed,
-    lockedUntil:
-      failed >= MAX_FAILED_LOGINS ? new Date(now.getTime() + LOCKOUT_MS) : null,
-  };
+): Date | null {
+  return newFailedLogins >= MAX_FAILED_LOGINS
+    ? new Date(now.getTime() + LOCKOUT_MS)
+    : null;
 }

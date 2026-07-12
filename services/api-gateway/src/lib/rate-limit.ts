@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import type { Context, Next } from "hono";
 import { Redis } from "ioredis";
+import { log } from "./log";
 
 export type RateRule = { limit: number; windowMs: number };
 
@@ -161,6 +162,37 @@ export async function checkRateLimitRedis(
   };
 }
 
+// Edge-triggered health flag for the shared Redis backend. A Redis failure
+// silently falls back to per-instance limiting (see rateLimit below) which,
+// across multiple gateway replicas, effectively multiplies every limit by the
+// replica count — so ops must be able to see the degradation. We log only on
+// the TRANSITION into/out of the degraded state, never per request: when Redis
+// is down every request would otherwise flood the logs with the same line.
+let redisDegraded = false;
+
+// Called when a Redis rate-limit op throws and we fall back to in-memory. Logs
+// once on the way into the degraded state; subsequent failures are silent.
+function noteRedisFailure(err: unknown, key: string): void {
+  if (redisDegraded) return;
+  redisDegraded = true;
+  log.warn(
+    "rate-limit Redis backend unavailable; falling back to per-instance in-memory limiting (cross-instance limits degraded)",
+    { err, key }
+  );
+}
+
+// Called after a successful Redis op; logs once when the backend recovers.
+function noteRedisRecovered(): void {
+  if (!redisDegraded) return;
+  redisDegraded = false;
+  log.info("rate-limit Redis backend recovered; resumed distributed limiting");
+}
+
+// Test-only: reset the edge-triggered health flag between cases.
+export function resetRedisDegradedState(): void {
+  redisDegraded = false;
+}
+
 // undefined = not initialized yet; null = no REDIS_URL configured.
 let redisClient: RedisCommands | null | undefined;
 
@@ -197,6 +229,27 @@ export async function closeRedis(): Promise<void> {
   }
 }
 
+// Run the limit check against Redis when available, otherwise the in-memory
+// store. A Redis error falls back to the in-memory check (availability is
+// intentionally preserved) and flips the edge-triggered degraded flag so the
+// fallback is observable without logging on every request. Injecting `redis`
+// keeps this unit-testable without a live connection.
+export async function resolveRateLimit(
+  redis: RedisCommands | null,
+  key: string,
+  rule: RateRule
+): Promise<{ success: boolean; retryAfterMs: number }> {
+  if (!redis) return checkRateLimit(key, rule);
+  try {
+    const result = await checkRateLimitRedis(redis, `rl:${key}`, rule);
+    noteRedisRecovered();
+    return result;
+  } catch (err) {
+    noteRedisFailure(err, key);
+    return checkRateLimit(key, rule);
+  }
+}
+
 // Returns a 429 response when the caller is over the limit, otherwise null.
 export async function rateLimit(
   c: Context,
@@ -204,17 +257,7 @@ export async function rateLimit(
   rule: RateRule
 ): Promise<Response | null> {
   const key = `${name}:${clientIp(c)}`;
-  const redis = getRedis();
-  let result: { success: boolean; retryAfterMs: number };
-  if (redis) {
-    try {
-      result = await checkRateLimitRedis(redis, `rl:${key}`, rule);
-    } catch {
-      result = checkRateLimit(key, rule);
-    }
-  } else {
-    result = checkRateLimit(key, rule);
-  }
+  const result = await resolveRateLimit(getRedis(), key, rule);
   if (result.success) return null;
   const retryAfter = Math.max(1, Math.ceil(result.retryAfterMs / 1000));
   return c.json(
