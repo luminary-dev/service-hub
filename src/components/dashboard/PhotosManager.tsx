@@ -74,14 +74,18 @@ function uploadPhotoXhr(
 export default function PhotosManager({
   initial,
   avatarUrl: initialAvatar,
+  coverPhoto: initialCover,
   name,
 }: {
   initial: PhotoItem[];
   avatarUrl: string | null;
+  coverPhoto: string | null;
   name: string;
 }) {
   const [photos, setPhotos] = useState(initial);
   const [avatarUrl, setAvatarUrl] = useState(initialAvatar);
+  const [coverUrl, setCoverUrl] = useState(initialCover);
+  const [coverBusy, setCoverBusy] = useState(false);
   const [caption, setCaption] = useState("");
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [avatarUploading, setAvatarUploading] = useState(false);
@@ -89,6 +93,7 @@ export default function PhotosManager({
   const [dropActive, setDropActive] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
+  const coverRef = useRef<HTMLInputElement>(null);
   const nextKey = useRef(0);
   const activeUploads = useRef(0);
   const pendingUploads = useRef<UploadItem[]>([]);
@@ -216,6 +221,49 @@ export default function PhotosManager({
     }
   }
 
+  // Dedicated cover photo (#435): separate from the work gallery.
+  async function uploadCover(file: File) {
+    if (validateUpload(file)) {
+      toast.error(ph.uploadError);
+      return;
+    }
+    setCoverBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("kind", "cover");
+      const res = await fetch("/api/provider/photos", { method: "POST", body: fd });
+      if (res.ok) {
+        setCoverUrl((await res.json()).coverPhoto);
+        router.refresh();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        toast.error(d.error ?? ph.uploadError);
+      }
+    } catch {
+      toast.error(ph.uploadError);
+    } finally {
+      setCoverBusy(false);
+    }
+  }
+
+  async function removeCover() {
+    setCoverBusy(true);
+    try {
+      const res = await fetch("/api/provider/cover", { method: "DELETE" });
+      if (res.ok) {
+        setCoverUrl(null);
+        router.refresh();
+      } else {
+        toast.error(ph.uploadError);
+      }
+    } catch {
+      toast.error(ph.uploadError);
+    } finally {
+      setCoverBusy(false);
+    }
+  }
+
   async function removePhoto(id: string) {
     const res = await fetch(`/api/provider/photos/${id}`, {
       method: "DELETE",
@@ -291,6 +339,58 @@ export default function PhotosManager({
               </p>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Dedicated cover photo (#435) */}
+      <div className="card p-6">
+        <div className="flex items-center gap-2.5">
+          <span className="rounded-sm bg-brand-700 px-1.5 py-0.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-white dark:text-ink-50">
+            COV
+          </span>
+          <h2 className="font-semibold text-ink-900">{ph.coverTitle}</h2>
+        </div>
+        <p className="mt-1 text-sm text-ink-500">{ph.coverSub}</p>
+        {coverUrl ? (
+          <div className="relative mt-4 aspect-[3/1] overflow-hidden rounded-xl bg-ink-100">
+            <Image
+              src={coverUrl}
+              alt=""
+              fill
+              sizes="600px"
+              unoptimized={isSvg(coverUrl)}
+              className="object-cover"
+            />
+          </div>
+        ) : (
+          <p className="mt-4 rounded-xl bg-ink-50 p-6 text-center text-sm text-ink-500">
+            {ph.coverEmpty}
+          </p>
+        )}
+        <input
+          ref={coverRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) uploadCover(f);
+            e.target.value = "";
+          }}
+        />
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            onClick={() => coverRef.current?.click()}
+            disabled={coverBusy}
+            className="btn-secondary"
+          >
+            {coverBusy ? ph.uploading : ph.changeCover}
+          </button>
+          {coverUrl && (
+            <button onClick={removeCover} disabled={coverBusy} className="btn-ghost">
+              {ph.removeCover}
+            </button>
+          )}
         </div>
       </div>
 
@@ -453,7 +553,7 @@ export default function PhotosManager({
                     unoptimized={isSvg(p.url)}
                     className="pointer-events-none object-cover"
                   />
-                  {i === 0 && (
+                  {i === 0 && !coverUrl && (
                     <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2.5 py-1 text-xs font-medium text-white backdrop-blur">
                       {ph.cover}
                     </span>

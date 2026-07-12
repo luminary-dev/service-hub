@@ -88,7 +88,9 @@ function toCardDTO(
     verifiedAt: p.verifiedAt,
     createdAt: p.createdAt,
     avatarUrl: p.avatarUrl,
-    coverPhoto: p.photos[0]?.url ?? null,
+    // Dedicated cover (#435) wins; otherwise fall back to the first work photo,
+    // then (in the web card) to the category image.
+    coverPhoto: p.coverPhoto ?? p.photos[0]?.url ?? null,
     photos: p.photos.slice(0, 1).map((ph) => ({ url: ph.url, caption: ph.caption })),
     services: p.services
       .slice(0, 1)

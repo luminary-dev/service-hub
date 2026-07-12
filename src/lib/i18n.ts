@@ -894,6 +894,11 @@ const en = {
       changePicture: "Change picture",
       uploading: "Uploading…",
       pictureHint: "JPEG, PNG or WebP, max 5MB.",
+      coverTitle: "Cover photo",
+      coverSub: "Shown at the top of your card. Overrides the first work photo.",
+      coverEmpty: "No cover set — your first work photo is used instead.",
+      changeCover: "Upload cover",
+      removeCover: "Remove cover",
       workPhotos: "Work photos",
       workPhotosSub:
         "Show off your best work — these appear on your public profile.",
@@ -1879,6 +1884,11 @@ const si: Dict = {
       changePicture: "පින්තූරය වෙනස් කරන්න",
       uploading: "උඩුගත කරමින්…",
       pictureHint: "JPEG, PNG හෝ WebP, උපරිම 5MB.",
+      coverTitle: "කවර ඡායාරූපය",
+      coverSub: "ඔබේ කාඩ්පතේ ඉහළින් පෙන්වයි. පළමු වැඩ ඡායාරූපය අභිබවයි.",
+      coverEmpty: "කවරයක් නැත — ඒ වෙනුවට ඔබේ පළමු වැඩ ඡායාරූපය භාවිතා වේ.",
+      changeCover: "කවරය උඩුගත කරන්න",
+      removeCover: "කවරය ඉවත් කරන්න",
       workPhotos: "වැඩ ඡායාරූප",
       workPhotosSub:
         "ඔබේ හොඳම වැඩ පෙන්වන්න — මේවා ඔබේ පොදු පැතිකඩෙහි දිස්වේ.",

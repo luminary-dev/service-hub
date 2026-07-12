@@ -48,6 +48,10 @@ model Provider {
   youtube    String?
   website    String?
   avatarUrl  String?
+  // Dedicated cover photo (#435), independent of the work gallery. When set it
+  // wins over the first-work-photo derivation for the card cover, so reordering
+  // the gallery no longer silently changes the cover.
+  coverPhoto String?
   available  Boolean @default(true)
   // Away mode (#49): a provider going on leave sets a return date. Effective
   // availability = available && (awayUntil == null || awayUntil <= now) —
