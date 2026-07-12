@@ -10,7 +10,7 @@ import { getAuth, getLocale, getOrigin } from "../lib/http";
 import { log } from "../lib/log";
 import { createSession } from "../lib/session";
 import { hashToken } from "../lib/tokens";
-import { slPhone } from "../lib/field-rules";
+import { emailAddress, slPhone } from "../lib/field-rules";
 import { sendEmailChangeConfirmation } from "../lib/verification";
 import {
   ALLOWED_IMAGE_TYPES,
@@ -129,7 +129,12 @@ accountRoutes.put("/profile", async (c) => {
 // ---------------------------------------------------------------------------
 // POST /api/account/email/change — request a change; emails the NEW address
 // ---------------------------------------------------------------------------
-const emailSchema = z.object({ email: z.string().trim().email() });
+// Normalize (trim + lowercase) with the shared rule that register/login/forgot
+// use, so a mixed-case new address is compared against the lowercase address we
+// actually store: the taken-check can't miss a case-variant of an existing
+// account, and the value we later persist is one that password login (which
+// lowercases its input) can still match (security-audit M8).
+const emailSchema = z.object({ email: emailAddress });
 
 accountRoutes.post("/email/change", async (c) => {
   const auth = getAuth(c);
@@ -187,11 +192,16 @@ accountRoutes.post("/email/confirm", async (c) => {
     return c.json({ error: "expired" }, 400);
   }
 
+  // The stored token address was already normalized at request time; lowercase
+  // it again on write as a belt-and-braces guard so the persisted email is
+  // always the lowercase form password login compares against (M8).
+  const newEmail = record.newEmail.trim().toLowerCase();
+
   try {
     await db.$transaction([
       db.user.update({
         where: { id: record.userId },
-        data: { email: record.newEmail, emailVerified: new Date() },
+        data: { email: newEmail, emailVerified: new Date() },
       }),
       // Single-use: consume every pending change token for this user.
       db.emailChangeToken.deleteMany({ where: { userId: record.userId } }),
