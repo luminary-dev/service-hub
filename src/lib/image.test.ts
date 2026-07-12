@@ -3,7 +3,7 @@ import { isSvg } from "./image";
 
 describe("isSvg", () => {
   it("detects .svg regardless of case", () => {
-    expect(isSvg("/uploads/seed/p0-0.svg")).toBe(true);
+    expect(isSvg("/uploads/logo.svg")).toBe(true);
     expect(isSvg("/uploads/x.SVG")).toBe(true);
   });
   it("ignores query strings", () => {

@@ -142,6 +142,26 @@ internalRoutes.post("/internal/providers/by-user/:userId/deactivate", async (c) 
   return c.json({ ok: true, deactivated: true });
 });
 
+// Reactivate a self-deactivated profile (#403 re-upgrade). complete-provider
+// reuses an existing profile via getProviderIdByUser and never hits the create
+// path, so becoming a provider again must explicitly clear `suspended` here.
+// Idempotent — a missing or already-active profile is a no-op { ok: true }.
+internalRoutes.post("/internal/providers/by-user/:userId/reactivate", async (c) => {
+  const userId = c.req.param("userId");
+  const provider = await db.provider.findUnique({
+    where: { userId },
+    select: { id: true, suspended: true },
+  });
+  if (!provider) return c.json({ ok: true, reactivated: false });
+  if (provider.suspended) {
+    await db.provider.update({
+      where: { id: provider.id },
+      data: { suspended: false },
+    });
+  }
+  return c.json({ ok: true, reactivated: true });
+});
+
 // Login / job-board gate: the provider owned by a user, if any.
 internalRoutes.get("/internal/providers/by-user/:userId", async (c) => {
   const userId = c.req.param("userId");
@@ -156,6 +176,25 @@ internalRoutes.get("/internal/providers/by-user/:userId", async (c) => {
     },
   });
   return c.json({ provider: provider ?? null });
+});
+
+// Denormalized avatar sync from identity (#434). Sets Provider.avatarUrl for
+// the user (no-op/200 if they have no provider profile), so public cards/
+// profile stay in step with User.avatarUrl. Always 200 — the caller's update
+// already succeeded; this is a best-effort mirror.
+internalRoutes.post("/internal/providers/avatar", async (c) => {
+  const body = (await c.req.json().catch(() => null)) as {
+    userId?: string;
+    avatarUrl?: string | null;
+  } | null;
+  if (!body?.userId) {
+    return c.json({ error: "userId required" }, 400);
+  }
+  await db.provider.updateMany({
+    where: { userId: body.userId },
+    data: { avatarUrl: body.avatarUrl ?? null },
+  });
+  return c.json({ ok: true });
 });
 
 // Batch hydration (job-service response lists).
