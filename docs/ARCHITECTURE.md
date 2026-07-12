@@ -86,7 +86,9 @@ buffers, and a direct stream does not). Its `ServiceName` union is
   hydration degrades gracefully (missing names → `"Unknown"`); write-path
   dependency failures return `502 { error: "Upstream service unavailable" }`.
 - **JWT session**: cookie `sh_session`, HS256 via `jose`, secret `AUTH_SECRET`,
-  payload `{ userId, role, name, sv }`, 7-day expiry, `httpOnly`,
+  payload `{ userId, role, name, sv, avatar? }` (`avatar` is the profile
+  photo URL, carried so the top-nav renders it without a `/me` fetch;
+  re-minted on avatar change), 7-day expiry, `httpOnly`,
   `sameSite=lax`, `secure` in production, `path=/`. Signed ONLY by
   identity-service; verified by the gateway and by the web app (page gating).
 - **Session revocation**: `sv` is `User.sessionVersion` at mint time. Identity
