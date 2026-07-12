@@ -133,6 +133,38 @@ describe("POST /api/account/email/change", () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it("normalizes a mixed-case new address: taken-check runs on the lowercase form and 409s (M8)", async () => {
+    db.user.findUnique
+      .mockResolvedValueOnce({ id: "u1", email: "old@baas.lk" }) // caller
+      .mockResolvedValueOnce({ id: "u2", email: "new@baas.lk" }); // taken
+    const res = await req("POST", "/api/account/email/change", {
+      email: "New@Baas.LK",
+    });
+    expect(res.status).toBe(409);
+    // The uniqueness check must query the lowercase address we actually store,
+    // otherwise a case-variant slips past it.
+    expect(db.user.findUnique).toHaveBeenLastCalledWith({
+      where: { email: "new@baas.lk" },
+    });
+    expect(sendEmailChangeConfirmation).not.toHaveBeenCalled();
+  });
+
+  it("emails the lowercase form of a mixed-case new address when free (M8)", async () => {
+    db.user.findUnique
+      .mockResolvedValueOnce({ id: "u1", email: "old@baas.lk" }) // caller
+      .mockResolvedValueOnce(null); // taken? no
+    const res = await req("POST", "/api/account/email/change", {
+      email: "New@Baas.LK",
+    });
+    expect(res.status).toBe(200);
+    expect(sendEmailChangeConfirmation).toHaveBeenCalledWith(
+      "u1",
+      "new@baas.lk",
+      expect.any(String),
+      expect.any(String)
+    );
+  });
 });
 
 describe("POST /api/account/email/confirm", () => {
@@ -156,6 +188,28 @@ describe("POST /api/account/email/confirm", () => {
     const call = db.user.update.mock.calls[0][0];
     expect(call.data.email).toBe("new@baas.lk");
     expect(call.data.emailVerified).toBeInstanceOf(Date);
+  });
+
+  it("stores the address lowercase even if the token carried a mixed-case value (M8)", async () => {
+    db.emailChangeToken.findUnique.mockResolvedValue({
+      id: "t1",
+      userId: "u1",
+      newEmail: "New@Baas.LK",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    db.user.update.mockResolvedValue({ id: "u1" });
+    db.emailChangeToken.deleteMany.mockResolvedValue({ count: 1 });
+
+    const res = await req(
+      "POST",
+      "/api/account/email/confirm",
+      { token: "raw-token" },
+      { "content-type": "application/json" }
+    );
+    expect(res.status).toBe(200);
+    // Password login lowercases its input, so the persisted email must be
+    // lowercase or the account could never log in again.
+    expect(db.user.update.mock.calls[0][0].data.email).toBe("new@baas.lk");
   });
 
   it("rejects an expired/unknown token", async () => {
