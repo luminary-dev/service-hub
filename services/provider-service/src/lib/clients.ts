@@ -12,18 +12,28 @@ const NOTIFICATION_URL =
 
 export type RatingEntry = { rating: number; count: number };
 
+// Discriminated ratings result. `ok` is false when at least one batch failed
+// to load (review-service outage / non-2xx / network error), so callers that
+// must tell "peer is down" apart from "provider genuinely has no reviews" can
+// refuse to act on the absent ratings. `ok: true` means every batch answered,
+// so a missing provider id truly has no reviews. (#366)
+export type RatingsResult = { ok: boolean; ratings: Record<string, RatingEntry> };
+
 // Cap the ids per request so a large provider set can't build an unbounded
 // query string / `IN (...)` on review-service. Batches are merged; a failing
 // batch degrades to "no reviews" for its providers without failing the rest.
 const RATINGS_CHUNK = 200;
 
 // review-service GET /internal/ratings?providerIds=a,b → { ratings: {...} }.
-// Degrades to {} (callers render "no reviews").
-export async function fetchRatings(
+// Read-path clients render "no reviews" on failure; the returned `ok` flag lets
+// the auto-flagging sweep (which would otherwise mistake an outage for genuine
+// zero-review providers and falsely flag them) opt out of the quality signal.
+export async function fetchRatingsResult(
   providerIds: string[]
-): Promise<Record<string, RatingEntry>> {
-  if (providerIds.length === 0) return {};
+): Promise<RatingsResult> {
+  if (providerIds.length === 0) return { ok: true, ratings: {} };
   const out: Record<string, RatingEntry> = {};
+  let ok = true;
   for (let i = 0; i < providerIds.length; i += RATINGS_CHUNK) {
     const chunk = providerIds.slice(i, i + RATINGS_CHUNK);
     try {
@@ -31,16 +41,29 @@ export async function fetchRatings(
         REVIEW_URL,
         `/internal/ratings?providerIds=${encodeURIComponent(chunk.join(","))}`
       );
-      if (!res.ok) continue;
+      if (!res.ok) {
+        ok = false;
+        continue;
+      }
       const data = (await res.json()) as {
         ratings?: Record<string, RatingEntry>;
       };
       Object.assign(out, data.ratings ?? {});
     } catch {
-      // degrade for this chunk only
+      // degrade for this chunk only, but remember the batch was incomplete
+      ok = false;
     }
   }
-  return out;
+  return { ok, ratings: out };
+}
+
+// Convenience wrapper for read paths that degrade to "no reviews" and don't
+// care whether the fetch was complete — returns just the ratings map ({} on a
+// total outage), preserving the original graceful-degradation contract.
+export async function fetchRatings(
+  providerIds: string[]
+): Promise<Record<string, RatingEntry>> {
+  return (await fetchRatingsResult(providerIds)).ratings;
 }
 
 export type HydratedReview = {
