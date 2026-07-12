@@ -18,7 +18,7 @@ function coerceLocale(value: unknown): Locale {
 }
 
 const baseSchema = z.object({
-  to: z.string().min(1),
+  to: z.string().email(),
   url: z.string().min(1),
   locale: z.unknown().optional(),
 });
