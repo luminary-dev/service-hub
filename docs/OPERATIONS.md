@@ -210,6 +210,12 @@ upload volumes tarred alongside — or Cloudflare R2 when the `R2_*` vars are se
 `scripts/restore-db.sh`. Redis rate-limit windows are intentionally **not**
 backed up (ephemeral by design).
 
+## Secret rotation
+
+Rotating `AUTH_SECRET`, `INTERNAL_API_SECRET`, the Postgres password or any
+third-party key (blast radius, the update-secret → redeploy → verify procedure
+and rollback) is documented in [SECRET_ROTATION.md](SECRET_ROTATION.md).
+
 ## Local development
 
 One-time setup, then run the whole stack on the host:
