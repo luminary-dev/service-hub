@@ -16,6 +16,7 @@ import {
   createProviderProfile,
   deactivateProviderProfile,
   getProviderIdByUser,
+  reactivateProviderProfile,
 } from "../lib/providers";
 import { logAudit } from "../lib/audit";
 import {
@@ -210,6 +211,17 @@ authRoutes.post("/complete-provider", async (c) => {
       });
     } catch (e) {
       log.error("provider creation failed", { context: "complete-provider", err: e });
+      return c.json({ error: "Upstream service unavailable" }, 502);
+    }
+  } else {
+    // Re-upgrade (#403): the profile already exists but may have been
+    // self-deactivated on a prior downgrade. Reactivate it so it returns to
+    // public listings; fail loudly (502) rather than flip the role while the
+    // profile stays hidden.
+    try {
+      await reactivateProviderProfile(user.id);
+    } catch (e) {
+      log.error("provider reactivation failed", { context: "complete-provider", err: e });
       return c.json({ error: "Upstream service unavailable" }, 502);
     }
   }
