@@ -17,6 +17,7 @@ jobs:
   images:
     name: Publish ${{ matrix.image }} @ ${{ github.ref_name }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
@@ -33,19 +34,19 @@ jobs:
           - chat-service
           - api-gateway
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@v4
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push ${{ matrix.image }}
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           # web builds from the repo root; each service from its own directory.
           context: ${{ matrix.image == 'web' && '.' || format('services/{0}', matrix.image) }}
@@ -62,18 +63,23 @@ jobs:
     name: Create GitHub Release
     needs: images
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0
 
       - name: Create release with generated notes
+        # Pass the tag through the environment rather than interpolating
+        # ${{ github.ref_name }} straight into the script (#386): a tag name is
+        # attacker-influenceable, so keep it out of the shell command text.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
         run: |
-          gh release create "${{ github.ref_name }}" \
-            --title "${{ github.ref_name }}" \
+          gh release create "$TAG_NAME" \
+            --title "$TAG_NAME" \
             --generate-notes \
             --verify-tag
