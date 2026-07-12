@@ -43,7 +43,7 @@ const { dbMock } = vi.hoisted(() => ({
       count: vi.fn(),
       findMany: vi.fn(),
     },
-    adminAuditLog: { create: vi.fn() },
+    adminAuditLog: { create: vi.fn(), findMany: vi.fn() },
     $queryRaw: vi.fn(),
   },
 }));
@@ -522,5 +522,74 @@ describe("PATCH /api/admin/review-reports/:id (resolve / dismiss)", () => {
     );
     expect(res.status).toBe(200);
     expect(dbMock.adminAuditLog.create).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review-audit-log date filtering: a *date-only* `to` bound must include the
+// whole named day. Previously `to=2026-07-12` parsed to midnight UTC and was
+// used as an `lte`, so every entry from July 12 was excluded (off-by-one) —
+// the same bug fixed in provider-service's audit-log handler. The DB is
+// mocked, so we assert the `createdAt` bounds handed to Prisma and check that
+// an entry timestamped mid-day would fall inside them.
+// ---------------------------------------------------------------------------
+describe("GET /api/admin/review-audit-log date range", () => {
+  function whereFromCall() {
+    return dbMock.adminAuditLog.findMany.mock.calls[0][0].where as {
+      createdAt?: { gte?: Date; lte?: Date };
+    };
+  }
+
+  beforeEach(() => {
+    dbMock.adminAuditLog.findMany.mockResolvedValue([]);
+  });
+
+  it("a date-only `to` includes entries from that whole day (end-of-day UTC)", async () => {
+    const entryCreatedAt = new Date("2026-07-12T10:00:00Z");
+    const res = await req(
+      "/api/admin/review-audit-log?to=2026-07-12",
+      {},
+      { "x-user-id": "sup_1", "x-user-role": "SUPPORT" }
+    );
+    expect(res.status).toBe(200);
+
+    const { createdAt } = whereFromCall();
+    expect(createdAt?.lte).toEqual(new Date("2026-07-12T23:59:59.999Z"));
+    // The mid-day entry is at/under the upper bound → it would be returned.
+    expect(entryCreatedAt.getTime()).toBeLessThanOrEqual(createdAt!.lte!.getTime());
+  });
+
+  it("excludes entries after a date-only `to` (next-day entries fall past the bound)", async () => {
+    const nextDayEntry = new Date("2026-07-13T00:00:00Z");
+    await req(
+      "/api/admin/review-audit-log?to=2026-07-12",
+      {},
+      { "x-user-id": "sup_1", "x-user-role": "SUPPORT" }
+    );
+
+    const { createdAt } = whereFromCall();
+    expect(nextDayEntry.getTime()).toBeGreaterThan(createdAt!.lte!.getTime());
+  });
+
+  it("honors a full ISO datetime `to` verbatim (no end-of-day snapping)", async () => {
+    await req(
+      "/api/admin/review-audit-log?to=2026-07-12T10:00:00Z",
+      {},
+      { "x-user-id": "sup_1", "x-user-role": "SUPPORT" }
+    );
+
+    const { createdAt } = whereFromCall();
+    expect(createdAt?.lte).toEqual(new Date("2026-07-12T10:00:00Z"));
+  });
+
+  it("keeps a date-only `from` at midnight UTC as the lower bound", async () => {
+    await req(
+      "/api/admin/review-audit-log?from=2026-07-12",
+      {},
+      { "x-user-id": "sup_1", "x-user-role": "SUPPORT" }
+    );
+
+    const { createdAt } = whereFromCall();
+    expect(createdAt?.gte).toEqual(new Date("2026-07-12T00:00:00Z"));
   });
 });
