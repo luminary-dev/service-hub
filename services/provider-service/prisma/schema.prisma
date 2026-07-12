@@ -125,10 +125,12 @@ model WorkPhoto {
 
 // Abuse reports (#50) on content this service owns (providers and work
 // photos). Each content-owning service keeps the reports on its own content —
-// review-service has the same-shaped model for reviews. reporterId references
-// a User owned by identity-service (plain string, nullable — anonymous
-// visitors can report). No FK to the target either: a report must survive its
-// target being deleted so admins can still see what happened.
+// review-service has the same-shaped model for reviews (#370): both carry the
+// identical field set — `source` (USER|SYSTEM) and the `updatedAt` transition
+// timestamp included. reporterId references a User owned by identity-service
+// (plain string, nullable — anonymous visitors can report). No FK to the
+// target either: a report must survive its target being deleted so admins can
+// still see what happened.
 model Report {
   id         String  @id @default(cuid())
   // "PROVIDER" | "WORK_PHOTO"
@@ -145,6 +147,10 @@ model Report {
   // when a provider crosses a report-count or rating threshold.
   source     String   @default("USER")
   createdAt  DateTime @default(now())
+  // Last-transition timestamp (#370): auto-stamped on every write (status
+  // resolve/dismiss, source change), so admins can sort/audit by recency of
+  // action rather than only creation.
+  updatedAt  DateTime @updatedAt
   // Audit trail (#223): admin userId + timestamp stamped when a report
   // transitions to RESOLVED or DISMISSED. Both null while OPEN.
   resolvedBy String?
@@ -179,6 +185,10 @@ model Inquiry {
   customerLastReadAt DateTime?
   providerLastReadAt DateTime?
   createdAt   DateTime  @default(now())
+  // Last-transition timestamp (#370): auto-stamped on every write (status
+  // change, respondedAt stamp, read-marker updates) so the dashboard inbox can
+  // reason about recency of activity, not just creation time.
+  updatedAt   DateTime  @updatedAt
   messages    InquiryMessage[]
 
   @@index([providerId])
