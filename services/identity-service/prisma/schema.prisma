@@ -49,6 +49,13 @@ model User {
   emailVerificationTokens EmailVerificationToken[]
   emailChangeTokens       EmailChangeToken[]
   accounts                Account[]
+
+  // Admin hot paths (#509): the users list orders newest-first and the
+  // dashboard signups chart range-scans createdAt. The case-insensitive
+  // email/name search is served by pg_trgm GIN indexes that Prisma's DSL can't
+  // express (operator-class indexes) — those live only in the migration
+  // (20260713120000_user_admin_indexes), same as provider-service's trgm ones.
+  @@index([createdAt])
 }
 
 // Linked social identities (#398). One row per (provider, providerAccountId);
