@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import { FaScrewdriverWrench, FaWrench } from "@/components/icons";
 import {
   CATEGORIES,
+  CATEGORY_ICON_NAMES,
   categoryIcon,
   categoryLabel,
   DISTRICTS,
+  iconByName,
   priceTypeLabel,
 } from "./constants";
 
@@ -28,6 +30,24 @@ describe("categoryIcon", () => {
 
   it("falls back to the generic tool icon for unknown slugs", () => {
     expect(categoryIcon("solar-installer")).toBe(FaScrewdriverWrench);
+  });
+});
+
+describe("iconByName", () => {
+  it("resolves a known admin-assigned icon name to its component", () => {
+    expect(iconByName("FaWrench")).toBe(FaWrench);
+  });
+
+  it("returns null for unset or unknown names (caller falls back to slug)", () => {
+    expect(iconByName(null)).toBeNull();
+    expect(iconByName("")).toBeNull();
+    expect(iconByName("FaNotAThing")).toBeNull();
+  });
+
+  it("every picker option resolves to a component", () => {
+    for (const name of CATEGORY_ICON_NAMES) {
+      expect(iconByName(name)).toBeTypeOf("function");
+    }
   });
 });
 
