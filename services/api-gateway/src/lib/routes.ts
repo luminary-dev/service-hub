@@ -143,13 +143,24 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
 }
 
 function containsInternal(pathname: string): boolean {
-  if (pathname.includes("/internal")) return true;
-  try {
-    // Also catch percent-encoded attempts (e.g. %2Finternal).
-    return decodeURIComponent(pathname).includes("/internal");
-  } catch {
-    return true; // malformed encoding — refuse to route
+  // Decode until the string stops changing, so single- (%2Finternal) *and*
+  // multi-encoded (%252finternal, and deeper) attempts to smuggle an
+  // /internal segment past this guard are all caught. A small iteration cap
+  // keeps malformed/adversarial input from looping unboundedly.
+  let current = pathname;
+  for (let i = 0; i < 5; i++) {
+    if (current.includes("/internal")) return true;
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(current);
+    } catch {
+      return true; // malformed encoding — refuse to route
+    }
+    if (decoded === current) return false; // fully decoded, no /internal
+    current = decoded;
   }
+  // Still decoding after the cap — treat as suspicious rather than forward it.
+  return true;
 }
 
 export function serviceUrl(service: ServiceName): string {

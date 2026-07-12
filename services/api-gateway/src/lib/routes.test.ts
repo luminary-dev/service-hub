@@ -222,6 +222,36 @@ describe("resolveRoute (routing table)", () => {
     expect(resolveRoute("/internal/users")).toBeNull();
   });
 
+  it("never forwards multi-encoded /internal paths (decode-until-stable)", () => {
+    // Double-encoded %2F → %252F. A single decode leaves "%2Finternal", so a
+    // one-shot guard would forward this; decode-until-stable catches it.
+    expect(resolveRoute("/api/auth/%252Finternal/users")).toBeNull();
+    expect(resolveRoute("/api/auth/%252finternal/users")).toBeNull();
+    // Deeper nesting (triple-encoded) is caught too.
+    expect(resolveRoute("/api/auth/%25252Finternal/users")).toBeNull();
+    // Encoded on the "internal" literal itself.
+    expect(resolveRoute("/api/jobs/%252Finternal%252Fjobs")).toBeNull();
+  });
+
+  it("does not throw on malformed percent-encoding, refuses to route", () => {
+    // A bare % (or truncated sequence) makes decodeURIComponent throw; the
+    // guard must treat that as suspicious rather than crash.
+    expect(() => resolveRoute("/api/providers/%")).not.toThrow();
+    expect(resolveRoute("/api/providers/%")).toBeNull();
+    expect(resolveRoute("/api/auth/%zz/login")).toBeNull();
+    // Malformed encoding that would otherwise be a valid public route.
+    expect(resolveRoute("/api/jobs/%E0%A4%A")).toBeNull();
+  });
+
+  it("still resolves normal percent-encoded public paths", () => {
+    // Innocuous encoding (an @ in an email-ish segment) must not be mistaken
+    // for an /internal smuggling attempt.
+    expect(resolveRoute("/api/admin/impersonate/a%40b.com")).toEqual({
+      service: "identity",
+      path: "/api/admin/impersonate/a%40b.com",
+    });
+  });
+
   it("routes inquiry message threads to provider-service", () => {
     expect(resolveRoute("/api/inquiries/inq_1/messages")).toEqual({
       service: "provider",
