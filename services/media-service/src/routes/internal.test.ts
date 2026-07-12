@@ -156,6 +156,32 @@ describe("POST /internal/media/store", () => {
     expect(await res.json()).toEqual({ error: "File too large" });
   });
 
+  it("413s early on an over-limit Content-Length, before buffering the body", async () => {
+    // A tiny (even non-multipart) body: if the guard ran, it short-circuits on
+    // the declared Content-Length and never reaches the formData parse — which
+    // would otherwise 400 with "Invalid input" (see the non-multipart case).
+    const res = await app.request("/internal/media/store", {
+      method: "POST",
+      headers: {
+        "x-internal-secret": SECRET,
+        "content-type": "application/json",
+        "content-length": String(MAX_UPLOAD_SIZE + 1),
+      },
+      body: "{}",
+    });
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: "File too large" });
+  });
+
+  it("does not early-reject a within-limit Content-Length (a normal upload still works)", async () => {
+    const res = await postStore(
+      storeForm({ namespace: "provider", prefix: "uploads", file: new File([await jpeg()], "ok.jpg", { type: "image/jpeg" }) }),
+      { "x-internal-secret": SECRET, "content-length": String(MAX_UPLOAD_SIZE - 1) }
+    );
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { url: string }).url).toMatch(/\.jpg$/);
+  });
+
   it("400s an invalid prefix (multi-segment / traversal)", async () => {
     const res = await postStore(
       storeForm({ namespace: "provider", prefix: "a/b", file: new File([await jpeg()], "x.jpg", { type: "image/jpeg" }) })
