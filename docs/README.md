@@ -29,6 +29,7 @@ the security posture. Per-service API detail lives in each
 | [SECURITY.md](../SECURITY.md) | Security policy, supported versions and the responsible-disclosure process (repo root). |
 | [BACKUPS.md](BACKUPS.md) | Database backup & disaster recovery: `scripts/backup-dbs.sh` dumps, upload storage (R2 vs local volumes), the restore runbook and offsite copies. |
 | [TESTING.md](TESTING.md) | The test strategy layer by layer — service unit tests, gateway app tests, web unit tests — and what belongs where. |
+| [CI_ADDITIONS.md](CI_ADDITIONS.md) | A menu of further CI checks/pipelines we can add (actionlint, link checking, service ESLint, dependency-review, SBOM/cosign, …) — rationale, effort and gate-vs-report for each, plus what already runs (incl. CodeQL via default setup). |
 | [RATE_LIMITING.md](RATE_LIMITING.md) | The gateway's Redis-backed sliding-window limiter: the per-route budget table, the in-memory fallback and the client-IP (XFF) caveat (#201). |
 | [EMAIL_SETUP.md](EMAIL_SETUP.md) | Transactional email via notification-service + Resend: the API key, the verified sending domain and the console fallback when unset. |
 | [DESIGN.md](DESIGN.md) | The web design system (UI 2.0): the blueprint visual language, `globals.css` OKLCH tokens, light/dark theming and the shared `src/components/ui/*` primitives. |

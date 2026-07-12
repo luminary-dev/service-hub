@@ -134,9 +134,41 @@ Like CI, this workflow uses the same `concurrency` group to cancel superseded
 runs, and each job has a `timeout-minutes` cap (10 for the `trivy` fs scan, 30
 for the `trivy-image` build+scan, 15 for `npm-audit`).
 
-All SARIF is uploaded via `github/codeql-action/upload-sarif` to the GitHub
-Security tab. Note there is currently **no CodeQL code-analysis job** — the
-codeql-action is used only as the SARIF upload transport.
+All Trivy SARIF is uploaded via `github/codeql-action/upload-sarif` to the
+GitHub Security tab.
+
+## CodeQL (code-scanning default setup)
+
+First-party static analysis of our own source (as opposed to the dependency /
+OS-package scans above) is provided by **GitHub's code-scanning default setup**
+— it is *not* a workflow in this repo. Default setup runs a GitHub-managed
+CodeQL analysis over `javascript-typescript` (plus `actions`) on push/PR, with
+the `default` query suite, and uploads results to the Security tab. Because it
+is enabled, an advanced-config CodeQL workflow **cannot** be added — GitHub
+rejects those SARIF uploads ("CodeQL analyses from advanced configurations
+cannot be processed when the default setup is enabled").
+
+To adjust it, use the repo's **Settings → Code security → Code scanning →
+default setup** (e.g. upgrade the query suite from `default` to `extended`);
+there is no file to edit here. The `github/codeql-action/upload-sarif` used in
+`security-scan.yml` is unrelated — it is only the transport for Trivy's SARIF.
+
+## actionlint (`actionlint.yml`)
+
+Lints the workflow YAML itself with actionlint (bad `runs-on`, malformed
+`${{ }}` expressions, deprecated syntax, broken `needs:`/`if:` refs). It runs
+on push + PR to `dev`/`prod` **only when a `.github/workflows/**` file changes**
+(so it never touches unrelated PRs), plus `workflow_dispatch`, pinned to the
+`rhysd/actionlint:1.7.12` image. Least-privilege `permissions` (`contents:
+read`), a 10-minute `timeout-minutes` cap, and the shared `concurrency` cancel
+group. The bundled shellcheck integration is disabled for now (`-shellcheck=`)
+because today's workflows trip only benign SC2016/SC2034 false-positives.
+
+Like other new check contexts it is **not** a required check in the `dev`/`prod`
+rulesets yet, so a red run can't block a merge until it's explicitly promoted.
+
+See [CI_ADDITIONS.md](CI_ADDITIONS.md) for the menu of further checks we can add
+on top of the ones above.
 
 ## Project board
 
