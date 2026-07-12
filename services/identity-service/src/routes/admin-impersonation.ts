@@ -90,9 +90,14 @@ adminImpersonationRoutes.post("/:userId", async (c) => {
   }
 
   const raw = c.req.param("userId");
+  // Try the id lookup verbatim (ids are case-sensitive cuids), then fall back
+  // to email. Stored emails are always lowercased, so normalize the typed
+  // value (trim + lowercase) to match — otherwise a mixed-case address like
+  // "Foo@Bar.com" would spuriously 404 an existing user.
   let target = await db.user.findUnique({ where: { id: raw } }).catch(() => null);
   if (!target) {
-    target = await db.user.findUnique({ where: { email: raw } }).catch(() => null);
+    const email = raw.trim().toLowerCase();
+    target = await db.user.findUnique({ where: { email } }).catch(() => null);
   }
 
   if (!target) {
