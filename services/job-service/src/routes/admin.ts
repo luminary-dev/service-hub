@@ -8,6 +8,14 @@ import { fetchUsers, fetchProviders } from "../lib/hydrate";
 
 export const admin = new Hono();
 
+// Allowed JobRequest.status values (schema: OPEN | CLOSED). The status column
+// is a plain String, so an unrecognized filter value doesn't inject but Prisma
+// still rejects it and 500s — so, like provider-service's admin list
+// normalizer, an out-of-range status is simply dropped (no filter) rather than
+// erroring. `category` is a free-form String column: any value is a legal
+// filter (it just matches nothing), so it needs no allow-list.
+const JOB_STATUSES = ["OPEN", "CLOSED"] as const;
+
 // Job list (#222): newest first, optionally filtered by status/category, with
 // the customer name and a response count hydrated for the row.
 admin.get("/api/admin/jobs", async (c) => {
@@ -15,7 +23,10 @@ admin.get("/api/admin/jobs", async (c) => {
     return c.json({ error: "Forbidden" }, 403);
   }
 
-  const status = c.req.query("status");
+  const statusParam = c.req.query("status");
+  const status = JOB_STATUSES.includes(statusParam as (typeof JOB_STATUSES)[number])
+    ? statusParam
+    : undefined;
   const category = c.req.query("category");
 
   const rows = await db.jobRequest.findMany({

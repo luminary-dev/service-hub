@@ -60,7 +60,7 @@ each service enforces the tier. **Reads and report resolve/dismiss** gate on
 
 | Method + path | Auth | Summary |
 |---|---|---|
-| `GET /api/admin/jobs` | SUPPORT+ | Jobs list (`?status`, `?category`), newest first, customer name + response count → `{ jobs }` (not paginated). |
+| `GET /api/admin/jobs` | SUPPORT+ | Jobs list (`?status` — `OPEN`/`CLOSED`, any other value is ignored; `?category`), newest first, customer name + response count → `{ jobs }` (not paginated). |
 | `GET /api/admin/jobs/:id` | SUPPORT+ | Job + responses with customer/provider contact hydrated. |
 
 ---
