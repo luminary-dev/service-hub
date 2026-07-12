@@ -13,7 +13,7 @@ import {
   MAX_UPLOAD_SIZE,
   storeImage,
 } from "../lib/storage";
-import { fetchProviderReviews, fetchRatings } from "../lib/clients";
+import { fetchProviderReviews, fetchRatings, fetchRatingsResult } from "../lib/clients";
 import { computeQualityScore } from "../lib/quality-score";
 import {
   buildAdminProvidersWhere,
@@ -658,7 +658,7 @@ adminRoutes.post("/api/admin/flagging/run", async (c) => {
   // Open USER-report counts per provider, providers already carrying an OPEN
   // SYSTEM flag (dedupe set), and rating/reviewCount — all as grouped/batched
   // queries rather than one-per-provider.
-  const [userReportGroups, systemFlagGroups, ratings] = await Promise.all([
+  const [userReportGroups, systemFlagGroups, ratingsResult] = await Promise.all([
     db.report.groupBy({
       by: ["targetId"],
       where: {
@@ -679,7 +679,7 @@ adminRoutes.post("/api/admin/flagging/run", async (c) => {
       },
       _count: { _all: true },
     }),
-    fetchRatings(providerIds),
+    fetchRatingsResult(providerIds),
   ]);
 
   const openUserReportsById = new Map(
@@ -687,18 +687,25 @@ adminRoutes.post("/api/admin/flagging/run", async (c) => {
   );
   const alreadyFlagged = new Set(systemFlagGroups.map((g) => g.targetId));
 
+  // The quality-score signal is only trustworthy when ratings hydrated fully.
+  // On a review-service outage `fetchRatings` degrades to "no reviews" for every
+  // provider, which is indistinguishable from a genuine zero-review provider —
+  // acting on it would flag healthy providers with bogus SYSTEM reports (#366).
+  // So when the ratings fetch was incomplete, drop the quality trigger for this
+  // run and flag on report volume alone (which needs no peer).
+  const { ok: ratingsOk, ratings } = ratingsResult;
+
   const toFlag = providers.filter((p) => {
     if (alreadyFlagged.has(p.id)) return false;
     const openUserReportCount = openUserReportsById.get(p.id) ?? 0;
+    if (openUserReportCount >= FLAG_OPEN_USER_REPORTS_AT) return true;
+    if (!ratingsOk) return false;
     const { qualityScore } = computeQualityScore({
       rating: ratings[p.id]?.rating ?? 0,
       reviewCount: ratings[p.id]?.count ?? 0,
       openReportCount: openUserReportCount,
     });
-    return (
-      qualityScore < FLAG_QUALITY_BELOW ||
-      openUserReportCount >= FLAG_OPEN_USER_REPORTS_AT
-    );
+    return qualityScore < FLAG_QUALITY_BELOW;
   });
 
   if (toFlag.length === 0) {
@@ -948,6 +955,12 @@ adminRoutes.get("/api/admin/audit-log", async (c) => {
   const from = c.req.query("from");
   const to = c.req.query("to");
 
+  // A date-only value (e.g. "2026-07-12") parses to midnight UTC. As a `gte`
+  // lower bound that is exactly what we want, but as an `lte` upper bound it
+  // would exclude every entry from the named day — so snap it to end-of-day
+  // UTC. A full ISO datetime is honored verbatim on both bounds.
+  const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
   const createdAt: { gte?: Date; lte?: Date } = {};
   if (from) {
     const d = new Date(from);
@@ -955,7 +968,10 @@ adminRoutes.get("/api/admin/audit-log", async (c) => {
   }
   if (to) {
     const d = new Date(to);
-    if (!Number.isNaN(d.getTime())) createdAt.lte = d;
+    if (!Number.isNaN(d.getTime())) {
+      if (DATE_ONLY.test(to)) d.setUTCHours(23, 59, 59, 999);
+      createdAt.lte = d;
+    }
   }
 
   const entries = await db.adminAuditLog.findMany({

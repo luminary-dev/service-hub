@@ -16,7 +16,15 @@ own account):
 
 - **Change role** — CUSTOMER / PROVIDER / ADMIN / SUPPORT via
   `PATCH /api/admin/users/{id}` `{ role }` (a role change bumps the user's
-  `sessionVersion`, forcing a re-login on their next request).
+  `sessionVersion`, forcing a re-login on their next request). A change that
+  crosses the PROVIDER boundary mirrors the self-service flows so
+  provider-service stays consistent: demoting **PROVIDER → non-PROVIDER**
+  deactivates (hides) their provider profile, and promoting **non-PROVIDER →
+  PROVIDER** reactivates an existing hidden profile (no-op if none exists — they
+  complete the provider wizard later). The provider-service call is a write-path
+  gate: if it fails the API returns `502` and the role is left unchanged, so the
+  two services never drift. Role changes that don't involve PROVIDER (e.g.
+  CUSTOMER ↔ ADMIN ↔ SUPPORT) make no provider-service call.
 - **Lock / unlock** — `PATCH /api/admin/users/{id}` `{ action }`. Lock sets a
   far-future `lockedUntil` (effectively permanent manual lock, reusing the same
   column as the 5-strike / 15-minute auto-lockout); unlock clears it and resets

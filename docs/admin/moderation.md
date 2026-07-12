@@ -77,6 +77,14 @@ flags one when its **quality score is below 40** *or* it carries **3+ open
 an open system flag are skipped) and returning `{ flagged }`. System-flagged
 providers then appear in the normal reports queue for a human to action.
 
+The quality-score half of that rule depends on ratings hydrated from
+review-service. Because that fetch degrades to "no reviews" on an outage — which
+is indistinguishable from a provider genuinely having no reviews — the run uses a
+discriminated ratings result (`fetchRatingsResult` in `lib/clients.ts`): when
+hydration was incomplete (peer down / non-2xx), the **quality-score trigger is
+skipped for that run** so healthy providers aren't falsely flagged, and only the
+peer-independent **report-volume trigger** applies (#366).
+
 ### Provider quality score
 
 Admins see a **quality-score badge** (0–100) on every provider in the list and
