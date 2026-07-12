@@ -40,6 +40,10 @@ function post(path: string, body?: unknown) {
   });
 }
 
+function get(path: string) {
+  return app.request(path, { headers: { "x-internal-secret": SECRET } });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -123,6 +127,63 @@ describe("POST /internal/providers re-upgrade", () => {
     expect(await res.json()).toEqual({ id: "prov1" });
     // No un-suspension on the create path — the profile stays as it was.
     expect(dbMock.provider.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /internal/providers/matching (#501 lead-gen fan-out)", () => {
+  it("400s without category or district", async () => {
+    const res = await get("/internal/providers/matching?category=plumbing");
+    expect(res.status).toBe(400);
+    expect(dbMock.provider.findMany).not.toHaveBeenCalled();
+  });
+
+  it("returns matching providers' contact emails, scoped + not-suspended + capped", async () => {
+    dbMock.provider.findMany.mockResolvedValue([
+      { id: "p1", contactName: "Jane", contactEmail: "jane@example.com" },
+      { id: "p2", contactName: "Sam", contactEmail: "sam@example.com" },
+    ]);
+    const res = await get(
+      "/internal/providers/matching?category=plumbing&district=Colombo&excludeUserId=owner-1"
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      providers: [
+        { id: "p1", contactName: "Jane", contactEmail: "jane@example.com" },
+        { id: "p2", contactName: "Sam", contactEmail: "sam@example.com" },
+      ],
+    });
+    // Mirrors the board's scoping: category + district equality, suspended
+    // excluded, poster excluded, capped.
+    expect(dbMock.provider.findMany).toHaveBeenCalledWith({
+      where: {
+        category: "plumbing",
+        district: "Colombo",
+        suspended: false,
+        NOT: { userId: "owner-1" },
+      },
+      select: { id: true, contactName: true, contactEmail: true },
+      take: 200,
+    });
+  });
+
+  it("dedupes providers that share a contact email", async () => {
+    dbMock.provider.findMany.mockResolvedValue([
+      { id: "p1", contactName: "Jane", contactEmail: "shared@example.com" },
+      { id: "p2", contactName: "Sam", contactEmail: "SHARED@example.com" },
+    ]);
+    const res = await get(
+      "/internal/providers/matching?category=plumbing&district=Colombo"
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.providers).toHaveLength(1);
+    expect(body.providers[0].id).toBe("p1");
+    // No excludeUserId → no NOT clause.
+    expect(dbMock.provider.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { category: "plumbing", district: "Colombo", suspended: false },
+      })
+    );
   });
 });
 

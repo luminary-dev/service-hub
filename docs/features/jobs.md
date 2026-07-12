@@ -11,6 +11,17 @@ job-service. All jobs pages require a session.
 the live category list), district (one of the 25), title (5–100), description
 (10–2000), optional budget (Rs. 100–100,000,000). Posting is rate-limited.
 
+**On a successful post, matching providers are emailed (#501).** After the job
+is saved, job-service fans out a best-effort notification to every provider
+whose **category and district match the job** (the same scoping the board
+applies, suspended profiles excluded, the poster excluded). It asks
+provider-service for the matching contact emails
+(`GET /internal/providers/matching`, capped at 200 and deduped) and hands the
+whole list to notification-service in one batched call
+(`POST /internal/email/new-job`, EN/SI "new matching job" template). The fan-out
+is wrapped so a provider-lookup or email failure is logged and **never fails the
+post** — this is the forward direction of the response-notification below.
+
 ### The provider job board — response scoping
 
 **`/jobs`** shows a provider their matching board via `GET /api/jobs/board`.

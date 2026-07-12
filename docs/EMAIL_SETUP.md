@@ -50,4 +50,10 @@ and template list.
 - Related code: `services/notification-service/src/lib/email.ts` (templates +
   Resend/console send), `src/routes/email.ts` (endpoints). Callers:
   identity-service (verify / password-reset / change-email #396),
-  provider-service (inquiry), job-service (job-response).
+  provider-service (inquiry), job-service (job-response and new-job #501).
+- **`POST /internal/email/new-job` (#501)** is a fan-out, not a single-recipient
+  send: job-service resolves the matching providers once and passes the whole
+  `{ recipients: string[], url, jobTitle, district, locale? }` list, and the
+  route sends one copy of the EN/SI "new matching job" template per recipient
+  (deduped), returning `{ ok, sent, delivered }`. A single failed send does not
+  abort the batch.

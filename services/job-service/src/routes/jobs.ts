@@ -60,6 +60,47 @@ jobs.post("/", async (c) => {
     },
   });
 
+  // Lead-gen fan-out (#501): email the providers whose category + district
+  // match this job so they don't have to browse the board to find it — the
+  // forward direction of the existing job-response notification below. Ask
+  // provider-service for the matching contact emails (it mirrors the board's
+  // scoping + suspended gate, caps + dedupes), then hand the whole list to
+  // notification-service in one batched call. Best-effort: a provider-lookup or
+  // notification failure is logged and never fails the post (mirrors the
+  // response flow's block).
+  try {
+    const res = await s2s(
+      PROVIDER_URL,
+      `/internal/providers/matching?category=${encodeURIComponent(
+        job.category
+      )}&district=${encodeURIComponent(
+        job.district
+      )}&excludeUserId=${encodeURIComponent(auth.userId)}`
+    );
+    if (res.ok) {
+      const data = (await res.json()) as {
+        providers: { id: string; contactName: string | null; contactEmail: string }[];
+      };
+      const recipients = [
+        ...new Set(data.providers.map((p) => p.contactEmail).filter(Boolean)),
+      ].slice(0, 200);
+      if (recipients.length > 0) {
+        await s2s(NOTIFICATION_URL, "/internal/email/new-job", {
+          method: "POST",
+          body: JSON.stringify({
+            recipients,
+            url: `${getOrigin(c)}/jobs`,
+            jobTitle: job.title,
+            district: job.district,
+            locale: getLocale(c),
+          }),
+        });
+      }
+    }
+  } catch (e) {
+    log.error("new-job notification failed", { context: "jobs", err: e });
+  }
+
   return c.json({ id: job.id });
 });
 
