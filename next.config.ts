@@ -53,6 +53,9 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Standalone output: the Docker runtime ships the traced self-contained
+  // server instead of the full prod node_modules + `next start` (~1GB → ~340MB).
+  output: "standalone",
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
