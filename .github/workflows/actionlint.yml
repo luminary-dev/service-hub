@@ -1,0 +1,47 @@
+name: actionlint
+
+# Lint the workflow YAML itself. We ship 8 workflow files and, until now,
+# nothing checked them: actionlint catches invalid `runs-on`, malformed
+# `${{ }}` expressions, deprecated syntax and bad `needs:` / `if:` references
+# before they ever reach a runner. It complements the source scanning (CodeQL,
+# enabled via GitHub's code-scanning *default setup*) and the dependency / OS
+# scanning (Trivy + `npm audit` in security-scan.yml) — this is the piece that
+# covers the CI configuration itself.
+#
+# The bundled shellcheck integration is disabled (`-shellcheck=`): on today's
+# workflows it only emits benign SC2016 false-positives for `gh` / GraphQL
+# `$var` strings that are intentionally single-quoted. actionlint's native
+# YAML + expression checks are the value here; shellcheck can be re-enabled
+# once those handful of findings are addressed (see docs/CI_ADDITIONS.md).
+on:
+  push:
+    branches: [dev, prod]
+    paths: [".github/workflows/**"]
+  pull_request:
+    branches: [dev, prod]
+    paths: [".github/workflows/**"]
+  workflow_dispatch:
+
+# Cancel superseded runs per ref; mirrors ci.yml / security-scan.yml.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read-only: this job only reads the workflow files it lints.
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      # Pinned to a released image tag (matching the repo's major-tag pinning
+      # for actions). The entrypoint is `actionlint`; `args` are appended to it.
+      - name: Run actionlint
+        uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -shellcheck= -color

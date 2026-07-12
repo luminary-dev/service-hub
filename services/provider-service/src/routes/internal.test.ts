@@ -1,7 +1,8 @@
 // Internal S2S route tests (#403 self-service downgrade). The deactivate route
-// hides a provider's own profile by userId; the create path reactivates a
-// self-deactivated profile on re-upgrade. Prisma is mocked; internal routes
-// require the shared secret.
+// hides a provider's own profile by userId; the dedicated reactivate route
+// clears it. The create path is idempotent on a userId conflict but must never
+// touch `suspended` (so it can't lift an admin suspension). Prisma is mocked;
+// internal routes require the shared secret.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Prisma } from "@prisma/client";
 
@@ -103,24 +104,25 @@ describe("POST /internal/providers re-upgrade", () => {
     services: [{ title: "Fix taps", price: 1000, priceType: "FIXED" }],
   };
 
-  it("reactivates a previously self-deactivated profile", async () => {
-    // create() hits the unique-userId constraint (profile already exists).
+  it("returns the existing id without lifting a suspension (invariant guard)", async () => {
+    // create() hits the unique-userId constraint (profile already exists) and
+    // that profile is suspended. Re-registration must be idempotent but must
+    // NOT clear `suspended` — the flag can't tell a self-downgrade from an
+    // ADMIN suspension, so un-suspension is left to the dedicated /reactivate
+    // endpoint. Guards against re-registration silently lifting an admin ban.
     dbMock.provider.create.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError("unique", {
         code: "P2002",
         clientVersion: "7",
       })
     );
-    dbMock.provider.findUnique.mockResolvedValue({ id: "prov1", suspended: true });
-    dbMock.provider.update.mockResolvedValue({ id: "prov1", suspended: false });
+    dbMock.provider.findUnique.mockResolvedValue({ id: "prov1" });
 
     const res = await post("/internal/providers", body);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ id: "prov1" });
-    expect(dbMock.provider.update).toHaveBeenCalledWith({
-      where: { id: "prov1" },
-      data: { suspended: false },
-    });
+    // No un-suspension on the create path — the profile stays as it was.
+    expect(dbMock.provider.update).not.toHaveBeenCalled();
   });
 });
 

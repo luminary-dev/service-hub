@@ -114,8 +114,18 @@ authRoutes.post("/register", async (c) => {
       });
     } catch (e) {
       log.error("provider creation failed", { context: "register", err: e });
-      // Compensation: the user row is useless without its provider profile.
-      await db.user.delete({ where: { id: user.id } });
+      // Compensation: the user row is useless without its provider profile, so
+      // roll it back. Best-effort — if the delete itself fails (DB hiccup) we
+      // log the orphan for later cleanup and still return the same 502, rather
+      // than letting the delete throw and turn a graceful "upstream down" into
+      // a 500 with an orphaned PROVIDER user left behind.
+      await db.user.delete({ where: { id: user.id } }).catch((delErr) => {
+        log.error("orphan user cleanup failed", {
+          context: "register",
+          userId: user.id,
+          err: delErr,
+        });
+      });
       return c.json({ error: "Upstream service unavailable" }, 502);
     }
   }
@@ -527,7 +537,7 @@ authRoutes.post("/change-password", async (c) => {
   const parsed = changePasswordSchema.safeParse(body);
   if (!parsed.success) {
     return c.json(
-      { error: "New password must be between 6 and 100 characters." },
+      { error: "New password must be between 10 and 100 characters." },
       400
     );
   }
@@ -683,7 +693,7 @@ authRoutes.post("/reset-password", async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = resetSchema.safeParse(body);
   if (!parsed.success) {
-    return c.json({ error: "Password must be at least 6 characters." }, 400);
+    return c.json({ error: "Password must be at least 10 characters." }, 400);
   }
 
   const record = await db.passwordResetToken.findUnique({

@@ -16,6 +16,7 @@ import {
   ALLOWED_IMAGE_TYPES,
   InvalidImageError,
   MAX_UPLOAD_SIZE,
+  removeStoredFile,
   storeImage,
 } from "../lib/storage";
 import { syncAvatarToProvider } from "../lib/providers";
@@ -45,6 +46,13 @@ accountRoutes.post("/avatar", async (c) => {
     return c.json({ error: "Image must be under 5MB" }, 400);
   }
 
+  // Capture the current avatar before we overwrite it so the old object can be
+  // reclaimed after the swap — otherwise every replace leaks the prior file.
+  const prior = await db.user.findUnique({
+    where: { id: auth.userId },
+    select: { avatarUrl: true },
+  });
+
   let avatarUrl: string;
   try {
     avatarUrl = await storeImage("user", file, "avatars");
@@ -57,6 +65,13 @@ accountRoutes.post("/avatar", async (c) => {
     where: { id: auth.userId },
     data: { avatarUrl },
   });
+  // The new URL is committed — reclaim the previous file. Best-effort: a failed
+  // cleanup must never fail the user's update (removeStoredFile swallows too).
+  // Guard against removing the just-set object if the store returned the same
+  // URL.
+  if (prior?.avatarUrl && prior.avatarUrl !== avatarUrl) {
+    await removeStoredFile(prior.avatarUrl);
+  }
   await syncAvatarToProvider(auth.userId, avatarUrl);
   // Re-issue the session so the top-nav avatar (carried in the JWT) updates
   // without a re-login.
@@ -73,10 +88,20 @@ accountRoutes.post("/avatar", async (c) => {
 accountRoutes.delete("/avatar", async (c) => {
   const auth = getAuth(c);
   if (!auth) return c.json({ error: "Unauthorized" }, 401);
+  // Grab the current avatar so we can delete the stored object after clearing
+  // the row — clearing it alone would orphan the file.
+  const prior = await db.user.findUnique({
+    where: { id: auth.userId },
+    select: { avatarUrl: true },
+  });
   const updated = await db.user.update({
     where: { id: auth.userId },
     data: { avatarUrl: null },
   });
+  // Best-effort reclaim of the removed file (never fails the request).
+  if (prior?.avatarUrl) {
+    await removeStoredFile(prior.avatarUrl);
+  }
   await syncAvatarToProvider(auth.userId, null);
   await createSession(c, {
     userId: updated.id,

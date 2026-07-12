@@ -321,6 +321,61 @@ describe("DELETE /api/admin/photos/:id (ADMIN soft-delete)", () => {
   });
 });
 
+describe("PATCH /api/admin/photos/:id/restore (ADMIN)", () => {
+  it("clears deletedAt and returns 200 when the photo exists", async () => {
+    dbMock.workPhoto.updateMany.mockResolvedValue({ count: 1 });
+    const res = await req("/api/admin/photos/ph1/restore", {
+      method: "PATCH",
+      role: "ADMIN",
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    const arg = dbMock.workPhoto.updateMany.mock.calls[0][0];
+    expect(arg.where).toEqual({ id: "ph1" });
+    expect(arg.data).toEqual({ deletedAt: null });
+    expect(dbMock.adminAuditLog.create).toHaveBeenCalledOnce();
+  });
+
+  it("404 when the id matches no photo (updateMany count 0), not a false 200", async () => {
+    dbMock.workPhoto.updateMany.mockResolvedValue({ count: 0 });
+    const res = await req("/api/admin/photos/nope/restore", {
+      method: "PATCH",
+      role: "ADMIN",
+    });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "Photo not found" });
+    expect(dbMock.adminAuditLog.create).not.toHaveBeenCalled();
+  });
+});
+
+// The provider-detail quality score and the auto-flagging run must penalize on
+// the same report source set: OPEN USER-source reports only. SYSTEM reports are
+// the flagging job's own output, so if the detail score also counted them an
+// auto-flag would drop the visible score below the threshold that triggered it.
+describe("GET /api/admin/providers/:id — quality-score report source parity", () => {
+  it("counts only OPEN USER-source reports for the penalty (matches flagging's USER groupBy)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({ id: "p1", photos: [] });
+    dbMock.report.count.mockResolvedValue(2);
+    const res = await req("/api/admin/providers/p1", { role: "ADMIN" });
+    expect(res.status).toBe(200);
+    expect(dbMock.report.count).toHaveBeenCalledWith({
+      where: {
+        targetType: "PROVIDER",
+        targetId: "p1",
+        status: "OPEN",
+        source: "USER",
+      },
+    });
+    const body = await res.json();
+    // 2 USER open reports × 15 penalty, no reviews → neutral 70 − 30 = 40 —
+    // identical to what computeQualityScore yields inside the flagging run for
+    // the same USER-report count.
+    expect(body.provider.quality.openReportCount).toBe(2);
+    expect(body.provider.quality.reportPenalty).toBe(30);
+    expect(body.provider.quality.qualityScore).toBe(40);
+  });
+});
+
 describe("POST /api/admin/flagging/run (ADMIN)", () => {
   it("returns { flagged: 0 } when there are no active providers", async () => {
     dbMock.provider.findMany.mockResolvedValue([]);

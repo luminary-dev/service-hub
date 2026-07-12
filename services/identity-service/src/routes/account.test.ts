@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { accountRoutes } from "./account";
 import { hashToken } from "../lib/tokens";
 import { sendEmailChangeConfirmation } from "../lib/verification";
+import { removeStoredFile, storeImage } from "../lib/storage";
 
 const { db } = vi.hoisted(() => ({
   db: {
@@ -24,6 +25,13 @@ vi.mock("../db", () => ({ db }));
 vi.mock("../lib/verification", () => ({
   sendEmailChangeConfirmation: vi.fn(),
 }));
+// Keep the real ALLOWED_IMAGE_TYPES / MAX_UPLOAD_SIZE constants and the
+// InvalidImageError class; only the media-service network calls are stubbed.
+vi.mock("../lib/storage", async (importActual) => {
+  const actual = await importActual<typeof import("../lib/storage")>();
+  return { ...actual, storeImage: vi.fn(), removeStoredFile: vi.fn() };
+});
+vi.mock("../lib/providers", () => ({ syncAvatarToProvider: vi.fn() }));
 
 const app = new Hono();
 app.route("/api/account", accountRoutes);
@@ -164,6 +172,85 @@ describe("POST /api/account/email/change", () => {
       expect.any(String),
       expect.any(String)
     );
+  });
+});
+
+describe("avatar cleanup (orphaned-file leak)", () => {
+  // Auth headers without the JSON content-type — the avatar upload reads
+  // multipart formData, so undici sets the boundary content-type itself.
+  const AUTH_MULTIPART = {
+    "x-user-id": "u1",
+    "x-user-role": "CUSTOMER",
+    "x-user-name": "Old Name",
+  };
+
+  function uploadReq(headers: Record<string, string> = AUTH_MULTIPART) {
+    const form = new FormData();
+    form.set("file", new File([new Uint8Array([1, 2, 3])], "a.png", { type: "image/png" }));
+    return app.request("/api/account/avatar", { method: "POST", headers, body: form });
+  }
+
+  const UPDATED = {
+    id: "u1",
+    name: "Old Name",
+    role: "CUSTOMER",
+    sessionVersion: 1,
+    avatarUrl: "https://media/new.png",
+  };
+
+  it("removes the prior avatar file when replacing it", async () => {
+    db.user.findUnique.mockResolvedValue({ avatarUrl: "https://media/old.png" });
+    vi.mocked(storeImage).mockResolvedValue("https://media/new.png");
+    db.user.update.mockResolvedValue(UPDATED);
+
+    const res = await uploadReq();
+    expect(res.status).toBe(200);
+    expect(storeImage).toHaveBeenCalled();
+    expect(removeStoredFile).toHaveBeenCalledWith("https://media/old.png");
+  });
+
+  it("does NOT remove anything on the first upload (no prior avatar)", async () => {
+    db.user.findUnique.mockResolvedValue({ avatarUrl: null });
+    vi.mocked(storeImage).mockResolvedValue("https://media/new.png");
+    db.user.update.mockResolvedValue(UPDATED);
+
+    const res = await uploadReq();
+    expect(res.status).toBe(200);
+    expect(removeStoredFile).not.toHaveBeenCalled();
+  });
+
+  it("never removes the just-set object when the store returns the same URL", async () => {
+    db.user.findUnique.mockResolvedValue({ avatarUrl: "https://media/new.png" });
+    vi.mocked(storeImage).mockResolvedValue("https://media/new.png");
+    db.user.update.mockResolvedValue(UPDATED);
+
+    const res = await uploadReq();
+    expect(res.status).toBe(200);
+    expect(removeStoredFile).not.toHaveBeenCalled();
+  });
+
+  it("removes the stored file on delete when one existed", async () => {
+    db.user.findUnique.mockResolvedValue({ avatarUrl: "https://media/old.png" });
+    db.user.update.mockResolvedValue({ ...UPDATED, avatarUrl: null });
+
+    const res = await app.request("/api/account/avatar", {
+      method: "DELETE",
+      headers: AUTH_MULTIPART,
+    });
+    expect(res.status).toBe(200);
+    expect(removeStoredFile).toHaveBeenCalledWith("https://media/old.png");
+  });
+
+  it("does NOT call removeStoredFile on delete when there was no avatar", async () => {
+    db.user.findUnique.mockResolvedValue({ avatarUrl: null });
+    db.user.update.mockResolvedValue({ ...UPDATED, avatarUrl: null });
+
+    const res = await app.request("/api/account/avatar", {
+      method: "DELETE",
+      headers: AUTH_MULTIPART,
+    });
+    expect(res.status).toBe(200);
+    expect(removeStoredFile).not.toHaveBeenCalled();
   });
 });
 
