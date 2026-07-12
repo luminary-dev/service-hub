@@ -7,6 +7,12 @@ import { z } from "zod";
 import type { Context } from "hono";
 import { db } from "../db";
 import { getAuth, isFullAdmin, isSupportOrAdmin } from "../lib/http";
+import {
+  ALLOWED_IMAGE_TYPES,
+  InvalidImageError,
+  MAX_UPLOAD_SIZE,
+  storeImage,
+} from "../lib/storage";
 import { fetchProviderReviews, fetchRatings } from "../lib/clients";
 import { computeQualityScore } from "../lib/quality-score";
 import {
@@ -760,11 +766,21 @@ const categorySlug = z
   .string()
   .regex(/^[a-z0-9-]{2,40}$/, "Slug must be 2-40 lowercase letters, digits or dashes");
 
+// A stored image path — a relative /path only (never a scheme/host), so a
+// category can only point at our own media (/api/files/category/… or a seeded
+// /images/… asset), not an arbitrary external URL.
+const imagePath = z
+  .string()
+  .trim()
+  .max(300)
+  .regex(/^\/[\w./-]*$/, "Image URL must be a relative path");
+
 const categoryCreateSchema = z.object({
   slug: categorySlug,
   labelEn: z.string().trim().min(1, "English label is required").max(80),
   labelSi: z.string().trim().min(1, "Sinhala label is required").max(80),
   icon: z.string().trim().max(60).optional().or(z.literal("")).nullish(),
+  imageUrl: imagePath.optional().or(z.literal("")).nullish(),
   active: z.boolean().optional(),
   sortOrder: z.number().int().min(0).max(100_000).optional(),
 });
@@ -774,6 +790,7 @@ const categoryUpdateSchema = z
     labelEn: z.string().trim().min(1, "English label is required").max(80),
     labelSi: z.string().trim().min(1, "Sinhala label is required").max(80),
     icon: z.string().trim().max(60).or(z.literal("")).nullable(),
+    imageUrl: imagePath.or(z.literal("")).nullable(),
     active: z.boolean(),
     sortOrder: z.number().int().min(0).max(100_000),
   })
@@ -814,12 +831,41 @@ adminRoutes.post("/api/admin/categories", async (c) => {
       labelEn: parsed.data.labelEn,
       labelSi: parsed.data.labelSi,
       icon: parsed.data.icon || null,
+      imageUrl: parsed.data.imageUrl || null,
       active: parsed.data.active ?? true,
       sortOrder: parsed.data.sortOrder ?? 0,
     },
   });
   await logAudit(c, "create-category", "CATEGORY", category.slug);
   return c.json({ category });
+});
+
+// Cover-image upload for a category (#436). Full-admin only; stores through
+// media-service under the "category" namespace (R2 in prod) and returns the
+// relative URL for the caller to save via create/patch above.
+adminRoutes.post("/api/admin/categories/image", async (c) => {
+  if (!isFullAdmin(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+  const form = await c.req.formData().catch(() => null);
+  const file = form?.get("file");
+  if (!(file instanceof File)) {
+    return c.json({ error: "No file provided" }, 400);
+  }
+  if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+    return c.json({ error: "Only JPEG, PNG and WebP images are allowed" }, 400);
+  }
+  if (file.size > MAX_UPLOAD_SIZE) {
+    return c.json({ error: "Image must be under 5MB" }, 400);
+  }
+  let url: string;
+  try {
+    url = await storeImage("category", file, "covers");
+  } catch (e) {
+    if (e instanceof InvalidImageError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
+  return c.json({ url });
 });
 
 adminRoutes.patch("/api/admin/categories/:slug", async (c) => {
@@ -846,6 +892,7 @@ adminRoutes.patch("/api/admin/categories/:slug", async (c) => {
       ...(data.labelEn !== undefined ? { labelEn: data.labelEn } : {}),
       ...(data.labelSi !== undefined ? { labelSi: data.labelSi } : {}),
       ...(data.icon !== undefined ? { icon: data.icon || null } : {}),
+      ...(data.imageUrl !== undefined ? { imageUrl: data.imageUrl || null } : {}),
       ...(data.active !== undefined ? { active: data.active } : {}),
       ...(data.sortOrder !== undefined ? { sortOrder: data.sortOrder } : {}),
     },

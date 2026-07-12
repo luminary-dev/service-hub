@@ -16,34 +16,6 @@ import {
 } from "@/lib/i18n";
 import { localizedHref } from "@/lib/links";
 
-// Real trade photography (public/images/workers) keyed by category slug — a
-// fallback cover when a provider hasn't uploaded their own. Each category has a
-// POOL of variants so same-trade providers don't all share one image; the
-// specific one is chosen deterministically per provider id (tradePhoto below).
-// Categories without a pool keep the flat placeholder. Landscape (1536x1024) to
-// match the card's banner crop.
-const TRADE_PHOTOS: Record<string, string[]> = {
-  mechanic: [1, 2, 3].map((n) => `/images/workers/mechanic-${n}.jpg`),
-  electrician: [1, 2, 3].map((n) => `/images/workers/electrician-${n}.jpg`),
-  plumber: [1, 2, 3].map((n) => `/images/workers/plumber-${n}.jpg`),
-  carpenter: [1, 2, 3].map((n) => `/images/workers/carpenter-${n}.jpg`),
-  mason: [1, 2, 3].map((n) => `/images/workers/mason-${n}.jpg`),
-  painter: [1, 2, 3].map((n) => `/images/workers/painter-${n}.jpg`),
-  welder: [1, 2, 3].map((n) => `/images/workers/welder-${n}.jpg`),
-  "garden-designer": [1, 2, 3].map((n) => `/images/workers/garden-designer-${n}.jpg`),
-  roofer: [1, 2, 3].map((n) => `/images/workers/roofer-${n}.jpg`),
-};
-
-// Stable per-provider pick from the category pool: the same provider always
-// shows the same cover, but two carpenters get different ones.
-function tradePhoto(category: string, seed: string): string | undefined {
-  const pool = TRADE_PHOTOS[category];
-  if (!pool || pool.length === 0) return undefined;
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-  return pool[h % pool.length];
-}
-
 // Card payload as served by `GET /api/providers` on the gateway
 // (provider-service's ProviderCardDTO). Dates arrive as ISO strings; rating
 // and reviewCount come precomputed by review-service.
@@ -52,6 +24,9 @@ export type ProviderCardDTO = {
   userId: string;
   name: string;
   category: string;
+  // Admin-managed per-trade cover (#436); the card's fallback when the provider
+  // has no cover/work photo of their own.
+  categoryImageUrl: string | null;
   headline: string;
   district: string;
   city: string;
@@ -89,12 +64,12 @@ export default function ProviderCard({
   // Away mode (#49): a future awayUntil replaces the "Available" chip with a
   // localized "Away until {date}" chip; a past one is inert.
   const away = p.awayUntil !== null && new Date(p.awayUntil) > new Date();
-  // Prefer a real uploaded photo; otherwise fall back to trade photography,
-  // then to the generated placeholder cover.
+  // Cover precedence: the provider's own photo → the admin-managed category
+  // cover (#436) → the flat placeholder (the `else` branch below).
   const cover =
     p.coverPhoto && !isSvg(p.coverPhoto)
       ? p.coverPhoto
-      : tradePhoto(p.category, p.id) ?? p.coverPhoto;
+      : p.categoryImageUrl ?? null;
   return (
     <div className="relative">
       {showFavorite && (
