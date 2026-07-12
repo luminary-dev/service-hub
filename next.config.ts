@@ -53,6 +53,16 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Standalone output: `next build` traces (via @vercel/nft) only the files and
+  // node_modules each route actually uses and emits a self-contained
+  // `.next/standalone` server. The Docker runtime stage ships that instead of
+  // the full prod `node_modules` + `next start`, cutting the web image from
+  // ~1GB to a fraction. The request-time /api proxy (src/proxy.ts) and these
+  // headers are part of the traced server, so behaviour is unchanged. This web
+  // app is at the repo root with its own package.json (not a workspace member),
+  // so the default tracing root is correct and no `outputFileTracingRoot` is
+  // needed.
+  output: "standalone",
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
