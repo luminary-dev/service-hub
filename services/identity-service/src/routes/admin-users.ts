@@ -5,6 +5,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
+import { logAudit } from "../lib/audit";
 import { getAuth, isFullAdmin, isSupportOrAdmin } from "../lib/http";
 import { isLockedOut, MANUAL_LOCK_UNTIL } from "../lib/lockout";
 import { fetchProvidersByIds } from "../lib/providers";
@@ -159,6 +160,18 @@ adminUsersRoutes.patch("/api/admin/users/:id", async (c) => {
   }
 
   const updated = await db.user.update({ where: { id }, data });
+
+  // Best-effort audit trail on the sensitive mutations (#362, security-audit
+  // M7). logAudit swallows its own errors, so this never blocks the action.
+  if (parsed.data.action === "lock") {
+    await logAudit(c, "LOCK_USER", "USER", id);
+  } else if (parsed.data.action === "unlock") {
+    await logAudit(c, "UNLOCK_USER", "USER", id);
+  }
+  if (parsed.data.role && parsed.data.role !== user.role) {
+    await logAudit(c, "CHANGE_ROLE", "USER", id, `${user.role} -> ${parsed.data.role}`);
+  }
+
   return c.json({ user: serializeUser(updated) });
 });
 
@@ -184,5 +197,9 @@ adminUsersRoutes.post("/api/admin/users/:id/force-logout", async (c) => {
     where: { id },
     data: { sessionVersion: { increment: 1 } },
   });
+
+  // Best-effort audit trail (#362, security-audit M7); never blocks the action.
+  await logAudit(c, "FORCE_LOGOUT", "USER", id);
+
   return c.json({ ok: true, sessionVersion: updated.sessionVersion });
 });
