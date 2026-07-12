@@ -10,10 +10,18 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { dict } from "@/lib/i18n";
 import ChatAssistant from "./ChatAssistant";
 
+// The current URL locale is derived from usePathname(); default to the English
+// root and override per-test to simulate a /si-prefixed URL.
+let mockPathname = "/";
+vi.mock("next/navigation", () => ({
+  usePathname: () => mockPathname,
+}));
+
 const t = dict.en.assistant;
 const fetchMock = vi.fn();
 
 beforeEach(() => {
+  mockPathname = "/";
   vi.stubGlobal("fetch", fetchMock);
   Element.prototype.scrollIntoView = vi.fn();
 });
@@ -153,5 +161,34 @@ describe("ChatAssistant", () => {
     expect(
       fetchMock.mock.calls.filter((c) => String(c[0]).includes("/inquiries"))
     ).toHaveLength(0);
+  });
+
+  // The route derives reply language from the URL locale (proxy sets x-locale
+  // from the /si prefix), so the client must request the /si-prefixed variant
+  // when the visitor is on a Sinhala URL — otherwise a shared /si link gets
+  // English replies (#L8).
+  async function submitAndGetChatUrl(): Promise<string> {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      body: sseStream([{ type: "text", text: "hi" }]),
+    });
+    const { container } = render(<ChatAssistant />);
+    fireEvent.click(screen.getByRole("button", { name: t.open }));
+    fireEvent.change(screen.getByLabelText(t.placeholder), {
+      target: { value: "I need a plumber" },
+    });
+    fireEvent.submit(container.querySelector("form")!);
+    await screen.findByText("hi");
+    return String(fetchMock.mock.calls[0][0]);
+  }
+
+  it("posts to /agent/chat on an English-root URL", async () => {
+    mockPathname = "/providers";
+    expect(await submitAndGetChatUrl()).toBe("/agent/chat");
+  });
+
+  it("posts to /si/agent/chat on a Sinhala (/si) URL", async () => {
+    mockPathname = "/si/providers";
+    expect(await submitAndGetChatUrl()).toBe("/si/agent/chat");
   });
 });
