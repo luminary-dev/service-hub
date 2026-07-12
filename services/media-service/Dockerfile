@@ -19,7 +19,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev && npm cache clean --force
 # sharp (#351): npm can silently drop a platform-specific *optional* dependency
 # on a transient fetch error, which intermittently left the prebuilt libvips
 # binary out of the image and crashed the service at boot with ERR_DLOPEN_FAILED.
