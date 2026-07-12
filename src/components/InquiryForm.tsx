@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { FaCircleCheck, FaRegPaperPlane } from "@/components/icons";
+import FormSuccess from "./FormSuccess";
 import { useT } from "./I18nProvider";
 
 export default function InquiryForm({
@@ -54,15 +55,16 @@ export default function InquiryForm({
     return (
       <div className="tech-corners border border-ink-300 bg-surface">
         <div className="hazard h-2 w-full" />
-        <div className="flex flex-col items-center p-6 text-center">
-          <FaCircleCheck className="h-10 w-10 text-emerald-500" />
-          <h3 className="mt-3 font-semibold text-ink-900">
-            {t.inquiry.sentTitle}
-          </h3>
+        <FormSuccess
+          title={t.inquiry.sentTitle}
+          icon={<FaCircleCheck className="h-10 w-10 text-emerald-500" />}
+          className="flex flex-col items-center p-6 text-center"
+          headingClassName="mt-3 font-semibold text-ink-900 focus:outline-none"
+        >
           <p className="mt-1 text-sm text-ink-500">
             {t.inquiry.sentBody(providerName)}
           </p>
-        </div>
+        </FormSuccess>
       </div>
     );
   }

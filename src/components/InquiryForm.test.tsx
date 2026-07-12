@@ -96,7 +96,12 @@ describe("InquiryForm", () => {
       }),
     });
 
-    expect(await screen.findByText(t.sentTitle)).toBeTruthy();
+    // The confirmation is an announced live region (#510)...
+    const status = await screen.findByRole("status");
+    expect(status.textContent).toContain(t.sentTitle);
+    // ...whose heading grabs focus so keyboard users aren't dropped on <body>.
+    const heading = screen.getByText(t.sentTitle);
+    expect(document.activeElement).toBe(heading);
     // The form (and its submit button) is replaced by the confirmation.
     expect(screen.queryByRole("button", { name: t.send })).toBeNull();
   });
