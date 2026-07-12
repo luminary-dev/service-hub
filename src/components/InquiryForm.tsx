@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { FaCircleCheck, FaRegPaperPlane } from "@/components/icons";
 import { useT } from "./I18nProvider";
 
@@ -20,6 +20,10 @@ export default function InquiryForm({
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
+  // Honeypot (#65): an uncontrolled decoy read straight off the DOM at submit,
+  // so a bot that writes the field's value without firing React events is still
+  // caught. The authoritative check is server-side; this only carries the value.
+  const honeypotRef = useRef<HTMLInputElement>(null);
   const t = useT();
 
   async function submit(e: React.FormEvent) {
@@ -29,7 +33,13 @@ export default function InquiryForm({
     const res = await fetch(`/api/providers/${providerId}/inquiries`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, phone, email, message }),
+      body: JSON.stringify({
+        name,
+        phone,
+        email,
+        message,
+        company: honeypotRef.current?.value ?? "",
+      }),
     });
     setLoading(false);
     if (res.ok) {
@@ -74,6 +84,30 @@ export default function InquiryForm({
         {t.inquiry.title(providerName.split(" ")[0])}
       </h3>
       <p className="mt-1 text-xs text-ink-500">{t.inquiry.sub}</p>
+
+      {/*
+        Honeypot decoy (#65). Hidden and inert for real users — moved off-screen
+        (not display:none, which some bots skip), aria-hidden so screen readers
+        ignore it, tabindex -1 so keyboard users never land on it, and
+        autocomplete off so browsers never prefill it. Bots that fill every
+        field trip the server-side check in provider-service. Not a visible form
+        change; a security control, not a redesign.
+      */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -left-[9999px] h-0 w-0 overflow-hidden"
+      >
+        <label htmlFor="inquiry-company">Company (leave this field blank)</label>
+        <input
+          id="inquiry-company"
+          ref={honeypotRef}
+          type="text"
+          name="company"
+          tabIndex={-1}
+          autoComplete="off"
+          defaultValue=""
+        />
+      </div>
 
       <div className="mt-4 space-y-3">
         <div>

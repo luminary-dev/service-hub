@@ -22,6 +22,7 @@ vi.mock("../lib/clients", () => ({
 }));
 
 import { app } from "../app";
+import { sendInquiryEmail } from "../lib/clients";
 
 const SECRET = "dev-internal-secret";
 type Role = "ADMIN" | "SUPPORT" | "CUSTOMER" | "PROVIDER" | null;
@@ -298,5 +299,30 @@ describe("POST /api/providers/:id/inquiries", () => {
     });
     expect(res.status).toBe(400);
     expect(dbMock.inquiry.create).not.toHaveBeenCalled();
+  });
+
+  it("empty honeypot is treated as a real submission (#65)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({ id: "p1", contactEmail: "n@baas.lk" });
+    dbMock.inquiry.create.mockResolvedValue({ id: "inq1" });
+    const res = await req("/api/providers/p1/inquiries", {
+      method: "POST",
+      body: { ...valid, company: "" },
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.inquiry.create).toHaveBeenCalled();
+  });
+
+  it("silently drops a submission with the honeypot filled (#65)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({ id: "p1", contactEmail: "n@baas.lk" });
+    const res = await req("/api/providers/p1/inquiries", {
+      method: "POST",
+      body: { ...valid, company: "Acme Bots Ltd" },
+    });
+    // Success-shaped 200 so a bot can't detect the filter, but nothing is
+    // persisted and no provider email is sent.
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ inquiry: null });
+    expect(dbMock.inquiry.create).not.toHaveBeenCalled();
+    expect(sendInquiryEmail).not.toHaveBeenCalled();
   });
 });

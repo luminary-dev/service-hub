@@ -53,6 +53,31 @@ describe("InquiryForm", () => {
     expect(message.minLength).toBe(10);
   });
 
+  it("renders an inert, accessibility-hidden honeypot field (#65)", () => {
+    const { container } = renderForm();
+    const honeypot = container.querySelector<HTMLInputElement>("#inquiry-company")!;
+    // Present in the DOM for bots to fill...
+    expect(honeypot).toBeTruthy();
+    expect(honeypot.name).toBe("company");
+    // ...but inert for real users: not keyboard-reachable, never prefilled, and
+    // hidden from the accessibility tree via an aria-hidden ancestor.
+    expect(honeypot.tabIndex).toBe(-1);
+    expect(honeypot.getAttribute("autocomplete")).toBe("off");
+    expect(honeypot.closest("[aria-hidden='true']")).toBeTruthy();
+  });
+
+  it("sends whatever a bot writes into the honeypot so the server can filter it (#65)", () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+    const { container } = renderForm();
+    fillRequired();
+    // Simulate a bot writing the DOM value directly (no React event fired).
+    const honeypot = container.querySelector<HTMLInputElement>("#inquiry-company")!;
+    honeypot.value = "spam";
+    submit(container);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.company).toBe("spam");
+  });
+
   it("submits the inquiry and shows the sent confirmation on success", async () => {
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
     const { container } = renderForm();
@@ -67,6 +92,7 @@ describe("InquiryForm", () => {
         phone: "0771234567",
         email: "",
         message: "Please rewire my kitchen.",
+        company: "",
       }),
     });
 

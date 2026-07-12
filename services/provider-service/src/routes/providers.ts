@@ -443,6 +443,12 @@ const inquirySchema = z.object({
   // Attribution for analytics (#11). Enum-restricted; the plain web form
   // simply omits it.
   source: z.enum(["chat-agent"]).optional(),
+  // Honeypot decoy (#65). The web form renders a matching field that is hidden
+  // and inert for real users (off-screen, aria-hidden, tabindex -1), so humans
+  // never fill it. Bots that blindly complete every input leave it non-empty.
+  // Bounded so a filled value can't be an unbounded-body vector. Other clients
+  // (e.g. the chat agent) simply omit it. See docs/RATE_LIMITING.md.
+  company: z.string().max(200).optional(),
 });
 
 providersRoutes.post("/api/providers/:id/inquiries", async (c) => {
@@ -463,6 +469,17 @@ providersRoutes.post("/api/providers/:id/inquiries", async (c) => {
   const parsed = inquirySchema.safeParse(body);
   if (!parsed.success) {
     return c.json({ error: parsed.error.issues[0]?.message ?? "Invalid input" }, 400);
+  }
+
+  // Bot filter (#65): a non-empty honeypot means a script filled the hidden
+  // decoy. This is the authoritative, server-side check — the client control
+  // is only a delivery mechanism. Respond with the same success-shaped 200 as a
+  // real submission (silent drop): nothing is persisted and no provider email
+  // is sent, but a scripted caller can't tell it was filtered, so it has no
+  // signal to adapt. Complements the gateway's per-IP `inquiry` rate limit;
+  // does not replace it. See docs/RATE_LIMITING.md.
+  if (parsed.data.company && parsed.data.company.trim() !== "") {
+    return c.json({ inquiry: null });
   }
 
   const auth = getAuth(c);
