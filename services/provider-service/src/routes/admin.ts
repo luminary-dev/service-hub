@@ -955,6 +955,12 @@ adminRoutes.get("/api/admin/audit-log", async (c) => {
   const from = c.req.query("from");
   const to = c.req.query("to");
 
+  // A date-only value (e.g. "2026-07-12") parses to midnight UTC. As a `gte`
+  // lower bound that is exactly what we want, but as an `lte` upper bound it
+  // would exclude every entry from the named day — so snap it to end-of-day
+  // UTC. A full ISO datetime is honored verbatim on both bounds.
+  const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
   const createdAt: { gte?: Date; lte?: Date } = {};
   if (from) {
     const d = new Date(from);
@@ -962,7 +968,10 @@ adminRoutes.get("/api/admin/audit-log", async (c) => {
   }
   if (to) {
     const d = new Date(to);
-    if (!Number.isNaN(d.getTime())) createdAt.lte = d;
+    if (!Number.isNaN(d.getTime())) {
+      if (DATE_ONLY.test(to)) d.setUTCHours(23, 59, 59, 999);
+      createdAt.lte = d;
+    }
   }
 
   const entries = await db.adminAuditLog.findMany({
