@@ -87,7 +87,15 @@ export async function buildUpstreamHeaders(
 
   if (
     impersonation &&
-    (await sessionVersionOk(impersonation.userId, impersonation.sv))
+    // Both parties' sessions must still be current: the target's (impersonation
+    // ends if they change password etc.) AND the admin's own (#358) — so
+    // force-logout / password-reset of the admin kills the impersonation now,
+    // not 15 minutes later.
+    (await sessionVersionOk(impersonation.userId, impersonation.sv)) &&
+    (await sessionVersionOk(
+      impersonation.impersonatedBy,
+      impersonation.impersonatedBySv
+    ))
   ) {
     headers.set("x-user-id", impersonation.userId);
     headers.set("x-user-role", impersonation.role);

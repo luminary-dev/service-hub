@@ -66,6 +66,11 @@ export const IMPERSONATION_TTL_SECONDS = 15 * 60;
 
 export type ImpersonationPayload = SessionPayload & {
   impersonatedBy: string;
+  // The impersonating admin's `sessionVersion` at mint time (#358). Verifiers
+  // check this against the admin's current version so a force-logout /
+  // password-reset of the admin kills active impersonation immediately, not
+  // just when the 15m token expires. (`sv` above is the *target's* version.)
+  impersonatedBySv: number;
 };
 
 export async function signImpersonationSession(
@@ -118,6 +123,10 @@ export async function readImpersonationSession(
       name: payload.name as string,
       sv: typeof payload.sv === "number" ? payload.sv : 0,
       impersonatedBy: payload.impersonatedBy,
+      impersonatedBySv:
+        typeof payload.impersonatedBySv === "number"
+          ? payload.impersonatedBySv
+          : 0,
     };
   } catch {
     return null;

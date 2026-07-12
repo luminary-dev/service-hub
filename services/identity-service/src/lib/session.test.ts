@@ -61,13 +61,14 @@ describe("impersonation session JWT (#234)", () => {
     expect(IMPERSONATION_COOKIE_NAME).not.toBe(COOKIE_NAME);
   });
 
-  it("signs a token carrying impersonatedBy alongside the usual session claims", async () => {
+  it("signs a token carrying impersonatedBy + the admin's sv alongside the usual claims", async () => {
     const token = await signImpersonationSession({
       userId: "user_1",
       role: "CUSTOMER",
       name: "Nuwan Perera",
       sv: 1,
       impersonatedBy: "admin_1",
+      impersonatedBySv: 4,
     });
     const { payload, protectedHeader } = await jwtVerify(token, secret);
     expect(protectedHeader.alg).toBe("HS256");
@@ -75,6 +76,9 @@ describe("impersonation session JWT (#234)", () => {
     expect(payload.role).toBe("CUSTOMER");
     expect(payload.sv).toBe(1);
     expect(payload.impersonatedBy).toBe("admin_1");
+    // The admin's own session version rides along so verifiers can revoke an
+    // active impersonation when the admin is logged out (#358).
+    expect(payload.impersonatedBySv).toBe(4);
   });
 
   it("expires in 15 minutes regardless of the normal 7-day session TTL", async () => {
@@ -85,6 +89,7 @@ describe("impersonation session JWT (#234)", () => {
       name: "C",
       sv: 0,
       impersonatedBy: "admin_1",
+      impersonatedBySv: 0,
     });
     const { payload } = await jwtVerify(token, secret);
     expect(payload.exp! - payload.iat!).toBe(15 * 60);
