@@ -203,7 +203,7 @@ async function main() {
         services: { create: p.services },
         photos: {
           create: p.photos.map((caption, i) => ({
-            url: `/uploads/seed/p${pi}-${i}.svg`,
+            url: `/uploads/seed/p${pi}-${i}.jpg`,
             caption,
           })),
         },
