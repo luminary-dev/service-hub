@@ -164,7 +164,7 @@ export default async function HomePage() {
           </InView>
           <InView
             stagger
-            className="mt-8 grid grid-cols-2 border-l border-t border-ink-200 sm:grid-cols-3 lg:grid-cols-4"
+            className="mt-8 grid grid-cols-2 border-l border-t border-ink-200 sm:grid-cols-3 lg:grid-cols-4 gap-2"
           >
             {CATEGORIES.map((c, i) => (
               <Link
