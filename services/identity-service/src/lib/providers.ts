@@ -74,6 +74,22 @@ export async function deactivateProviderProfile(userId: string): Promise<void> {
   }
 }
 
+// Re-upgrade (#403): a customer who previously closed their provider profile
+// becomes a provider again. complete-provider reuses the existing (suspended)
+// profile rather than recreating it, so it must explicitly reactivate it here.
+// Write-path gate — throws on failure so complete-provider returns 502 rather
+// than flipping the role to PROVIDER while the profile stays hidden.
+export async function reactivateProviderProfile(userId: string): Promise<void> {
+  const res = await s2s(
+    PROVIDER_SERVICE_URL,
+    `/internal/providers/by-user/${encodeURIComponent(userId)}/reactivate`,
+    { method: "POST" }
+  );
+  if (!res.ok) {
+    throw new Error(`provider-service responded ${res.status}`);
+  }
+}
+
 export type ProviderSummary = {
   id: string;
   contactName: string;
