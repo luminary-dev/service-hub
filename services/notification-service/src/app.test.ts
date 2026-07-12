@@ -36,6 +36,7 @@ describe("internal secret enforcement", () => {
   it.each([
     "/internal/email/verify",
     "/internal/email/password-reset",
+    "/internal/email/account-exists",
     "/internal/email/job-response",
     "/internal/email/inquiry",
   ])("rejects %s without x-internal-secret", async (path) => {
@@ -59,6 +60,7 @@ describe("input validation", () => {
   it.each([
     "/internal/email/verify",
     "/internal/email/password-reset",
+    "/internal/email/account-exists",
     "/internal/email/job-response",
     "/internal/email/inquiry",
   ])("returns 400 for an invalid body on %s", async (path) => {
@@ -132,6 +134,16 @@ describe("happy paths (no RESEND_API_KEY → console fallback)", () => {
     const res = await postWithSecret("/internal/email/password-reset", {
       to: "user@example.com",
       url: "https://baas.lk/reset-password?token=abc",
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, delivered: false });
+  });
+
+  it("POST /internal/email/account-exists", async () => {
+    const res = await postWithSecret("/internal/email/account-exists", {
+      to: "user@example.com",
+      url: "https://baas.lk/login",
+      locale: "si",
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, delivered: false });

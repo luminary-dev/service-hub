@@ -9,11 +9,16 @@
 // JWT with the dev-fallback secret and set a cookie.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import bcrypt from "bcryptjs";
+import { Prisma } from "@prisma/client";
 import { Hono } from "hono";
 import { authRoutes } from "./auth";
 import { hashToken } from "../lib/tokens";
 import { MAX_FAILED_LOGINS, LOCKOUT_MS } from "../lib/lockout";
-import { sendVerificationEmail, sendPasswordResetEmail } from "../lib/verification";
+import {
+  sendAccountExistsEmail,
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+} from "../lib/verification";
 import { eraseUserData } from "../lib/erase";
 import {
   createProviderProfile,
@@ -53,6 +58,7 @@ vi.mock("../db", () => ({ db }));
 vi.mock("../lib/verification", () => ({
   sendVerificationEmail: vi.fn(),
   sendPasswordResetEmail: vi.fn(),
+  sendAccountExistsEmail: vi.fn(),
 }));
 vi.mock("../lib/erase", () => ({ eraseUserData: vi.fn() }));
 vi.mock("../lib/providers", () => ({
@@ -118,6 +124,7 @@ beforeEach(() => {
   });
   vi.mocked(sendVerificationEmail).mockResolvedValue(undefined);
   vi.mocked(sendPasswordResetEmail).mockResolvedValue(undefined);
+  vi.mocked(sendAccountExistsEmail).mockResolvedValue(undefined);
   vi.mocked(eraseUserData).mockResolvedValue(undefined);
   // Default: the compensating provider-erase (#359) resolves so register's
   // best-effort `.catch()` has a promise to chain. Per-test overrides reject it.
@@ -628,6 +635,92 @@ describe("POST /api/auth/logout-all", () => {
     });
     // A fresh session cookie keeps the requester signed in.
     expect(res.headers.get("set-cookie")).toContain("sh_session=");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/register — account-enumeration hardening (#373)
+// ---------------------------------------------------------------------------
+// A taken email must be indistinguishable from a fresh one: the endpoint returns
+// the same generic { ok: true } and no 409, creates no duplicate user, and mails
+// the real owner an out-of-band "account already exists" notice instead. A fresh
+// email keeps the normal path (create + session + verification email).
+describe("POST /api/auth/register (anti-enumeration #373)", () => {
+  const customerBody = {
+    role: "CUSTOMER",
+    name: "New User",
+    email: "taken@b.lk",
+    password: STRONG_PASSWORD,
+    phone: "0771234567",
+  };
+
+  it("returns the generic success for a taken email without creating a duplicate", async () => {
+    db.user.findUnique.mockResolvedValue({ id: "existing", email: "taken@b.lk" });
+
+    const res = await post("/api/auth/register", customerBody);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    // No duplicate row, and no auto-login for a request that isn't the owner.
+    expect(db.user.create).not.toHaveBeenCalled();
+    expect(res.headers.get("set-cookie")).toBeNull();
+    // The real owner is notified out-of-band; the normal verification mail is not.
+    expect(sendAccountExistsEmail).toHaveBeenCalledWith(
+      "taken@b.lk",
+      expect.any(String),
+      "en"
+    );
+    expect(sendVerificationEmail).not.toHaveBeenCalled();
+  });
+
+  it("returns the same generic success when the unique-constraint race is lost (P2002)", async () => {
+    // Two concurrent signups pass the findUnique fast-path; the loser hits the
+    // unique constraint. That must land on the same anti-enumeration response.
+    db.user.findUnique.mockResolvedValue(null);
+    db.user.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "test",
+      })
+    );
+
+    const res = await post("/api/auth/register", customerBody);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(sendAccountExistsEmail).toHaveBeenCalledWith(
+      "taken@b.lk",
+      expect.any(String),
+      "en"
+    );
+    expect(res.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("runs the normal registration path for a brand-new email", async () => {
+    db.user.findUnique.mockResolvedValue(null);
+    db.user.create.mockResolvedValue({
+      id: "u-new",
+      email: "taken@b.lk",
+      name: "New User",
+      role: "CUSTOMER",
+      sessionVersion: 0,
+      avatarUrl: null,
+    });
+
+    const res = await post("/api/auth/register", customerBody);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      user: { id: "u-new", name: "New User", role: "CUSTOMER" },
+      providerId: null,
+    });
+    expect(db.user.create).toHaveBeenCalled();
+    // Normal path: session cookie issued, verification mail sent, no exists-mail.
+    expect(res.headers.get("set-cookie")).toContain("sh_session=");
+    expect(sendVerificationEmail).toHaveBeenCalledWith(
+      "u-new",
+      "taken@b.lk",
+      expect.any(String),
+      "en"
+    );
+    expect(sendAccountExistsEmail).not.toHaveBeenCalled();
   });
 });
 

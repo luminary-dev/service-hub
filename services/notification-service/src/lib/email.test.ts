@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { escapeHtml, inquiryEmail, jobResponseEmail, passwordResetEmail, verifyEmail } from "./email";
+import { accountExistsEmail, escapeHtml, inquiryEmail, jobResponseEmail, passwordResetEmail, verifyEmail } from "./email";
 
 describe("verifyEmail", () => {
   it("renders the English template by default", () => {
@@ -38,6 +38,28 @@ describe("passwordResetEmail", () => {
     expect(html).toContain("මෙම සබැඳිය පැය 1කින් කල් ඉකුත් වේ");
     expect(html).toContain(">මුරපදය යළි සකසන්න</a>");
     expect(html).toContain('href="https://baas.lk/reset?token=xyz"');
+  });
+});
+
+describe("accountExistsEmail", () => {
+  it("renders the English template by default", () => {
+    const { subject, html } = accountExistsEmail("https://baas.lk/login");
+    expect(subject).toBe("You already have a Baas.lk account");
+    expect(html).toContain("You already have an account");
+    expect(html).toContain(
+      "Someone tried to sign up for Baas.lk with this email address, but an account already exists."
+    );
+    expect(html).toContain(">Sign in</a>");
+    expect(html).toContain('href="https://baas.lk/login"');
+  });
+
+  it("renders the Sinhala template", () => {
+    const { subject, html } = accountExistsEmail("https://baas.lk/login", "si");
+    expect(subject).toBe("ඔබට දැනටමත් Baas.lk ගිණුමක් ඇත");
+    expect(html).toContain("ඔබට දැනටමත් ගිණුමක් ඇත");
+    expect(html).toContain("නව ගිණුමක් සෑදී නැත");
+    expect(html).toContain(">පිවිසෙන්න</a>");
+    expect(html).toContain('href="https://baas.lk/login"');
   });
 });
 
