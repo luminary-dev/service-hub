@@ -221,8 +221,9 @@ each service enforces the tier. **Reads and report resolve/dismiss** gate on
 | `GET /api/admin/notifications/counts` | SUPPORT+ | `{ pendingVerifications, openReports }` (nav badges). |
 | `GET /api/admin/stats` | SUPPORT+ | Provider active/suspended totals, pendingVerifications, openReports (provider half), category distribution. |
 | `GET /api/admin/categories` | SUPPORT+ | Every category, inactive included. |
-| `POST /api/admin/categories` | ADMIN | Create `{ slug (^[a-z0-9-]{2,40}$), labelEn, labelSi, icon?, active?, sortOrder? }` (409 on dup). |
-| `PATCH /api/admin/categories/:slug` | ADMIN | Update labels/icon/active/sortOrder (no hard delete — deactivate). |
+| `POST /api/admin/categories` | ADMIN | Create `{ slug (^[a-z0-9-]{2,40}$), labelEn, labelSi, icon?, imageUrl?, active?, sortOrder? }` (409 on dup). `imageUrl` is a relative media path (#436). |
+| `PATCH /api/admin/categories/:slug` | ADMIN | Update labels/icon/`imageUrl`/active/sortOrder (no hard delete — deactivate). |
+| `POST /api/admin/categories/image` | ADMIN | Multipart cover upload (#436) → media-service `category` namespace (R2 in prod); returns `{ url }` to save via create/patch. jpeg/png/webp, 5MB. |
 | `GET /api/admin/audit-log` | SUPPORT+ | Moderation history, `adminId`/`action`/`from`/`to` filters, newest first, take 200. |
 | `POST /api/admin/flagging/run` | ADMIN | Auto-flagging sweep (#232): opens a deduped SYSTEM report for each active provider with quality < 40 or ≥ 3 open USER reports → `{ flagged }`. |
 

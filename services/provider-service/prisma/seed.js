@@ -26,7 +26,14 @@ const CATEGORIES = [
   { slug: "pest-control", labelEn: "Pest Control", labelSi: "පළිබෝධ පාලනය", icon: "FaBug" },
   { slug: "cleaning", labelEn: "Cleaning", labelSi: "පිරිසිදු කිරීම", icon: "FaBroom" },
   { slug: "movers", labelEn: "Movers", labelSi: "බඩු ප්‍රවාහනය", icon: "FaTruck" },
-].map((c, i) => ({ ...c, active: true, sortOrder: (i + 1) * 10 }));
+].map((c, i) => ({
+  ...c,
+  active: true,
+  sortOrder: (i + 1) * 10,
+  // Default cover image (#436) — an AI trade photo per slug. Admins can replace
+  // it via the category manager; a reseed restores this default (dev only).
+  imageUrl: `/images/workers/${c.slug}-1.jpg`,
+}));
 
 // Deterministic IDs so cross-service references line up with the
 // identity-service seed (user_*) and the review/job seeds (prov_*).

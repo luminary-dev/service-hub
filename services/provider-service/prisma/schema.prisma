@@ -16,6 +16,10 @@ model Category {
   labelEn   String
   labelSi   String
   icon      String?
+  // Optional cover image (#436). Admin-uploaded via media-service (R2 in prod);
+  // used as the card cover fallback when a provider has no cover of their own.
+  // Distinct from `icon` (a font-awesome component name, not an image).
+  imageUrl  String?
   active    Boolean @default(true)
   sortOrder Int     @default(0)
 }

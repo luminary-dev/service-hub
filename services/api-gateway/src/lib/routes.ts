@@ -14,7 +14,8 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
   // /api/files/<provider|review>/... URLs keep resolving unchanged.
   if (
     pathname.startsWith("/api/files/provider/") ||
-    pathname.startsWith("/api/files/review/")
+    pathname.startsWith("/api/files/review/") ||
+    pathname.startsWith("/api/files/category/")
   ) {
     return { service: "media", path: "/files" + pathname.slice("/api/files".length) };
   }
