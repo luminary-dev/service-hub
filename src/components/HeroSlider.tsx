@@ -108,8 +108,8 @@ export default function HeroSlider() {
         {SLIDES.map((s, i) => (
           <div
             key={s.slug}
-            className={`absolute inset-0 transition-opacity duration-700 ease-snap ${
-              i === active ? "opacity-100" : "opacity-0"
+            className={`absolute inset-0 transition-[opacity,transform] duration-700 ease-snap ${
+              i === active ? "opacity-100 scale-100" : "opacity-0 scale-[1.05]"
             }`}
             aria-hidden={i !== active}
           >
@@ -135,15 +135,21 @@ export default function HeroSlider() {
           className="hero-sweep pointer-events-none absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-brand-500/25 to-transparent"
         />
 
-        {/* Top-left: current trade badge. */}
-        <span className="absolute left-3 top-3 rounded-sm bg-brand-700 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-white dark:text-ink-50">
+        {/* Top-left: current trade badge — rises in on each change. */}
+        <span
+          key={`badge-${active}`}
+          className="hero-rise absolute left-3 top-3 rounded-sm bg-brand-700 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-white dark:text-ink-50"
+        >
           {labels[active]}
         </span>
 
-        {/* Top-right: live counter. */}
+        {/* Top-right: live counter — the index number flips in per change. */}
         <span className="absolute right-3 top-3 flex items-center gap-1.5 rounded-sm border border-white/25 bg-black/30 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-white backdrop-blur-sm">
           <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-brand-400" />
-          {String(active + 1).padStart(2, "0")} / {String(count).padStart(2, "0")}
+          <span key={`count-${active}`} className="hero-rise inline-block tabular-nums">
+            {String(active + 1).padStart(2, "0")}
+          </span>
+          <span className="text-white/50">/ {String(count).padStart(2, "0")}</span>
         </span>
 
         {/* Prev / next — appear on hover or keyboard focus. */}
@@ -153,15 +159,15 @@ export default function HeroSlider() {
           aria-label={t.sliderPrev}
           className="group/nav absolute left-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-sm border border-white/25 bg-black/35 text-white opacity-0 backdrop-blur-sm transition-all duration-200 ease-snap hover:border-brand-400 hover:bg-brand-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 group-hover:opacity-100"
         >
-          <FaChevronLeft className="h-3.5 w-3.5" />
+          <FaChevronLeft className="h-3.5 w-3.5 transition-transform duration-200 ease-snap group-hover/nav:-translate-x-0.5" />
         </button>
         <button
           type="button"
           onClick={() => go(active + 1)}
           aria-label={t.sliderNext}
-          className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-sm border border-white/25 bg-black/35 text-white opacity-0 backdrop-blur-sm transition-all duration-200 ease-snap hover:border-brand-400 hover:bg-brand-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 group-hover:opacity-100"
+          className="group/nav absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-sm border border-white/25 bg-black/35 text-white opacity-0 backdrop-blur-sm transition-all duration-200 ease-snap hover:border-brand-400 hover:bg-brand-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 group-hover:opacity-100"
         >
-          <FaChevronRight className="h-3.5 w-3.5" />
+          <FaChevronRight className="h-3.5 w-3.5 transition-transform duration-200 ease-snap group-hover/nav:translate-x-0.5" />
         </button>
 
         {/* Auto-advance gauge — a brand line filling across the bottom edge. */}
@@ -175,7 +181,7 @@ export default function HeroSlider() {
 
       {/* Figcaption plate with the tick selector — mirrors the old Fig.01 bar. */}
       <figcaption className="flex items-center justify-between border border-t-0 border-ink-300 bg-ink-100 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-500">
-        <span>
+        <span key={`fig-${active}`} className="hero-rise">
           Fig.{String(active + 1).padStart(2, "0")} ·{" "}
           <span className="text-brand-700">{labels[active]}</span>
         </span>
@@ -190,7 +196,7 @@ export default function HeroSlider() {
               onClick={() => go(i)}
               className={`h-1.5 rounded-full transition-all duration-300 ease-snap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
                 i === active
-                  ? "w-5 bg-brand-600"
+                  ? "hero-tick-active w-5 bg-brand-600"
                   : "w-1.5 bg-ink-300 hover:bg-ink-400"
               }`}
             />

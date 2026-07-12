@@ -502,3 +502,41 @@ p {
 .hero-sweep {
   animation: heroSweep 0.9s var(--ease-snap);
 }
+
+/* Per-slide caption/badge entrance — replays on each change (keyed remount). */
+@keyframes heroRise {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.hero-rise {
+  animation: heroRise 0.5s var(--ease-snap) both;
+}
+
+/* Soft brand halo that breathes behind the active tick. */
+@keyframes heroTickGlow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0
+      color-mix(in oklch, var(--color-brand-500) 55%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 4px
+      color-mix(in oklch, var(--color-brand-500) 0%, transparent);
+  }
+}
+.hero-tick-active {
+  animation: heroTickGlow 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-rise,
+  .hero-tick-active {
+    animation: none !important;
+  }
+}
