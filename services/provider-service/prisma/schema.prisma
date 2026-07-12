@@ -78,6 +78,8 @@ model Provider {
   @@index([category, district])
   @@index([district])
   @@index([createdAt])
+  // Admin verification queue filters by status (#369).
+  @@index([verificationStatus])
 }
 
 model VerificationDocument {
@@ -151,6 +153,8 @@ model Report {
   // Admin queue reads by status; duplicate-protection looks up by target.
   @@index([status])
   @@index([targetType, targetId])
+  // Report queue orders newest-first (#369).
+  @@index([createdAt])
 }
 
 // userId references a User owned by identity-service (plain string, nullable —
@@ -178,6 +182,10 @@ model Inquiry {
   messages    InquiryMessage[]
 
   @@index([providerId])
+  // Dashboard inbox filters+sorts by provider then recency (#369).
+  @@index([providerId, createdAt])
+  // Account history / review-eligibility gate / erase scan by user (#369).
+  @@index([userId])
 }
 
 // Conversation thread per inquiry (#13). Only signed-in inquiries can thread
