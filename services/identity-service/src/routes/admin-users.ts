@@ -152,6 +152,10 @@ adminUsersRoutes.patch("/api/admin/users/:id", async (c) => {
   const data: Record<string, unknown> = {};
   if (parsed.data.action === "lock") {
     data.lockedUntil = MANUAL_LOCK_UNTIL;
+    // Locking must cut off the account *now*, not whenever the ~7-day JWT
+    // expires; bump sessionVersion so any token minted before the lock fails
+    // the gateway's revocation check (mirrors force-logout).
+    data.sessionVersion = { increment: 1 };
   } else if (parsed.data.action === "unlock") {
     data.lockedUntil = null;
     data.failedLogins = 0;
