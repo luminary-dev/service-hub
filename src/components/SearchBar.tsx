@@ -34,7 +34,7 @@ export default function SearchBar() {
         onChange={(e) => setQ(e.target.value)}
         placeholder={t.search.placeholder}
         aria-label={t.search.placeholder}
-        className="min-w-0 flex-1 rounded-xl px-4 py-2.5 text-sm text-ink-900 placeholder:text-ink-500 focus:outline-none"
+        className="min-w-0 flex-1 rounded-xl px-4 py-2.5 text-sm text-ink-900 placeholder:text-ink-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
       />
       <select
         value={category}
