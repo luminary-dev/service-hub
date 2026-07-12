@@ -17,6 +17,8 @@ import { eraseUserData } from "../lib/erase";
 import {
   createProviderProfile,
   deactivateProviderProfile,
+  getProviderIdByUser,
+  reactivateProviderProfile,
 } from "../lib/providers";
 
 // Stateful-enough Prisma double: canned per-test return values + call assertions
@@ -54,6 +56,7 @@ vi.mock("../lib/providers", () => ({
   getProviderIdByUser: vi.fn(async () => null),
   createProviderProfile: vi.fn(),
   deactivateProviderProfile: vi.fn(),
+  reactivateProviderProfile: vi.fn(),
 }));
 vi.mock("../lib/audit", () => ({ logAudit: vi.fn() }));
 
@@ -561,6 +564,45 @@ describe("POST /api/auth/complete-provider", () => {
     const res = await post("/api/auth/complete-provider", providerBody, AUTH_HEADERS);
     expect(res.status).toBe(409);
     expect(createProviderProfile).not.toHaveBeenCalled();
+  });
+
+  it("re-upgrade: reactivates the existing profile instead of recreating it", async () => {
+    // A previously-closed provider (#403) re-upgrading: role is CUSTOMER again
+    // but the (suspended) profile still exists, so complete-provider must
+    // reactivate it rather than call createProviderProfile.
+    db.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "a@b.lk",
+      name: "Ann",
+      role: "CUSTOMER",
+    });
+    vi.mocked(getProviderIdByUser).mockResolvedValue("prov-1");
+    db.user.update.mockResolvedValue({
+      id: "u1",
+      name: "Ann",
+      role: "PROVIDER",
+      sessionVersion: 3,
+    });
+
+    const res = await post("/api/auth/complete-provider", providerBody, AUTH_HEADERS);
+    expect(res.status).toBe(200);
+    expect(reactivateProviderProfile).toHaveBeenCalledWith("u1");
+    expect(createProviderProfile).not.toHaveBeenCalled();
+  });
+
+  it("502s the re-upgrade when reactivation fails (role not flipped)", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "a@b.lk",
+      name: "Ann",
+      role: "CUSTOMER",
+    });
+    vi.mocked(getProviderIdByUser).mockResolvedValue("prov-1");
+    vi.mocked(reactivateProviderProfile).mockRejectedValue(new Error("peer down"));
+
+    const res = await post("/api/auth/complete-provider", providerBody, AUTH_HEADERS);
+    expect(res.status).toBe(502);
+    expect(db.user.update).not.toHaveBeenCalled();
   });
 });
 
