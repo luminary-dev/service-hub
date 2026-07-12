@@ -17,9 +17,13 @@ providers from `GET /api/providers`. Signed-in users also fetch
 - **Sort:** recommended (default), highest rated, most reviews, lowest price,
   most experienced, newest.
 
-Category/district/rating/availability/sort apply on change; text and price
-apply on submit. Results paginate with prev/next. Ranking over the matched set
-is bounded server-side (up to 1000 candidates) and backed by pg_trgm indexes.
+Text, category, district, rating and price commit together on submit (the
+Search button); the availability toggle applies on change; sort commits on
+blur. Selects deliberately don't navigate on every `change` — a closed native
+select fires `change` on each arrow keypress, which would make them
+keyboard-hostile (WCAG 3.2.2). Results paginate with prev/next. Ranking over the
+matched set is bounded server-side (up to 1000 candidates) and backed by pg_trgm
+indexes.
 
 Provider cards (`ProviderCard`) show a cover image (provider's own cover →
 admin-set category cover image (#436) → placeholder), category, experience,
