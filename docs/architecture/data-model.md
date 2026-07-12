@@ -32,7 +32,13 @@
   `Provider` denormalizes `contactName`/`contactEmail`/`contactPhone` (copied
   from the user at registration; profile updates write both locally and S2S to
   identity) and carries `awayUntil` (#49), `verificationStatus`/`verifiedAt`/
-  `rejectionReason`, `suspended`. `userId` is a plain string.
+  `rejectionReason`, `suspended`. The free-text pitch is bilingual (#515):
+  `headline`/`bio` (English, required) plus **optional nullable**
+  `headlineSi`/`bioSi` (Sinhala variants) — the public payload prefers the SI
+  variant under the `si` locale and falls back to the English original, and
+  both SI columns join the `/api/providers` free-text search (pg_trgm-indexed).
+  Per-service Sinhala titles are a deliberate follow-up. `userId` is a plain
+  string.
   `Report` fields: `targetType` (`PROVIDER`|`WORK_PHOTO`), `targetId`,
   `reporterId` (nullable — anonymous allowed), `reason`, `details`, `status`
   (`OPEN`|`RESOLVED`|`DISMISSED`), `source` (`USER`|`SYSTEM`, #232 — SYSTEM is

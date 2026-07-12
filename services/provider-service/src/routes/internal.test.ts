@@ -104,6 +104,35 @@ describe("POST /internal/providers re-upgrade", () => {
     services: [{ title: "Fix taps", price: 1000, priceType: "FIXED" }],
   };
 
+  it("persists the optional Sinhala headline/bio when supplied (#515)", async () => {
+    dbMock.provider.create.mockResolvedValue({ id: "prov9" });
+    const res = await post("/internal/providers", {
+      ...body,
+      headlineSi: "විශ්වාසවන්ත ජලනළ කාර්මිකයා",
+      bioSi: "අවුරුදු දහයකට වැඩි පළපුරුද්දක් සහිත ජලනළ සේවා.",
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          headlineSi: "විශ්වාසවන්ත ජලනළ කාර්මිකයා",
+          bioSi: "අවුරුදු දහයකට වැඩි පළපුරුද්දක් සහිත ජලනළ සේවා.",
+        }),
+      })
+    );
+  });
+
+  it("stores null for absent Sinhala variants (#515)", async () => {
+    dbMock.provider.create.mockResolvedValue({ id: "prov10" });
+    const res = await post("/internal/providers", body);
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ headlineSi: null, bioSi: null }),
+      })
+    );
+  });
+
   it("returns the existing id without lifting a suspension (invariant guard)", async () => {
     // create() hits the unique-userId constraint (profile already exists) and
     // that profile is suspended. Re-registration must be idempotent but must

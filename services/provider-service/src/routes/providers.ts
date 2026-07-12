@@ -77,6 +77,9 @@ function toCardDTO(
     category: p.category,
     categoryImageUrl: categoryImages?.get(p.category) ?? null,
     headline: p.headline,
+    // Optional Sinhala headline (#515) so the web card can show the locale
+    // variant with an English fallback. Bio is not on the card.
+    headlineSi: p.headlineSi,
     district: p.district,
     city: p.city,
     experience: p.experience,

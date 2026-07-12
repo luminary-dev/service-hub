@@ -24,6 +24,10 @@ export function buildSearchWhere(
     OR: [
       { headline: { contains: query, mode: "insensitive" } },
       { bio: { contains: query, mode: "insensitive" } },
+      // Bilingual pitch (#515): a Sinhala query ILIKE-matches the optional
+      // Sinhala headline/bio too. Backed by the same pg_trgm GIN indexes.
+      { headlineSi: { contains: query, mode: "insensitive" } },
+      { bioSi: { contains: query, mode: "insensitive" } },
       { city: { contains: query, mode: "insensitive" } },
       { contactName: { contains: query, mode: "insensitive" } },
       { services: { some: { title: { contains: query, mode: "insensitive" } } } },

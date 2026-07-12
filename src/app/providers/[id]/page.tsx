@@ -6,6 +6,7 @@ import { getSession, type SessionPayload } from "@/lib/auth";
 import { formatDate, formatLKR } from "@/lib/format";
 import {
   dict,
+  bilingualText,
   categoryLabelLoc,
   districtLabelLoc,
   priceTypeLabelLoc,
@@ -72,6 +73,11 @@ type FullProvider = {
   category: string;
   headline: string;
   bio: string;
+  // Optional Sinhala variants (#515); rendered under the `si` locale with an
+  // English fallback via bilingualText. Optional on the type so consumers need
+  // no churn.
+  headlineSi?: string | null;
+  bioSi?: string | null;
   district: string;
   city: string;
   experience: number;
@@ -325,10 +331,10 @@ export default async function ProviderProfilePage({
           <InView stagger className="space-y-8 lg:col-span-2">
             <SpecSection code="01" title={t.profile.about}>
               <p className="mt-3 font-medium text-ink-800">
-                {provider.headline}
+                {bilingualText(provider.headline, provider.headlineSi, locale)}
               </p>
               <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-ink-600">
-                {provider.bio}
+                {bilingualText(provider.bio, provider.bioSi, locale)}
               </p>
             </SpecSection>
 

@@ -24,6 +24,10 @@ const createSchema = z.object({
   category: z.string().min(1),
   headline: z.string().min(1).max(120),
   bio: z.string().min(1).max(2000),
+  // Optional Sinhala variants (#515) — same length rules as the English
+  // originals; empty/absent stores null.
+  headlineSi: optionalText(120),
+  bioSi: optionalText(2000),
   district: z.string().min(1),
   city: z.string().min(1).max(60),
   experience: z.number().int().min(0).max(60),
@@ -77,6 +81,8 @@ internalRoutes.post("/internal/providers", async (c) => {
         category: data.category,
         headline: data.headline,
         bio: data.bio,
+        headlineSi: data.headlineSi || null,
+        bioSi: data.bioSi || null,
         district: data.district,
         city: data.city,
         experience: data.experience,
