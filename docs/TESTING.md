@@ -7,7 +7,7 @@ what kind of test belongs where.
 
 | Layer | Where | What it covers | Runs in CI |
 | --- | --- | --- | --- |
-| Service unit tests | `services/*/src/**/*.test.ts` | Each service's routes, validation, auth and business logic (vitest, ~390 tests across the eight backend services + gateway) | Yes — per-service `npm run test` |
+| Service unit tests | `services/*/src/**/*.test.ts` | Each service's routes, validation, auth and business logic (vitest, hundreds of tests across the seven backend services + gateway) | Yes — per-service `npm run test` |
 | Gateway app tests | `services/api-gateway/src/app.test.ts` + `src/lib/*.test.ts` | Gateway routing, cookie/CSRF/rate-limit behavior, S2S forwarding — upstream services are stubbed, nothing real is dialed | Yes — part of the gateway suite |
 | Web unit tests | `src/lib/*.test.ts`, `src/proxy.test.ts` | Pure logic: locale formatting, i18n dictionary parity, category/district/price-type lookups, sort normalization, the `/api/*` proxy rewrite | Yes — web `npm run test` |
 | Web component tests | `src/components/*.test.tsx` | High-value client components (toasts, favorite/share buttons) rendered with Testing Library in jsdom; `fetch`, clipboard and `next/navigation` are mocked | Yes — same web suite |
