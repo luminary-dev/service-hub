@@ -10,8 +10,8 @@
 
 ## Policy
 
-- **Cadence**: daily `./scripts/backup-dbs.sh` (cron on the production host once #110 lands).
-- **Retention**: newest 14 snapshots locally (`RETENTION` env overrides).
+- **Cadence**: daily `./scripts/backup-dbs.sh` (cron on the production host once #110 lands). The script targets the prod compose project (`docker-compose.prod.yml`) by default; for a local dev backup run `COMPOSE_FILE=docker-compose.yml ./scripts/backup-dbs.sh`.
+- **Retention**: newest 14 snapshots locally (`RETENTION` env overrides); only `YYYYMMDDTHHMMSSZ` snapshot dirs are pruned, so anything else you keep in `BACKUP_DIR` is left alone.
 - **Offsite**: copy each snapshot directory to object storage (Cloudflare R2 — same account as uploads). One-liner: `rclone copy backups/<stamp> remote:baas-backups/<stamp>`.
 - **Restore drills**: restore the newest snapshot into scratch databases quarterly and row-count the main tables (this exact procedure was executed when the tooling shipped).
 
