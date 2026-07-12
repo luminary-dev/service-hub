@@ -7,12 +7,13 @@ and operations runbooks, the authorization and admin models, feature notes, and
 the security posture. Per-service API detail lives in each
 `services/<name>/README.md`.
 
-> **Two homes for docs.** Narrative, human-facing team documentation
-> (onboarding, workflow, day-to-day process) lives in
-> [`luminary-dev/service-hub-docs`](https://github.com/luminary-dev/service-hub-docs),
-> published through GitBook (Git Sync). This `docs/` folder is the **technical +
-> process reference** that ships with the code — endpoint contracts, runbooks
-> and design tokens that must version alongside the services they describe.
+> **Single source of truth.** This `docs/` folder is the **one** home for
+> technical + process documentation — endpoint contracts, runbooks, onboarding
+> and design tokens that version alongside the code. The team's **GitBook** space
+> is published *directly from this folder* via GitBook Git Sync (`.gitbook.yaml`
+> at the repo root sets `docs/` as the content root and [`SUMMARY.md`](SUMMARY.md)
+> as the nav). Update the docs here and GitBook re-renders — there is no separate
+> docs repo to keep in sync.
 
 ## Index
 

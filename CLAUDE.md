@@ -22,7 +22,7 @@ Start with `docs/README.md` (the docs index) and `docs/ARCHITECTURE.md`.
 ## Golden rules
 
 1. **Verify before you change.** Read the actual current code — routes, schema, env — before editing. Never assume an endpoint, field, flag, or API shape from memory. For any change touching an API, re-check the route handlers and `services/api-gateway/src/lib/routes.ts`, and the endpoint reference in `docs/ARCHITECTURE.md`.
-2. **Docs are the source of truth we build on later.** If your change alters behavior, an endpoint, an env var, a process, or the data model, **update the relevant doc(s) in the same PR**. The `docs/` tree is the canonical technical + process reference; narrative team docs live on GitBook (`luminary-dev/service-hub-docs`). Never let code and docs drift.
+2. **Docs are the source of truth we build on later.** If your change alters behavior, an endpoint, an env var, a process, or the data model, **update the relevant doc(s) in the same PR**. The `docs/` tree is the single canonical home for technical + process docs (onboarding, reference, runbooks). The team's GitBook space is published **directly from `docs/`** via Git Sync (`.gitbook.yaml` → `docs/` root + `docs/SUMMARY.md` nav), so updating `docs/` is all that's needed — there is no separate docs repo to sync. Never let code and docs drift.
 3. **Never merge a PR unless ALL checks pass, there are no conflicts, and the branch is up to date with `dev`.** No `--admin` bypass of failing/queued checks. The `dev` and `prod` rulesets are strict (up-to-date + required review + all CI green). Merge only when the state is genuinely CLEAN.
 4. **No AI attribution.** Do not add `Co-Authored-By:` trailers to commits or "Generated with …" footers to PR bodies.
 
