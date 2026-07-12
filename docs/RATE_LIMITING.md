@@ -67,13 +67,15 @@ limiting beats returning errors or dropping the protection entirely. The Redis
 client is created with `maxRetriesPerRequest: 1` and `enableOfflineQueue: false`
 so an outage drops straight into the fallback instead of stalling requests.
 
-The fallback is **observable**: the gateway emits a single `warn` log on the
-*transition* into the degraded state (`rate-limit Redis backend unavailable …`,
-with the error and key context) and an `info` log when Redis recovers. Logging
-is edge-triggered — one line per state change, never one per request — so a
-Redis outage does not flood the logs. Watch for this warning in operations:
+The fallback is **observable**, and the transition `warn` is an intended
+**alerting hook** (#374): the gateway emits a single `warn` log on the
+*transition* into the degraded state (`rate-limit Redis backend unavailable …
+alert on this`, with the error and key context) and an `info` log when Redis
+recovers. Logging is edge-triggered — one line per state change, never one per
+request — so a Redis outage does not flood the logs. **Page on this warning:**
 while degraded, limits are per-instance, so with N gateway replicas an attacker
-can effectively make `limit × N` attempts before being blocked.
+can effectively make `limit × N` attempts before being blocked (the per-account
+lockout in identity-service is the real backstop in that window).
 
 `REDIS_URL` is a plain Redis connection string (e.g. `redis://redis:6379`),
 consumed via `ioredis`. There is no Upstash/Vercel dependency — the stack
@@ -110,6 +112,22 @@ is **Caddy → web → gateway**, so it is set to **`2`** (see
 `docker-compose.prod.yml` / `.env.prod.example`). Getting this wrong is
 fail-safe in one direction: too small a value keys on a proxy IP (all clients
 share a bucket — over-limiting), never on a forgeable client value.
+
+### Startup misconfiguration check (#374)
+
+Because an unset/`0` value behind the prod proxy chain silently collapses every
+client into one bucket (a single abuser can then trip the shared limit and DoS
+the whole site), the gateway runs a startup sanity check (`checkProxyConfig`,
+called from `src/index.ts`) that **warns** — it never crashes, since the
+topology can't be detected at runtime and `0` is legitimate for a directly
+exposed gateway. It logs a `warn` when:
+
+- `NODE_ENV=production` and `TRUSTED_PROXY_HOPS` is unset or `0` (behind
+  Caddy→web this should be `2`), or
+- the value is set but not a valid non-negative integer (e.g. a stray space or
+  typo), which `trustedProxyHops()` would otherwise silently coerce to `0`.
+
+Watch for this warning on boot after a config change.
 
 ## Bot protection on the public inquiry form (honeypot, #65)
 

@@ -80,6 +80,10 @@ services:
       PORT: 4001
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?}@postgres:5432/identity_db
       AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required}
+      # Shared session-revocation list (#374): identity publishes each
+      # sessionVersion bump here so the gateway enforces revocations even during
+      # an identity outage. Same Redis the gateway uses for rate limiting.
+      REDIS_URL: redis://redis:6379
       # Social login (#398) — optional; unset → "Continue with Google" disabled.
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
@@ -87,6 +91,8 @@ services:
       FACEBOOK_CLIENT_SECRET: ${FACEBOOK_CLIENT_SECRET:-}
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck: *node-healthcheck
 

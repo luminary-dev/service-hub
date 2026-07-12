@@ -64,6 +64,43 @@ export function trustedProxyHops(env = process.env): number {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+// Startup sanity check for TRUSTED_PROXY_HOPS (#374). Misconfiguring this is a
+// silent footgun: behind the prod Caddy → web → gateway chain the value must be
+// 2, but if it is unset/0 the limiter keys every request on the internal
+// web-app IP — collapsing all users into ONE rate-limit bucket, so a single
+// abuser can trip the shared limit and DoS the whole site. We only WARN (never
+// crash): the topology can't be detected at runtime, and 0 is a legitimate
+// value when the gateway is directly exposed. Call once at startup.
+export function checkProxyConfig(env = process.env, logger = log): void {
+  const raw = env.TRUSTED_PROXY_HOPS;
+
+  // Set to something that silently coerces to 0 (NaN or negative) despite the
+  // operator clearly not writing "0" — almost always a typo (e.g. "two", "-2").
+  // "0" is a deliberate, valid value, so it drops to the production check below.
+  if (raw !== undefined && raw.trim() !== "" && raw.trim() !== "0") {
+    const parsed = Number.parseInt(raw, 10);
+    if (!(Number.isFinite(parsed) && parsed > 0)) {
+      logger.warn(
+        `TRUSTED_PROXY_HOPS="${raw}" is not a valid positive integer; treating it as 0 ` +
+          "(rate limits keyed on the socket peer). Behind the Caddy→web→gateway chain set it " +
+          "to 2. See docs/RATE_LIMITING.md."
+      );
+      return;
+    }
+  }
+
+  // In production the gateway sits behind Caddy → web (2 hops). Hops of 0 there
+  // means the socket peer is the web app, so every client shares one bucket.
+  if (env.NODE_ENV === "production" && trustedProxyHops(env) === 0) {
+    logger.warn(
+      "TRUSTED_PROXY_HOPS is unset or 0 in production: behind the Caddy→web→gateway chain this " +
+        "keys every request on the internal web-app IP, collapsing all clients into a single " +
+        "rate-limit bucket (one abuser can DoS the whole site). Set TRUSTED_PROXY_HOPS=2 to match " +
+        "the deployed topology. See docs/RATE_LIMITING.md."
+    );
+  }
+}
+
 // Resolve the client IP to key rate limits on.
 //
 // The leftmost X-Forwarded-For token is always client-forgeable (#201): an
@@ -121,7 +158,9 @@ function socketPeer(c: Context): string | undefined {
 // per-instance limiting beats returning errors or no limiting at all.
 // ---------------------------------------------------------------------------
 
-// Minimal command surface so tests can inject a fake.
+// Minimal command surface so tests can inject a fake. `get` is used by the
+// session-revocation check (session-version.ts, #374), which shares this same
+// Redis connection rather than opening a second one.
 export type RedisCommands = {
   zremrangebyscore(key: string, min: number | string, max: number | string): Promise<number>;
   zadd(key: string, score: number, member: string): Promise<unknown>;
@@ -129,6 +168,7 @@ export type RedisCommands = {
   zrem(key: string, member: string): Promise<number>;
   zrange(key: string, start: number, stop: number, withScores: "WITHSCORES"): Promise<string[]>;
   pexpire(key: string, ms: number): Promise<number>;
+  get(key: string): Promise<string | null>;
 };
 
 // Sliding window over a sorted set: drop expired hits, optimistically add
@@ -172,11 +212,14 @@ let redisDegraded = false;
 
 // Called when a Redis rate-limit op throws and we fall back to in-memory. Logs
 // once on the way into the degraded state; subsequent failures are silent.
+// This warn is an intended ALERTING HOOK (#374): while degraded, limits are
+// per-instance, so across N gateway replicas an attacker gets ~limit×N attempts
+// — page on it.
 function noteRedisFailure(err: unknown, key: string): void {
   if (redisDegraded) return;
   redisDegraded = true;
   log.warn(
-    "rate-limit Redis backend unavailable; falling back to per-instance in-memory limiting (cross-instance limits degraded)",
+    "rate-limit Redis backend unavailable; falling back to per-instance in-memory limiting (cross-instance limits degraded — alert on this)",
     { err, key }
   );
 }
@@ -196,7 +239,10 @@ export function resetRedisDegradedState(): void {
 // undefined = not initialized yet; null = no REDIS_URL configured.
 let redisClient: RedisCommands | null | undefined;
 
-function getRedis(): RedisCommands | null {
+// Shared Redis connection for the gateway. Exported so the session-revocation
+// check (session-version.ts, #374) consults the same client instead of opening
+// its own — one connection, one place to configure the fail-fast options.
+export function getRedis(): RedisCommands | null {
   if (redisClient !== undefined) return redisClient;
   const url = process.env.REDIS_URL;
   if (!url) {

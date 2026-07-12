@@ -1,9 +1,14 @@
 import "./load-env";
 import { serve } from "@hono/node-server";
 import { app } from "./app";
-import { closeRedis } from "./lib/rate-limit";
+import { checkProxyConfig, closeRedis } from "./lib/rate-limit";
 
 const port = Number(process.env.PORT ?? 4000);
+
+// Warn (don't crash) if TRUSTED_PROXY_HOPS looks misconfigured for the deployed
+// topology (#374) — a silent 0 collapses every client into one rate-limit
+// bucket behind the Caddy→web→gateway chain.
+checkProxyConfig();
 
 const server = serve({ fetch: app.fetch, port }, (info) => {
   console.log(`api-gateway listening on :${info.port}`);

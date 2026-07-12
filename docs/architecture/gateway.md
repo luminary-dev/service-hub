@@ -31,9 +31,11 @@ Public entry. Responsibilities:
      `x-impersonated-by: <adminId>`. The admin's own `sh_session` is left
      untouched, so ending impersonation just drops the extra cookie.
    - Otherwise verify `sh_session`, check its `sv` against the user's current
-     sessionVersion (S2S to identity, 60s per-user cache, fail-open), and
+     sessionVersion — a shared Redis revocation list first (authoritative,
+     survives an identity outage, #374), falling back to the S2S identity
+     lookup + 60s per-user cache (fail-open) only when Redis has no entry — and
      forward identity headers. Invalid/absent/revoked → forward without them
-     (services decide 401s).
+     (services decide 401s). See [AUTHZ.md](../AUTHZ.md#session-revocation-374).
    Always sets `x-internal-secret`, `x-locale`, `x-origin`, `x-request-id`.
 4. **Routing** (`lib/routes.ts`, streaming proxy, preserves method/headers/body
    incl. multipart; passes `Set-Cookie` back). Longest-prefix first; anything

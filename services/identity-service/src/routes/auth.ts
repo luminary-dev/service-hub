@@ -21,6 +21,7 @@ import {
   resolveProviderIdForErase,
 } from "../lib/providers";
 import { logAudit } from "../lib/audit";
+import { publishRevocation } from "../lib/revocation";
 import {
   sendAccountExistsEmail,
   sendPasswordResetEmail,
@@ -452,6 +453,10 @@ authRoutes.post("/logout-all", async (c) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
+  // Mirror the bump into the shared revocation list (#374) so the gateway
+  // rejects the now-stale tokens even if identity is unreachable.
+  await publishRevocation(user.id, user.sessionVersion);
+
   await createSession(c, {
     userId: user.id,
     role: user.role,
@@ -606,6 +611,10 @@ authRoutes.post("/change-password", async (c) => {
     db.passwordResetToken.deleteMany({ where: { userId: user.id } }),
   ]);
 
+  // Mirror the bump into the shared revocation list (#374) so the gateway
+  // rejects the old (hijacked) tokens even if identity is unreachable.
+  await publishRevocation(updated.id, updated.sessionVersion);
+
   await createSession(c, {
     userId: updated.id,
     role: updated.role,
@@ -738,7 +747,7 @@ authRoutes.post("/reset-password", async (c) => {
   }
 
   const passwordHash = await bcrypt.hash(parsed.data.password, 10);
-  await db.$transaction([
+  const [updated] = await db.$transaction([
     // sessionVersion bump: whoever prompted the reset (possibly an attacker
     // holding a session) is signed out everywhere.
     db.user.update({
@@ -748,6 +757,10 @@ authRoutes.post("/reset-password", async (c) => {
     // Single-use: consume every reset token for this user.
     db.passwordResetToken.deleteMany({ where: { userId: record.userId } }),
   ]);
+
+  // Mirror the bump into the shared revocation list (#374) so the gateway
+  // rejects the old tokens even if identity is unreachable.
+  await publishRevocation(updated.id, updated.sessionVersion);
 
   return c.json({ ok: true });
 });
