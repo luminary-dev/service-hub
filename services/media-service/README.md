@@ -15,7 +15,7 @@ browsers) must carry `x-internal-secret`, else `403 { "error": "Forbidden" }`.
 | method | path | description |
 |---|---|---|
 | `GET` | `/healthz` | `200 { ok: true, service: "media-service" }` (no secret). |
-| `GET` | `/files/:namespace/*` | Serve a stored file (public through the gateway as `/api/files/<namespace>/*`); only `jpg`/`jpeg`/`png`/`webp` served, `cache-control: public, max-age=31536000, immutable`. |
+| `GET` | `/files/:namespace/*` | Serve a stored file (public through the gateway as `/api/files/<namespace>/*`); only `jpg`/`jpeg`/`png`/`webp` served, `cache-control: public, max-age=31536000, immutable`. Optional `?variant=thumb\|medium` serves the resized derivative, falling back to the original when absent/unknown. |
 | `POST` | `/internal/media/store` | Multipart `namespace` / `prefix` / `file` → `{ url }`. Runs the sharp pipeline; `413` over 5 MB, `400` for non-images / bad namespace. |
 | `POST` | `/internal/media/delete` | `{ url }` → best-effort removal, always `{ ok: true }`. |
 | `POST` | `/internal/media/sweep` | `{ namespace, referenced[], graceMs? }` → `{ scanned, removed }` orphan sweep. |
@@ -26,8 +26,17 @@ Decodes and re-encodes every upload, proving it is a real JPEG/PNG/WebP
 (polyglots / mislabeled files fail to decode → 400). It applies EXIF orientation
 via `.rotate()` and then strips **all** metadata (EXIF GPS in phone photos would
 otherwise leak home locations), re-encoding to the same family (JPEG `q=85`, PNG,
-WebP). One processed output per upload (`<uuid>.<ext>`) — no thumbnails / extra
-sizes. Max upload 5 MB.
+WebP). Max upload 5 MB.
+
+Each upload also produces two downscaled **variants** (#382) beside the original
+— `thumb` (400px) and `medium` (800px) — named `<uuid>.<variant>.<ext>`, run
+through the same pipeline (EXIF-stripped, same format/quality, downscale-only via
+`withoutEnlargement`). Only the original's URL is returned/persisted; variants
+are requested with `?variant=thumb|medium` on the serve URL and fall back to the
+original when absent (older uploads) or unknown. `deleteFile` removes the
+original and all variants; the orphan sweep decides a variant on the basis of its
+base original (`findOrphans` → `baseUrl`), so live images keep their variants and
+orphaned originals take theirs with them.
 
 ## Storage backends
 

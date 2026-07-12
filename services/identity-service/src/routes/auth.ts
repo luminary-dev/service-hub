@@ -23,6 +23,7 @@ import {
 import { logAudit } from "../lib/audit";
 import { publishRevocation } from "../lib/revocation";
 import {
+  sendAccountExistsEmail,
   sendPasswordResetEmail,
   sendVerificationEmail,
 } from "../lib/verification";
@@ -52,19 +53,32 @@ authRoutes.post("/register", async (c) => {
     return c.json({ error: "Invalid category" }, 400);
   }
 
+  // Anti-enumeration (#373): registration must not reveal whether an email is
+  // already registered. A 409 "already exists" here (like the old behavior) let
+  // an attacker probe which addresses have accounts — the exact leak login and
+  // forgot-password already close. So a taken email is NOT rejected: we mail the
+  // real owner an "account already exists" notice out-of-band and return the
+  // same generic success shape the caller can't distinguish from a brand-new
+  // signup. The dummy hash below equalizes the bcrypt cost the create path pays,
+  // so the taken-email branch isn't an obvious faster/earlier return (mirrors
+  // login's DUMMY_HASH compare); the mail is fire-and-forget so it adds no
+  // measurable round-trip either. No duplicate user is created.
   const existing = await db.user.findUnique({ where: { email: data.email } });
   if (existing) {
-    return c.json(
-      { error: "An account with this email already exists" },
-      409
+    await bcrypt.hash(data.password, 10);
+    void sendAccountExistsEmail(data.email, getOrigin(c), getLocale(c)).catch(
+      (e) =>
+        log.error("account-exists email failed", { context: "register", err: e })
     );
+    return c.json({ ok: true });
   }
 
   const passwordHash = await bcrypt.hash(data.password, 10);
 
   // The findUnique above is a fast path, not a guarantee: two concurrent
   // registrations with the same email both pass it, and the loser hits the
-  // unique constraint. Catch P2002 and return the same 409 rather than a 500.
+  // unique constraint. Catch P2002 and give it the same anti-enumeration
+  // response as the fast-path branch above rather than a 500 (or a 409 tell).
   const user = await db.user
     .create({
       data: {
@@ -85,10 +99,11 @@ authRoutes.post("/register", async (c) => {
       throw e;
     });
   if (!user) {
-    return c.json(
-      { error: "An account with this email already exists" },
-      409
+    void sendAccountExistsEmail(data.email, getOrigin(c), getLocale(c)).catch(
+      (e) =>
+        log.error("account-exists email failed", { context: "register", err: e })
     );
+    return c.json({ ok: true });
   }
 
   let providerId: string | null = null;

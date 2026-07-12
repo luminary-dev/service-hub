@@ -8,7 +8,7 @@ the upstream that owns the handler.
 
 | Method + path | Auth | Summary |
 |---|---|---|
-| `POST /api/auth/register` | public | Register a CUSTOMER or PROVIDER (zod discriminated union). PROVIDER also creates the provider profile via S2S (on failure it compensates by erasing any committed-but-unacknowledged provider row + deleting the user, then 502). Dup email → 409. Sets the session cookie → `{ user, providerId }`. |
+| `POST /api/auth/register` | public | Register a CUSTOMER or PROVIDER (zod discriminated union). PROVIDER also creates the provider profile via S2S (on failure it compensates by erasing any committed-but-unacknowledged provider row + deleting the user, then 502). A **new** email creates the account, sets the session cookie, and sends a verification email → `{ user, providerId }`. A **duplicate** email is not rejected (no 409, #373): the endpoint returns the same generic `200 { ok: true }` (no session) and instead emails the real owner an "account already exists" notice out-of-band, so registration cannot be used to enumerate accounts. |
 | `POST /api/auth/login` | public | bcrypt verify; per-account lockout (5 fails → 15 min); no email enumeration. Sets cookie → `{ user, providerId }`. 400/401 otherwise. Social-only accounts (no password) get the same uniform 401. |
 | `GET /api/auth/oauth/:provider/start` | public | Social login (#398); `:provider` ∈ `google`, `facebook`. Sets state (+ PKCE) cookies, 302 → provider consent. Optional `?next=` (same-origin relative). Unknown/unconfigured provider → 302 `/login?error=oauth_unavailable`. |
 | `GET /api/auth/oauth/:provider/callback` | public | Validates state (+ PKCE) + code, reads the provider identity (Google: id_token; Facebook: Graph API), then: existing linked account → sign in; matching verified email → link + sign in; new verified email → create a CUSTOMER (`emailVerified` set) + link; no email (some Facebook accounts) → create a CUSTOMER keyed on the provider id with a non-deliverable placeholder email (never auto-linked). Sets cookie, 302 → `/welcome` (new) or `next`/`/` (returning). Failures → `/login?error=oauth`. |
@@ -128,7 +128,7 @@ Board/mine pagination: `page` ≥ 1, `pageSize`/`take` default 20, capped **50**
 
 | Method + path | Auth | Summary |
 |---|---|---|
-| `GET /api/files/:namespace/*` | public (via gateway) | Serve a stored image, streamed from R2 (private bucket) or local disk; long-cache immutable. The gateway routes the `provider`, `review`, `category` and `user` namespaces (→ media `/files/*`, supplying the internal secret). Non-image extension / missing → 404. |
+| `GET /api/files/:namespace/*` | public (via gateway) | Serve a stored image, streamed from R2 (private bucket) or local disk; long-cache immutable. The gateway routes the `provider`, `review`, `category` and `user` namespaces (→ media `/files/*`, supplying the internal secret). Optional `?variant=thumb\|medium` (#382) serves the 400px/800px derivative, falling back to the original when it's missing (pre-#382 uploads) or the value is unknown. Non-image extension / missing → 404. |
 
 Uploads never go here directly — the provider/review services stream bytes to
 media over S2S (`/internal/media/store`) and keep the returned URL, which
