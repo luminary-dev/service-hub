@@ -204,6 +204,12 @@ their perspective (#234). Implemented in
   and requests fall straight back to the admin's real identity.
 - **Short-lived.** The impersonation token always expires in **15 minutes**,
   regardless of the normal 7-day session TTL.
+- **Revocable via both parties (#358).** The token carries the **target's** and
+  the **admin's** `sessionVersion` at mint time (`sv` and `impersonatedBySv`);
+  the gateway and the web verifier honor the impersonation only while *both* are
+  still current. So force-logging-out / resetting the password of either the
+  target **or the impersonating admin** kills an active impersonation
+  immediately, not just at the 15-minute expiry.
 - **Unmistakable.** The token carries an `impersonatedBy` claim (the admin's
   `userId`); a token missing it is not accepted as an impersonation token even
   if otherwise validly signed. The gateway forwards it as `x-impersonated-by`,

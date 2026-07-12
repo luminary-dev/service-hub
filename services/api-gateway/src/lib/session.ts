@@ -51,6 +51,9 @@ export type ImpersonationPayload = SessionPayload & {
   // The admin userId that started the impersonation — required on every
   // impersonation token so it can never be confused with a real session.
   impersonatedBy: string;
+  // The admin's sessionVersion at mint time (#358); checked against the admin's
+  // current version so revoking the admin's sessions kills active impersonation.
+  impersonatedBySv: number;
 };
 
 // Same verification as verifySessionToken, plus: a token missing
@@ -70,6 +73,10 @@ export async function verifyImpersonationToken(
       name: payload.name as string,
       sv: typeof payload.sv === "number" ? payload.sv : 0,
       impersonatedBy: payload.impersonatedBy,
+      impersonatedBySv:
+        typeof payload.impersonatedBySv === "number"
+          ? payload.impersonatedBySv
+          : 0,
     };
   } catch {
     return null;

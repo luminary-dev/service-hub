@@ -30,13 +30,14 @@ describe("cookie names", () => {
 });
 
 describe("verifyImpersonationToken", () => {
-  it("accepts a token carrying impersonatedBy", async () => {
+  it("accepts a token carrying impersonatedBy + the admin's sv", async () => {
     const token = await sign({
       userId: "user_1",
       role: "PROVIDER",
       name: "Nuwan Perera",
       sv: 0,
       impersonatedBy: "admin_1",
+      impersonatedBySv: 3,
     });
     const payload = await verifyImpersonationToken(token);
     expect(payload).toEqual({
@@ -45,7 +46,20 @@ describe("verifyImpersonationToken", () => {
       name: "Nuwan Perera",
       sv: 0,
       impersonatedBy: "admin_1",
+      impersonatedBySv: 3,
     });
+  });
+
+  it("defaults impersonatedBySv to 0 on a legacy token minted without it", async () => {
+    const token = await sign({
+      userId: "user_1",
+      role: "PROVIDER",
+      name: "N",
+      sv: 0,
+      impersonatedBy: "admin_1",
+    });
+    const payload = await verifyImpersonationToken(token);
+    expect(payload?.impersonatedBySv).toBe(0);
   });
 
   it("rejects an otherwise-valid session token with no impersonatedBy claim", async () => {

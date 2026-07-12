@@ -325,6 +325,41 @@ describe("admin impersonation (#234)", () => {
     expect(fwd.get("x-impersonated-by")).toBe("admin-1");
   });
 
+  it("rejects the impersonation once the ADMIN's own session is revoked (#358)", async () => {
+    const impersonation = await signImpersonation({
+      userId: "target-1",
+      role: "CUSTOMER",
+      name: "Target User",
+      sv: 0,
+      impersonatedBy: "admin-1",
+      impersonatedBySv: 0,
+    });
+    // Target's version is still current (0); the admin was force-logged-out, so
+    // their version is now 1 — ahead of the token's impersonatedBySv (0).
+    const version = (v: number) =>
+      new Response(JSON.stringify({ v }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    upstreamResponse = () => {
+      const url = upstreamRequests.at(-1)!.url;
+      if (url.includes("/internal/users/admin-1/session-version")) return version(1);
+      if (url.includes("session-version")) return version(0);
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+    const res = await app.request("/api/auth/me", {
+      headers: { cookie: `impersonation_session=${impersonation}` },
+    });
+    expect(res.status).toBe(200);
+    // Impersonation not honored, and no sh_session to fall back to → no identity.
+    const fwd = upstreamRequests.at(-1)!.headers;
+    expect(fwd.get("x-impersonated-by")).toBeNull();
+    expect(fwd.get("x-user-id")).toBeNull();
+  });
+
   it("prefers a valid impersonation cookie over sh_session, leaving the admin's own session untouched", async () => {
     const adminSession = await signSession({
       userId: "admin-1",
