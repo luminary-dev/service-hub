@@ -17,6 +17,7 @@ import {
   deactivateProviderProfile,
   getProviderIdByUser,
   reactivateProviderProfile,
+  resolveProviderIdForErase,
 } from "../lib/providers";
 import { logAudit } from "../lib/audit";
 import {
@@ -448,9 +449,12 @@ authRoutes.post("/delete-account", async (c) => {
   }
 
   // providerId must be resolved BEFORE the provider profile is erased —
-  // job-service needs it to delete the provider's job responses.
-  const providerId = await getProviderIdByUser(user.id);
+  // job-service needs it to delete the provider's JobResponses (PII). Resolve
+  // it with the fail-loud helper (NOT getProviderIdByUser, which degrades to
+  // null): a transient blip here must abort with 502, not silently pass null to
+  // the job erase and leave the responses behind while the User is deleted (#360).
   try {
+    const providerId = await resolveProviderIdForErase(user.id);
     await eraseUserData(user.id, providerId);
   } catch (e) {
     log.error("peer erase failed", { context: "delete-account", err: e });

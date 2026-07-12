@@ -97,6 +97,24 @@ describe("input validation", () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "Invalid input" });
   });
+
+  it.each([
+    "/internal/email/verify",
+    "/internal/email/password-reset",
+    "/internal/email/change-email",
+    "/internal/email/job-response",
+    "/internal/email/inquiry",
+  ])("returns 400 when `to` is not a valid email on %s", async (path) => {
+    const res = await postWithSecret(path, {
+      to: "not-an-email",
+      url: "https://baas.lk",
+      providerName: "Nimal Perera",
+      jobTitle: "Fix a leaking tap",
+      customerName: "Dilani Fernando",
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Invalid input" });
+  });
 });
 
 describe("happy paths (no RESEND_API_KEY → console fallback)", () => {
