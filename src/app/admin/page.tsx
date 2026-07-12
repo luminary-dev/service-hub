@@ -22,9 +22,10 @@ import { formatNumber } from "@/lib/format";
 import PageHeader from "@/components/ui/PageHeader";
 import StatReadout from "@/components/ui/StatReadout";
 import InView from "@/components/InView";
-import AdminDashboardCharts, {
-  type CategoryStat,
-  type SignupPoint,
+import AdminDashboardChartsLazy from "@/components/admin/AdminDashboardChartsLazy";
+import type {
+  CategoryStat,
+  SignupPoint,
 } from "@/components/admin/AdminDashboardCharts";
 
 // Caching (#57): admin-only moderation view; edits must be visible on the
@@ -161,7 +162,7 @@ export default async function AdminHomePage() {
           />
 
           <div className="mt-6">
-            <AdminDashboardCharts
+            <AdminDashboardChartsLazy
               signups={signupStats?.series ?? []}
               categories={providerStats?.categoryDistribution ?? []}
             />
