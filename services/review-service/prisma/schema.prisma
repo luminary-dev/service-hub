@@ -22,6 +22,10 @@ model Review {
   // queries filter it; account erasure still hard-deletes regardless.
   deletedAt  DateTime?
   createdAt  DateTime @default(now())
+  // Last-transition timestamp (#370): auto-stamped on every write (edit,
+  // moderation soft-delete/restore) so admins can reason about recency of the
+  // last change, not only creation time.
+  updatedAt  DateTime @updatedAt
   photos     ReviewPhoto[]
 
   @@unique([providerId, userId])
@@ -37,10 +41,12 @@ model Review {
 
 // Abuse reports (#50) on reviews — this service owns reviews, so it owns the
 // reports on them (provider-service has the same-shaped model for providers
-// and work photos). reporterId references a User owned by identity-service
-// (plain string, nullable — anonymous visitors can report). No FK to the
-// target either: a report must survive its target being deleted so admins can
-// still see what happened.
+// and work photos). The two models carry the identical field set (#370):
+// `source` (USER|SYSTEM) and the `updatedAt` transition timestamp included.
+// reporterId references a User owned by identity-service (plain string,
+// nullable — anonymous visitors can report). No FK to the target either: a
+// report must survive its target being deleted so admins can still see what
+// happened.
 model Report {
   id         String  @id @default(cuid())
   // "REVIEW"
@@ -52,7 +58,15 @@ model Report {
   details    String?
   // "OPEN" | "RESOLVED" | "DISMISSED"
   status     String   @default("OPEN")
+  // "USER" | "SYSTEM" (#232, reconciled with provider-service in #370): USER
+  // reports come from the public report flow; SYSTEM is reserved for
+  // auto-created reports. Reviews currently only ever produce USER reports, so
+  // this defaults to "USER" and the create path leaves it unset.
+  source     String   @default("USER")
   createdAt  DateTime @default(now())
+  // Last-transition timestamp (#370): auto-stamped on every write (status
+  // resolve/dismiss). Mirrors provider-service's Report.updatedAt.
+  updatedAt  DateTime @updatedAt
   // Audit trail (#223): admin userId + timestamp stamped when a report
   // transitions to RESOLVED or DISMISSED. Both null while OPEN.
   resolvedBy String?

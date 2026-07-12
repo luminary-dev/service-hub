@@ -39,7 +39,12 @@ together. Compose base images (`postgres:16-alpine`, `redis:7-alpine`,
 - **npm** — routine minor/patch grouped (dev deps; prod minor/patch); security
   fixes always open as individual PRs. eslint major is pinned back until
   `eslint-config-next` supports eslint 10 (PR #103).
-- **github-actions** — keeps workflow action versions patched.
+- **github-actions** — keeps workflow action versions patched. Every external
+  `uses:` is **pinned to a full commit SHA** (#386) with the readable tag kept as
+  a trailing comment (`uses: actions/checkout@<sha> # v7`), so a hijacked tag
+  can't run with our `packages: write` / `contents: write` scopes or deploy
+  secrets; Dependabot bumps the SHA and the comment together. (`actionlint.yml`'s
+  `docker://rhysd/actionlint` is pinned by image tag.)
 - **docker** — bumps the pinned base-image digests so base-layer CVEs surface as
   PRs instead of silently persisting.
 
@@ -120,15 +125,21 @@ See [TESTING.md](TESTING.md) for the test layers behind these jobs.
 Runs on push + PR to `dev`/`prod`, plus a weekly Monday 06:00 UTC schedule (to
 catch newly-disclosed advisories on unchanged deps) and `workflow_dispatch`:
 
+Trivy runs via the SHA-pinned `aquasecurity/trivy-action` (#386) — the Trivy CLI
+version is pinned by the action tag instead of the previous `curl … main |
+sh` install (a moving upstream branch).
+
 - **Trivy filesystem scan** — `trivy fs` over the lockfiles
   (CRITICAL/HIGH/MEDIUM). **Report-only**: uploads SARIF to the Security tab,
   never fails the build.
 - **Trivy image scan** (#238) — builds each of the nine images and scans the
-  base-image / OS packages (`--pkg-types os`). **Gating**: fails the build on
-  fixable HIGH/CRITICAL OS vulns (`--severity HIGH,CRITICAL --ignore-unfixed
-  --exit-code 1`); SARIF still uploads so all findings surface.
-- **npm audit** — `npm audit --omit=dev --audit-level=high` per package.
-  **Informational** (`continue-on-error`): surfaces advisories without blocking.
+  base-image / OS packages (`vuln-type: os`). **Gating**: fails the build on
+  fixable HIGH/CRITICAL OS vulns (`severity: HIGH,CRITICAL`, `ignore-unfixed`,
+  `exit-code: 1`); SARIF still uploads so all findings surface.
+- **npm audit** — `npm audit --omit=dev --audit-level=critical` per package.
+  **Gates on CRITICAL** (#386): a critical production-dependency advisory fails
+  the build. `npm audit` still prints the full report, so HIGH/moderate/low
+  advisories stay visible in the log without blocking.
 
 Like CI, this workflow uses the same `concurrency` group to cancel superseded
 runs, and each job has a `timeout-minutes` cap (10 for the `trivy` fs scan, 30

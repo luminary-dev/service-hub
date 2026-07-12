@@ -36,15 +36,19 @@
   `Report` fields: `targetType` (`PROVIDER`|`WORK_PHOTO`), `targetId`,
   `reporterId` (nullable — anonymous allowed), `reason`, `details`, `status`
   (`OPEN`|`RESOLVED`|`DISMISSED`), `source` (`USER`|`SYSTEM`, #232 — SYSTEM is
-  reserved for auto-flagging), and the audit fields `resolvedBy`/`resolvedAt`
-  (#223, stamped when a report is closed).
+  reserved for auto-flagging), `updatedAt` (last-transition timestamp, #370),
+  and the audit fields `resolvedBy`/`resolvedAt` (#223, stamped when a report is
+  closed). `Inquiry` and `Report` both carry `updatedAt` (#370).
 - **review-service** (`review_db`): `Review` (+ `deletedAt` soft-delete,
-  `verified` badge), `ReviewPhoto`, `Report` (same shape as provider-service's;
+  `verified` badge, `updatedAt` last-transition timestamp #370), `ReviewPhoto`,
+  `Report` (**identical shape to provider-service's**, reconciled in #370 —
+  same field set including `source` (`USER`|`SYSTEM`) and `updatedAt`;
   `targetType` = `REVIEW`; same `resolvedBy`/`resolvedAt` audit fields),
   `AdminAuditLog` (identical model; the two audit logs are merged only in the
   admin frontend, never server-side). `providerId`/`userId` plain strings;
   reviewer names hydrated from identity at read time.
-- **job-service** (`job_db`): `JobRequest` (`status` OPEN|CLOSED), `JobResponse`.
+- **job-service** (`job_db`): `JobRequest` (`status` OPEN|CLOSED, `updatedAt`
+  last-transition timestamp #370), `JobResponse`.
   `customerId`/`providerId` plain strings. **Monetization (pricing, commission,
   payments) is intentionally deferred to v0.2** — v0.1 is free to use, so there
   is no transaction ledger and no price/commission field on a job.
