@@ -258,10 +258,19 @@ adminRoutes.patch("/api/admin/providers", async (c) => {
     return c.json({ error: "Invalid input" }, 400);
   }
 
+  const where = { id: { in: parsed.data.ids } };
+  // Capture the ids actually matched before the write so the audit trail
+  // records real targets (not the raw request list, which may include ids
+  // that no longer exist).
+  const affected = await db.provider.findMany({ where, select: { id: true } });
   const { count } = await db.provider.updateMany({
-    where: { id: { in: parsed.data.ids } },
+    where,
     data: { suspended: parsed.data.suspended },
   });
+  // Audit trail (#227): one entry per affected provider, mirroring the
+  // single-provider PATCH above so bulk actions leave the same trail.
+  const action = parsed.data.suspended ? "suspend" : "unsuspend";
+  await Promise.all(affected.map((p) => logAudit(c, action, "PROVIDER", p.id)));
   return c.json({ ok: true, count });
 });
 
@@ -324,14 +333,25 @@ adminRoutes.patch("/api/admin/verifications", async (c) => {
 
   const { ids, action, reason } = parsed.data;
   const approved = action === "approve";
+  const where = { id: { in: ids }, verificationStatus: "PENDING" };
+  // Only the still-PENDING ids are transitioned (and reported in `count`), so
+  // capture exactly those before the write to audit the real targets.
+  const affected = await db.provider.findMany({ where, select: { id: true } });
   const { count } = await db.provider.updateMany({
-    where: { id: { in: ids }, verificationStatus: "PENDING" },
+    where,
     data: {
       verificationStatus: approved ? "VERIFIED" : "REJECTED",
       verifiedAt: approved ? new Date() : null,
       rejectionReason: approved ? null : reason || null,
     },
   });
+
+  // Audit trail (#227): one entry per provider actually transitioned out of
+  // PENDING, mirroring the single-verification PATCH above.
+  const auditAction = approved ? "verify" : "reject-verification";
+  await Promise.all(
+    affected.map((p) => logAudit(c, auditAction, "PROVIDER", p.id))
+  );
 
   return c.json({ status: approved ? "VERIFIED" : "REJECTED", count });
 });
@@ -584,14 +604,23 @@ adminRoutes.patch("/api/admin/reports", async (c) => {
 
   // Audit trail (#223): stamp who closed the reports and when, matching the
   // single-report PATCH above so bulk-closed reports carry the same metadata.
+  const where = { id: { in: parsed.data.ids } };
+  // Capture the ids actually matched before the write so the audit log records
+  // real targets (unknown ids in the request list are skipped).
+  const affected = await db.report.findMany({ where, select: { id: true } });
   const { count } = await db.report.updateMany({
-    where: { id: { in: parsed.data.ids } },
+    where,
     data: {
       status: parsed.data.status,
       resolvedBy: getAuth(c)?.userId ?? null,
       resolvedAt: new Date(),
     },
   });
+  // Audit trail (#227): one entry per affected report, mirroring the
+  // single-report PATCH above so bulk actions leave the same trail.
+  const action =
+    parsed.data.status === "RESOLVED" ? "resolve-report" : "dismiss-report";
+  await Promise.all(affected.map((r) => logAudit(c, action, "REPORT", r.id)));
   return c.json({ ok: true, count });
 });
 

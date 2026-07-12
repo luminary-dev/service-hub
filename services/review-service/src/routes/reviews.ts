@@ -2,7 +2,11 @@ import { Hono } from "hono";
 import { db } from "../db";
 import { logAudit } from "../lib/audit";
 import { getAuth, s2s } from "../lib/http";
-import { listProviderReviews, normalizeTake } from "../lib/provider-reviews";
+import {
+  listProviderReviews,
+  normalizeTake,
+  toPublicReview,
+} from "../lib/provider-reviews";
 import {
   InvalidImageError,
   removeStoredFile,
@@ -71,7 +75,11 @@ reviews.get("/api/providers/:id/reviews", async (c) => {
     take: normalizeTake(c.req.query("take"), 10),
     cursor: c.req.query("cursor") || undefined,
   });
-  return c.json({ reviews: page, nextCursor });
+  // Project to the PUBLIC shape before responding: this endpoint returns JSON
+  // straight to any (even anonymous) client, so it must not leak the reviewer's
+  // userId or moderation state (#L6). The internal /by-provider route keeps the
+  // full DTO for the owner/admin paths that legitimately need userId.
+  return c.json({ reviews: page.map(toPublicReview), nextCursor });
 });
 
 // Port of the monolith's POST /api/providers/[id]/reviews (rate limiting now

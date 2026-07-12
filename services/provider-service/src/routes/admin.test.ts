@@ -384,3 +384,118 @@ describe("GET /api/admin/reports (SUPPORT read)", () => {
     expect(dbMock.report.findMany).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Bulk moderation must leave the same audit trail as the single-item actions
+// (#362): one AdminAuditLog entry per affected target, with the same action
+// name / target type the single PATCH records. Previously the bulk variants
+// mutated state with no trail at all.
+// ---------------------------------------------------------------------------
+describe("bulk moderation records one audit entry per affected target", () => {
+  it("PATCH /api/admin/providers (bulk suspend) logs 'suspend' for each matched provider", async () => {
+    // Only p1/p2 exist; the "ghost" id in the request is not matched, so it
+    // must not produce an audit entry.
+    dbMock.provider.findMany.mockResolvedValue([{ id: "p1" }, { id: "p2" }]);
+    dbMock.provider.updateMany.mockResolvedValue({ count: 2 });
+    const res = await req("/api/admin/providers", {
+      method: "PATCH",
+      body: { ids: ["p1", "p2", "ghost"], suspended: true },
+      role: "ADMIN",
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.adminAuditLog.create).toHaveBeenCalledTimes(2);
+    const entries = dbMock.adminAuditLog.create.mock.calls.map((call) => call[0].data);
+    expect(entries).toEqual([
+      { adminId: "admin-1", action: "suspend", targetType: "PROVIDER", targetId: "p1", reason: null },
+      { adminId: "admin-1", action: "suspend", targetType: "PROVIDER", targetId: "p2", reason: null },
+    ]);
+  });
+
+  it("PATCH /api/admin/providers (bulk unsuspend) logs 'unsuspend'", async () => {
+    dbMock.provider.findMany.mockResolvedValue([{ id: "p1" }]);
+    dbMock.provider.updateMany.mockResolvedValue({ count: 1 });
+    await req("/api/admin/providers", {
+      method: "PATCH",
+      body: { ids: ["p1"], suspended: false },
+      role: "ADMIN",
+    });
+    expect(dbMock.adminAuditLog.create).toHaveBeenCalledOnce();
+    expect(dbMock.adminAuditLog.create.mock.calls[0][0].data.action).toBe("unsuspend");
+  });
+
+  it("PATCH /api/admin/verifications (bulk approve) logs 'verify' only for still-PENDING targets", async () => {
+    // The update's PENDING filter is mirrored by the pre-write lookup, so the
+    // affected set is exactly the rows returned by findMany.
+    dbMock.provider.findMany.mockResolvedValue([{ id: "p1" }, { id: "p2" }]);
+    dbMock.provider.updateMany.mockResolvedValue({ count: 2 });
+    const res = await req("/api/admin/verifications", {
+      method: "PATCH",
+      body: { ids: ["p1", "p2", "p3"], action: "approve" },
+      role: "ADMIN",
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.findMany.mock.calls[0][0].where).toMatchObject({
+      verificationStatus: "PENDING",
+    });
+    expect(dbMock.adminAuditLog.create).toHaveBeenCalledTimes(2);
+    const entries = dbMock.adminAuditLog.create.mock.calls.map((call) => call[0].data);
+    expect(entries).toEqual([
+      { adminId: "admin-1", action: "verify", targetType: "PROVIDER", targetId: "p1", reason: null },
+      { adminId: "admin-1", action: "verify", targetType: "PROVIDER", targetId: "p2", reason: null },
+    ]);
+  });
+
+  it("PATCH /api/admin/verifications (bulk reject) logs 'reject-verification'", async () => {
+    dbMock.provider.findMany.mockResolvedValue([{ id: "p1" }]);
+    dbMock.provider.updateMany.mockResolvedValue({ count: 1 });
+    await req("/api/admin/verifications", {
+      method: "PATCH",
+      body: { ids: ["p1"], action: "reject", reason: "blurry NIC" },
+      role: "ADMIN",
+    });
+    expect(dbMock.adminAuditLog.create).toHaveBeenCalledOnce();
+    expect(dbMock.adminAuditLog.create.mock.calls[0][0].data.action).toBe("reject-verification");
+  });
+
+  it("PATCH /api/admin/reports (bulk resolve) logs 'resolve-report' per affected report", async () => {
+    dbMock.report.findMany.mockResolvedValue([{ id: "r1" }, { id: "r2" }]);
+    dbMock.report.updateMany.mockResolvedValue({ count: 2 });
+    const res = await req("/api/admin/reports", {
+      method: "PATCH",
+      body: { ids: ["r1", "r2"], status: "RESOLVED" },
+      role: "ADMIN",
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.adminAuditLog.create).toHaveBeenCalledTimes(2);
+    const entries = dbMock.adminAuditLog.create.mock.calls.map((call) => call[0].data);
+    expect(entries).toEqual([
+      { adminId: "admin-1", action: "resolve-report", targetType: "REPORT", targetId: "r1", reason: null },
+      { adminId: "admin-1", action: "resolve-report", targetType: "REPORT", targetId: "r2", reason: null },
+    ]);
+  });
+
+  it("PATCH /api/admin/reports (bulk dismiss) logs 'dismiss-report' (SUPPORT allowed)", async () => {
+    dbMock.report.findMany.mockResolvedValue([{ id: "r1" }]);
+    dbMock.report.updateMany.mockResolvedValue({ count: 1 });
+    await req("/api/admin/reports", {
+      method: "PATCH",
+      body: { ids: ["r1"], status: "DISMISSED" },
+      role: "SUPPORT",
+    });
+    expect(dbMock.adminAuditLog.create).toHaveBeenCalledOnce();
+    expect(dbMock.adminAuditLog.create.mock.calls[0][0].data.action).toBe("dismiss-report");
+  });
+
+  it("a logging failure never fails the bulk action (best-effort)", async () => {
+    dbMock.provider.findMany.mockResolvedValue([{ id: "p1" }]);
+    dbMock.provider.updateMany.mockResolvedValue({ count: 1 });
+    dbMock.adminAuditLog.create.mockRejectedValue(new Error("audit db down"));
+    const res = await req("/api/admin/providers", {
+      method: "PATCH",
+      body: { ids: ["p1"], suspended: true },
+      role: "ADMIN",
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, count: 1 });
+  });
+});
