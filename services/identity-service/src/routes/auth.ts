@@ -16,6 +16,7 @@ import {
   createProviderProfile,
   deactivateProviderProfile,
   getProviderIdByUser,
+  reactivateProviderProfile,
 } from "../lib/providers";
 import { logAudit } from "../lib/audit";
 import {
@@ -123,6 +124,7 @@ authRoutes.post("/register", async (c) => {
     role: user.role,
     name: user.name,
     sv: user.sessionVersion,
+    avatar: user.avatarUrl,
   });
 
   // Best-effort: a failure here must not fail registration.
@@ -212,6 +214,17 @@ authRoutes.post("/complete-provider", async (c) => {
       log.error("provider creation failed", { context: "complete-provider", err: e });
       return c.json({ error: "Upstream service unavailable" }, 502);
     }
+  } else {
+    // Re-upgrade (#403): the profile already exists but may have been
+    // self-deactivated on a prior downgrade. Reactivate it so it returns to
+    // public listings; fail loudly (502) rather than flip the role while the
+    // profile stays hidden.
+    try {
+      await reactivateProviderProfile(user.id);
+    } catch (e) {
+      log.error("provider reactivation failed", { context: "complete-provider", err: e });
+      return c.json({ error: "Upstream service unavailable" }, 502);
+    }
   }
 
   // Flip the role and bump sessionVersion so the old CUSTOMER token is revoked
@@ -226,6 +239,7 @@ authRoutes.post("/complete-provider", async (c) => {
     role: updated.role,
     name: updated.name,
     sv: updated.sessionVersion,
+    avatar: updated.avatarUrl,
   });
 
   return c.json({
@@ -274,6 +288,7 @@ authRoutes.post("/leave-provider", async (c) => {
     role: updated.role,
     name: updated.name,
     sv: updated.sessionVersion,
+    avatar: updated.avatarUrl,
   });
 
   await logAudit(c, "LEAVE_PROVIDER", "USER", updated.id);
@@ -347,6 +362,7 @@ authRoutes.post("/login", async (c) => {
     role: user.role,
     name: user.name,
     sv: user.sessionVersion,
+    avatar: user.avatarUrl,
   });
 
   return c.json({
@@ -388,6 +404,7 @@ authRoutes.post("/logout-all", async (c) => {
     role: user.role,
     name: user.name,
     sv: user.sessionVersion,
+    avatar: user.avatarUrl,
   });
 
   return c.json({ ok: true });
@@ -538,6 +555,7 @@ authRoutes.post("/change-password", async (c) => {
     role: updated.role,
     name: updated.name,
     sv: updated.sessionVersion,
+    avatar: updated.avatarUrl,
   });
 
   return c.json({ ok: true });

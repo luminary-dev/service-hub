@@ -147,6 +147,13 @@ export default function MobileMenu({
                 onClick={close}
                 className={itemClass}
               >
+                {t.nav.account}
+              </Link>
+              <Link
+                href={localizedHref("/account#saved", locale)}
+                onClick={close}
+                className={itemClass}
+              >
                 {t.nav.saved}
               </Link>
               <button

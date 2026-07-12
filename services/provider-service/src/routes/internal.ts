@@ -142,6 +142,26 @@ internalRoutes.post("/internal/providers/by-user/:userId/deactivate", async (c) 
   return c.json({ ok: true, deactivated: true });
 });
 
+// Reactivate a self-deactivated profile (#403 re-upgrade). complete-provider
+// reuses an existing profile via getProviderIdByUser and never hits the create
+// path, so becoming a provider again must explicitly clear `suspended` here.
+// Idempotent — a missing or already-active profile is a no-op { ok: true }.
+internalRoutes.post("/internal/providers/by-user/:userId/reactivate", async (c) => {
+  const userId = c.req.param("userId");
+  const provider = await db.provider.findUnique({
+    where: { userId },
+    select: { id: true, suspended: true },
+  });
+  if (!provider) return c.json({ ok: true, reactivated: false });
+  if (provider.suspended) {
+    await db.provider.update({
+      where: { id: provider.id },
+      data: { suspended: false },
+    });
+  }
+  return c.json({ ok: true, reactivated: true });
+});
+
 // Login / job-board gate: the provider owned by a user, if any.
 internalRoutes.get("/internal/providers/by-user/:userId", async (c) => {
   const userId = c.req.param("userId");

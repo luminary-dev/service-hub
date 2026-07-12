@@ -53,16 +53,38 @@ accountRoutes.post("/avatar", async (c) => {
     throw e;
   }
 
-  await db.user.update({ where: { id: auth.userId }, data: { avatarUrl } });
+  const updated = await db.user.update({
+    where: { id: auth.userId },
+    data: { avatarUrl },
+  });
   await syncAvatarToProvider(auth.userId, avatarUrl);
+  // Re-issue the session so the top-nav avatar (carried in the JWT) updates
+  // without a re-login.
+  await createSession(c, {
+    userId: updated.id,
+    role: updated.role,
+    name: updated.name,
+    sv: updated.sessionVersion,
+    avatar: updated.avatarUrl,
+  });
   return c.json({ avatarUrl });
 });
 
 accountRoutes.delete("/avatar", async (c) => {
   const auth = getAuth(c);
   if (!auth) return c.json({ error: "Unauthorized" }, 401);
-  await db.user.update({ where: { id: auth.userId }, data: { avatarUrl: null } });
+  const updated = await db.user.update({
+    where: { id: auth.userId },
+    data: { avatarUrl: null },
+  });
   await syncAvatarToProvider(auth.userId, null);
+  await createSession(c, {
+    userId: updated.id,
+    role: updated.role,
+    name: updated.name,
+    sv: updated.sessionVersion,
+    avatar: updated.avatarUrl,
+  });
   return c.json({ ok: true });
 });
 
@@ -98,6 +120,7 @@ accountRoutes.put("/profile", async (c) => {
     role: updated.role,
     name: updated.name,
     sv: updated.sessionVersion,
+    avatar: updated.avatarUrl,
   });
 
   return c.json({ ok: true, user: { name: updated.name, phone: updated.phone } });

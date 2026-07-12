@@ -451,6 +451,13 @@ providersRoutes.post("/api/providers/:id/inquiries", async (c) => {
   if (!provider) {
     return c.json({ error: "Provider not found" }, 404);
   }
+  // Suspended (hidden) profiles are 404 to non-admins on every other route
+  // (#361): gate the inquiry-create path too, or we'd leak that a hidden
+  // profile exists, email the suspended provider, and let the caller
+  // permanently satisfy the review-eligibility gate.
+  if (provider.suspended && getAuth(c)?.role !== "ADMIN") {
+    return c.json({ error: "Provider not found" }, 404);
+  }
 
   const body = await c.req.json().catch(() => null);
   const parsed = inquirySchema.safeParse(body);

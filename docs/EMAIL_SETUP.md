@@ -49,5 +49,5 @@ and template list.
   `WEB_ORIGIN`), so links point at the right host per environment.
 - Related code: `services/notification-service/src/lib/email.ts` (templates +
   Resend/console send), `src/routes/email.ts` (endpoints). Callers:
-  identity-service (verify / password-reset), provider-service (inquiry),
-  job-service (job-response).
+  identity-service (verify / password-reset / change-email #396),
+  provider-service (inquiry), job-service (job-response).
