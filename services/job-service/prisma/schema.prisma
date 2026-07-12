@@ -20,6 +20,10 @@ model JobRequest {
   budget      Int? // optional, LKR
   status      String        @default("OPEN") // OPEN | CLOSED
   createdAt   DateTime      @default(now())
+  // Last-transition timestamp (#370): auto-stamped on every write (edit, the
+  // OPEN→CLOSED transition) so listings can reason about recency of the last
+  // change, not only creation time.
+  updatedAt   DateTime      @updatedAt
   responses   JobResponse[]
 
   @@index([category, district, status])
