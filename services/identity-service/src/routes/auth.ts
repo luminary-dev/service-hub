@@ -15,6 +15,7 @@ import { categoryValidator } from "../lib/categories";
 import {
   createProviderProfile,
   deactivateProviderProfile,
+  eraseProviderProfile,
   getProviderIdByUser,
   reactivateProviderProfile,
   resolveProviderIdForErase,
@@ -115,10 +116,25 @@ authRoutes.post("/register", async (c) => {
     } catch (e) {
       log.error("provider creation failed", { context: "register", err: e });
       // Compensation: the user row is useless without its provider profile, so
-      // roll it back. Best-effort — if the delete itself fails (DB hiccup) we
-      // log the orphan for later cleanup and still return the same 502, rather
-      // than letting the delete throw and turn a graceful "upstream down" into
-      // a 500 with an orphaned PROVIDER user left behind.
+      // roll it back. Two independent best-effort cleanups, because the failure
+      // above is ambiguous — provider-service may have committed the Provider
+      // row and merely lost its *response* (a timeout), in which case deleting
+      // the user alone would leave an orphaned Provider with a dangling userId
+      // (#359).
+      //
+      // Erase the (possibly-committed) provider FIRST, then delete the user:
+      // the orphan we're guarding against lives in provider-service, so clean
+      // it while we still hold the context, before dropping the local row. The
+      // erase is idempotent — a no-op when nothing was committed — and both
+      // steps are best-effort: a failure is logged for later cleanup but must
+      // not let the throw turn a graceful "upstream down" into a 500.
+      await eraseProviderProfile(user.id).catch((eraseErr) => {
+        log.error("orphan provider cleanup failed", {
+          context: "register",
+          userId: user.id,
+          err: eraseErr,
+        });
+      });
       await db.user.delete({ where: { id: user.id } }).catch((delErr) => {
         log.error("orphan user cleanup failed", {
           context: "register",

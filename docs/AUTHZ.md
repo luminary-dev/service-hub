@@ -155,7 +155,10 @@ Role changes (including assigning **`SUPPORT`**) go through
 `PATCH /api/admin/users/:id`; the target role enum is
 `CUSTOMER | PROVIDER | ADMIN | SUPPORT`, and any actual role change bumps
 `sessionVersion` so the affected user's existing tokens are revoked and the new
-role takes effect on their next request. A SUPPORT account can also be
+role takes effect on their next request. **Locking an account
+(`{ action: "lock" }`) bumps `sessionVersion` the same way**, so a locked user's
+active sessions are cut off at the gateway immediately instead of surviving
+until the JWT expires. A SUPPORT account can also be
 bootstrapped without the UI via `create-admin -- --support` (see
 `services/identity-service/prisma/create-admin.js`).
 
