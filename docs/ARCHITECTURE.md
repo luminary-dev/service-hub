@@ -80,13 +80,15 @@ buffers, and a direct stream does not). Its `ServiceName` union is
   `lang` cookie, default `en`) and `x-origin` (public web origin — a configured
   `WEB_ORIGIN` is authoritative and wins over client forwarding headers;
   `x-forwarded-proto`/`x-forwarded-host` fallback applies only in dev).
-- **S2S calls**: `fetch` with a 5s `AbortSignal.timeout` and the
-  `x-internal-secret` header. A **single bounded retry (with jitter)** is made
+- **S2S calls**: `fetch` with a 5s `AbortSignal.timeout` (15s for
+  multipart/FormData uploads) and the `x-internal-secret` header. A **single bounded retry (with jitter)** is made
   on idempotent reads only (GET/HEAD); non-idempotent methods never retry. Read
   hydration degrades gracefully (missing names → `"Unknown"`); write-path
   dependency failures return `502 { error: "Upstream service unavailable" }`.
 - **JWT session**: cookie `sh_session`, HS256 via `jose`, secret `AUTH_SECRET`,
-  payload `{ userId, role, name, sv }`, 7-day expiry, `httpOnly`,
+  payload `{ userId, role, name, sv, avatar? }` (`avatar` is the profile-photo
+  URL, carried so the top-nav renders it without a `/me` fetch; re-minted on
+  avatar change — #434), 7-day expiry, `httpOnly`,
   `sameSite=lax`, `secure` in production, `path=/`. Signed ONLY by
   identity-service; verified by the gateway and by the web app (page gating).
 - **Session revocation**: `sv` is `User.sessionVersion` at mint time. Identity
@@ -107,6 +109,7 @@ buffers, and a direct stream does not). Its `ServiceName` union is
 | `AUTH_SECRET` | identity (sign), gateway + web (verify) |
 | `INTERNAL_API_SECRET` | all services + gateway + web (web calls chat-service and identity directly) |
 | `REDIS_URL` | gateway (distributed rate-limit window; unset → per-instance in-memory fallback — see [RATE_LIMITING.md](RATE_LIMITING.md)) |
+| `TRUSTED_PROXY_HOPS` | gateway (trusted reverse-proxy hop count for rate-limit client-IP resolution, #201; default `2` in prod, `0` disables `X-Forwarded-For` trust — see [RATE_LIMITING.md](RATE_LIMITING.md)) |
 | `IDENTITY_SERVICE_URL` | gateway + provider + review + job (S2S peer) **and web** (`src/lib/session-version.ts` page-gating revocation check — reaches identity directly with the internal secret; fails open if unset) |
 | `PROVIDER_SERVICE_URL`, `REVIEW_SERVICE_URL`, `JOB_SERVICE_URL`, `NOTIFICATION_SERVICE_URL`, `MEDIA_SERVICE_URL` | gateway + any service that calls that peer |
 | `CHAT_SERVICE_URL` | web (proxies `/agent/chat` → `${CHAT_SERVICE_URL}/internal/chat/marketplace/stream`) |
@@ -123,10 +126,15 @@ buffers, and a direct stream does not). Its `ServiceName` union is
 ## Data ownership
 
 - **identity-service** (`identity_db`): `User`, `PasswordResetToken`,
-  `EmailVerificationToken`, `Favorite` (providerId is a plain string),
-  `AccountDeletion` (audit row that outlives the User), `ImpersonationLog`
-  (admin "view as", #234 — adminId + targetUserId + startedAt/endedAt; no
-  relations so it survives account deletion of either party).
+  `EmailVerificationToken`, `EmailChangeToken` (change-email flow #396 —
+  hash-only, 1h TTL), `Favorite` (providerId is a plain string),
+  `Account` (linked OAuth accounts — Google login #398, unique
+  `[provider, providerAccountId]`), `AccountDeletion` (audit row that outlives
+  the User), `ImpersonationLog` (admin "view as", #234 — adminId + targetUserId
+  + startedAt/endedAt; no relations so it survives account deletion of either
+  party), `AdminAuditLog` (identity-owned self-service actions #403, e.g.
+  `LEAVE_PROVIDER` — written best-effort; not yet exposed via a read endpoint or
+  surfaced in the admin UI).
   `User.role` is a **plain string** (never a native enum), valid values
   `CUSTOMER | PROVIDER | ADMIN | SUPPORT`, enforced by a `CHECK` constraint
   (hand-written, not diffed by `prisma migrate dev`; the set was finalized in
@@ -135,7 +143,8 @@ buffers, and a direct stream does not). Its `ServiceName` union is
   read-plus-report-resolve tier. See "Admin surface" below for how the tiers are
   enforced end-to-end.
   `User` also carries `sessionVersion` (revocation), `failedLogins`/`lockedUntil`
-  (per-account lockout), `emailVerified`.
+  (per-account lockout), `emailVerified`, `avatarUrl` (profile photo #434), and
+  a **nullable** `passwordHash` (OAuth-only accounts have no password #398).
 - **provider-service** (`provider_db`): `Provider`, `Service`, `WorkPhoto`
   (`sortOrder` manual order + `deletedAt` moderation soft-delete),
   `VerificationDocument`, `Inquiry` (+ `source`, per-party `customerLastReadAt`/
@@ -179,14 +188,15 @@ Image processing and storage are owned by **media-service**:
 EXIF, returns the URL to persist), `POST /internal/media/delete`,
 `POST /internal/media/sweep`. provider- and review-service call it over S2S via
 a thin identical `lib/storage.ts` client (`storeImage(namespace, file,
-prefix)`); the photo **rows** stay with them. Namespaces (`provider`, `review`)
+prefix)`); the photo **rows** stay with them. Namespaces (`provider`, `review`,
+`category` — admin trade cover images #436, `user` — per-user avatars #434)
 preserve the `/api/files/<namespace>/...` URL shape.
 
 **Backend precedence: Cloudflare R2 > local disk.** R2 (S3-compatible,
 **private** bucket) is used when all four `R2_*` vars are set — the S3 client
 talks to R2, no AWS involved — else local disk under `$MEDIA_DIR/<namespace>/`.
 media serves `GET /files/<namespace>/*` (public through the gateway, which
-routes `/api/files/provider/*` and `/api/files/review/*` → media `/files/*` and
+routes `/api/files/{provider,review,category,user}/*` → media `/files/*` and
 supplies the internal secret). R2 objects are **streamed from the private
 bucket** through the `/files` route, so stored URLs stay same-origin and match
 the local-disk shape (no public bucket/domain needed). **No Vercel Blob.**
@@ -231,9 +241,10 @@ Public entry. Responsibilities:
 4. **Routing** (`lib/routes.ts`, streaming proxy, preserves method/headers/body
    incl. multipart; passes `Set-Cookie` back). Longest-prefix first; anything
    containing `/internal` (raw or percent-encoded) is never forwarded → `404`.
-   - `/api/files/provider/*`, `/api/files/review/*` → media `/files/*`
+   - `/api/files/{provider,review,category,user}/*` → media `/files/*`
    - `/api/account/inquiries` → provider; `/api/account/reviews` → review
-   - `/api/account/profile`, `/api/account/email/{change,confirm}` → identity
+   - `/api/account/profile`, `/api/account/avatar`,
+     `/api/account/email/{change,confirm}` → identity
    - `/api/providers/:id/reviews` → review
    - `/api/admin/reviews/*`, `/api/admin/review-reports*`,
      `/api/admin/review-audit-log`, `/api/admin/review-stats` → review
@@ -321,7 +332,9 @@ by service:
 - **Audit trail (#227/#223):** provider- and review-service each keep an
   `AdminAuditLog` (one row per moderation write) exposed at
   `/api/admin/audit-log` and `/api/admin/review-audit-log`; abuse reports also
-  carry `resolvedBy`/`resolvedAt`. The frontend merges the two logs client-side.
+  carry `resolvedBy`/`resolvedAt`. The frontend merges those two logs
+  client-side. identity-service records to its own `AdminAuditLog` too
+  (self-service actions #403) but does not yet expose or merge it.
   Impersonation keeps its own `ImpersonationLog` (identity-service) —
   intentionally separate for now, to be reconciled with the general audit log
   later.

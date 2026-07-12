@@ -13,8 +13,8 @@ end-user roles and two admin tiers:
 
 | Role | Purpose |
 | --- | --- |
-| `CUSTOMER` | Books services, posts jobs, leaves reviews, files reports. |
-| `PROVIDER` | A registered professional; owns a provider profile, photos, job responses. |
+| `CUSTOMER` | The default end-user role. Posting jobs, sending inquiries, leaving reviews and filing reports are gated on being signed in, not on this role (see "Role switching" below). |
+| `PROVIDER` | A registered professional; owns a provider profile, photos, job responses. Can still do everything a customer can. |
 | `SUPPORT` | Admin tier: **read** access to every `/admin` page, plus resolving / dismissing abuse reports. Nothing destructive. |
 | `ADMIN` | Admin tier: **full** access — deletes, category edits, role changes, user management, plus everything SUPPORT can do. |
 
@@ -58,6 +58,27 @@ hasSupportAccess(role)     // read + resolve/dismiss reports
 `ADMIN` implicitly has everything `SUPPORT` has (`hasSupportAccess` returns true
 for it).
 
+### Role switching & session-gated actions (#401–#404)
+
+`CUSTOMER` and `PROVIDER` are not a hard partition — a user moves between them,
+and the "customer" actions are gated on *being signed in*, not on the role:
+
+- **Become a provider (#401):** any `CUSTOMER` converts via
+  `POST /api/auth/complete-provider` (the `/welcome/provider` wizard). This is
+  not social-signup-specific — it is the single upgrade path for password and
+  OAuth users alike. It creates/reactivates the provider profile, flips
+  `role → PROVIDER`, bumps `sessionVersion`, and re-issues the cookie.
+- **Revert to a customer (#403):** any `PROVIDER` downgrades via
+  `POST /api/auth/leave-provider` — hides the provider profile (`suspended`,
+  reversible; reviews/inquiries kept), flips `role → CUSTOMER`, bumps
+  `sessionVersion`, re-issues the cookie.
+- **Session-gated actions (#402):** posting a job, sending an inquiry, and
+  leaving a review are gated on `getAuth(c)` (signed-in), **not** on
+  `role === "CUSTOMER"`. So a `PROVIDER` can also post jobs, inquire, and
+  review; inquiries are additionally allowed anonymously. The role only governs
+  provider-owned surfaces (dashboard, profile, job responses) and the admin
+  tiers.
+
 ## How gating works
 
 Authorization is enforced in two layers.
@@ -95,6 +116,8 @@ The gateway forwards the verified identity as `x-user-id` / `x-user-role` /
   service's `src/lib/http.ts`: **`isSupportOrAdmin`** (`ADMIN` or `SUPPORT`) for
   reads and report resolve/dismiss, **`isFullAdmin`** (`ADMIN` only) for
   destructive writes. These mirror the web-app predicates in `src/lib/roles.ts`.
+  (A few destructive review handlers use an inline `auth.role === "ADMIN"`
+  check, which is exactly what `isFullAdmin` evaluates — same result.)
 
 The backend check is the authoritative one — the web gate can be bypassed by a
 direct API call, but a request without the gateway-stamped identity headers, or
