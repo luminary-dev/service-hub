@@ -13,7 +13,8 @@ import {
   storeImage,
   validateImage,
 } from "../lib/storage";
-import { MAX_REVIEW_PHOTOS, reviewSchema } from "../lib/validation";
+import { fetchRatingSummary } from "../lib/rating-summary";
+import { MAX_REVIEW_PHOTOS, REVIEW_DIMENSIONS, reviewSchema } from "../lib/validation";
 
 const PROVIDER_SERVICE_URL = process.env.PROVIDER_SERVICE_URL ?? "http://localhost:4002";
 
@@ -71,15 +72,22 @@ reviews.get("/api/providers/:id/reviews", async (c) => {
     // degrade open
   }
 
-  const { reviews: page, nextCursor } = await listProviderReviews(id, {
-    take: normalizeTake(c.req.query("take"), 10),
-    cursor: c.req.query("cursor") || undefined,
-  });
+  // `summary` (#528) aggregates over ALL of the provider's non-deleted reviews
+  // (not just this page) so the profile can render the dimension breakdown and
+  // 5→1 star distribution accurately regardless of pagination. The web profile
+  // reads it directly here — no provider-service/gateway change needed.
+  const [{ reviews: page, nextCursor }, summary] = await Promise.all([
+    listProviderReviews(id, {
+      take: normalizeTake(c.req.query("take"), 10),
+      cursor: c.req.query("cursor") || undefined,
+    }),
+    fetchRatingSummary(id),
+  ]);
   // Project to the PUBLIC shape before responding: this endpoint returns JSON
   // straight to any (even anonymous) client, so it must not leak the reviewer's
   // userId or moderation state (#L6). The internal /by-provider route keeps the
   // full DTO for the owner/admin paths that legitimately need userId.
-  return c.json({ reviews: page.map(toPublicReview), nextCursor });
+  return c.json({ reviews: page.map(toPublicReview), nextCursor, summary });
 });
 
 // Port of the monolith's POST /api/providers/[id]/reviews (rate limiting now
@@ -144,9 +152,20 @@ reviews.post("/api/providers/:id/reviews", async (c) => {
   if (!form) {
     return c.json({ error: "Invalid input" }, 400);
   }
+  // Optional per-dimension sub-ratings (#528): only read a dimension when the
+  // form actually carries a value. A blank field becomes `undefined` (omitted)
+  // rather than 0 — which would fail the 1–5 check — so on create the column
+  // defaults to null and on edit an untouched dimension keeps its stored value.
+  const dimensions: Record<string, number | undefined> = {};
+  for (const dim of REVIEW_DIMENSIONS) {
+    const raw = form.get(dim);
+    const trimmed = typeof raw === "string" ? raw.trim() : "";
+    dimensions[dim] = trimmed === "" ? undefined : Number(trimmed);
+  }
   const parsed = reviewSchema.safeParse({
     rating: Number(form.get("rating")),
     comment: String(form.get("comment") ?? ""),
+    ...dimensions,
   });
   if (!parsed.success) {
     return c.json({ error: "Invalid input" }, 400);

@@ -246,6 +246,17 @@ describe("axe: forms", () => {
           canReview
           signedIn
           myReview={null}
+          summary={{
+            rating: 4.5,
+            count: 2,
+            dimensions: {
+              quality: 5,
+              punctuality: null,
+              value: 4,
+              communication: 4.5,
+            },
+            distribution: { "5": 1, "4": 1, "3": 0, "2": 0, "1": 0 },
+          }}
         />
       </ToastProvider>
     );

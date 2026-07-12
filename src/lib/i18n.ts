@@ -674,6 +674,21 @@ const en = {
     tooManyPhotos: (max: number) => `A review can have at most ${max} photos.`,
     removePhoto: "Remove photo",
     starLabel: (n: number) => `${n} star${n === 1 ? "" : "s"}`,
+    // Optional per-dimension sub-ratings (#528).
+    dimensionsLabel: "Rate specific aspects (optional)",
+    dimensions: {
+      quality: "Quality of work",
+      punctuality: "Punctuality",
+      value: "Value for money",
+      communication: "Communication",
+    },
+    dimensionStarLabel: (dimension: string, n: number) =>
+      `${dimension}: ${n} star${n === 1 ? "" : "s"}`,
+    breakdown: "Rating breakdown",
+    distribution: "Rating distribution",
+    notRated: "Not rated yet",
+    distributionRow: (star: number, count: number) =>
+      `${star} star${star === 1 ? "" : "s"}: ${count} review${count === 1 ? "" : "s"}`,
   },
   report: {
     reportProvider: "Report this provider",
@@ -1661,6 +1676,20 @@ const si: Dict = {
     tooManyPhotos: (max: number) => `සමාලෝචනයකට උපරිම ඡායාරූප ${max}ක් තිබිය හැක.`,
     removePhoto: "ඡායාරූපය ඉවත් කරන්න",
     starLabel: (n: number) => `තරු ${n}`,
+    // Optional per-dimension sub-ratings (#528).
+    dimensionsLabel: "නිශ්චිත අංශ ඇගයීම (විකල්ප)",
+    dimensions: {
+      quality: "වැඩේ ගුණාත්මකභාවය",
+      punctuality: "වේලාවට පැමිණීම",
+      value: "මුදලට වටිනාකම",
+      communication: "සන්නිවේදනය",
+    },
+    dimensionStarLabel: (dimension: string, n: number) => `${dimension}: තරු ${n}`,
+    breakdown: "ඇගයීම් විශ්ලේෂණය",
+    distribution: "ඇගයීම් ව්‍යාප්තිය",
+    notRated: "තවම ඇගයුම් නැත",
+    distributionRow: (star: number, count: number) =>
+      `තරු ${star}: සමාලෝචන ${count}`,
   },
   report: {
     reportProvider: "මෙම වෘත්තිකයා වාර්තා කරන්න",

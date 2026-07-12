@@ -40,7 +40,9 @@
   and the audit fields `resolvedBy`/`resolvedAt` (#223, stamped when a report is
   closed). `Inquiry` and `Report` both carry `updatedAt` (#370).
 - **review-service** (`review_db`): `Review` (+ `deletedAt` soft-delete,
-  `verified` badge, `updatedAt` last-transition timestamp #370), `ReviewPhoto`,
+  `verified` badge, `updatedAt` last-transition timestamp #370, and the optional
+  nullable 1–5 sub-ratings `quality`/`punctuality`/`value`/`communication` #528
+  — the overall `rating` stays authoritative for ranking), `ReviewPhoto`,
   `Report` (**identical shape to provider-service's**, reconciled in #370 —
   same field set including `source` (`USER`|`SYSTEM`) and `updatedAt`;
   `targetType` = `REVIEW`; same `resolvedBy`/`resolvedAt` audit fields),

@@ -38,7 +38,7 @@ using the shared `s2s()` helper (one bounded retry on idempotent GETs).
 
 | Method + path | Purpose |
 |---|---|
-| `GET /internal/ratings?providerIds=a,b,c` | Batch rating summaries → `{ ratings }`. |
+| `GET /internal/ratings?providerIds=a,b,c` | Batch rating summaries → `{ ratings }`. Each entry: `{ rating, count }` (authoritative for ranking) plus the additive per-dimension averages and 5→1 star `distribution` (#528) — existing consumers keep reading `rating`/`count`. |
 | `GET /internal/by-provider/:id?take&cursor&includeDeleted` | Reviews for one provider (cursor-paginated) → `{ reviews, nextCursor }`. |
 | `GET /internal/count` | Total (non-deleted) review count. |
 | `POST /internal/users/:id/erase` | Account-deletion fan-out: delete the user's reviews + photo files. Idempotent. |
