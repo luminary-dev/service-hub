@@ -280,6 +280,16 @@ providerDashboardRoutes.post("/api/provider/photos", async (c) => {
     return c.json({ avatarUrl: url });
   }
 
+  // Dedicated cover photo (#435): stored under the same namespace/prefix, set
+  // on the provider (not added to the work gallery).
+  if (kind === "cover") {
+    await db.provider.update({
+      where: { id: provider.id },
+      data: { coverPhoto: url },
+    });
+    return c.json({ coverPhoto: url });
+  }
+
   const photo = await db.workPhoto.create({
     data: {
       providerId: provider.id,
@@ -289,6 +299,20 @@ providerDashboardRoutes.post("/api/provider/photos", async (c) => {
   });
 
   return c.json({ photo });
+});
+
+// Remove the dedicated cover (#435); the card falls back to the first work
+// photo / category image again.
+providerDashboardRoutes.delete("/api/provider/cover", async (c) => {
+  const provider = await getCurrentProvider(c);
+  if (!provider) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  await db.provider.update({
+    where: { id: provider.id },
+    data: { coverPhoto: null },
+  });
+  return c.json({ ok: true });
 });
 
 // Reorder the caller's gallery: sortOrder = position of the photo's id in the

@@ -119,7 +119,8 @@ Every route requires a provider owned by the authenticated user (else
 | `POST /api/provider/services` | role: PROVIDER (owner) | Add a service `{ title, description?, price, priceType }` → `{ service }`. |
 | `PUT /api/provider/services/:id` | role: PROVIDER (owner) | Update own service (404 if not owned). |
 | `DELETE /api/provider/services/:id` | role: PROVIDER (owner) | Delete own service. |
-| `POST /api/provider/photos` | role: PROVIDER (owner) | Multipart upload; `kind=avatar` sets `avatarUrl`, else creates a WorkPhoto. 5 MB, jpeg/png/webp. |
+| `POST /api/provider/photos` | role: PROVIDER (owner) | Multipart upload; `kind=cover` sets the dedicated `coverPhoto` (#435), else creates a WorkPhoto. (`kind=avatar` still handled but the web now uploads avatars via `/api/account/avatar`.) 5 MB, jpeg/png/webp. |
+| `DELETE /api/provider/cover` | role: PROVIDER (owner) | Clears the dedicated cover (#435) → the card falls back to the first work photo / category image. |
 | `PATCH /api/provider/photos/order` | role: PROVIDER (owner) | `{ ids }` → `sortOrder`; ids not owned are ignored. |
 | `DELETE /api/provider/photos/:id` | role: PROVIDER (owner) | Hard-delete own photo + remove the file. |
 | `GET /api/provider/inquiries` | role: PROVIDER (owner) | Own inquiries with `unreadCount`. |
