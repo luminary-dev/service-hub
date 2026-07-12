@@ -108,6 +108,11 @@ Runs on push and PR to `dev` and `prod`. Jobs:
   `scripts/e2e-smoke.sh`. Dumps logs on failure and always tears down with
   `down -v`.
 
+A `concurrency` group (`${{ github.workflow }}-${{ github.ref }}`,
+`cancel-in-progress: true`) cancels superseded runs when a PR is pushed again,
+and every job has a `timeout-minutes` cap (15 for the matrix legs, 30 for the
+`e2e` compose job) so a hung run can't burn the 6-hour default.
+
 See [TESTING.md](TESTING.md) for the test layers behind these jobs.
 
 ## Security scanning (`security-scan.yml`)
@@ -124,6 +129,10 @@ catch newly-disclosed advisories on unchanged deps) and `workflow_dispatch`:
   --exit-code 1`); SARIF still uploads so all findings surface.
 - **npm audit** — `npm audit --omit=dev --audit-level=high` per package.
   **Informational** (`continue-on-error`): surfaces advisories without blocking.
+
+Like CI, this workflow uses the same `concurrency` group to cancel superseded
+runs, and each job has a `timeout-minutes` cap (10 for the `trivy` fs scan, 30
+for the `trivy-image` build+scan, 15 for `npm-audit`).
 
 All SARIF is uploaded via `github/codeql-action/upload-sarif` to the GitHub
 Security tab. Note there is currently **no CodeQL code-analysis job** — the
