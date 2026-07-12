@@ -10,6 +10,13 @@ on:
     - cron: "0 6 * * 1" # Mondays 06:00 UTC
   workflow_dispatch:
 
+# Cancel superseded runs: only the latest commit of a PR/branch needs to be
+# green. Each ref gets its own group, so post-merge dev/prod runs never cancel
+# one another.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -17,6 +24,7 @@ jobs:
   trivy:
     name: Trivy dependency scan
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       security-events: write # upload SARIF to the Security tab (free on public repos)
@@ -48,6 +56,7 @@ jobs:
   trivy-image:
     name: Trivy image scan / ${{ matrix.image }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       security-events: write
@@ -104,6 +113,7 @@ jobs:
   npm-audit:
     name: npm audit / ${{ matrix.package }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:

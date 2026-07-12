@@ -6,6 +6,13 @@ on:
   push:
     branches: [dev, prod]
 
+# Cancel superseded runs: only the latest commit of a PR/branch needs to be
+# green. Each ref gets its own group, so post-merge dev/prod runs never cancel
+# one another.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -20,6 +27,7 @@ jobs:
   web:
     name: web / ${{ matrix.check }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -36,6 +44,7 @@ jobs:
   services:
     name: ${{ matrix.package }} / ${{ matrix.check }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -69,6 +78,7 @@ jobs:
   coverage:
     name: coverage / ${{ matrix.package }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -117,6 +127,7 @@ jobs:
   e2e:
     name: e2e / compose smoke
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v7
