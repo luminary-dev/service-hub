@@ -202,6 +202,7 @@ oauthRoutes.get("/oauth/:provider/callback", async (c) => {
     role: user.role,
     name: user.name,
     sv: user.sessionVersion,
+    avatar: user.avatarUrl,
   });
   clearTransientCookies(c);
 
