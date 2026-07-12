@@ -26,8 +26,8 @@ describe("providerExists", () => {
     expect(await providerExists("p1")).toBe(true);
   });
 
-  it("returns false only on a 404", async () => {
-    stubFetch(404, { error: "not found" });
+  it("returns false when the summary body is { provider: null }", async () => {
+    stubFetch(200, { provider: null });
     expect(await providerExists("missing")).toBe(false);
   });
 
