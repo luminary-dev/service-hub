@@ -20,6 +20,7 @@ permissions: {}
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # Only ever publish :prod images from the prod branch. `workflow_dispatch`
     # has no ref restriction of its own, so without this guard a manual dispatch
     # from any feature branch would build + push ghcr …:prod from unreviewed
@@ -41,19 +42,19 @@ jobs:
           - chat-service
           - api-gateway
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@v4
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push ${{ matrix.image }}
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           # web builds from the repo root; each service from its own directory.
           context: ${{ matrix.image == 'web' && '.' || format('services/{0}', matrix.image) }}
@@ -67,6 +68,10 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
+    # A hung rollout must not hold the (uncancellable) deploy-prod concurrency
+    # group for the 6h default (#386). Two health-gated `up -d --wait`s cap at
+    # ~3min each, plus pulls; 20min is a comfortable ceiling.
+    timeout-minutes: 20
     # Deploys over SSH with its own secrets — it needs no GITHUB_TOKEN scope.
     permissions: {}
     # Prod-branch only (#383) + stays skipped until the production host (#110)

@@ -25,10 +25,11 @@ jobs:
   add-issue-to-board:
     if: github.event_name == 'issues'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Add issue to board
         id: add
-        uses: actions/add-to-project@v2.0.0
+        uses: actions/add-to-project@5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd # v2.0.0
         with:
           project-url: https://github.com/orgs/luminary-dev/projects/1
           github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}
@@ -56,6 +57,7 @@ jobs:
   assign-pr-and-linked-issue:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Assign the PR to its author
         env:
