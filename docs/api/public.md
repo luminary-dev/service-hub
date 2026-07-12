@@ -8,7 +8,7 @@ the upstream that owns the handler.
 
 | Method + path | Auth | Summary |
 |---|---|---|
-| `POST /api/auth/register` | public | Register a CUSTOMER or PROVIDER (zod discriminated union). PROVIDER also creates the provider profile via S2S (compensating-delete + 502 on failure). Dup email → 409. Sets the session cookie → `{ user, providerId }`. |
+| `POST /api/auth/register` | public | Register a CUSTOMER or PROVIDER (zod discriminated union). PROVIDER also creates the provider profile via S2S (on failure it compensates by erasing any committed-but-unacknowledged provider row + deleting the user, then 502). Dup email → 409. Sets the session cookie → `{ user, providerId }`. |
 | `POST /api/auth/login` | public | bcrypt verify; per-account lockout (5 fails → 15 min); no email enumeration. Sets cookie → `{ user, providerId }`. 400/401 otherwise. Social-only accounts (no password) get the same uniform 401. |
 | `GET /api/auth/oauth/:provider/start` | public | Social login (#398); `:provider` ∈ `google`, `facebook`. Sets state (+ PKCE) cookies, 302 → provider consent. Optional `?next=` (same-origin relative). Unknown/unconfigured provider → 302 `/login?error=oauth_unavailable`. |
 | `GET /api/auth/oauth/:provider/callback` | public | Validates state (+ PKCE) + code, reads the provider identity (Google: id_token; Facebook: Graph API), then: existing linked account → sign in; matching verified email → link + sign in; new verified email → create a CUSTOMER (`emailVerified` set) + link; no email (some Facebook accounts) → create a CUSTOMER keyed on the provider id with a non-deliverable placeholder email (never auto-linked). Sets cookie, 302 → `/welcome` (new) or `next`/`/` (returning). Failures → `/login?error=oauth`. |
