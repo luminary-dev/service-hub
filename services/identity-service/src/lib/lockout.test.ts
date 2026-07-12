@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   isLockedOut,
-  recordFailure,
+  lockUntilFor,
   LOCKOUT_MS,
   MAX_FAILED_LOGINS,
 } from "./lockout";
@@ -23,24 +23,25 @@ describe("isLockedOut", () => {
   });
 });
 
-describe("recordFailure", () => {
-  it("counts failures without locking below the threshold", () => {
-    const s = recordFailure(0, NOW);
-    expect(s).toEqual({ failedLogins: 1, lockedUntil: null });
-    expect(recordFailure(MAX_FAILED_LOGINS - 2, NOW).lockedUntil).toBeNull();
+describe("lockUntilFor", () => {
+  // The argument is the post-increment count (the value the DB returns after an
+  // atomic `{ increment: 1 }`), not the pre-read snapshot.
+  it("does not lock below the threshold", () => {
+    expect(lockUntilFor(1, NOW)).toBeNull();
+    expect(lockUntilFor(MAX_FAILED_LOGINS - 1, NOW)).toBeNull();
   });
 
   it("locks at the threshold", () => {
-    const s = recordFailure(MAX_FAILED_LOGINS - 1, NOW);
-    expect(s.failedLogins).toBe(MAX_FAILED_LOGINS);
-    expect(s.lockedUntil).toEqual(new Date(NOW.getTime() + LOCKOUT_MS));
+    expect(lockUntilFor(MAX_FAILED_LOGINS, NOW)).toEqual(
+      new Date(NOW.getTime() + LOCKOUT_MS)
+    );
   });
 
   it("re-locks immediately on failures after an expired window", () => {
     // failedLogins stays >= threshold after a lockout expires, so one more
     // wrong password re-locks — progressive backoff without extra state.
-    const s = recordFailure(MAX_FAILED_LOGINS, NOW);
-    expect(s.failedLogins).toBe(MAX_FAILED_LOGINS + 1);
-    expect(s.lockedUntil).toEqual(new Date(NOW.getTime() + LOCKOUT_MS));
+    expect(lockUntilFor(MAX_FAILED_LOGINS + 1, NOW)).toEqual(
+      new Date(NOW.getTime() + LOCKOUT_MS)
+    );
   });
 });
