@@ -34,6 +34,32 @@ export type ReviewDTO = {
   photos: { id: string; url: string; createdAt: Date }[];
 };
 
+// PUBLIC-safe shape: only the fields the public review UI renders. `userId` and
+// `deletedAt` are deliberately absent — see toPublicReview.
+export type PublicReviewDTO = Omit<ReviewDTO, "userId" | "deletedAt">;
+
+// Project a review down to its PUBLIC shape (security audit L6). The internal
+// ReviewDTO carries `userId` and `deletedAt` for owner/admin paths that run
+// server-side behind the internal secret — the profile "my review"/edit gate
+// and the admin moderation view, both via /internal/by-provider. The PUBLIC
+// reviews endpoint must never echo them: `userId` lets a scraper correlate
+// every review one person has left across providers (a privacy leak), and
+// `deletedAt` is moderation state. Omitting them from the return TYPE is only a
+// compile-time promise — the runtime object kept carrying them — so we build a
+// fresh object with just the allowed fields.
+export function toPublicReview(r: ReviewDTO): PublicReviewDTO {
+  return {
+    id: r.id,
+    providerId: r.providerId,
+    rating: r.rating,
+    comment: r.comment,
+    verified: r.verified,
+    createdAt: r.createdAt,
+    user: { name: r.user.name },
+    photos: r.photos.map((p) => ({ id: p.id, url: p.url, createdAt: p.createdAt })),
+  };
+}
+
 export async function listProviderReviews(
   providerId: string,
   opts: { take?: number; cursor?: string; includeDeleted?: boolean } = {}

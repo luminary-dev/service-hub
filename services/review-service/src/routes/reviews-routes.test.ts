@@ -128,6 +128,40 @@ describe("GET /api/providers/:id/reviews (public listing)", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ reviews: [], nextCursor: null });
   });
+
+  it("never leaks the reviewer's userId or deletedAt in the public payload (audit L6)", async () => {
+    dbMock.review.findMany.mockResolvedValue([
+      {
+        id: "rev1",
+        providerId: PROVIDER_ID,
+        userId: REVIEWER_ID,
+        rating: 5,
+        comment: "Great, tidy work.",
+        verified: true,
+        deletedAt: null,
+        createdAt: new Date("2026-01-01T00:00:00Z"),
+        photos: [
+          { id: "ph1", url: "reviews/ph1.jpg", createdAt: new Date("2026-01-01T00:00:00Z") },
+        ],
+      },
+    ]);
+    const res = await req(`/api/providers/${PROVIDER_ID}/reviews`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.reviews).toHaveLength(1);
+    const [review] = body.reviews;
+    expect(review).not.toHaveProperty("userId");
+    expect(review).not.toHaveProperty("deletedAt");
+    // No userId hiding in any nested field a scraper could parse out.
+    expect(JSON.stringify(body)).not.toContain(REVIEWER_ID);
+    expect(review).toMatchObject({
+      id: "rev1",
+      rating: 5,
+      comment: "Great, tidy work.",
+      verified: true,
+      user: { name: "Unknown" },
+    });
+  });
 });
 
 describe("POST /api/providers/:id/reviews (summary + photo branches)", () => {
