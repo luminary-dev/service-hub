@@ -67,6 +67,14 @@ limiting beats returning errors or dropping the protection entirely. The Redis
 client is created with `maxRetriesPerRequest: 1` and `enableOfflineQueue: false`
 so an outage drops straight into the fallback instead of stalling requests.
 
+The fallback is **observable**: the gateway emits a single `warn` log on the
+*transition* into the degraded state (`rate-limit Redis backend unavailable …`,
+with the error and key context) and an `info` log when Redis recovers. Logging
+is edge-triggered — one line per state change, never one per request — so a
+Redis outage does not flood the logs. Watch for this warning in operations:
+while degraded, limits are per-instance, so with N gateway replicas an attacker
+can effectively make `limit × N` attempts before being blocked.
+
 `REDIS_URL` is a plain Redis connection string (e.g. `redis://redis:6379`),
 consumed via `ioredis`. There is no Upstash/Vercel dependency — the stack
 deploys as Docker containers behind Caddy (see [DEPLOYMENT.md](DEPLOYMENT.md)),

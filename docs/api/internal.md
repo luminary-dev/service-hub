@@ -2,7 +2,9 @@
 
 
 These routes are **never exposed publicly** — the gateway refuses to forward any
-path containing `/internal` (raw or percent-encoded), and each service rejects a
+path containing `/internal` (raw or percent-encoded; it decodes until the path
+stops changing, so double-/multi-encoded attempts are caught too, and treats
+malformed encoding as not-forwardable), and each service rejects a
 request without the correct `x-internal-secret` (constant-time compare) with
 `403 { error: "Forbidden" }`. Peers call them via each other's `*_SERVICE_URL`
 using the shared `s2s()` helper (one bounded retry on idempotent GETs).
