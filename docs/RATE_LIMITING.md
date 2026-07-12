@@ -111,6 +111,44 @@ is **Caddy → web → gateway**, so it is set to **`2`** (see
 fail-safe in one direction: too small a value keys on a proxy IP (all clients
 share a bucket — over-limiting), never on a forgeable client value.
 
+## Bot protection on the public inquiry form (honeypot, #65)
+
+The per-IP `inquiry` limit above caps *how fast* a client can post, but the
+inquiry-create endpoint (`POST /api/providers/[id]/inquiries`) accepts
+anonymous submissions, so a script could still spam every provider one slow
+request at a time. It carries a **honeypot** as a complementary, per-request
+bot filter — deliberately **not** a third-party CAPTCHA (see below).
+
+- **How it works.** The web `InquiryForm` renders a decoy `company` text input
+  that is hidden and inert for real users: moved off-screen (not `display:none`,
+  which some bots skip), wrapped in `aria-hidden` so screen readers ignore it,
+  `tabindex="-1"` so keyboard users never reach it, and `autocomplete="off"` so
+  browsers never prefill it. It is uncontrolled and read straight off the DOM at
+  submit, so a bot that writes the value without firing React events is still
+  caught. Humans leave it blank; bots that fill every field populate it.
+- **The check is server-side and authoritative.** `provider-service` validates
+  the `company` field on the create route. A non-empty value is treated as a
+  bot: the request gets the **same success-shaped `200` as a real submission**
+  (a silent drop) so a scripted caller has no signal that it was filtered and
+  nothing to adapt to — but **no inquiry is persisted and no provider email is
+  sent**. An empty/absent field is a normal submission (other clients, e.g. the
+  chat agent, simply omit it). The client control only carries the value; the
+  gate lives in the service.
+- **Why honeypot over CAPTCHA for v0.1.** A CAPTCHA (e.g. Cloudflare Turnstile)
+  needs an external provider, a site key, and a server-side secret — a separate
+  infrastructure/privacy decision, and the repo is public with runtime secrets
+  kept out of the tree. The honeypot is zero-dependency, zero-config, and has no
+  false positives for real users, so it is the right first line for v0.1.
+  Turnstile remains a future option if abuse escalates, layered on top of (not
+  replacing) the honeypot and the per-IP limit.
+- **Timing trap — deliberately skipped.** Rejecting implausibly fast
+  submissions was considered but not implemented: the only stateless signal is a
+  client-supplied render timestamp, which is both trivially forgeable and prone
+  to **false positives from client/server clock skew** (a 1–2 s skew could
+  reject a genuine submission). A robust version needs a server-signed token
+  (extra state/complexity), so it is deferred alongside CAPTCHA rather than
+  shipped as a weak, false-positive-prone control.
+
 ## Adding or changing a limit
 
 - Add or tune a named rule in `RATE_LIMITS`.
