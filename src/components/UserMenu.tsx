@@ -140,6 +140,13 @@ export default function UserMenu({
               onClick={() => setOpen(false)}
               className="block rounded-md px-3 py-2 text-sm text-ink-700 transition-colors duration-200 ease-snap hover:bg-ink-100 hover:text-brand-700"
             >
+              {t.nav.account}
+            </Link>
+            <Link
+              href="/account#saved"
+              onClick={() => setOpen(false)}
+              className="block rounded-md px-3 py-2 text-sm text-ink-700 transition-colors duration-200 ease-snap hover:bg-ink-100 hover:text-brand-700"
+            >
               {t.nav.saved}
             </Link>
             <Link
