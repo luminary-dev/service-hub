@@ -43,6 +43,8 @@ filesRoutes.get("/files/:namespace/*", async (c) => {
     return c.body(new Uint8Array(obj.body), 200, {
       "content-type": obj.contentType ?? contentType,
       "cache-control": CACHE_CONTROL,
+      "x-content-type-options": "nosniff",
+      "content-disposition": "inline",
     });
   }
 
@@ -56,6 +58,8 @@ filesRoutes.get("/files/:namespace/*", async (c) => {
     return c.body(new Uint8Array(data), 200, {
       "content-type": contentType,
       "cache-control": CACHE_CONTROL,
+      "x-content-type-options": "nosniff",
+      "content-disposition": "inline",
     });
   } catch {
     return c.json({ error: "Not found" }, 404);
