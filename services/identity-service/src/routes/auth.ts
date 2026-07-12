@@ -124,6 +124,7 @@ authRoutes.post("/register", async (c) => {
     role: user.role,
     name: user.name,
     sv: user.sessionVersion,
+    avatar: user.avatarUrl,
   });
 
   // Best-effort: a failure here must not fail registration.
@@ -238,6 +239,7 @@ authRoutes.post("/complete-provider", async (c) => {
     role: updated.role,
     name: updated.name,
     sv: updated.sessionVersion,
+    avatar: updated.avatarUrl,
   });
 
   return c.json({
@@ -286,6 +288,7 @@ authRoutes.post("/leave-provider", async (c) => {
     role: updated.role,
     name: updated.name,
     sv: updated.sessionVersion,
+    avatar: updated.avatarUrl,
   });
 
   await logAudit(c, "LEAVE_PROVIDER", "USER", updated.id);
@@ -359,6 +362,7 @@ authRoutes.post("/login", async (c) => {
     role: user.role,
     name: user.name,
     sv: user.sessionVersion,
+    avatar: user.avatarUrl,
   });
 
   return c.json({
@@ -400,6 +404,7 @@ authRoutes.post("/logout-all", async (c) => {
     role: user.role,
     name: user.name,
     sv: user.sessionVersion,
+    avatar: user.avatarUrl,
   });
 
   return c.json({ ok: true });
@@ -550,6 +555,7 @@ authRoutes.post("/change-password", async (c) => {
     role: updated.role,
     name: updated.name,
     sv: updated.sessionVersion,
+    avatar: updated.avatarUrl,
   });
 
   return c.json({ ok: true });
