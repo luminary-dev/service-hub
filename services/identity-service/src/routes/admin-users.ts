@@ -8,7 +8,12 @@ import { db } from "../db";
 import { logAudit } from "../lib/audit";
 import { getAuth, isFullAdmin, isSupportOrAdmin } from "../lib/http";
 import { isLockedOut, MANUAL_LOCK_UNTIL } from "../lib/lockout";
-import { fetchProvidersByIds } from "../lib/providers";
+import { log } from "../lib/log";
+import {
+  deactivateProviderProfile,
+  fetchProvidersByIds,
+  reactivateProviderProfile,
+} from "../lib/providers";
 
 export const adminUsersRoutes = new Hono();
 
@@ -151,12 +156,44 @@ adminUsersRoutes.patch("/api/admin/users/:id", async (c) => {
     data.lockedUntil = null;
     data.failedLogins = 0;
   }
-  if (parsed.data.role && parsed.data.role !== user.role) {
+  const roleChange = parsed.data.role && parsed.data.role !== user.role;
+  if (roleChange) {
     data.role = parsed.data.role;
     // A role change alters what the user is authorized to do; bump
     // sessionVersion so tokens minted under the old role fail the gateway's
     // revocation check and the new role takes effect immediately.
     data.sessionVersion = { increment: 1 };
+  }
+
+  // When the role change crosses the PROVIDER boundary, mirror the self-service
+  // routes (auth.ts leave-provider / complete-provider) so provider-service
+  // stays consistent — otherwise a demoted provider stays publicly listed and a
+  // promoted customer gets no manageable profile. Do this FIRST as a write-path
+  // gate: if provider-service is down we return 502 and leave the role
+  // untouched, so identity and provider-service never disagree. Role changes
+  // that don't involve PROVIDER (CUSTOMER↔ADMIN↔SUPPORT) need no provider call.
+  if (roleChange) {
+    const newRole = parsed.data.role;
+    if (user.role === "PROVIDER" && newRole !== "PROVIDER") {
+      // Demotion: hide/suspend the provider profile.
+      try {
+        await deactivateProviderProfile(id);
+      } catch (e) {
+        log.error("provider deactivate failed", { context: "admin-role-change", err: e });
+        return c.json({ error: "Upstream service unavailable" }, 502);
+      }
+    } else if (user.role !== "PROVIDER" && newRole === "PROVIDER") {
+      // Promotion: reactivate an existing (previously hidden) profile. Unlike
+      // complete-provider there is no wizard data to create one from, so
+      // reactivate-if-exists is the correct, replay-safe behavior; if no profile
+      // exists provider-service no-ops and the user completes the wizard later.
+      try {
+        await reactivateProviderProfile(id);
+      } catch (e) {
+        log.error("provider reactivate failed", { context: "admin-role-change", err: e });
+        return c.json({ error: "Upstream service unavailable" }, 502);
+      }
+    }
   }
 
   const updated = await db.user.update({ where: { id }, data });
