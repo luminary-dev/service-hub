@@ -22,6 +22,10 @@ export type SessionPayload = {
   // User.sessionVersion at mint time. Verifiers reject tokens minted before
   // the user's current version (revocation on password change / logout-all).
   sv: number;
+  // Profile photo (#434 follow-up) so the top-nav avatar renders without a
+  // per-page /me fetch. Optional: absent tokens (or users with no photo) just
+  // fall back to initials. Re-minted on every avatar change so it stays fresh.
+  avatar?: string | null;
 };
 
 export async function signSession(payload: SessionPayload): Promise<string> {

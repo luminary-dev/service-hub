@@ -196,7 +196,9 @@ export default async function AccountPage() {
           </section>
         )}
 
-        <section>
+        {/* scroll-mt clears the sticky header when linked from the nav's
+            "Saved" entry (/account#saved). */}
+        <section id="saved" className="scroll-mt-24">
           <SectionHeading code="SAV" icon={FaRegHeart} title={t.account.savedTitle} />
           {results.length === 0 ? (
             <EmptyState
