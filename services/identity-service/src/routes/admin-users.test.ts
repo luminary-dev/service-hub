@@ -1,6 +1,8 @@
 // Route-level tests for the admin user-management PATCH handler, focused on the
 // SUPPORT-role fix (#357): SUPPORT must be an assignable role, and any role
-// change must bump sessionVersion so the new role takes effect immediately.
+// change must bump sessionVersion so the new role takes effect immediately; and
+// the session-revocation fix (#356): locking an account must bump
+// sessionVersion too, so active sessions can't outlive the lock.
 //
 // Prisma and the provider-lookup S2S helper are mocked; the role gates read the
 // x-user-* headers the gateway would forward.
@@ -256,6 +258,18 @@ describe("PATCH /api/admin/users/:id lock/unlock", () => {
     );
   });
 
+  it("bumps sessionVersion on lock so active sessions are revoked (#356)", async () => {
+    db.user.findUnique.mockResolvedValue({ id: "u2", role: "CUSTOMER" });
+    db.user.update.mockResolvedValue(updatedRow);
+
+    const res = await patch("u2", { action: "lock" });
+    expect(res.status).toBe(200);
+    expect(db.user.update).toHaveBeenCalledWith({
+      where: { id: "u2" },
+      data: expect.objectContaining({ sessionVersion: { increment: 1 } }),
+    });
+  });
+
   it("audits an unlock", async () => {
     db.user.findUnique.mockResolvedValue({ id: "u2", role: "CUSTOMER" });
     db.user.update.mockResolvedValue(updatedRow);
@@ -268,6 +282,16 @@ describe("PATCH /api/admin/users/:id lock/unlock", () => {
       "USER",
       "u2"
     );
+  });
+
+  it("does not bump sessionVersion on unlock", async () => {
+    db.user.findUnique.mockResolvedValue({ id: "u2", role: "CUSTOMER" });
+    db.user.update.mockResolvedValue(updatedRow);
+
+    const res = await patch("u2", { action: "unlock" });
+    expect(res.status).toBe(200);
+    const data = db.user.update.mock.calls[0][0].data;
+    expect(data).not.toHaveProperty("sessionVersion");
   });
 });
 

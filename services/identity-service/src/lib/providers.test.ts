@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { providerExists, resolveProviderIdForErase } from "./providers";
+import {
+  eraseProviderProfile,
+  providerExists,
+  resolveProviderIdForErase,
+} from "./providers";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -22,8 +26,8 @@ describe("providerExists", () => {
     expect(await providerExists("p1")).toBe(true);
   });
 
-  it("returns false only on a 404", async () => {
-    stubFetch(404, { error: "not found" });
+  it("returns false when the summary body is { provider: null }", async () => {
+    stubFetch(200, { provider: null });
     expect(await providerExists("missing")).toBe(false);
   });
 
@@ -70,5 +74,31 @@ describe("resolveProviderIdForErase", () => {
       })
     );
     await expect(resolveProviderIdForErase("u1")).rejects.toThrow();
+  });
+});
+
+// #359: the compensating erase for a failed registration. Idempotent on the
+// provider side, so a 200 (nothing committed, or an orphan removed) resolves;
+// a non-ok status throws so the caller can log the failed cleanup.
+describe("eraseProviderProfile", () => {
+  it("hits the idempotent per-user erase endpoint", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(eraseProviderProfile("u1")).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/internal/users/u1/erase"),
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("throws on a non-ok status so the failed cleanup is logged", async () => {
+    stubFetch(500, { error: "boom" });
+    await expect(eraseProviderProfile("u1")).rejects.toThrow(/500/);
   });
 });
