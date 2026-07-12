@@ -165,9 +165,6 @@ monorepo's `prod` branch so the mirrors reflect production.
 
 ## Still required before a public launch
 
-- **#201** — set `TRUSTED_PROXY_HOPS` on the gateway once that fix lands, so the
-  rate limiter reads the real client IP through the Caddy → web → gateway chain
-  (otherwise `X-Forwarded-For` is forgeable and brute-force protection is bypassable).
 - **#147 / #72** — verified email domain + `RESEND_API_KEY`.
 - **#113 / #34** — uptime + error monitoring. **#61** — DB backups (`docs/BACKUPS.md`).
 - **#62 / #63** — Terms/Privacy pages + PDPA.

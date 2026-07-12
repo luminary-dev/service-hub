@@ -16,21 +16,6 @@ import {
 } from "@/lib/i18n";
 import { localizedHref } from "@/lib/links";
 
-// Real trade photography (public/images/workers) keyed by category slug -
-// used in place of the flat placeholder cover art when a provider hasn't
-// uploaded their own photo. Categories without a shot keep the placeholder.
-const TRADE_PHOTOS: Record<string, string> = {
-  mechanic: "/images/workers/mechanic.jpg",
-  electrician: "/images/workers/electrician.jpg",
-  plumber: "/images/workers/plumber.jpg",
-  carpenter: "/images/workers/carpenter.jpg",
-  mason: "/images/workers/mason.jpg",
-  painter: "/images/workers/painter.jpg",
-  welder: "/images/workers/welder.jpg",
-  "garden-designer": "/images/workers/garden-designer.jpg",
-  roofer: "/images/workers/roofer.jpg",
-};
-
 // Card payload as served by `GET /api/providers` on the gateway
 // (provider-service's ProviderCardDTO). Dates arrive as ISO strings; rating
 // and reviewCount come precomputed by review-service.
@@ -39,6 +24,9 @@ export type ProviderCardDTO = {
   userId: string;
   name: string;
   category: string;
+  // Admin-managed per-trade cover (#436); the card's fallback when the provider
+  // has no cover/work photo of their own.
+  categoryImageUrl: string | null;
   headline: string;
   district: string;
   city: string;
@@ -76,12 +64,12 @@ export default function ProviderCard({
   // Away mode (#49): a future awayUntil replaces the "Available" chip with a
   // localized "Away until {date}" chip; a past one is inert.
   const away = p.awayUntil !== null && new Date(p.awayUntil) > new Date();
-  // Prefer a real uploaded photo; otherwise fall back to trade photography,
-  // then to the generated placeholder cover.
+  // Cover precedence: the provider's own photo → the admin-managed category
+  // cover (#436) → the flat placeholder (the `else` branch below).
   const cover =
     p.coverPhoto && !isSvg(p.coverPhoto)
       ? p.coverPhoto
-      : TRADE_PHOTOS[p.category] ?? p.coverPhoto;
+      : p.categoryImageUrl ?? null;
   return (
     <div className="relative">
       {showFavorite && (
@@ -118,13 +106,6 @@ export default function ProviderCard({
             {categoryLabelLoc(p.category, locale)}
           </span>
 
-          {/* experience "stamp" */}
-          {p.experience > 0 && (
-            <span className="absolute bottom-3 left-3 rounded-md bg-black/45 px-2 py-1 font-mono text-[10px] font-semibold tabular-nums text-white backdrop-blur-sm">
-              {t.card.yrs(p.experience)}
-            </span>
-          )}
-
           {/* availability */}
           {away ? (
             <span className="chip absolute bottom-3 right-3 bg-white/95 text-amber-700 dark:bg-ink-50/90">
@@ -144,7 +125,7 @@ export default function ProviderCard({
         {/* -- Body -- */}
         <div className="p-4">
           <div className="flex items-start gap-3">
-            <div className="-mt-10 rounded-full border-4 border-surface shadow-[0_4px_12px_rgba(34,29,24,0.12)]">
+            <div className="relative z-10 -mt-10 rounded-full border-4 border-surface shadow-[0_4px_12px_rgba(34,29,24,0.12)]">
               <Avatar name={p.name} url={p.avatarUrl} size={56} />
             </div>
             <div className="min-w-0 flex-1 pt-1.5">
@@ -159,6 +140,7 @@ export default function ProviderCard({
               </h3>
               <p className="mt-0.5 truncate font-mono text-[11px] uppercase tracking-wider text-ink-500">
                 {p.city} · {districtLabelLoc(p.district, locale)}
+                {p.experience > 0 && <> · {t.card.yrs(p.experience)}</>}
               </p>
             </div>
           </div>
