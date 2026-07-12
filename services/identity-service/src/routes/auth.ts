@@ -471,6 +471,7 @@ authRoutes.get("/me", async (c) => {
       phone: user.phone,
       emailVerified: user.emailVerified,
       role: user.role,
+      avatarUrl: user.avatarUrl,
       providerId,
     },
   });
