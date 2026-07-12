@@ -8,22 +8,28 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import { adminUsersRoutes } from "./admin-users";
 
-const { db, logAudit } = vi.hoisted(() => ({
-  db: {
-    user: {
-      findUnique: vi.fn(),
-      findMany: vi.fn(),
-      count: vi.fn(),
-      update: vi.fn(),
+const { db, logAudit, deactivateProviderProfile, reactivateProviderProfile } =
+  vi.hoisted(() => ({
+    db: {
+      user: {
+        findUnique: vi.fn(),
+        findMany: vi.fn(),
+        count: vi.fn(),
+        update: vi.fn(),
+      },
     },
-  },
-  logAudit: vi.fn(async () => {}),
-}));
+    logAudit: vi.fn(async () => {}),
+    deactivateProviderProfile: vi.fn(async () => {}),
+    reactivateProviderProfile: vi.fn(async () => {}),
+  }));
 
 vi.mock("../db", () => ({ db }));
 vi.mock("../lib/audit", () => ({ logAudit }));
+vi.mock("../lib/log", () => ({ log: { error: vi.fn(), info: vi.fn() } }));
 vi.mock("../lib/providers", () => ({
   fetchProvidersByIds: vi.fn(async () => new Map()),
+  deactivateProviderProfile,
+  reactivateProviderProfile,
 }));
 
 const app = new Hono();
@@ -152,6 +158,73 @@ describe("PATCH /api/admin/users/:id role change", () => {
     const res = await patch("u2", { role: "WIZARD" });
     expect(res.status).toBe(400);
     expect(db.user.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("PATCH /api/admin/users/:id PROVIDER-boundary sync", () => {
+  function rowWith(role: string) {
+    return {
+      id: "u2",
+      email: "u@baas.lk",
+      name: "User",
+      phone: null,
+      role,
+      emailVerified: null,
+      sessionVersion: 2,
+      failedLogins: 0,
+      lockedUntil: null,
+      createdAt: new Date(),
+    };
+  }
+
+  it("deactivates the provider profile on PROVIDER -> CUSTOMER", async () => {
+    db.user.findUnique.mockResolvedValue({ id: "u2", role: "PROVIDER" });
+    db.user.update.mockResolvedValue(rowWith("CUSTOMER"));
+
+    const res = await patch("u2", { role: "CUSTOMER" });
+    expect(res.status).toBe(200);
+    expect(deactivateProviderProfile).toHaveBeenCalledWith("u2");
+    expect(reactivateProviderProfile).not.toHaveBeenCalled();
+    expect(db.user.update).toHaveBeenCalled();
+  });
+
+  it("aborts with 502 and leaves the role unchanged if deactivate fails", async () => {
+    db.user.findUnique.mockResolvedValue({ id: "u2", role: "PROVIDER" });
+    deactivateProviderProfile.mockRejectedValueOnce(new Error("down"));
+
+    const res = await patch("u2", { role: "CUSTOMER" });
+    expect(res.status).toBe(502);
+    expect(db.user.update).not.toHaveBeenCalled();
+  });
+
+  it("reactivates the provider profile on CUSTOMER -> PROVIDER", async () => {
+    db.user.findUnique.mockResolvedValue({ id: "u2", role: "CUSTOMER" });
+    db.user.update.mockResolvedValue(rowWith("PROVIDER"));
+
+    const res = await patch("u2", { role: "PROVIDER" });
+    expect(res.status).toBe(200);
+    expect(reactivateProviderProfile).toHaveBeenCalledWith("u2");
+    expect(deactivateProviderProfile).not.toHaveBeenCalled();
+    expect(db.user.update).toHaveBeenCalled();
+  });
+
+  it("aborts with 502 and leaves the role unchanged if reactivate fails", async () => {
+    db.user.findUnique.mockResolvedValue({ id: "u2", role: "CUSTOMER" });
+    reactivateProviderProfile.mockRejectedValueOnce(new Error("down"));
+
+    const res = await patch("u2", { role: "PROVIDER" });
+    expect(res.status).toBe(502);
+    expect(db.user.update).not.toHaveBeenCalled();
+  });
+
+  it("makes NO provider call on CUSTOMER -> ADMIN (no PROVIDER involved)", async () => {
+    db.user.findUnique.mockResolvedValue({ id: "u2", role: "CUSTOMER" });
+    db.user.update.mockResolvedValue(rowWith("ADMIN"));
+
+    const res = await patch("u2", { role: "ADMIN" });
+    expect(res.status).toBe(200);
+    expect(deactivateProviderProfile).not.toHaveBeenCalled();
+    expect(reactivateProviderProfile).not.toHaveBeenCalled();
   });
 });
 

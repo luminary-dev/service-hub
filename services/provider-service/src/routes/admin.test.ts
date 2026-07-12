@@ -47,10 +47,14 @@ const { dbMock } = vi.hoisted(() => ({
 vi.mock("../db", () => ({ db: dbMock }));
 vi.mock("../lib/clients", () => ({
   fetchRatings: vi.fn().mockResolvedValue({}),
+  fetchRatingsResult: vi.fn().mockResolvedValue({ ok: true, ratings: {} }),
   fetchProviderReviews: vi.fn().mockResolvedValue({ reviews: [], nextCursor: null }),
 }));
 
 import { app } from "../app";
+import { fetchRatingsResult } from "../lib/clients";
+
+const fetchRatingsResultMock = vi.mocked(fetchRatingsResult);
 
 const SECRET = "dev-internal-secret";
 
@@ -101,6 +105,8 @@ beforeEach(() => {
   dbMock.category.groupBy.mockResolvedValue([]);
   dbMock.adminAuditLog.create.mockResolvedValue({});
   dbMock.adminAuditLog.findMany.mockResolvedValue([]);
+  // Default: ratings hydrated fully with no reviews (review-service healthy).
+  fetchRatingsResultMock.mockResolvedValue({ ok: true, ratings: {} });
 });
 
 // ---------------------------------------------------------------------------
@@ -349,6 +355,54 @@ describe("POST /api/admin/flagging/run (ADMIN)", () => {
       status: "OPEN",
     });
   });
+
+  it("flags on a genuine low quality score when ratings hydrate fully", async () => {
+    // p1 really does have poor reviews (rating 1.0 over 5 reviews →
+    // ratingComponent 20 → quality 20 < FLAG_QUALITY_BELOW) and no open
+    // reports. With a healthy review-service this is a true positive.
+    dbMock.provider.findMany.mockResolvedValue([{ id: "p1" }]);
+    fetchRatingsResultMock.mockResolvedValue({
+      ok: true,
+      ratings: { p1: { rating: 1, count: 5 } },
+    });
+    const res = await req("/api/admin/flagging/run", { method: "POST", role: "ADMIN" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ flagged: 1 });
+    const created = dbMock.report.createMany.mock.calls[0][0].data;
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({ targetId: "p1", source: "SYSTEM" });
+  });
+
+  it("does NOT flag on the quality signal when ratings hydration degraded (#366)", async () => {
+    // review-service outage: ratings come back incomplete (ok: false). A
+    // healthy provider with no open reports must not be flagged just because
+    // its rating reads as absent — that would create a bogus SYSTEM report.
+    dbMock.provider.findMany.mockResolvedValue([{ id: "p1" }, { id: "p2" }]);
+    fetchRatingsResultMock.mockResolvedValue({ ok: false, ratings: {} });
+    const res = await req("/api/admin/flagging/run", { method: "POST", role: "ADMIN" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ flagged: 0 });
+    expect(dbMock.report.createMany).not.toHaveBeenCalled();
+  });
+
+  it("still flags on report volume during a ratings outage (trigger needs no peer)", async () => {
+    // Even with ratings degraded, the report-count trigger is peer-independent
+    // and must keep working: p1 has 3 open USER reports.
+    dbMock.provider.findMany.mockResolvedValue([{ id: "p1" }, { id: "p2" }]);
+    fetchRatingsResultMock.mockResolvedValue({ ok: false, ratings: {} });
+    dbMock.report.groupBy.mockImplementation(
+      ({ where }: { where: { source: string } }) =>
+        where.source === "USER"
+          ? Promise.resolve([{ targetId: "p1", _count: { _all: 3 } }])
+          : Promise.resolve([])
+    );
+    const res = await req("/api/admin/flagging/run", { method: "POST", role: "ADMIN" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ flagged: 1 });
+    const created = dbMock.report.createMany.mock.calls[0][0].data;
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({ targetId: "p1", source: "SYSTEM" });
+  });
 });
 
 describe("report moderation is open to SUPPORT (isSupportOrAdmin)", () => {
@@ -497,5 +551,53 @@ describe("bulk moderation records one audit entry per affected target", () => {
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, count: 1 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Audit-log date filtering (#…): a *date-only* `to` bound must include the
+// whole named day. Previously `to=2026-07-12` parsed to midnight UTC and was
+// used as an `lte`, so every entry from July 12 was excluded (off-by-one).
+// The DB is mocked, so we assert the `createdAt` bounds handed to Prisma and
+// check that an entry timestamped mid-day would fall inside them.
+// ---------------------------------------------------------------------------
+describe("GET /api/admin/audit-log date range", () => {
+  function whereFromCall() {
+    return dbMock.adminAuditLog.findMany.mock.calls[0][0].where as {
+      createdAt?: { gte?: Date; lte?: Date };
+    };
+  }
+
+  it("a date-only `to` includes entries from that whole day (end-of-day UTC)", async () => {
+    const entryCreatedAt = new Date("2026-07-12T10:00:00Z");
+    const res = await req("/api/admin/audit-log?to=2026-07-12", { role: "SUPPORT" });
+    expect(res.status).toBe(200);
+
+    const { createdAt } = whereFromCall();
+    expect(createdAt?.lte).toEqual(new Date("2026-07-12T23:59:59.999Z"));
+    // The mid-day entry is at/under the upper bound → it would be returned.
+    expect(entryCreatedAt.getTime()).toBeLessThanOrEqual(createdAt!.lte!.getTime());
+  });
+
+  it("excludes entries after a date-only `to` (next-day entries fall past the bound)", async () => {
+    const nextDayEntry = new Date("2026-07-13T00:00:00Z");
+    await req("/api/admin/audit-log?to=2026-07-12", { role: "SUPPORT" });
+
+    const { createdAt } = whereFromCall();
+    expect(nextDayEntry.getTime()).toBeGreaterThan(createdAt!.lte!.getTime());
+  });
+
+  it("honors a full ISO datetime `to` verbatim (no end-of-day snapping)", async () => {
+    await req("/api/admin/audit-log?to=2026-07-12T10:00:00Z", { role: "SUPPORT" });
+
+    const { createdAt } = whereFromCall();
+    expect(createdAt?.lte).toEqual(new Date("2026-07-12T10:00:00Z"));
+  });
+
+  it("keeps a date-only `from` at midnight UTC as the lower bound", async () => {
+    await req("/api/admin/audit-log?from=2026-07-12", { role: "SUPPORT" });
+
+    const { createdAt } = whereFromCall();
+    expect(createdAt?.gte).toEqual(new Date("2026-07-12T00:00:00Z"));
   });
 });
