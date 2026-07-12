@@ -52,6 +52,28 @@ describe("POST /internal/providers/by-user/:userId/deactivate", () => {
   });
 });
 
+describe("POST /internal/providers/by-user/:userId/reactivate", () => {
+  it("clears suspended on a self-deactivated profile (re-upgrade)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({ id: "prov1", suspended: true });
+    dbMock.provider.update.mockResolvedValue({ id: "prov1", suspended: false });
+
+    const res = await post("/internal/providers/by-user/owner-1/reactivate");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, reactivated: true });
+    expect(dbMock.provider.update).toHaveBeenCalledWith({
+      where: { id: "prov1" },
+      data: { suspended: false },
+    });
+  });
+
+  it("is a no-op when already active", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({ id: "prov1", suspended: false });
+    const res = await post("/internal/providers/by-user/owner-1/reactivate");
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.update).not.toHaveBeenCalled();
+  });
+});
+
 describe("POST /internal/providers re-upgrade", () => {
   const body = {
     userId: "owner-1",

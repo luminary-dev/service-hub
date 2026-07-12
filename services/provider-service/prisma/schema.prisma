@@ -16,6 +16,10 @@ model Category {
   labelEn   String
   labelSi   String
   icon      String?
+  // Optional cover image (#436). Admin-uploaded via media-service (R2 in prod);
+  // used as the card cover fallback when a provider has no cover of their own.
+  // Distinct from `icon` (a font-awesome component name, not an image).
+  imageUrl  String?
   active    Boolean @default(true)
   sortOrder Int     @default(0)
 }
@@ -44,6 +48,10 @@ model Provider {
   youtube    String?
   website    String?
   avatarUrl  String?
+  // Dedicated cover photo (#435), independent of the work gallery. When set it
+  // wins over the first-work-photo derivation for the card cover, so reordering
+  // the gallery no longer silently changes the cover.
+  coverPhoto String?
   available  Boolean @default(true)
   // Away mode (#49): a provider going on leave sets a return date. Effective
   // availability = available && (awayUntil == null || awayUntil <= now) —
@@ -70,6 +78,8 @@ model Provider {
   @@index([category, district])
   @@index([district])
   @@index([createdAt])
+  // Admin verification queue filters by status (#369).
+  @@index([verificationStatus])
 }
 
 model VerificationDocument {
@@ -143,6 +153,8 @@ model Report {
   // Admin queue reads by status; duplicate-protection looks up by target.
   @@index([status])
   @@index([targetType, targetId])
+  // Report queue orders newest-first (#369).
+  @@index([createdAt])
 }
 
 // userId references a User owned by identity-service (plain string, nullable —
@@ -170,6 +182,10 @@ model Inquiry {
   messages    InquiryMessage[]
 
   @@index([providerId])
+  // Dashboard inbox filters+sorts by provider then recency (#369).
+  @@index([providerId, createdAt])
+  // Account history / review-eligibility gate / erase scan by user (#369).
+  @@index([userId])
 }
 
 // Conversation thread per inquiry (#13). Only signed-in inquiries can thread

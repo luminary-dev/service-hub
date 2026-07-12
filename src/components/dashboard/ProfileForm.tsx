@@ -14,13 +14,6 @@ import { useLocale, useT } from "../I18nProvider";
 import { useToast } from "../ToastProvider";
 import type { DashboardData } from "./DashboardTabs";
 
-// Away-until picker bounds (#49), fixed per page load (render must stay pure):
-// today .. one year out, mirroring the server-side validation.
-const AWAY_UNTIL_MIN = new Date().toISOString().slice(0, 10);
-const AWAY_UNTIL_MAX = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
-  .toISOString()
-  .slice(0, 10);
-
 export default function ProfileForm({
   data,
   categories = STATIC_CATEGORY_OPTIONS,
@@ -31,6 +24,17 @@ export default function ProfileForm({
   const locale = useLocale();
   const tx = useT();
   const p = tx.dashboard.profile;
+  // Away-until picker bounds (#49): today .. one year out, mirroring the
+  // server-side validation. A useState lazy initializer computes them once at
+  // render time — per request on the server (so they can't freeze at process
+  // start and drift days into the past, #365) and once on the client — while
+  // keeping the render body itself pure.
+  const [awayBounds] = useState(() => ({
+    min: new Date().toISOString().slice(0, 10),
+    max: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10),
+  }));
   const [form, setForm] = useState({
     name: data.name,
     phone: data.phone,
@@ -112,8 +116,8 @@ export default function ProfileForm({
           <input
             type="date"
             value={form.awayUntil}
-            min={AWAY_UNTIL_MIN}
-            max={AWAY_UNTIL_MAX}
+            min={awayBounds.min}
+            max={awayBounds.max}
             onChange={(e) => set("awayUntil", e.target.value)}
             className="input w-auto"
             aria-label={p.awayUntilTitle}

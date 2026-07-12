@@ -13,6 +13,7 @@ export type AdminCategory = {
   labelEn: string;
   labelSi: string;
   icon: string | null;
+  imageUrl: string | null;
   active: boolean;
   sortOrder: number;
 };
@@ -21,6 +22,7 @@ type EditState = {
   labelEn: string;
   labelSi: string;
   icon: string;
+  imageUrl: string;
   sortOrder: string;
 };
 
@@ -43,11 +45,13 @@ export default function AdminCategoryManager({
   const router = useRouter();
   const canManage = hasFullAdminAccess(role);
   const [pending, setPending] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [edit, setEdit] = useState<EditState>({
     labelEn: "",
     labelSi: "",
     icon: "",
+    imageUrl: "",
     sortOrder: "0",
   });
   const [error, setError] = useState("");
@@ -56,8 +60,36 @@ export default function AdminCategoryManager({
     labelEn: "",
     labelSi: "",
     icon: "",
+    imageUrl: "",
     sortOrder: "",
   });
+
+  // Upload a cover to the "category" media namespace (R2 in prod) and return its
+  // relative URL, or null on failure (error surfaced via toast).
+  async function uploadImage(file: File): Promise<string | null> {
+    setUploading(true);
+    setError("");
+    try {
+      const body = new FormData();
+      body.set("file", file);
+      const res = await fetch("/api/admin/categories/image", {
+        method: "POST",
+        body,
+      });
+      if (res.ok) return (await res.json()).url as string;
+      const d = await res.json().catch(() => ({}));
+      const message = d?.error ?? t.admin.catError;
+      setError(message);
+      toast.error(message);
+      return null;
+    } catch {
+      setError(t.admin.catError);
+      toast.error(t.admin.catError);
+      return null;
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function patch(slug: string, body: Record<string, unknown>) {
     if (!canManage) return false;
@@ -89,6 +121,7 @@ export default function AdminCategoryManager({
       labelEn: c.labelEn,
       labelSi: c.labelSi,
       icon: c.icon ?? "",
+      imageUrl: c.imageUrl ?? "",
       sortOrder: String(c.sortOrder),
     });
   }
@@ -98,6 +131,7 @@ export default function AdminCategoryManager({
       labelEn: edit.labelEn.trim(),
       labelSi: edit.labelSi.trim(),
       icon: edit.icon.trim() || null,
+      imageUrl: edit.imageUrl || null,
       sortOrder: Number(edit.sortOrder) || 0,
     });
   }
@@ -115,6 +149,7 @@ export default function AdminCategoryManager({
         labelEn: addForm.labelEn.trim(),
         labelSi: addForm.labelSi.trim(),
         icon: addForm.icon.trim() || undefined,
+        imageUrl: addForm.imageUrl || undefined,
         sortOrder: addForm.sortOrder ? Number(addForm.sortOrder) : undefined,
       }),
     }).catch(() => null);
@@ -125,6 +160,7 @@ export default function AdminCategoryManager({
         labelEn: "",
         labelSi: "",
         icon: "",
+        imageUrl: "",
         sortOrder: "",
       });
       toast.success(t.toast.adminCategoryAdded);
@@ -198,6 +234,30 @@ export default function AdminCategoryManager({
                       }
                     />
                   </Field>
+                  <Field label={t.admin.catCover} htmlFor="cat-cover-edit">
+                    <div className="flex items-center gap-3">
+                      {edit.imageUrl && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={edit.imageUrl}
+                          alt=""
+                          className="h-11 w-16 rounded border border-ink-300 object-cover"
+                        />
+                      )}
+                      <input
+                        id="cat-cover-edit"
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="text-sm"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const url = await uploadImage(file);
+                          if (url) setEdit((f) => ({ ...f, imageUrl: url }));
+                        }}
+                      />
+                    </div>
+                  </Field>
                   <div className="flex gap-2">
                     <button
                       onClick={() => saveEdit(c.slug)}
@@ -220,7 +280,16 @@ export default function AdminCategoryManager({
                 </div>
               ) : (
                 <>
-                  <div>
+                  <div className="flex items-center gap-3">
+                    {c.imageUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={c.imageUrl}
+                        alt=""
+                        className="h-12 w-16 shrink-0 rounded border border-ink-300 object-cover"
+                      />
+                    )}
+                    <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-semibold text-ink-900">
                         {c.labelEn}
@@ -252,6 +321,7 @@ export default function AdminCategoryManager({
                         </>
                       ) : null}
                     </p>
+                    </div>
                   </div>
                   {canManage ? (
                     <div className="flex flex-wrap gap-2">
@@ -360,7 +430,34 @@ export default function AdminCategoryManager({
             />
           </Field>
         </FormRow>
-        <button type="submit" disabled={pending} className="btn-primary">
+        <Field label={t.admin.catCover} htmlFor="cat-cover-add" help={t.admin.catCoverHint}>
+          <div className="flex items-center gap-3">
+            {addForm.imageUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={addForm.imageUrl}
+                alt=""
+                className="h-14 w-20 rounded border border-ink-300 object-cover"
+              />
+            )}
+            <input
+              id="cat-cover-add"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="text-sm"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const url = await uploadImage(file);
+                if (url) setAddForm((f) => ({ ...f, imageUrl: url }));
+              }}
+            />
+            {uploading && (
+              <span className="text-xs text-ink-500">{t.admin.catCoverUploading}</span>
+            )}
+          </div>
+        </Field>
+        <button type="submit" disabled={pending || uploading} className="btn-primary">
           <FaPlus className="h-3.5 w-3.5" />
           {pending ? t.admin.catAdding : t.admin.catAdd}
         </button>
