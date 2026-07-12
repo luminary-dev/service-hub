@@ -24,6 +24,49 @@ export const ALLOWED_IMAGE_TYPES = new Set([
 ]);
 export const DEFAULT_GRACE_MS = 24 * 60 * 60_000;
 
+// Resized derivative widths generated alongside every upload (#382). Originals
+// are full-resolution (up to 5 MB / 50 MP); provider cards and gallery
+// thumbnails only need a fraction of that on a mobile-first connection. Widths
+// are picked from how images are displayed: the widest raster surface is the
+// provider-card cover (its `sizes` tops out at 384 CSS px → ~768px at 2× DPR, so
+// `medium` 800 covers it crisply), while `thumb` 400 covers 1× cards, gallery
+// thumbnails and avatars. Variants only ever downscale (see `withoutEnlargement`
+// in processImage) — a small original is re-encoded at its own size, never
+// upscaled. Keep this ordered smallest-first.
+export const IMAGE_VARIANTS = { thumb: 400, medium: 800 } as const;
+export type VariantName = keyof typeof IMAGE_VARIANTS;
+export const VARIANT_NAMES = Object.keys(IMAGE_VARIANTS) as VariantName[];
+
+export function isVariantName(value: string): value is VariantName {
+  return Object.prototype.hasOwnProperty.call(IMAGE_VARIANTS, value);
+}
+
+// Derives a variant's filename/subpath/key from the original's by inserting a
+// `.<variant>` token before the extension: `<uuid>.jpg` → `<uuid>.thumb.jpg`.
+// Works uniformly on a bare filename, a `<prefix>/<uuid>.<ext>` subpath, or a
+// full `<namespace>/<prefix>/<uuid>.<ext>` key — it only touches the extension,
+// so it never introduces a path separator or `..`. Originals carry a UUID stem
+// (no interior dots), so the token can be recovered unambiguously by baseUrl().
+export function variantName(name: string, variant: VariantName): string {
+  const ext = path.extname(name);
+  const stem = ext ? name.slice(0, -ext.length) : name;
+  return `${stem}.${variant}${ext}`;
+}
+
+// Inverse of variantName at the URL level: maps a stored file's /api/files URL
+// back to the original it derives from, so the orphan sweep can keep-or-remove a
+// variant on the basis of what the DB references (only originals are persisted).
+// `<uuid>.thumb.jpg` → `<uuid>.jpg`; originals (UUID stem, no interior dot) map
+// to themselves.
+export function baseUrl(url: string): string {
+  const ext = path.extname(url);
+  const stem = ext ? url.slice(0, -ext.length) : url;
+  const dot = stem.lastIndexOf(".");
+  if (dot === -1) return url;
+  const token = stem.slice(dot + 1);
+  return isVariantName(token) ? stem.slice(0, dot) + ext : url;
+}
+
 // Root under which each namespace's files live. In compose the callers'
 // original upload volumes are mounted at $MEDIA_DIR/<namespace>, so existing
 // files resolve with no migration.
@@ -58,22 +101,30 @@ export class InvalidImageError extends Error {}
 // decode), applies the EXIF orientation, and drops ALL metadata — EXIF GPS
 // coordinates in tradespeople's phone photos would otherwise leak home
 // locations.
+// A `width` (#382) resizes the output to that width, only ever downscaling
+// (`withoutEnlargement`) so a small original is re-encoded at its own size
+// rather than blown up. Omitted for the sanitized original, set for each
+// derivative variant. Format, EXIF-strip and quality are identical either way.
 export async function processImage(
-  input: Buffer
+  input: Buffer,
+  width?: number
 ): Promise<{ data: Buffer; ext: string }> {
   try {
     const img = sharp(input, { failOn: "error", limitInputPixels: 50_000_000 });
     const meta = await img.metadata();
     // rotate() bakes in the EXIF orientation BEFORE metadata is stripped, so
-    // phone photos don't come out sideways.
+    // phone photos don't come out sideways; resize() then applies to the
+    // upright image.
+    img.rotate();
+    if (width) img.resize({ width, withoutEnlargement: true });
     if (meta.format === "jpeg") {
-      return { data: await img.rotate().jpeg({ quality: 85 }).toBuffer(), ext: "jpg" };
+      return { data: await img.jpeg({ quality: 85 }).toBuffer(), ext: "jpg" };
     }
     if (meta.format === "png") {
-      return { data: await img.rotate().png().toBuffer(), ext: "png" };
+      return { data: await img.png().toBuffer(), ext: "png" };
     }
     if (meta.format === "webp") {
-      return { data: await img.rotate().webp().toBuffer(), ext: "webp" };
+      return { data: await img.webp().toBuffer(), ext: "webp" };
     }
   } catch {
     // fall through
@@ -100,17 +151,34 @@ export async function storeFile(
   }
   const { data, ext } = await processImage(buffer);
   const filename = `${crypto.randomUUID()}.${ext}`;
+  const contentType = MIME[ext] ?? "application/octet-stream";
+  // Resized derivatives (#382), stored alongside the original under a
+  // deterministic `<uuid>.<variant>.<ext>` name so the serve path can find them
+  // without a lookup table and the sweep can trace them back to the original.
+  const variants = await Promise.all(
+    VARIANT_NAMES.map(async (v) => ({
+      name: variantName(filename, v),
+      data: (await processImage(buffer, IMAGE_VARIANTS[v])).data,
+    }))
+  );
   // R2 (private bucket): store under the namespaced key and return the internal
   // /api/files URL — objects are streamed back through the /files route, so the
-  // stored URL shape matches local disk (no public bucket / domain needed).
+  // stored URL shape matches local disk (no public bucket / domain needed). Only
+  // the original's URL is returned/persisted; variants are addressed off it.
   if (r2Enabled()) {
     const key = `${namespace}/${prefix}/${filename}`;
-    await r2Put(key, data, MIME[ext] ?? "application/octet-stream");
+    await r2Put(key, data, contentType);
+    for (const v of variants) {
+      await r2Put(`${namespace}/${prefix}/${v.name}`, v.data, contentType);
+    }
     return `/api/files/${key}`;
   }
   const dir = path.join(nsDir(namespace), prefix);
   await mkdir(dir, { recursive: true });
   await writeFile(path.join(dir, filename), data);
+  for (const v of variants) {
+    await writeFile(path.join(dir, v.name), v.data);
+  }
   return `/api/files/${namespace}/${prefix}/${filename}`;
 }
 
@@ -120,12 +188,21 @@ export async function deleteFile(url: string): Promise<void> {
   try {
     const m = /^\/api\/files\/([a-z]+)\/(.+)$/.exec(url);
     if (m && NAMESPACES.has(m[1])) {
-      if (r2Enabled()) {
-        await r2Delete(`${m[1]}/${m[2]}`);
-        return;
+      // Delete the original and each resized variant (#382). Callers only track
+      // the original's URL, so the variants must be swept up here.
+      const subpaths = [m[2], ...VARIANT_NAMES.map((v) => variantName(m[2], v))];
+      for (const sub of subpaths) {
+        try {
+          if (r2Enabled()) {
+            await r2Delete(`${m[1]}/${sub}`);
+          } else {
+            const target = resolveFilePath(m[1], sub);
+            if (target) await unlink(target);
+          }
+        } catch {
+          // best-effort per file
+        }
       }
-      const target = resolveFilePath(m[1], m[2]);
-      if (target) await unlink(target);
     }
   } catch {
     // best-effort
@@ -152,7 +229,11 @@ export type StoredFile = { key: string; url: string; modifiedAt: Date };
 
 // Pure so the policy is unit-testable: an orphan is old enough to be outside
 // the grace window (protects in-flight uploads racing their DB write) AND
-// unreferenced by any database row.
+// unreferenced by any database row. A resized variant (#382) is referenced on
+// the basis of its base original — the DB only tracks originals — so baseUrl()
+// maps `<uuid>.thumb.jpg` to `<uuid>.jpg` before the membership check. This
+// keeps a live image's variants and, conversely, sweeps an orphaned original's
+// variants along with it.
 export function findOrphans(
   files: StoredFile[],
   referenced: Set<string>,
@@ -160,7 +241,7 @@ export function findOrphans(
   now = Date.now()
 ): StoredFile[] {
   return files.filter(
-    (f) => now - f.modifiedAt.getTime() > graceMs && !referenced.has(f.url)
+    (f) => now - f.modifiedAt.getTime() > graceMs && !referenced.has(baseUrl(f.url))
   );
 }
 
