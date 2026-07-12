@@ -62,6 +62,14 @@ describe("GET /files/:namespace/*", () => {
     expect((await res.arrayBuffer()).byteLength).toBeGreaterThan(0);
   });
 
+  it("serves with anti-sniffing headers (nosniff + inline disposition)", async () => {
+    const path = await seed();
+    const res = await get(path);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("content-disposition")).toBe("inline");
+  });
+
   it("404s an unsupported extension without hitting disk", async () => {
     const res = await get("/files/provider/uploads/secret.txt");
     expect(res.status).toBe(404);
