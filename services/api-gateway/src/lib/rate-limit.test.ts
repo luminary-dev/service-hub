@@ -1,4 +1,4 @@
-import { afterEach, describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { checkRateLimit, resolveClientIp, trustedProxyHops } from "./rate-limit";
 
 const rule = { limit: 3, windowMs: 1000 };
@@ -208,5 +208,76 @@ describe("checkRateLimitRedis", () => {
     const blocked = await checkRateLimitRedis(redis, "rl:z", rule, t0 + 5000);
     // Oldest hit at t0 leaves the window at t0 + 60000 → 55000ms from t0+5000.
     expect(blocked.retryAfterMs).toBe(55_000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Redis→in-memory fallback observability (#374, security audit M4). A Redis
+// outage must still limit (per-instance) AND emit exactly one warning on the
+// transition into the degraded state — never one per request, which would
+// flood the logs while Redis is down.
+// ---------------------------------------------------------------------------
+import { resolveRateLimit, resetRedisDegradedState } from "./rate-limit";
+import { log } from "./log";
+
+// A RedisCommands whose first op always throws, forcing the fallback path.
+function throwingRedis(): RedisCommands {
+  const boom = () => {
+    throw new Error("ECONNREFUSED");
+  };
+  return {
+    zremrangebyscore: boom,
+    zadd: boom,
+    zcard: boom,
+    zrem: boom,
+    zrange: boom,
+    pexpire: boom,
+  } as unknown as RedisCommands;
+}
+
+describe("resolveRateLimit fallback observability", () => {
+  const rule = { limit: 3, windowMs: 1000 };
+
+  afterEach(() => {
+    resetRedisDegradedState();
+    vi.restoreAllMocks();
+  });
+
+  it("falls back to the in-memory limiter when Redis errors", async () => {
+    const redis = throwingRedis();
+    const key = "fallback:works";
+    // In-memory limiter still enforces the rule across the fallback path.
+    for (let i = 0; i < 3; i++) {
+      expect((await resolveRateLimit(redis, key, rule)).success).toBe(true);
+    }
+    expect((await resolveRateLimit(redis, key, rule)).success).toBe(false);
+  });
+
+  it("warns once on the transition into degraded state, not per request", async () => {
+    const warn = vi.spyOn(log, "warn").mockImplementation(() => {});
+    const redis = throwingRedis();
+    for (let i = 0; i < 5; i++) {
+      await resolveRateLimit(redis, "fallback:warn-once", rule);
+    }
+    expect(warn).toHaveBeenCalledTimes(1);
+    // Error and key context are included for triage.
+    const [, fields] = warn.mock.calls[0];
+    expect(fields).toMatchObject({ err: expect.any(Error) });
+  });
+
+  it("logs recovery once when Redis succeeds again after degrading", async () => {
+    const warn = vi.spyOn(log, "warn").mockImplementation(() => {});
+    const info = vi.spyOn(log, "info").mockImplementation(() => {});
+    const key = "fallback:recovers";
+
+    // Degrade first.
+    await resolveRateLimit(throwingRedis(), key, rule);
+    expect(warn).toHaveBeenCalledTimes(1);
+
+    // A healthy Redis fake now succeeds — recovery logs exactly once.
+    const healthy = fakeRedis();
+    await resolveRateLimit(healthy, key, rule);
+    await resolveRateLimit(healthy, key, rule);
+    expect(info).toHaveBeenCalledTimes(1);
   });
 });

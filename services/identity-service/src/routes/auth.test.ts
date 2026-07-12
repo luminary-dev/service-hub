@@ -20,6 +20,7 @@ import {
   deactivateProviderProfile,
   getProviderIdByUser,
   reactivateProviderProfile,
+  resolveProviderIdForErase,
 } from "../lib/providers";
 
 // Stateful-enough Prisma double: canned per-test return values + call assertions
@@ -58,6 +59,7 @@ vi.mock("../lib/providers", () => ({
   createProviderProfile: vi.fn(),
   deactivateProviderProfile: vi.fn(),
   reactivateProviderProfile: vi.fn(),
+  resolveProviderIdForErase: vi.fn(async () => null),
 }));
 vi.mock("../lib/audit", () => ({ logAudit: vi.fn() }));
 
@@ -115,6 +117,9 @@ beforeEach(() => {
   vi.mocked(sendVerificationEmail).mockResolvedValue(undefined);
   vi.mocked(sendPasswordResetEmail).mockResolvedValue(undefined);
   vi.mocked(eraseUserData).mockResolvedValue(undefined);
+  // Default: the caller has no provider profile. Per-test overrides set an id
+  // (provider deletion) or reject (transient S2S failure).
+  vi.mocked(resolveProviderIdForErase).mockResolvedValue(null);
 });
 
 // ---------------------------------------------------------------------------
@@ -872,5 +877,53 @@ describe("POST /api/auth/delete-account", () => {
       data: { userId: "u1", email: "a@b.lk", role: "CUSTOMER" },
     });
     expect(db.user.delete).toHaveBeenCalledWith({ where: { id: "u1" } });
+  });
+
+  // #360: a provider's JobResponses (their written message — PII) are keyed by
+  // provider id, and the job erase only deletes them when it receives that id.
+  // The resolved providerId must therefore reach eraseUserData so the responses
+  // are covered.
+  it("passes the resolved providerId to the erase so job responses are covered", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "a@b.lk",
+      role: "PROVIDER",
+      passwordHash: currentHash,
+    });
+    vi.mocked(resolveProviderIdForErase).mockResolvedValue("prov-1");
+    const res = await post(
+      "/api/auth/delete-account",
+      { password: CURRENT_PASSWORD },
+      AUTH_HEADERS
+    );
+    expect(res.status).toBe(200);
+    expect(eraseUserData).toHaveBeenCalledWith("u1", "prov-1");
+    expect(db.user.delete).toHaveBeenCalledWith({ where: { id: "u1" } });
+  });
+
+  // #360: if resolving the providerId transiently fails, we must abort with 502
+  // rather than proceed with a null id — that would erase the User while leaving
+  // the provider's job responses (PII) behind. All-or-nothing, never partial.
+  it("502s and deletes nothing when the providerId lookup fails (no partial erase)", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "a@b.lk",
+      role: "PROVIDER",
+      passwordHash: currentHash,
+    });
+    vi.mocked(resolveProviderIdForErase).mockRejectedValue(
+      new Error("provider-service down")
+    );
+    const res = await post(
+      "/api/auth/delete-account",
+      { password: CURRENT_PASSWORD },
+      AUTH_HEADERS
+    );
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Upstream service unavailable" });
+    // The erase never ran and no local rows were touched, so a retry finishes it.
+    expect(eraseUserData).not.toHaveBeenCalled();
+    expect(db.$transaction).not.toHaveBeenCalled();
+    expect(db.user.delete).not.toHaveBeenCalled();
   });
 });
