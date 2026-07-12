@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { FaCommentDots, FaPaperPlane, FaXmark } from "@/components/icons";
 import { useT } from "@/components/I18nProvider";
+import { localizedHref, pathLocale } from "@/lib/links";
 
 // The assistant never sends an inquiry itself. It can only *propose* a draft
 // (#202): the confirmation card below is rendered from this draft and the real
@@ -40,6 +42,7 @@ function setProposalStatus(
 // own /agent/chat route (SSE).
 export default function ChatAssistant() {
   const t = useT();
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [draft, setDraft] = useState("");
@@ -77,7 +80,11 @@ export default function ChatAssistant() {
     setBusy(true);
 
     try {
-      const res = await fetch("/agent/chat", {
+      // Request the /si-prefixed variant on Sinhala URLs so the route's
+      // getLocale() sees the URL locale (proxy sets x-locale from the prefix),
+      // matching the app's "URL prefix wins, then cookie" precedence — a
+      // shared /si link gets Sinhala assistant replies, not English.
+      const res = await fetch(localizedHref("/agent/chat", pathLocale(pathname)), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: nextMessages }),

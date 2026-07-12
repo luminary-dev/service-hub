@@ -10,6 +10,12 @@ inquiry, which the customer then sends themselves, in English or Sinhala.
   `POST /internal/chat/marketplace/stream`, streaming Server-Sent Events back to
   the browser and forwarding only the locale. No session cookie is forwarded
   into the LLM-driven service, because nothing there acts on the user's behalf.
+  The reply locale follows the app's usual precedence (the `/si` URL prefix
+  wins, then the `lang` cookie — see `src/lib/locale.ts`): the client requests
+  the `/si/agent/chat` variant on Sinhala URLs so the proxy's trusted `x-locale`
+  header carries the URL locale, and the route resolves it with `getLocale()`.
+  A visitor on a shared `/si` link therefore gets Sinhala replies even without a
+  `lang` cookie.
 - **Model & loop.** Uses Claude (`claude-opus-4-8`) with a server-side tool
   loop: it streams text, and when the model requests a tool it runs it, feeds
   the result back, and continues — up to a safety bound (`MAX_LOOPS = 6`), with a
@@ -35,7 +41,8 @@ inquiry, which the customer then sends themselves, in English or Sinhala.
   replies short, and answers in Sinhala when the locale is `si`.
 - **Session-gated & rate-limited.** The web proxy requires a signed-in session
   (401 otherwise) and enforces a per-user sliding window of **15 requests / 60 s**
-  (429 on exceed).
+  (429 on exceed). The in-memory window map is swept of aged-out users (mirroring
+  the gateway limiter) so it can't grow unbounded over the process lifetime.
 
 ---
 
