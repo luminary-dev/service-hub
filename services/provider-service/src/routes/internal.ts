@@ -158,6 +158,25 @@ internalRoutes.get("/internal/providers/by-user/:userId", async (c) => {
   return c.json({ provider: provider ?? null });
 });
 
+// Denormalized avatar sync from identity (#434). Sets Provider.avatarUrl for
+// the user (no-op/200 if they have no provider profile), so public cards/
+// profile stay in step with User.avatarUrl. Always 200 — the caller's update
+// already succeeded; this is a best-effort mirror.
+internalRoutes.post("/internal/providers/avatar", async (c) => {
+  const body = (await c.req.json().catch(() => null)) as {
+    userId?: string;
+    avatarUrl?: string | null;
+  } | null;
+  if (!body?.userId) {
+    return c.json({ error: "userId required" }, 400);
+  }
+  await db.provider.updateMany({
+    where: { userId: body.userId },
+    data: { avatarUrl: body.avatarUrl ?? null },
+  });
+  return c.json({ ok: true });
+});
+
 // Batch hydration (job-service response lists).
 internalRoutes.get("/internal/providers", async (c) => {
   const idsParam = c.req.query("ids") ?? "";

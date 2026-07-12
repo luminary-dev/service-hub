@@ -5,6 +5,24 @@ import { log } from "./log";
 const PROVIDER_SERVICE_URL =
   process.env.PROVIDER_SERVICE_URL ?? "http://localhost:4002";
 
+// Push the user's avatar to their provider profile's denormalized copy (#434).
+// Best-effort: a failure only means the public card shows a stale avatar until
+// the next sync, so it must never fail the user's own avatar update. No-op for
+// users without a provider profile (provider-service returns 200 either way).
+export async function syncAvatarToProvider(
+  userId: string,
+  avatarUrl: string | null
+): Promise<void> {
+  try {
+    await s2s(PROVIDER_SERVICE_URL, "/internal/providers/avatar", {
+      method: "POST",
+      body: JSON.stringify({ userId, avatarUrl }),
+    });
+  } catch (e) {
+    log.error("avatar sync failed", { context: "providers", err: e });
+  }
+}
+
 // Looks up the caller's provider profile id. Read-path hydration: degrades to
 // null on any S2S failure so login / me never fail because provider-service
 // is down.

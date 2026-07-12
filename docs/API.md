@@ -61,6 +61,8 @@ the upstream that owns the handler.
 | `POST /api/auth/delete-account` | authenticated | Re-auth with `{ password }` (optional for social-only accounts, which have none — the session is the re-auth); fans out S2S erase to provider/review/job (any failure → 502, nothing deleted), then deletes the User + records `AccountDeletion`. |
 | `GET /api/auth/me` | public | `{ user: null }` when signed out, else `{ user: { id, name, email, phone, emailVerified, role, providerId } }`. |
 | `PUT /api/account/profile` | authenticated | `{ name, phone }` — edits the caller's own name/phone (phone normalized to E.164) and re-issues the cookie so the cached display name updates. Any role. |
+| `POST /api/account/avatar` | authenticated | Multipart profile-photo upload (#434, any role) → media-service `user` namespace (R2 in prod). Sets `User.avatarUrl` and syncs the denormalized copy to the caller's provider profile (if any). jpeg/png/webp ≤5MB → `{ avatarUrl }`. |
+| `DELETE /api/account/avatar` | authenticated | Clears the caller's `avatarUrl` (and the provider copy) → `{ ok: true }`. |
 | `POST /api/account/email/change` | authenticated | `{ email }` — starts a change-email flow: emails a 1h confirmation link **to the new address**. 400 if it's the current address, 409 if already taken. Does not change the address yet. |
 | `POST /api/account/email/confirm` | public | `{ token }` — consumes the change-email token and switches the address (sets `emailVerified`). Session is unaffected (email isn't in the JWT). 409 if the address was taken since the request. |
 | `POST /api/auth/change-password` | authenticated | `{ currentPassword, newPassword }`; re-auth, bumps `sessionVersion`, re-issues cookie. |

@@ -198,8 +198,10 @@ export default function PhotosManager({
     setAvatarError("");
     const fd = new FormData();
     fd.append("file", file);
-    fd.append("kind", "avatar");
-    const res = await fetch("/api/provider/photos", {
+    // Avatars are unified on the User (#434): upload through the account
+    // endpoint (identity), which sets User.avatarUrl and syncs the denormalized
+    // copy back to this provider profile. Response shape is unchanged.
+    const res = await fetch("/api/account/avatar", {
       method: "POST",
       body: fd,
     });

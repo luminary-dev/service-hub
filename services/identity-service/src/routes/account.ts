@@ -12,8 +12,59 @@ import { createSession } from "../lib/session";
 import { hashToken } from "../lib/tokens";
 import { slPhone } from "../lib/field-rules";
 import { sendEmailChangeConfirmation } from "../lib/verification";
+import {
+  ALLOWED_IMAGE_TYPES,
+  InvalidImageError,
+  MAX_UPLOAD_SIZE,
+  storeImage,
+} from "../lib/storage";
+import { syncAvatarToProvider } from "../lib/providers";
 
 export const accountRoutes = new Hono();
+
+// ---------------------------------------------------------------------------
+// Avatar (#434): profile photo for ANY authenticated user (customer/provider/
+// admin). User.avatarUrl is the source of truth; when the user also has a
+// provider profile we push a denormalized copy to provider-service so the
+// public cards/profile (served from there) stay in sync — best-effort, since a
+// stale copy is cosmetic and must not fail the user's own update.
+// ---------------------------------------------------------------------------
+accountRoutes.post("/avatar", async (c) => {
+  const auth = getAuth(c);
+  if (!auth) return c.json({ error: "Unauthorized" }, 401);
+
+  const form = await c.req.formData().catch(() => null);
+  const file = form?.get("file");
+  if (!(file instanceof File)) {
+    return c.json({ error: "No file provided" }, 400);
+  }
+  if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+    return c.json({ error: "Only JPEG, PNG and WebP images are allowed" }, 400);
+  }
+  if (file.size > MAX_UPLOAD_SIZE) {
+    return c.json({ error: "Image must be under 5MB" }, 400);
+  }
+
+  let avatarUrl: string;
+  try {
+    avatarUrl = await storeImage("user", file, "avatars");
+  } catch (e) {
+    if (e instanceof InvalidImageError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
+
+  await db.user.update({ where: { id: auth.userId }, data: { avatarUrl } });
+  await syncAvatarToProvider(auth.userId, avatarUrl);
+  return c.json({ avatarUrl });
+});
+
+accountRoutes.delete("/avatar", async (c) => {
+  const auth = getAuth(c);
+  if (!auth) return c.json({ error: "Unauthorized" }, 401);
+  await db.user.update({ where: { id: auth.userId }, data: { avatarUrl: null } });
+  await syncAvatarToProvider(auth.userId, null);
+  return c.json({ ok: true });
+});
 
 // ---------------------------------------------------------------------------
 // PUT /api/account/profile — edit own name + phone

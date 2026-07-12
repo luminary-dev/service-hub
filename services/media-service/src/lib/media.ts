@@ -28,9 +28,10 @@ export const DEFAULT_GRACE_MS = 24 * 60 * 60_000;
 // original upload volumes are mounted at $MEDIA_DIR/<namespace>, so existing
 // files resolve with no migration.
 const MEDIA_DIR = process.env.MEDIA_DIR ?? "./data";
-// "category" holds admin-uploaded trade cover images (#436). Prod stores it in
-// R2 (no volume needed); local dev writes under $MEDIA_DIR/category.
-const NAMESPACES = new Set(["provider", "review", "category"]);
+// "category" holds admin-uploaded trade cover images (#436); "user" holds
+// per-user avatars (#434). Prod stores both in R2 (no volume needed); local dev
+// writes under $MEDIA_DIR/<namespace>.
+const NAMESPACES = new Set(["provider", "review", "category", "user"]);
 
 // A prefix is a single path segment chosen by the calling service ("uploads",
 // "reviews"). It is joined into the on-disk path and the R2 object key, so it

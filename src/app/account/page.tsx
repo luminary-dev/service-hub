@@ -92,6 +92,7 @@ export default async function AccountPage() {
           email: string;
           phone: string | null;
           emailVerified: string | null;
+          avatarUrl: string | null;
         } | null;
       }>("/api/auth/me"),
     ]);
@@ -161,6 +162,7 @@ export default async function AccountPage() {
                   phone: me.phone,
                   email: me.email,
                   emailVerified: me.emailVerified != null,
+                  avatarUrl: me.avatarUrl,
                 }}
               />
             </div>
