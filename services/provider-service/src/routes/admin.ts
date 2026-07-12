@@ -136,11 +136,21 @@ adminRoutes.get("/api/admin/providers/:id", async (c) => {
   }
 
   // Moderation view: include soft-deleted reviews so admins can restore.
+  // Only OPEN USER-source reports feed the quality-score penalty, matching the
+  // auto-flagging run (POST /api/admin/flagging/run). SYSTEM reports are the
+  // flagging job's own output, so counting them here would let an auto-flag
+  // drive the score down further than the threshold that triggered it,
+  // diverging the admin-visible score from the flagging decision.
   const [{ reviews }, ratings, openReportCount] = await Promise.all([
     fetchProviderReviews(id, { includeDeleted: true }),
     fetchRatings([id]),
     db.report.count({
-      where: { targetType: "PROVIDER", targetId: id, status: "OPEN" },
+      where: {
+        targetType: "PROVIDER",
+        targetId: id,
+        status: "OPEN",
+        source: "USER",
+      },
     }),
   ]);
   const rating = ratings[id]?.rating ?? 0;
@@ -383,10 +393,16 @@ adminRoutes.patch("/api/admin/photos/:id/restore", async (c) => {
     return c.json({ error: "Forbidden" }, 403);
   }
   const id = c.req.param("id");
-  await db.workPhoto.updateMany({
+  // updateMany returns count 0 when the id doesn't exist; report that as a
+  // 404 rather than a misleading 200, matching the report PATCH above and the
+  // findUnique 404 on the photo delete/verification routes.
+  const { count } = await db.workPhoto.updateMany({
     where: { id },
     data: { deletedAt: null },
   });
+  if (count === 0) {
+    return c.json({ error: "Photo not found" }, 404);
+  }
   await logAudit(c, "restore-photo", "WORK_PHOTO", id);
   return c.json({ ok: true });
 });

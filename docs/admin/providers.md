@@ -33,7 +33,9 @@ detail view: `PATCH /api/admin/photos/{id}/restore` (provider-service, clears
 `deletedAt`) and `PATCH /api/admin/reviews/{id}/restore` (review-service). Both
 are full-admin gated (`hasFullAdminAccess` in the UI, `isFullAdmin` server-side),
 so SUPPORT sees a disabled control; restoring re-publishes the content and is
-audited (`restore-photo` / `restore-review`).
+audited (`restore-photo` / `restore-review`). A restore whose id matches no
+photo returns **404** (`{ error: "Photo not found" }`) rather than a misleading
+200.
 
 ---
 
