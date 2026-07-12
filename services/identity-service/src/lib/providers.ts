@@ -65,20 +65,21 @@ export async function resolveProviderIdForErase(
   return data.provider?.id ?? null;
 }
 
-// Existence check for favorites. Only a 404 means "no such provider"; any
-// other non-ok status is an upstream failure and must throw so the caller
-// returns 502 (writes fail loudly) rather than a misleading 404 that silently
-// drops the favorite when provider-service is merely degraded.
+// Existence check for favorites. The summary endpoint always answers 200 with
+// `{ provider: null }` for an unknown id, so existence is decided by the body,
+// not the status. Any non-ok status is an upstream failure and must throw so
+// the caller returns 502 (writes fail loudly) rather than a misleading 404 that
+// silently drops the favorite when provider-service is merely degraded.
 export async function providerExists(providerId: string): Promise<boolean> {
   const res = await s2s(
     PROVIDER_SERVICE_URL,
     `/internal/providers/${encodeURIComponent(providerId)}/summary`
   );
-  if (res.status === 404) return false;
   if (!res.ok) {
     throw new Error(`provider summary lookup failed: ${res.status}`);
   }
-  return true;
+  const data = (await res.json()) as { provider: { id: string } | null };
+  return data.provider !== null;
 }
 
 // Self-service downgrade (#403): hide the caller's provider profile from public
