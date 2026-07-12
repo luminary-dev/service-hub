@@ -101,9 +101,18 @@ FM-Bindumathi has no Sinhala Unicode glyphs.
   via `--rise-index`), `.reveal-js` / `.stagger` (scroll-reveal, toggled by the
   `InView` component), plus the home-hero set (`.roll-word`, `.orbit-ring`,
   `.orbit-chip`, `.ticker-track`, `.floaty`, `.pulse-dot`) and photo effects
-  (`.kenburns`, `.scan-line`).
+  (`.kenburns`, `.scan-line`, `.hero-sweep`).
+- **Hero slider** (`HeroSlider`, home page right column): the framed technical
+  plate is a self-advancing trade carousel — cross-fading trade photos with a
+  per-slide Ken Burns drift, a brand `.hero-sweep` scan-line on each change, a
+  `Fig.0N` caption, a mono live counter, an auto-advance gauge, hover/focus
+  pause, prev/next + a segmented tick selector, and arrow-key navigation. It is
+  rAF-driven so the gauge and the advance stay in sync. Same `aspect-[4/5]` plate
+  as before, so no layout shift; the first slide keeps `priority` for LCP.
 - Everything is guarded by `prefers-reduced-motion: reduce`, which cancels the
-  animations and transitions.
+  animations and transitions. The slider additionally halts auto-advance and Ken
+  Burns under reduced motion (via `useSyncExternalStore` on the media query) —
+  it becomes a static, manually-navigable plate.
 
 ## Component utility classes (`@layer components`)
 

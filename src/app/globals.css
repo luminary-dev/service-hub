@@ -476,7 +476,29 @@ p {
   }
   .hazard,
   .kenburns,
-  .scan-line {
+  .scan-line,
+  .hero-sweep {
     animation: none !important;
   }
+}
+
+/* Hero slider (#447) — a brand scan-line wipes across on each slide change,
+   echoing the .scan-line tile-hover motif but full-height and one-shot. Keyed
+   by the active index in React so it re-triggers per transition. */
+@keyframes heroSweep {
+  0% {
+    transform: translateX(-120%) skewX(-12deg);
+    opacity: 0;
+  }
+  12%,
+  70% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(120%) skewX(-12deg);
+    opacity: 0;
+  }
+}
+.hero-sweep {
+  animation: heroSweep 0.9s var(--ease-snap);
 }

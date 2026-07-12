@@ -136,6 +136,15 @@ const en = {
     cardAnswered: "Inquiry answered in 2 hours",
     heroWorkerAlt: "A builder in safety gear holding a hammer",
     heroTeaAlt: "Tea pluckers working on a Sri Lankan estate",
+    // Hero slider (#447)
+    sliderRegion: "Featured trades",
+    sliderBadge: "Verified trade",
+    sliderPrev: "Previous trade",
+    sliderNext: "Next trade",
+    sliderGoto: (n: number) => `Show trade ${n}`,
+    sliderStatus: (n: number, total: number, trade: string) =>
+      `Trade ${n} of ${total}: ${trade}`,
+    sliderPhotoAlt: (trade: string) => `${trade} at work`,
   },
   search: {
     placeholder: "What do you need? e.g. wiring, brake repair…",
@@ -1134,6 +1143,15 @@ const si: Dict = {
     cardAnswered: "පැය 2කින් පිළිතුරු ලැබුණා",
     heroWorkerAlt: "ආරක්ෂිත උපකරණ පැළඳ මිටියක් අතැතිව සිටින ගොඩනැගිලි කම්කරුවෙක්",
     heroTeaAlt: "ශ්‍රී ලාංකික තේ වතුයායක වැඩ කරන තේ දළු නෙළන්නන්",
+    // Hero slider (#447)
+    sliderRegion: "විශේෂිත වෘත්තීන්",
+    sliderBadge: "සත්‍යාපිත වෘත්තිය",
+    sliderPrev: "පෙර වෘත්තිය",
+    sliderNext: "ඊළඟ වෘත්තිය",
+    sliderGoto: (n: number) => `වෘත්තිය ${n} පෙන්වන්න`,
+    sliderStatus: (n: number, total: number, trade: string) =>
+      `වෘත්තිය ${n}/${total}: ${trade}`,
+    sliderPhotoAlt: (trade: string) => `${trade} වැඩ කරමින්`,
   },
   search: {
     placeholder: "ඔබට අවශ්‍ය කුමක්ද? උදා: වයරින්, බ්‍රේක්…",

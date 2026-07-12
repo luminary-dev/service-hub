@@ -113,6 +113,18 @@ their reviews. **`/account/security`** handles change password
 
 ## Discovery
 
+### Home page (`/`)
+
+**`src/app/page.tsx`** is the landing surface: a hero with the search console
+(`SearchBar` + popular-query chips) and, in the right column, an **animated
+trade slider** (`HeroSlider`, #447) — a framed technical plate that auto-advances
+through trade photos (mechanic, electrician, plumber, welder, carpenter) with a
+Ken Burns drift, a brand scan-line wipe, a `Fig.0N` caption, a live counter, an
+auto-advance gauge, hover/focus pause, prev/next + tick controls and arrow-key
+nav. It honours `prefers-reduced-motion` (static, manually-navigable) and keeps
+the first slide `priority` for LCP. Below the hero: the trade registry (category
+grid), a trust band, and featured/recent providers.
+
 ### Provider directory
 
 **`/providers`** (`src/app/providers/page.tsx`, `PAGE_SIZE = 12`) lists
