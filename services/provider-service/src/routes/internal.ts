@@ -100,22 +100,21 @@ internalRoutes.post("/internal/providers", async (c) => {
     return c.json({ id: provider.id });
   } catch (e) {
     // userId is unique: a retried/concurrent registration for the same user
-    // must be idempotent, not an unhandled 500. Return the existing id. If the
-    // profile was self-deactivated (#403 downgrade), becoming a provider again
-    // reactivates it — only a self-downgraded user (role CUSTOMER) can reach
-    // complete-provider, so this never un-suspends an admin suspension.
+    // must be idempotent, not an unhandled 500. Return the existing id WITHOUT
+    // touching `suspended`. The schema has a single `suspended` flag that can't
+    // distinguish a self-service downgrade (#403) from an ADMIN suspension, so
+    // clearing it here would silently lift an admin suspension if a
+    // re-registration ever raced through this path. Un-suspension is owned
+    // solely by the dedicated /reactivate endpoint below — invoked by
+    // complete-provider only for a self-downgraded CUSTOMER whose profile
+    // already exists — which keeps the invariant "re-registration must never
+    // lift an ADMIN suspension" intact even if this create path is reached.
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
       const existing = await db.provider.findUnique({
         where: { userId: data.userId },
-        select: { id: true, suspended: true },
+        select: { id: true },
       });
       if (existing) {
-        if (existing.suspended) {
-          await db.provider.update({
-            where: { id: existing.id },
-            data: { suspended: false },
-          });
-        }
         return c.json({ id: existing.id });
       }
     }
