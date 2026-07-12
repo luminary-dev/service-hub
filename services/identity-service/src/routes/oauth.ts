@@ -84,6 +84,14 @@ oauthRoutes.get("/oauth/:provider/callback", async (c) => {
     return fail("oauth_unavailable");
   }
 
+  // The user declined consent (or the provider bounced them back): Google sends
+  // ?error=access_denied and no code. That's a cancel, not a failure — return
+  // to /login quietly with no error banner (#431).
+  if (c.req.query("error")) {
+    clearTransientCookies(c);
+    return c.redirect(`${origin}/login`);
+  }
+
   const code = c.req.query("code");
   const state = c.req.query("state");
   const storedState = getCookie(c, STATE_COOKIE);
@@ -189,6 +197,7 @@ oauthRoutes.get("/oauth/:provider/callback", async (c) => {
     role: user.role,
     name: user.name,
     sv: user.sessionVersion,
+    avatar: user.avatarUrl,
   });
   clearTransientCookies(c);
 

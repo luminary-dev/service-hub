@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
-import { FaInbox, FaRegHeart, FaRegStar, type IconType } from "@/components/icons";
+import { FaIdCard, FaInbox, FaRegHeart, FaRegStar, type IconType } from "@/components/icons";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
@@ -14,6 +14,8 @@ import InView from "@/components/InView";
 import PageHeader from "@/components/ui/PageHeader";
 import StatReadout from "@/components/ui/StatReadout";
 import EmptyState from "@/components/ui/EmptyState";
+import AccountDetails from "@/components/AccountDetails";
+import CloseProviderProfile from "@/components/CloseProviderProfile";
 
 // Caching (#57): session-gated and must reflect the user's own writes
 // immediately — stays fully dynamic (no-store).
@@ -78,13 +80,24 @@ export default async function AccountPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const [locale, favorites, inquiriesData, reviewsData] = await Promise.all([
-    getLocale(),
-    apiJson<{ providerIds: string[] }>("/api/favorites"),
-    apiJson<{ inquiries: AccountInquiry[] }>("/api/account/inquiries"),
-    apiJson<{ reviews: AccountReview[] }>("/api/account/reviews"),
-  ]);
+  const [locale, favorites, inquiriesData, reviewsData, meData] =
+    await Promise.all([
+      getLocale(),
+      apiJson<{ providerIds: string[] }>("/api/favorites"),
+      apiJson<{ inquiries: AccountInquiry[] }>("/api/account/inquiries"),
+      apiJson<{ reviews: AccountReview[] }>("/api/account/reviews"),
+      apiJson<{
+        user: {
+          name: string;
+          email: string;
+          phone: string | null;
+          emailVerified: string | null;
+          avatarUrl: string | null;
+        } | null;
+      }>("/api/auth/me"),
+    ]);
   const t = dict[locale];
+  const me = meData?.user ?? null;
 
   // Saved ids come newest-first from identity-service; the card lookup
   // excludes suspended profiles, and we keep the favorites order.
@@ -135,7 +148,57 @@ export default async function AccountPage() {
       </PageHeader>
 
       <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
-        <section>
+        {me && (
+          <section className="mb-14">
+            <SectionHeading
+              code="ACC"
+              icon={FaIdCard}
+              title={t.account.detailsTitle}
+            />
+            <div className="mt-6">
+              <AccountDetails
+                initial={{
+                  name: me.name,
+                  phone: me.phone,
+                  email: me.email,
+                  emailVerified: me.emailVerified != null,
+                  avatarUrl: me.avatarUrl,
+                }}
+              />
+            </div>
+
+            {/* Become a provider (#401) — the conversion backend
+                (POST /api/auth/complete-provider) already exists; this routes
+                a CUSTOMER into the authed provider wizard at /welcome/provider. */}
+            {session.role === "CUSTOMER" && (
+              <div className="tech-corners mt-6 flex flex-col gap-4 rounded-lg border border-ink-300 bg-surface p-6 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="font-semibold text-ink-900">
+                    {t.account.becomeProviderTitle}
+                  </h3>
+                  <p className="mt-1 max-w-prose text-sm text-ink-600">
+                    {t.account.becomeProviderBody}
+                  </p>
+                </div>
+                <Link href="/welcome/provider" className="btn-primary shrink-0">
+                  {t.account.becomeProviderCta}
+                </Link>
+              </div>
+            )}
+
+            {/* Close provider profile (#403) — suspend/hide + revert to
+                customer, session re-issued with no re-login. */}
+            {session.role === "PROVIDER" && (
+              <div className="mt-6">
+                <CloseProviderProfile />
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* scroll-mt clears the sticky header when linked from the nav's
+            "Saved" entry (/account#saved). */}
+        <section id="saved" className="scroll-mt-24">
           <SectionHeading code="SAV" icon={FaRegHeart} title={t.account.savedTitle} />
           {results.length === 0 ? (
             <EmptyState

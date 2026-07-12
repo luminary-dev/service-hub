@@ -1,16 +1,20 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { isSvg } from "@/lib/image";
 import { useT } from "./I18nProvider";
 
 export default function UserMenu({
   name,
   role,
+  avatarUrl,
 }: {
   name: string;
   role: string;
+  avatarUrl?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -68,9 +72,20 @@ export default function UserMenu({
         aria-expanded={open}
         className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors duration-200 ease-snap hover:bg-ink-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
       >
-        <span className="flex h-8 w-8 items-center justify-center rounded-sm bg-brand-700 font-mono text-xs font-bold tabular-nums text-white dark:text-ink-50">
-          {initials}
-        </span>
+        {avatarUrl ? (
+          <Image
+            src={avatarUrl}
+            alt=""
+            width={32}
+            height={32}
+            unoptimized={isSvg(avatarUrl)}
+            className="h-8 w-8 rounded-sm object-cover"
+          />
+        ) : (
+          <span className="flex h-8 w-8 items-center justify-center rounded-sm bg-brand-700 font-mono text-xs font-bold tabular-nums text-white dark:text-ink-50">
+            {initials}
+          </span>
+        )}
         <span className="hidden text-sm font-medium text-ink-800 sm:block">
           {name.split(" ")[0]}
         </span>
@@ -111,7 +126,7 @@ export default function UserMenu({
                 {t.nav.dashboard}
               </Link>
             )}
-            {role === "ADMIN" && (
+            {(role === "ADMIN" || role === "SUPPORT") && (
               <Link
                 href="/admin"
                 onClick={() => setOpen(false)}
@@ -125,6 +140,13 @@ export default function UserMenu({
               onClick={() => setOpen(false)}
               className="block rounded-md px-3 py-2 text-sm text-ink-700 transition-colors duration-200 ease-snap hover:bg-ink-100 hover:text-brand-700"
             >
+              {t.nav.account}
+            </Link>
+            <Link
+              href="/account#saved"
+              onClick={() => setOpen(false)}
+              className="block rounded-md px-3 py-2 text-sm text-ink-700 transition-colors duration-200 ease-snap hover:bg-ink-100 hover:text-brand-700"
+            >
               {t.nav.saved}
             </Link>
             <Link
@@ -134,6 +156,28 @@ export default function UserMenu({
             >
               {t.nav.find}
             </Link>
+            {/* Customer actions are session-gated, not role-gated (#402): a
+                PROVIDER can post jobs / inquire / review too. Surface the
+                post-a-job entry point for both customers and providers. */}
+            {(role === "CUSTOMER" || role === "PROVIDER") && (
+              <Link
+                href="/jobs/new"
+                onClick={() => setOpen(false)}
+                className="block rounded-md px-3 py-2 text-sm text-ink-700 transition-colors duration-200 ease-snap hover:bg-ink-100 hover:text-brand-700"
+              >
+                {t.nav.postJob}
+              </Link>
+            )}
+            {/* Become a provider (#401): entry point for existing customers. */}
+            {role === "CUSTOMER" && (
+              <Link
+                href="/welcome/provider"
+                onClick={() => setOpen(false)}
+                className="block rounded-md px-3 py-2 text-sm text-ink-700 transition-colors duration-200 ease-snap hover:bg-ink-100 hover:text-brand-700"
+              >
+                {t.nav.becomeProvider}
+              </Link>
+            )}
           </div>
           <button
             type="button"

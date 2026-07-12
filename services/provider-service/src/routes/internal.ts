@@ -100,16 +100,66 @@ internalRoutes.post("/internal/providers", async (c) => {
     return c.json({ id: provider.id });
   } catch (e) {
     // userId is unique: a retried/concurrent registration for the same user
-    // must be idempotent, not an unhandled 500. Return the existing id.
+    // must be idempotent, not an unhandled 500. Return the existing id. If the
+    // profile was self-deactivated (#403 downgrade), becoming a provider again
+    // reactivates it — only a self-downgraded user (role CUSTOMER) can reach
+    // complete-provider, so this never un-suspends an admin suspension.
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
       const existing = await db.provider.findUnique({
         where: { userId: data.userId },
-        select: { id: true },
+        select: { id: true, suspended: true },
       });
-      if (existing) return c.json({ id: existing.id });
+      if (existing) {
+        if (existing.suspended) {
+          await db.provider.update({
+            where: { id: existing.id },
+            data: { suspended: false },
+          });
+        }
+        return c.json({ id: existing.id });
+      }
     }
     throw e;
   }
+});
+
+// Self-service downgrade (#403): a provider closing their own profile. Hides
+// it from every public listing (the `suspended` flag the admin path already
+// uses). Idempotent — a missing profile is a no-op { ok: true } so identity's
+// role flip can proceed. Reversible: becoming a provider again unsuspends it
+// via the /internal/providers create path below.
+internalRoutes.post("/internal/providers/by-user/:userId/deactivate", async (c) => {
+  const userId = c.req.param("userId");
+  const provider = await db.provider.findUnique({
+    where: { userId },
+    select: { id: true },
+  });
+  if (!provider) return c.json({ ok: true, deactivated: false });
+  await db.provider.update({
+    where: { id: provider.id },
+    data: { suspended: true },
+  });
+  return c.json({ ok: true, deactivated: true });
+});
+
+// Reactivate a self-deactivated profile (#403 re-upgrade). complete-provider
+// reuses an existing profile via getProviderIdByUser and never hits the create
+// path, so becoming a provider again must explicitly clear `suspended` here.
+// Idempotent — a missing or already-active profile is a no-op { ok: true }.
+internalRoutes.post("/internal/providers/by-user/:userId/reactivate", async (c) => {
+  const userId = c.req.param("userId");
+  const provider = await db.provider.findUnique({
+    where: { userId },
+    select: { id: true, suspended: true },
+  });
+  if (!provider) return c.json({ ok: true, reactivated: false });
+  if (provider.suspended) {
+    await db.provider.update({
+      where: { id: provider.id },
+      data: { suspended: false },
+    });
+  }
+  return c.json({ ok: true, reactivated: true });
 });
 
 // Login / job-board gate: the provider owned by a user, if any.
@@ -126,6 +176,25 @@ internalRoutes.get("/internal/providers/by-user/:userId", async (c) => {
     },
   });
   return c.json({ provider: provider ?? null });
+});
+
+// Denormalized avatar sync from identity (#434). Sets Provider.avatarUrl for
+// the user (no-op/200 if they have no provider profile), so public cards/
+// profile stay in step with User.avatarUrl. Always 200 — the caller's update
+// already succeeded; this is a best-effort mirror.
+internalRoutes.post("/internal/providers/avatar", async (c) => {
+  const body = (await c.req.json().catch(() => null)) as {
+    userId?: string;
+    avatarUrl?: string | null;
+  } | null;
+  if (!body?.userId) {
+    return c.json({ error: "userId required" }, 400);
+  }
+  await db.provider.updateMany({
+    where: { userId: body.userId },
+    data: { avatarUrl: body.avatarUrl ?? null },
+  });
+  return c.json({ ok: true });
 });
 
 // Batch hydration (job-service response lists).

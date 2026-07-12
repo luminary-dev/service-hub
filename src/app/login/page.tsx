@@ -34,24 +34,31 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    setLoading(false);
-    if (res.ok) {
-      const data = await res.json();
-      router.push(
-        localizedHref(
-          data.user.role === "PROVIDER" ? "/dashboard" : "/providers",
-          locale,
-        ),
-      );
-      router.refresh();
-    } else {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? t.login.failed);
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        router.push(
+          localizedHref(
+            data.user.role === "PROVIDER" ? "/dashboard" : "/providers",
+            locale,
+          ),
+        );
+        router.refresh();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? t.login.failed);
+      }
+    } catch {
+      // Network failure (offline, dropped connection) — recover instead of
+      // leaving the button disabled forever (#431).
+      setError(t.login.failed);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -134,6 +141,7 @@ export default function LoginPage() {
           <GoogleSignInButton label={t.oauth.continueWithGoogle} />
           <FacebookSignInButton label={t.oauth.continueWithFacebook} />
         </div>
+        <p className="mt-3 text-center text-xs text-ink-500">{t.oauth.dataUse}</p>
 
         <p className="mt-6 text-center text-sm text-ink-500">
           {t.login.newTo}{" "}

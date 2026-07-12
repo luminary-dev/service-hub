@@ -90,7 +90,9 @@ App secrets (set with `gh secret set <NAME>`):
   so the stack refuses to start if any is missing.
 - **Optional** (features degrade gracefully when unset): `ACME_EMAIL`,
   `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `EMAIL_FROM`, `R2_ENDPOINT`,
-  `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`.
+  `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `GOOGLE_CLIENT_ID`,
+  `GOOGLE_CLIENT_SECRET` (Google social login #398 — both unset → the
+  "Continue with Google" button is hidden, password auth unaffected).
 
 Deploy/SSH secrets: `PROD_SSH_HOST`, `PROD_SSH_USER`, `PROD_SSH_KEY` (a deploy
 key), `PROD_APP_DIR` (the checkout path on the host).
@@ -165,9 +167,6 @@ monorepo's `prod` branch so the mirrors reflect production.
 
 ## Still required before a public launch
 
-- **#201** — set `TRUSTED_PROXY_HOPS` on the gateway once that fix lands, so the
-  rate limiter reads the real client IP through the Caddy → web → gateway chain
-  (otherwise `X-Forwarded-For` is forgeable and brute-force protection is bypassable).
 - **#147 / #72** — verified email domain + `RESEND_API_KEY`.
 - **#113 / #34** — uptime + error monitoring. **#61** — DB backups (`docs/BACKUPS.md`).
 - **#62 / #63** — Terms/Privacy pages + PDPA.

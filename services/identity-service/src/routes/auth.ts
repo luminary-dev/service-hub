@@ -10,11 +10,15 @@ import { hashToken } from "../lib/tokens";
 import { eraseUserData } from "../lib/erase";
 import { isLockedOut, recordFailure } from "../lib/lockout";
 import { passwordSchema, providerSchema, registerSchema } from "../lib/register-schema";
+import { emailAddress } from "../lib/field-rules";
 import { categoryValidator } from "../lib/categories";
 import {
   createProviderProfile,
+  deactivateProviderProfile,
   getProviderIdByUser,
+  reactivateProviderProfile,
 } from "../lib/providers";
+import { logAudit } from "../lib/audit";
 import {
   sendPasswordResetEmail,
   sendVerificationEmail,
@@ -120,6 +124,7 @@ authRoutes.post("/register", async (c) => {
     role: user.role,
     name: user.name,
     sv: user.sessionVersion,
+    avatar: user.avatarUrl,
   });
 
   // Best-effort: a failure here must not fail registration.
@@ -209,6 +214,17 @@ authRoutes.post("/complete-provider", async (c) => {
       log.error("provider creation failed", { context: "complete-provider", err: e });
       return c.json({ error: "Upstream service unavailable" }, 502);
     }
+  } else {
+    // Re-upgrade (#403): the profile already exists but may have been
+    // self-deactivated on a prior downgrade. Reactivate it so it returns to
+    // public listings; fail loudly (502) rather than flip the role while the
+    // profile stays hidden.
+    try {
+      await reactivateProviderProfile(user.id);
+    } catch (e) {
+      log.error("provider reactivation failed", { context: "complete-provider", err: e });
+      return c.json({ error: "Upstream service unavailable" }, 502);
+    }
   }
 
   // Flip the role and bump sessionVersion so the old CUSTOMER token is revoked
@@ -223,6 +239,7 @@ authRoutes.post("/complete-provider", async (c) => {
     role: updated.role,
     name: updated.name,
     sv: updated.sessionVersion,
+    avatar: updated.avatarUrl,
   });
 
   return c.json({
@@ -232,10 +249,58 @@ authRoutes.post("/complete-provider", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /api/auth/leave-provider
+// ---------------------------------------------------------------------------
+// Counterpart to complete-provider (#403): a provider reverting to a plain
+// customer. Owns the request/cookie so it can re-issue the session as CUSTOMER
+// with no re-login (an S2S call can't touch the caller's cookie). Suspend/hide,
+// not delete — reviews/inquiries/job responses are retained and re-upgrading
+// restores the profile.
+authRoutes.post("/leave-provider", async (c) => {
+  const auth = getAuth(c);
+  if (!auth) return c.json({ error: "Unauthorized" }, 401);
+
+  const user = await db.user.findUnique({ where: { id: auth.userId } });
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+  if (user.role !== "PROVIDER") {
+    return c.json({ error: "You are not a provider." }, 409);
+  }
+
+  // Hide the profile FIRST (write-path gate). If provider-service is down we
+  // return 502 and leave the role untouched, so the two services never disagree
+  // ("still a provider in listings but a customer in identity").
+  try {
+    await deactivateProviderProfile(user.id);
+  } catch (e) {
+    log.error("provider deactivate failed", { context: "leave-provider", err: e });
+    return c.json({ error: "Upstream service unavailable" }, 502);
+  }
+
+  // Flip role → CUSTOMER and bump sessionVersion (old PROVIDER token revoked);
+  // the fresh cookie below keeps this session signed in as a customer.
+  const updated = await db.user.update({
+    where: { id: user.id },
+    data: { role: "CUSTOMER", sessionVersion: { increment: 1 } },
+  });
+
+  await createSession(c, {
+    userId: updated.id,
+    role: updated.role,
+    name: updated.name,
+    sv: updated.sessionVersion,
+    avatar: updated.avatarUrl,
+  });
+
+  await logAudit(c, "LEAVE_PROVIDER", "USER", updated.id);
+
+  return c.json({ user: { id: updated.id, name: updated.name, role: updated.role } });
+});
+
+// ---------------------------------------------------------------------------
 // POST /api/auth/login
 // ---------------------------------------------------------------------------
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: emailAddress,
   password: z.string().min(1),
 });
 
@@ -297,6 +362,7 @@ authRoutes.post("/login", async (c) => {
     role: user.role,
     name: user.name,
     sv: user.sessionVersion,
+    avatar: user.avatarUrl,
   });
 
   return c.json({
@@ -338,6 +404,7 @@ authRoutes.post("/logout-all", async (c) => {
     role: user.role,
     name: user.name,
     sv: user.sessionVersion,
+    avatar: user.avatarUrl,
   });
 
   return c.json({ ok: true });
@@ -418,7 +485,10 @@ authRoutes.get("/me", async (c) => {
       id: user.id,
       name: user.name,
       email: user.email,
+      phone: user.phone,
+      emailVerified: user.emailVerified,
       role: user.role,
+      avatarUrl: user.avatarUrl,
       providerId,
     },
   });
@@ -485,6 +555,7 @@ authRoutes.post("/change-password", async (c) => {
     role: updated.role,
     name: updated.name,
     sv: updated.sessionVersion,
+    avatar: updated.avatarUrl,
   });
 
   return c.json({ ok: true });
@@ -553,7 +624,7 @@ authRoutes.post("/resend-verification", async (c) => {
 // ---------------------------------------------------------------------------
 // POST /api/auth/forgot-password
 // ---------------------------------------------------------------------------
-const forgotSchema = z.object({ email: z.string().email() });
+const forgotSchema = z.object({ email: emailAddress });
 
 authRoutes.post("/forgot-password", async (c) => {
   const body = await c.req.json().catch(() => null);

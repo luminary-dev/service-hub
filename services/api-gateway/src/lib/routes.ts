@@ -14,7 +14,9 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
   // /api/files/<provider|review>/... URLs keep resolving unchanged.
   if (
     pathname.startsWith("/api/files/provider/") ||
-    pathname.startsWith("/api/files/review/")
+    pathname.startsWith("/api/files/review/") ||
+    pathname.startsWith("/api/files/category/") ||
+    pathname.startsWith("/api/files/user/")
   ) {
     return { service: "media", path: "/files" + pathname.slice("/api/files".length) };
   }
@@ -26,6 +28,17 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
   }
   if (pathname === "/api/account/reviews") {
     return { service: "review", path: pathname };
+  }
+  // Account self-service (#396): profile edit + change-email are identity data
+  // (name/phone/email live on the User row). Carved out explicitly ahead of the
+  // history routes above so they resolve to identity, not provider/review.
+  if (
+    pathname === "/api/account/profile" ||
+    pathname === "/api/account/avatar" ||
+    pathname === "/api/account/email/change" ||
+    pathname === "/api/account/email/confirm"
+  ) {
+    return { service: "identity", path: pathname };
   }
 
   // Review routes carved out of the provider/admin namespaces. This includes

@@ -16,7 +16,7 @@ type AdminUserRow = {
   id: string;
   email: string;
   name: string;
-  role: "CUSTOMER" | "PROVIDER" | "ADMIN";
+  role: "CUSTOMER" | "PROVIDER" | "ADMIN" | "SUPPORT";
   createdAt: string;
   locked: boolean;
 };
@@ -58,6 +58,7 @@ export default async function AdminUsersPage({
     CUSTOMER: t.roleCustomer,
     PROVIDER: t.roleProvider,
     ADMIN: t.roleAdmin,
+    SUPPORT: t.roleSupport,
   };
 
   function pageHref(target: number) {

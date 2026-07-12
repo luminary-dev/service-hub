@@ -22,12 +22,14 @@ rejected with `403 { "error": "Forbidden" }`. See
 | `GET` | `/healthz` | — | `200 { ok: true, service: "notification-service" }` |
 | `POST` | `/internal/email/verify` | `{ to, url, locale? }` | `200 { ok: true, delivered: boolean }` |
 | `POST` | `/internal/email/password-reset` | `{ to, url, locale? }` | `200 { ok: true, delivered: boolean }` |
+| `POST` | `/internal/email/change-email` | `{ to, url, locale? }` | `200 { ok: true, delivered: boolean }` |
 | `POST` | `/internal/email/inquiry` | `{ to, url, customerName, locale? }` | `200 { ok: true, delivered: boolean }` |
 | `POST` | `/internal/email/job-response` | `{ to, url, providerName, jobTitle, locale? }` | `200 { ok: true, delivered: boolean }` |
 
 - Each endpoint maps to a template in `src/lib/email.ts`: verify-email
-  (24h link), password-reset (1h link), new-inquiry, and job-response — all
-  rendered EN + SI through a shared branded `layout()`.
+  (24h link), password-reset (1h link), change-email (1h link, #396),
+  new-inquiry, and job-response — all rendered EN + SI through a shared branded
+  `layout()`.
 - `locale` is `"en"` or `"si"`; it defaults to `"en"` and any other value is
   coerced to `"en"`.
 - Invalid bodies return `400 { "error": "Invalid input" }`.

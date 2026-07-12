@@ -111,7 +111,7 @@ adminUsersRoutes.get("/api/admin/users/:id", async (c) => {
 const patchSchema = z
   .object({
     action: z.enum(["lock", "unlock"]).optional(),
-    role: z.enum(["CUSTOMER", "PROVIDER", "ADMIN"]).optional(),
+    role: z.enum(["CUSTOMER", "PROVIDER", "ADMIN", "SUPPORT"]).optional(),
   })
   .refine((d) => d.action !== undefined || d.role !== undefined, {
     message: "action or role is required",
@@ -150,8 +150,12 @@ adminUsersRoutes.patch("/api/admin/users/:id", async (c) => {
     data.lockedUntil = null;
     data.failedLogins = 0;
   }
-  if (parsed.data.role) {
+  if (parsed.data.role && parsed.data.role !== user.role) {
     data.role = parsed.data.role;
+    // A role change alters what the user is authorized to do; bump
+    // sessionVersion so tokens minted under the old role fail the gateway's
+    // revocation check and the new role takes effect immediately.
+    data.sessionVersion = { increment: 1 };
   }
 
   const updated = await db.user.update({ where: { id }, data });

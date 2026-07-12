@@ -259,6 +259,37 @@ describe("POST /api/providers/:id/inquiries", () => {
     expect(dbMock.inquiry.create).not.toHaveBeenCalled();
   });
 
+  it("404 for a suspended provider to a non-admin — no inquiry created (#361)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({
+      id: "p1",
+      contactEmail: "n@baas.lk",
+      suspended: true,
+    });
+    const res = await req("/api/providers/p1/inquiries", {
+      method: "POST",
+      body: valid,
+      role: "CUSTOMER",
+    });
+    expect(res.status).toBe(404);
+    expect(dbMock.inquiry.create).not.toHaveBeenCalled();
+  });
+
+  it("still allows an ADMIN to inquire against a suspended provider", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({
+      id: "p1",
+      contactEmail: "n@baas.lk",
+      suspended: true,
+    });
+    dbMock.inquiry.create.mockResolvedValue({ id: "inq1" });
+    const res = await req("/api/providers/p1/inquiries", {
+      method: "POST",
+      body: valid,
+      role: "ADMIN",
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.inquiry.create).toHaveBeenCalled();
+  });
+
   it("400 for an invalid body (message too short)", async () => {
     dbMock.provider.findUnique.mockResolvedValue({ id: "p1", contactEmail: "n@baas.lk" });
     const res = await req("/api/providers/p1/inquiries", {

@@ -11,8 +11,10 @@ move entries from **Unreleased** into a versioned section as part of that PR.
 
 ## [Unreleased]
 
-Hardening, operations and admin work on top of the initial release, plus the
-move to Cloudflare R2 for storage and the UI 2.0 redesign.
+Hardening, operations and admin work on top of the initial release; the move to
+Cloudflare R2 for storage and the UI 2.0 redesign; and account-experience work —
+social login, account self-service (profile, email, photos), and customer ⇄
+provider role switching.
 
 ### Added
 
@@ -62,6 +64,24 @@ move to Cloudflare R2 for storage and the UI 2.0 redesign.
   policy, a pull-request template, `CONTRIBUTING.md`, and the `docs/` technical
   reference (architecture, authz, admin, security, design, deployment,
   operations, backups, rate limiting, testing).
+- **Social login (Google)** — a "Continue with Google" option on login and
+  register (via `arctic` in identity-service, PKCE + verified-email
+  auto-linking), minting the same session as password auth; the button hides
+  when Google isn't configured (see [docs/AUTHZ.md](docs/AUTHZ.md)).
+- **Account self-service (`/account`)** — any signed-in user can edit their
+  name/phone, change their email (re-verified via a link to the new address),
+  and upload/remove a **profile photo**; the avatar is carried in the session
+  and shown in the top-nav user menu.
+- **Role switching** — a customer can become a provider (`/welcome/provider`)
+  and a provider can revert to a customer, both without a re-login; posting
+  jobs, inquiring and reviewing are gated on being signed in rather than on the
+  `CUSTOMER` role, so providers can act as customers too.
+- **Provider cover photo** — a dedicated cover image separate from the work
+  gallery, with the first work photo as the fallback cover.
+- **Category cover images** — admins can upload a per-category cover used as the
+  provider-card cover fallback when a provider has none of their own.
+- **Change-email template** — a notification-service email template + endpoint
+  for the change-email confirmation flow.
 
 ### Changed
 

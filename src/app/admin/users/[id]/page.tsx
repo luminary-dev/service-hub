@@ -18,7 +18,7 @@ type AdminUserDetail = {
   email: string;
   name: string;
   phone: string | null;
-  role: "CUSTOMER" | "PROVIDER" | "ADMIN";
+  role: "CUSTOMER" | "PROVIDER" | "ADMIN" | "SUPPORT";
   createdAt: string;
   locked: boolean;
   sessionVersion: number;
@@ -51,6 +51,7 @@ export default async function AdminUserDetailPage({
     CUSTOMER: t.roleCustomer,
     PROVIDER: t.roleProvider,
     ADMIN: t.roleAdmin,
+    SUPPORT: t.roleSupport,
   };
   const isSelf = user.id === session.userId;
 

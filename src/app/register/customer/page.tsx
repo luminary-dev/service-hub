@@ -27,18 +27,24 @@ export default function CustomerRegisterPage() {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const res = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, role: "CUSTOMER" }),
-    });
-    setLoading(false);
-    if (res.ok) {
-      router.push("/providers");
-      router.refresh();
-    } else {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? t.custReg.failed);
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, role: "CUSTOMER" }),
+      });
+      if (res.ok) {
+        router.push("/providers");
+        router.refresh();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? t.custReg.failed);
+      }
+    } catch {
+      // Network failure — recover instead of wedging the button (#431).
+      setError(t.custReg.failed);
+    } finally {
+      setLoading(false);
     }
   }
 

@@ -14,7 +14,12 @@ import { authRoutes } from "./auth";
 import { hashToken } from "../lib/tokens";
 import { sendVerificationEmail, sendPasswordResetEmail } from "../lib/verification";
 import { eraseUserData } from "../lib/erase";
-import { createProviderProfile } from "../lib/providers";
+import {
+  createProviderProfile,
+  deactivateProviderProfile,
+  getProviderIdByUser,
+  reactivateProviderProfile,
+} from "../lib/providers";
 
 // Stateful-enough Prisma double: canned per-test return values + call assertions
 // (mirrors the vi.fn()/stubFetch style already used in providers.test.ts).
@@ -50,7 +55,10 @@ vi.mock("../lib/erase", () => ({ eraseUserData: vi.fn() }));
 vi.mock("../lib/providers", () => ({
   getProviderIdByUser: vi.fn(async () => null),
   createProviderProfile: vi.fn(),
+  deactivateProviderProfile: vi.fn(),
+  reactivateProviderProfile: vi.fn(),
 }));
+vi.mock("../lib/audit", () => ({ logAudit: vi.fn() }));
 
 // Mount the auth routes on a bare app — no gateway/internal-secret middleware,
 // so we drive the handlers directly. Auth is simulated with the x-user-* headers
@@ -266,6 +274,45 @@ describe("POST /api/auth/forgot-password", () => {
 // ---------------------------------------------------------------------------
 // POST /api/auth/reset-password
 // ---------------------------------------------------------------------------
+// Email case-insensitivity (#431): schema normalization means a mixed-case /
+// padded address resolves to the same account on register and login.
+describe("email normalization", () => {
+  it("stores a lower-cased email on register", async () => {
+    db.user.findUnique.mockResolvedValue(null);
+    db.user.create.mockResolvedValue({
+      id: "u1",
+      name: "Cased User",
+      role: "CUSTOMER",
+      sessionVersion: 0,
+    });
+    const res = await post("/api/auth/register", {
+      role: "CUSTOMER",
+      name: "Cased User",
+      email: "  Mixed@Case.COM ",
+      phone: "0771234567",
+      password: STRONG_PASSWORD,
+    });
+    expect(res.status).toBe(200);
+    expect(db.user.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ email: "mixed@case.com" }),
+      })
+    );
+  });
+
+  it("looks up a lower-cased email on login", async () => {
+    db.user.findUnique.mockResolvedValue(null);
+    const res = await post("/api/auth/login", {
+      email: "USER@Example.COM",
+      password: "whatever",
+    });
+    expect(res.status).toBe(401);
+    expect(db.user.findUnique).toHaveBeenCalledWith({
+      where: { email: "user@example.com" },
+    });
+  });
+});
+
 describe("POST /api/auth/reset-password", () => {
   it("400s when the new password fails the policy", async () => {
     const res = await post("/api/auth/reset-password", {
@@ -517,6 +564,89 @@ describe("POST /api/auth/complete-provider", () => {
     const res = await post("/api/auth/complete-provider", providerBody, AUTH_HEADERS);
     expect(res.status).toBe(409);
     expect(createProviderProfile).not.toHaveBeenCalled();
+  });
+
+  it("re-upgrade: reactivates the existing profile instead of recreating it", async () => {
+    // A previously-closed provider (#403) re-upgrading: role is CUSTOMER again
+    // but the (suspended) profile still exists, so complete-provider must
+    // reactivate it rather than call createProviderProfile.
+    db.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "a@b.lk",
+      name: "Ann",
+      role: "CUSTOMER",
+    });
+    vi.mocked(getProviderIdByUser).mockResolvedValue("prov-1");
+    db.user.update.mockResolvedValue({
+      id: "u1",
+      name: "Ann",
+      role: "PROVIDER",
+      sessionVersion: 3,
+    });
+
+    const res = await post("/api/auth/complete-provider", providerBody, AUTH_HEADERS);
+    expect(res.status).toBe(200);
+    expect(reactivateProviderProfile).toHaveBeenCalledWith("u1");
+    expect(createProviderProfile).not.toHaveBeenCalled();
+  });
+
+  it("502s the re-upgrade when reactivation fails (role not flipped)", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "a@b.lk",
+      name: "Ann",
+      role: "CUSTOMER",
+    });
+    vi.mocked(getProviderIdByUser).mockResolvedValue("prov-1");
+    vi.mocked(reactivateProviderProfile).mockRejectedValue(new Error("peer down"));
+
+    const res = await post("/api/auth/complete-provider", providerBody, AUTH_HEADERS);
+    expect(res.status).toBe(502);
+    expect(db.user.update).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/leave-provider (#403)
+// ---------------------------------------------------------------------------
+describe("POST /api/auth/leave-provider", () => {
+  const PROVIDER_HEADERS = { ...AUTH_HEADERS, "x-user-role": "PROVIDER" };
+
+  it("hides the profile, flips role to CUSTOMER, and re-issues the session", async () => {
+    db.user.findUnique.mockResolvedValue({ id: "u1", name: "Ann", role: "PROVIDER" });
+    vi.mocked(deactivateProviderProfile).mockResolvedValue();
+    db.user.update.mockResolvedValue({
+      id: "u1",
+      name: "Ann",
+      role: "CUSTOMER",
+      sessionVersion: 2,
+    });
+
+    const res = await post("/api/auth/leave-provider", {}, PROVIDER_HEADERS);
+    expect(res.status).toBe(200);
+    expect(deactivateProviderProfile).toHaveBeenCalledWith("u1");
+    expect(db.user.update).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      data: { role: "CUSTOMER", sessionVersion: { increment: 1 } },
+    });
+    expect(res.headers.get("set-cookie")).toContain("sh_session=");
+  });
+
+  it("409s an account that is not a provider", async () => {
+    db.user.findUnique.mockResolvedValue({ id: "u1", name: "Ann", role: "CUSTOMER" });
+    const res = await post("/api/auth/leave-provider", {}, AUTH_HEADERS);
+    expect(res.status).toBe(409);
+    expect(deactivateProviderProfile).not.toHaveBeenCalled();
+    expect(db.user.update).not.toHaveBeenCalled();
+  });
+
+  it("502s and leaves the role untouched when provider-service is down", async () => {
+    db.user.findUnique.mockResolvedValue({ id: "u1", name: "Ann", role: "PROVIDER" });
+    vi.mocked(deactivateProviderProfile).mockRejectedValue(new Error("peer down"));
+
+    const res = await post("/api/auth/leave-provider", {}, PROVIDER_HEADERS);
+    expect(res.status).toBe(502);
+    expect(db.user.update).not.toHaveBeenCalled();
   });
 });
 

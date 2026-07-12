@@ -79,6 +79,7 @@ export default async function RegisterChoicePage() {
             <GoogleSignInButton label={t.oauth.continueWithGoogle} />
             <FacebookSignInButton label={t.oauth.continueWithFacebook} />
           </div>
+          <p className="mt-3 text-center text-xs text-ink-500">{t.oauth.dataUse}</p>
         </div>
 
         <p className="mt-8 text-center text-sm text-ink-500">

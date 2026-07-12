@@ -113,6 +113,17 @@ export default function MobileMenu({
               >
                 {t.nav.jobs}
               </Link>
+              {/* Customer actions are session-gated, not role-gated (#402):
+                  surface post-a-job for customers and providers alike. */}
+              {(session.role === "CUSTOMER" || session.role === "PROVIDER") && (
+                <Link
+                  href={localizedHref("/jobs/new", locale)}
+                  onClick={close}
+                  className={itemClass}
+                >
+                  {t.nav.postJob}
+                </Link>
+              )}
               {session.role === "PROVIDER" && (
                 <Link
                   href={localizedHref("/dashboard", locale)}
@@ -122,7 +133,7 @@ export default function MobileMenu({
                   {t.nav.dashboard}
                 </Link>
               )}
-              {session.role === "ADMIN" && (
+              {(session.role === "ADMIN" || session.role === "SUPPORT") && (
                 <Link
                   href={localizedHref("/admin", locale)}
                   onClick={close}
@@ -133,6 +144,13 @@ export default function MobileMenu({
               )}
               <Link
                 href={localizedHref("/account", locale)}
+                onClick={close}
+                className={itemClass}
+              >
+                {t.nav.account}
+              </Link>
+              <Link
+                href={localizedHref("/account#saved", locale)}
                 onClick={close}
                 className={itemClass}
               >

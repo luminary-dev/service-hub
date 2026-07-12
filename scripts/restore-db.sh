@@ -8,6 +8,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Target the prod compose project by default (see backup-dbs.sh / #384);
+# override COMPOSE_FILE=docker-compose.yml for a local dev restore.
+COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
+COMPOSE=(docker compose -f "$COMPOSE_FILE")
+
 DB="${1:-}"
 DUMP="${2:-}"
 CONFIRM="${3:-}"
@@ -26,7 +31,7 @@ if [ "$CONFIRM" != "--yes" ]; then
 fi
 
 echo "==> Restoring $DB from $DUMP"
-docker compose exec -T postgres pg_restore -U postgres --clean --if-exists \
+"${COMPOSE[@]}" exec -T postgres pg_restore -U postgres --clean --if-exists \
   --dbname "$DB" < "$DUMP"
 echo "Restore complete. Restart the owning service so Prisma reconnects cleanly:"
-echo "  docker compose restart ${DB%_db}-service"
+echo "  ${COMPOSE[*]} restart ${DB%_db}-service"

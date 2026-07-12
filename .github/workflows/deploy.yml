@@ -20,6 +20,11 @@ permissions: {}
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    # Only ever publish :prod images from the prod branch. `workflow_dispatch`
+    # has no ref restriction of its own, so without this guard a manual dispatch
+    # from any feature branch would build + push ghcr …:prod from unreviewed
+    # code, bypassing the dev→prod PR gate (#383).
+    if: github.ref == 'refs/heads/prod'
     permissions:
       contents: read
       packages: write
@@ -64,9 +69,10 @@ jobs:
     runs-on: ubuntu-latest
     # Deploys over SSH with its own secrets — it needs no GITHUB_TOKEN scope.
     permissions: {}
-    # Stays skipped until the production host (#110) is provisioned and this repo
-    # variable is flipped on. Images are still published by the job above.
-    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
+    # Prod-branch only (#383) + stays skipped until the production host (#110)
+    # is provisioned and this repo variable is flipped on. Images are still
+    # published by the job above.
+    if: ${{ github.ref == 'refs/heads/prod' && vars.DEPLOY_ENABLED == 'true' }}
     environment: production
     steps:
       - name: Deploy over SSH

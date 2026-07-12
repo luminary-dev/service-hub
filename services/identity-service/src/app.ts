@@ -6,6 +6,7 @@ import { log } from "./lib/log";
 import { getRequestId, requestLogger } from "./lib/logging";
 import { adminUsersRoutes } from "./routes/admin-users";
 import { adminImpersonationRoutes } from "./routes/admin-impersonation";
+import { accountRoutes } from "./routes/account";
 import { authRoutes } from "./routes/auth";
 import { oauthRoutes } from "./routes/oauth";
 import { favoritesRoutes } from "./routes/favorites";
@@ -35,6 +36,7 @@ app.use("*", requireInternalSecret);
 
 app.route("/api/auth", authRoutes);
 app.route("/api/auth", oauthRoutes);
+app.route("/api/account", accountRoutes);
 app.route("/api/favorites", favoritesRoutes);
 app.route("/", adminUsersRoutes);
 app.route("/api/admin/impersonate", adminImpersonationRoutes);

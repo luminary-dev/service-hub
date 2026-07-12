@@ -146,31 +146,37 @@ export default function ProviderRegisterForm({
         priceType: s.priceType,
       })),
     };
-    const res = await fetch(
-      authed ? "/api/auth/complete-provider" : "/api/auth/register",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          authed
-            ? profile
-            : {
-                role: "PROVIDER",
-                name: form.name.trim(),
-                email: form.email.trim(),
-                password: form.password,
-                ...profile,
-              },
-        ),
-      },
-    );
-    setLoading(false);
-    if (res.ok) {
-      router.push("/dashboard?welcome=1");
-      router.refresh();
-    } else {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? r.createFailed);
+    try {
+      const res = await fetch(
+        authed ? "/api/auth/complete-provider" : "/api/auth/register",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            authed
+              ? profile
+              : {
+                  role: "PROVIDER",
+                  name: form.name.trim(),
+                  email: form.email.trim(),
+                  password: form.password,
+                  ...profile,
+                },
+          ),
+        },
+      );
+      if (res.ok) {
+        router.push("/dashboard?welcome=1");
+        router.refresh();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? r.createFailed);
+      }
+    } catch {
+      // Network failure — recover instead of wedging the submit button (#431).
+      setError(r.createFailed);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -241,7 +247,7 @@ export default function ProviderRegisterForm({
           {/* Worker photo */}
           <figure className="tech-corners relative mt-8 hidden aspect-[4/3] overflow-hidden border border-ink-300 lg:block">
             <Image
-              src="/images/workers/electrician.jpg"
+              src="/images/workers/electrician-1.jpg"
               alt="A tradesperson at work in Sri Lanka"
               fill
               sizes="320px"
