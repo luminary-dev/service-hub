@@ -107,12 +107,23 @@ adminImpersonationRoutes.post("/:userId", async (c) => {
     return c.json({ error: "Cannot impersonate an admin account" }, 400);
   }
 
+  // Record the admin's own sessionVersion in the token (#358) so verifiers can
+  // revoke an active impersonation the moment the admin is force-logged-out or
+  // resets their password — not just when the 15m token expires.
+  const admin = await db.user
+    .findUnique({ where: { id: auth.userId }, select: { sessionVersion: true } })
+    .catch(() => null);
+  if (!admin) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
   await createImpersonationSession(c, {
     userId: target.id,
     role: target.role,
     name: target.name,
     sv: target.sessionVersion,
     impersonatedBy: auth.userId,
+    impersonatedBySv: admin.sessionVersion,
   });
 
   try {
