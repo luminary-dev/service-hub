@@ -177,7 +177,10 @@ Backend admin routes live in:
 Every admin **write** in provider-service is recorded to `AdminAuditLog`
 (#227) via a best-effort `logAudit(...)` after the action succeeds
 (`services/provider-service/src/routes/admin.ts`). A logging failure never rolls
-back or blocks the moderation action itself.
+back or blocks the moderation action itself. The **bulk** variants (bulk
+suspend/unsuspend, bulk verification approve/reject, bulk report
+resolve/dismiss) record **one entry per affected target**, using the same
+action names as their single-item counterparts.
 
 - **Recorded fields:** `adminId` (from `x-user-id`), `action` (e.g. `verify`,
   `suspend`, `delete-photo`, `restore-photo`, `create-category`, `edit-category`,
