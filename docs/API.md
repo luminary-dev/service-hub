@@ -59,10 +59,10 @@ the upstream that owns the handler.
 | `POST /api/auth/logout` | public | Clears the session cookie → `{ ok: true }`. |
 | `POST /api/auth/logout-all` | authenticated | Bumps `sessionVersion` (revokes every session), re-issues this one → `{ ok: true }`. |
 | `POST /api/auth/delete-account` | authenticated | Re-auth with `{ password }` (optional for social-only accounts, which have none — the session is the re-auth); fans out S2S erase to provider/review/job (any failure → 502, nothing deleted), then deletes the User + records `AccountDeletion`. |
-| `GET /api/auth/me` | public | `{ user: null }` when signed out, else `{ user: { id, name, email, phone, emailVerified, role, providerId } }`. |
+| `GET /api/auth/me` | public | `{ user: null }` when signed out, else `{ user: { id, name, email, phone, emailVerified, role, avatarUrl, providerId } }`. |
 | `PUT /api/account/profile` | authenticated | `{ name, phone }` — edits the caller's own name/phone (phone normalized to E.164) and re-issues the cookie so the cached display name updates. Any role. |
-| `POST /api/account/avatar` | authenticated | Multipart profile-photo upload (#434, any role) → media-service `user` namespace (R2 in prod). Sets `User.avatarUrl` and syncs the denormalized copy to the caller's provider profile (if any). jpeg/png/webp ≤5MB → `{ avatarUrl }`. |
-| `DELETE /api/account/avatar` | authenticated | Clears the caller's `avatarUrl` (and the provider copy) → `{ ok: true }`. |
+| `POST /api/account/avatar` | authenticated | Multipart profile-photo upload (#434, any role) → media-service `user` namespace (R2 in prod). Sets `User.avatarUrl`, syncs the denormalized copy to the caller's provider profile (if any), and re-issues the session cookie so the top-nav avatar updates without a re-login. jpeg/png/webp ≤5MB → `{ avatarUrl }`. |
+| `DELETE /api/account/avatar` | authenticated | Clears the caller's `avatarUrl` (and the provider copy) and re-issues the session cookie → `{ ok: true }`. |
 | `POST /api/account/email/change` | authenticated | `{ email }` — starts a change-email flow: emails a 1h confirmation link **to the new address**. 400 if it's the current address, 409 if already taken. Does not change the address yet. |
 | `POST /api/account/email/confirm` | public | `{ token }` — consumes the change-email token and switches the address (sets `emailVerified`). Session is unaffected (email isn't in the JWT). 409 if the address was taken since the request. |
 | `POST /api/auth/change-password` | authenticated | `{ currentPassword, newPassword }`; re-auth, bumps `sessionVersion`, re-issues cookie. |
@@ -170,7 +170,7 @@ Board/mine pagination: `page` ≥ 1, `pageSize`/`take` default 20, capped **50**
 
 | Method + path | Auth | Summary |
 |---|---|---|
-| `GET /api/files/:namespace/*` | public (via gateway) | Serve a stored image, streamed from R2 (private bucket) or local disk; long-cache immutable. The gateway only routes the `provider` and `review` namespaces (→ media `/files/*`, supplying the internal secret). Non-image extension / missing → 404. |
+| `GET /api/files/:namespace/*` | public (via gateway) | Serve a stored image, streamed from R2 (private bucket) or local disk; long-cache immutable. The gateway routes the `provider`, `review`, `category` and `user` namespaces (→ media `/files/*`, supplying the internal secret). Non-image extension / missing → 404. |
 
 Uploads never go here directly — the provider/review services stream bytes to
 media over S2S (`/internal/media/store`) and keep the returned URL, which
@@ -199,7 +199,7 @@ each service enforces the tier. **Reads and report resolve/dismiss** gate on
 |---|---|---|
 | `GET /api/admin/users` | SUPPORT+ | Search by email/name (`?q`, `?page`), newest first, page 20 → `{ users, total, page, pageSize }`. |
 | `GET /api/admin/users/:id` | SUPPORT+ | Detail + favorites hydrated with provider names/phones (degrades to null). |
-| `PATCH /api/admin/users/:id` | ADMIN | `{ action: lock\|unlock }` and/or `{ role: CUSTOMER\|PROVIDER\|ADMIN }` (SUPPORT assigned out-of-band). Self → 400. |
+| `PATCH /api/admin/users/:id` | ADMIN | `{ action: lock\|unlock }` and/or `{ role: CUSTOMER\|PROVIDER\|ADMIN\|SUPPORT }` (a role change bumps `sessionVersion`). Self → 400. |
 | `POST /api/admin/users/:id/force-logout` | ADMIN | Bumps `sessionVersion` (self → 400). |
 | `POST /api/admin/impersonate/:userId` | ADMIN | `:userId` may be id or email; can't target self or an ADMIN (400); mints a 15-min `impersonation_session` cookie → `{ ok, user, providerId, expiresInSeconds: 900 }`. |
 | `POST /api/admin/impersonate/end` | ADMIN | Clears the cookie, closes the open log row → `{ ok: true }`. |
@@ -276,6 +276,9 @@ using the shared `s2s()` helper (one bounded retry on idempotent GETs).
 | `GET /internal/categories` | Full category list (incl. inactive) for peers' validation caches. |
 | `POST /internal/providers` | Registration orchestration (called by identity); idempotent on the unique userId → `{ id }`. |
 | `GET /internal/providers/by-user/:userId` | Provider owned by a user (login / job-board gate). |
+| `POST /internal/providers/by-user/:userId/deactivate` | Self-downgrade (#403, called by identity `leave-provider`): hide the user's provider profile (`suspended = true`). Idempotent. |
+| `POST /internal/providers/by-user/:userId/reactivate` | Re-upgrade (#403, called by identity `complete-provider` when a hidden profile exists): clear `suspended`. Idempotent. |
+| `POST /internal/providers/avatar` | Denormalized avatar sync from identity (#434), `{ userId, avatarUrl }` — updates the provider's cached `avatarUrl`. No-op if the user has no provider. |
 | `GET /internal/providers?ids=` | Batch provider hydration (≤500). |
 | `GET /internal/inquiries/exists?providerId=&userId=` | Review gate — has this user inquired with this provider? → `{ exists }`. |
 | `GET /internal/providers/:id/summary` | Existence/suspended check (favorites, reviews) — always 200. |
@@ -308,6 +311,7 @@ unset — console fallback). Bodies carry `{ to, url, locale, ... }`.
 |---|---|
 | `POST /internal/email/verify` | Email-verification message. |
 | `POST /internal/email/password-reset` | Password-reset message. |
+| `POST /internal/email/change-email` | Change-email confirmation message (#396), sent to the new address. |
 | `POST /internal/email/inquiry` | New-inquiry notification (`customerName`). |
 | `POST /internal/email/job-response` | Job-response notification (`providerName`, `jobTitle`). |
 

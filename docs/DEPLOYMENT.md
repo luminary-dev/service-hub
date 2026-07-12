@@ -90,7 +90,9 @@ App secrets (set with `gh secret set <NAME>`):
   so the stack refuses to start if any is missing.
 - **Optional** (features degrade gracefully when unset): `ACME_EMAIL`,
   `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `EMAIL_FROM`, `R2_ENDPOINT`,
-  `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`.
+  `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `GOOGLE_CLIENT_ID`,
+  `GOOGLE_CLIENT_SECRET` (Google social login #398 — both unset → the
+  "Continue with Google" button is hidden, password auth unaffected).
 
 Deploy/SSH secrets: `PROD_SSH_HOST`, `PROD_SSH_USER`, `PROD_SSH_KEY` (a deploy
 key), `PROD_APP_DIR` (the checkout path on the host).

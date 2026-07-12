@@ -1,9 +1,9 @@
 // Canonical src/lib/storage.ts for services that accept uploads
-// (provider-service, review-service). Image processing and the upload bytes are
-// owned by media-service; this is just the thin S2S client. provider-service
-// and review-service keep BYTE-IDENTICAL copies — the caller passes its own
-// namespace ("provider" / "review"), which media maps to the gateway routes
-// /api/files/provider/* and /api/files/review/*. Storage backend (Cloudflare R2
+// (identity-service, provider-service, review-service). Image processing and
+// the upload bytes are owned by media-service; this is just the thin S2S
+// client. Those services keep BYTE-IDENTICAL copies — the caller passes its own
+// namespace ("provider" / "review" / "category" / "user"), which media maps to
+// the gateway routes /api/files/<namespace>/*. Storage backend (Cloudflare R2
 // vs local disk) is media-service's concern, not the caller's.
 import { s2s } from "./http";
 
@@ -79,4 +79,21 @@ export async function removeStoredFile(url: string): Promise<void> {
   } catch {
     // best-effort
   }
+}
+
+// Orphan sweep (ops tooling): the caller passes the set of URLs its rows still
+// reference for a namespace; media-service removes any stored file not in that
+// set. Fails loudly (unlike delete) since it's an explicit maintenance action.
+export async function sweepMedia(
+  namespace: string,
+  referenced: string[]
+): Promise<{ scanned: number; removed: number }> {
+  const res = await s2s(MEDIA_SERVICE_URL, "/internal/media/sweep", {
+    method: "POST",
+    body: JSON.stringify({ namespace, referenced }),
+  });
+  if (!res.ok) {
+    throw new Error(`media-service sweep responded ${res.status}`);
+  }
+  return (await res.json()) as { scanned: number; removed: number };
 }

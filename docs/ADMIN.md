@@ -221,12 +221,17 @@ the list read-only.
 Lists every managed category (including inactive) via
 `GET /api/admin/categories`. Header stats: total / active / inactive. Each
 category has a `slug`, English label (`labelEn`), Sinhala label (`labelSi`),
-`icon`, `active` flag, and `sortOrder`.
+`icon`, an optional cover image (`imageUrl`), `active` flag, and `sortOrder`.
 
 - **Add** — slug (pattern `^[a-z0-9-]{2,40}$`), icon, EN/SI labels, sort order →
   `POST /api/admin/categories` (409 on duplicate slug).
 - **Edit** — inline edit of EN/SI labels, icon, sort order →
   `PATCH /api/admin/categories/{slug}`.
+- **Cover image (#436)** — upload a per-category cover via
+  `POST /api/admin/categories/image` (full-admin only; multipart → media-service
+  `category` namespace, R2 in prod; jpeg/png/webp ≤5MB). It becomes the card
+  cover fallback when a provider has no cover of their own. Distinct from `icon`
+  (a font-awesome component name, not an image).
 - **Active flag** — Activate / Deactivate toggles the `active` flag via
   `PATCH /api/admin/categories/{slug}`. There is **no hard delete by design**:
   deactivating hides a category from public lists while existing providers keep
@@ -249,8 +254,9 @@ Moderate link.
 session version, and the user's favorites. Actions (hidden when viewing your
 own account):
 
-- **Change role** — CUSTOMER / PROVIDER / ADMIN via
-  `PATCH /api/admin/users/{id}` `{ role }`.
+- **Change role** — CUSTOMER / PROVIDER / ADMIN / SUPPORT via
+  `PATCH /api/admin/users/{id}` `{ role }` (a role change bumps the user's
+  `sessionVersion`, forcing a re-login on their next request).
 - **Lock / unlock** — `PATCH /api/admin/users/{id}` `{ action }`. Lock sets a
   far-future `lockedUntil` (effectively permanent manual lock, reusing the same
   column as the 5-strike / 15-minute auto-lockout); unlock clears it and resets
@@ -367,10 +373,12 @@ ADMIN_EMAIL=you@baas.lk ADMIN_PASSWORD='...' npm run create-admin
 ```
 
 Script: `services/identity-service/prisma/create-admin.js`. Password must be
-6–100 chars (bcrypt cost 10). If the email already exists it **promotes the
-account to ADMIN, resets the password, and bumps `sessionVersion`** (killing old
-sessions); otherwise it creates a new ADMIN with a verified email. The Users
-page role-change control assigns `CUSTOMER | PROVIDER | ADMIN`; to grant the
-**SUPPORT** tier, set `role = "SUPPORT"` directly in the identity DB.
+6–100 chars (bcrypt cost 10). Pass `--support` to create/promote a **SUPPORT**
+account instead of ADMIN (`npm run create-admin -- --email ops@baas.lk
+--password '…' --support`). If the email already exists it **promotes the
+account to the chosen tier, resets the password, and bumps `sessionVersion`**
+(killing old sessions); otherwise it creates a new account with a verified
+email. The Users page role-change control also assigns all four roles
+(`CUSTOMER | PROVIDER | ADMIN | SUPPORT`) directly.
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for running this in production.

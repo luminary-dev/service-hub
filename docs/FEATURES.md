@@ -36,6 +36,28 @@ below. For admin/moderation flows see [ADMIN.md](ADMIN.md).
   the profile goes live immediately. Signup is rate-limited (see
   [RATE_LIMITING.md](RATE_LIMITING.md)).
 
+### Social login (#398)
+
+Both `/login` and `/register` show a **Continue with Google** button
+(`GoogleSignInButton`) above the email/password form, when Google is configured
+(`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` set — otherwise the button is hidden
+and password auth is unaffected). The flow, handled by identity-service via
+`arctic`:
+
+- `GET /api/auth/oauth/google/start` → redirect to Google (PKCE, state cookie).
+- `GET /api/auth/oauth/google/callback` → verifies, resolves the identity, mints
+  the same `sh_session` JWT as password login, and redirects into the app.
+
+A first-time Google signup is created as a `CUSTOMER` (then convertible to a
+provider via the role-switch flow). An existing account is **auto-linked** only
+when the Google email is verified and matches. Failures come back to the form as
+`?error=oauth_email` (Google didn't share a verified email),
+`?error=oauth_unavailable` (Google not configured / upstream error), or
+`?error=oauth` (generic). Authorization semantics — roles, `sessionVersion`
+revocation, S2S trust — are identical to password sessions. See
+[AUTHZ.md](AUTHZ.md#sign-in-methods-398). Facebook is a planned fast-follow
+(#405) and is **not** shipped yet.
+
 ### Account self-service (`/account`)
 
 Customer actions (post a job, send an inquiry, favorite, review) are gated on
@@ -50,6 +72,11 @@ signed-in user:
 
 - **Edit name/phone** — `PUT /api/account/profile` (re-issues the session so the
   header/menu name updates without a re-login).
+- **Profile photo** — upload/remove an avatar (`POST`/`DELETE
+  /api/account/avatar`, #434; any role, customers included). Stored on the User
+  via media-service (`user` namespace, R2 in prod), denormalized to the provider
+  profile when one exists, and carried in the re-issued session so the top-nav
+  avatar (`UserMenu`) updates immediately, falling back to initials.
 - **Change email** — `POST /api/account/email/change` emails a 1h confirmation
   link **to the new address**; clicking it (`/verify-email-change`) posts
   `POST /api/account/email/confirm`, which switches the address and marks it
@@ -80,9 +107,13 @@ a "View public" link to the live profile. A tabbed editor
   "away until" date (clears to available), plus all profile/contact/social
   fields.
 - **Services** — inline add/edit/delete of service rows.
-- **Photos** — avatar upload plus drag-and-drop work-photo uploads with
-  progress, captions, reordering (`PATCH /api/provider/photos/order`; the first
-  photo is the "Cover"), and delete. See [Media & uploads](#media--uploads).
+- **Photos** — profile-photo (avatar) upload, a **dedicated cover photo**
+  (#435, `POST /api/provider/photos` with `kind: "cover"` /
+  `DELETE /api/provider/cover`) that is independent of the gallery, plus
+  drag-and-drop work-photo uploads with progress, captions, reordering
+  (`PATCH /api/provider/photos/order`) and delete. When no dedicated cover is
+  set, the first work photo is used as the cover fallback. See
+  [Media & uploads](#media--uploads).
 - **Inquiries** — the provider's inbox (see [Inquiries](#inquiries--messaging)).
 
 ### Verification documents
@@ -133,8 +164,9 @@ Category/district/rating/availability/sort apply on change; text and price
 apply on submit. Results paginate with prev/next. Ranking over the matched set
 is bounded server-side (up to 1000 candidates) and backed by pg_trgm indexes.
 
-Provider cards (`ProviderCard`) show a cover image (uploaded cover → trade stock
-photo → placeholder), category, experience, availability chip ("Available" or
+Provider cards (`ProviderCard`) show a cover image (provider's own cover →
+admin-set category cover image (#436) → placeholder), category, experience,
+availability chip ("Available" or
 "Away until…"), verified tick, location, headline, rating, "from" price, and an
 optional favorite button.
 
@@ -227,8 +259,11 @@ response list and a status toggle. **Job statuses are OPEN / CLOSED**; the owner
 closes/reopens via `PATCH /api/jobs/{jobId}` `{ status }`.
 
 Admins have read-only oversight of all jobs — see
-[ADMIN.md](ADMIN.md#jobs). Monetization (pricing, commission, payments) is
-intentionally deferred to v0.2 — the platform is free to use in v0.1.
+[ADMIN.md](ADMIN.md#jobs). **Monetization — payments, commission/fees, billing
+and transaction records — is intentionally deferred to v0.2**; the platform is
+free to use in v0.1. Service rates, the price-range filter, and the optional job
+budget are **informational only** (displayed to help matching); no money changes
+hands through the platform and there is no checkout, ledger, or commission.
 
 ---
 

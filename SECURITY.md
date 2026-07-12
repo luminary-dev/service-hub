@@ -84,8 +84,9 @@ ever disagree, and fix the doc.
 - **Algorithm pinning.** Every verifier calls `jwtVerify(..., { algorithms:
   ["HS256"] })`, pinning the algorithm to block `alg: none` / algorithm-
   confusion attacks.
-- **Claims.** `userId`, `role`, `name`, and `sv` (session version — see
-  revocation below). Expiry is **7 days** (`setExpirationTime("7d")`).
+- **Claims.** `userId`, `role`, `name`, `sv` (session version — see revocation
+  below), and an optional `avatar` (profile-photo URL, so the top-nav renders it
+  without a `/me` fetch; #434). Expiry is **7 days** (`setExpirationTime("7d")`).
 - **Cookie flags.** `HttpOnly`, `SameSite=Lax`, `Secure` in production
   (`NODE_ENV=production`), `Path=/`, `Max-Age` 7 days. HttpOnly keeps the token
   out of JS; SameSite=Lax is the first line of CSRF defence.
@@ -154,6 +155,13 @@ token embeds the value it was minted with as the `sv` claim.
   staples). The same `passwordSchema` is reused by registration, change-password
   and reset-password, so a reset can't set a password registration would reject.
 - **Hashing.** `bcrypt` (cost 10). Raw passwords are never stored.
+- **Social-login accounts (#398).** Users who sign up with Google have **no
+  password** (`User.passwordHash` is nullable). Password login still returns the
+  uniform 401 for them, change-password redirects to the reset flow, and
+  delete-account skips the password re-auth (the session is the proof). OAuth
+  uses `arctic` inside identity-service with PKCE + a state cookie; an existing
+  account is auto-linked only on a Google-**verified** email that matches. See
+  [docs/AUTHZ.md](docs/AUTHZ.md#sign-in-methods-398).
 - **Per-account lockout** (`lib/lockout.ts`): 5 failed logins locks the account
   for 15 minutes; the counter resets only on a successful login. Admins can
   apply a manual (effectively indefinite) lock reusing the same `lockedUntil`
