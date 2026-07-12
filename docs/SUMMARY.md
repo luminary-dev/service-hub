@@ -50,6 +50,7 @@
 - [Deployment](DEPLOYMENT.md)
 - [Operations runbook](OPERATIONS.md)
 - [Backups & disaster recovery](BACKUPS.md)
+- [Secret rotation](SECRET_ROTATION.md)
 - [Rate limiting](RATE_LIMITING.md)
 - [Testing](TESTING.md)
 - [CI additions (proposed)](CI_ADDITIONS.md)

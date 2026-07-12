@@ -28,6 +28,7 @@ the security posture. Per-service API detail lives in each
 | [FEATURES.md](FEATURES.md) | Product feature reference — what the marketplace does end to end, and which service owns each piece. Split under [`features/`](features/). |
 | [SECURITY.md](../SECURITY.md) | Security policy, supported versions and the responsible-disclosure process (repo root). |
 | [BACKUPS.md](BACKUPS.md) | Database backup & disaster recovery: `scripts/backup-dbs.sh` dumps, upload storage (R2 vs local volumes), the restore runbook and offsite copies. |
+| [SECRET_ROTATION.md](SECRET_ROTATION.md) | Operator runbook for rotating the platform secrets (`AUTH_SECRET`, `INTERNAL_API_SECRET`, `POSTGRES_PASSWORD`, third-party keys): the blast radius of each, the update-secret → redeploy → verify procedure, and rollback. |
 | [TESTING.md](TESTING.md) | The test strategy layer by layer — service unit tests, gateway app tests, web unit tests — and what belongs where. |
 | [CI_ADDITIONS.md](CI_ADDITIONS.md) | A menu of further CI checks/pipelines we can add (actionlint, link checking, service ESLint, dependency-review, SBOM/cosign, …) — rationale, effort and gate-vs-report for each, plus what already runs (incl. CodeQL via default setup). |
 | [RATE_LIMITING.md](RATE_LIMITING.md) | The gateway's Redis-backed sliding-window limiter: the per-route budget table, the in-memory fallback and the client-IP (XFF) caveat (#201). |

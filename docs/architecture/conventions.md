@@ -13,6 +13,31 @@
   `prisma/migrations/` (baseline `0_init`); dev DBs created before the baseline
   run `scripts/baseline-migrations.sh` once. Reference scaffold:
   `services/identity-service/`.
+- **Migration hygiene** (hand-written migrations, applied on start via
+  `prisma migrate deploy`):
+  - **Never edit or rename a migration that has already been applied.** Prisma
+    records each migration's checksum; any change to an applied migration (SQL
+    or directory name) is detected as drift and the service refuses to boot.
+    Fixes and follow-ups always land as a **new** migration.
+  - **Unique, correctly-ordered timestamps.** Each new migration directory is
+    `YYYYMMDDHHMMSS_snake_summary` with a timestamp strictly greater than every
+    existing one in that service (list the dirs and pick past the max). Migrations
+    apply in lexical order, so duplicate or out-of-order timestamps make the
+    apply order ambiguous.
+  - **Idempotent DDL.** Guard every statement so a re-run is a no-op:
+    `ADD COLUMN IF NOT EXISTS`, `DROP … IF EXISTS`, `CREATE INDEX IF NOT EXISTS`,
+    guarded `CREATE`. New columns that must be `NOT NULL` carry a `DEFAULT` so
+    existing rows backfill.
+  - **Known, accepted offenders** (predate this convention; **not** editable
+    without checksum drift, so left as-is): provider-service has four migrations
+    sharing the timestamp `20260707120000` (`admin_audit_log`,
+    `report_resolution_audit`, `report_source`, `verification_rejection_reason`)
+    and review-service has two (`admin_audit_log`, `report_resolution_audit`);
+    review-service's `20260708100000_review_provider_created_index` uses a bare
+    `DROP INDEX` (no `IF EXISTS`) and several early provider-service migrations
+    (`inquiry_messaging`, `reports`, `admin_audit_log`, …) use bare
+    `CREATE INDEX` (no `IF NOT EXISTS`). These already applied cleanly on every
+    environment; new migrations must not repeat the pattern.
 - **Logging**: structured JSON on stdout, one line per event —
   `{ level, time, service, msg, ...fields }` via the canonical
   `src/lib/logging.ts` (identical copy in every service incl. the gateway; each
