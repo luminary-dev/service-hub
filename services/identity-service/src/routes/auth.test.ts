@@ -18,6 +18,7 @@ import { eraseUserData } from "../lib/erase";
 import {
   createProviderProfile,
   deactivateProviderProfile,
+  eraseProviderProfile,
   getProviderIdByUser,
   reactivateProviderProfile,
   resolveProviderIdForErase,
@@ -58,6 +59,7 @@ vi.mock("../lib/providers", () => ({
   getProviderIdByUser: vi.fn(async () => null),
   createProviderProfile: vi.fn(),
   deactivateProviderProfile: vi.fn(),
+  eraseProviderProfile: vi.fn(),
   reactivateProviderProfile: vi.fn(),
   resolveProviderIdForErase: vi.fn(async () => null),
 }));
@@ -117,6 +119,9 @@ beforeEach(() => {
   vi.mocked(sendVerificationEmail).mockResolvedValue(undefined);
   vi.mocked(sendPasswordResetEmail).mockResolvedValue(undefined);
   vi.mocked(eraseUserData).mockResolvedValue(undefined);
+  // Default: the compensating provider-erase (#359) resolves so register's
+  // best-effort `.catch()` has a promise to chain. Per-test overrides reject it.
+  vi.mocked(eraseProviderProfile).mockResolvedValue(undefined);
   // Default: the caller has no provider profile. Per-test overrides set an id
   // (provider deletion) or reject (transient S2S failure).
   vi.mocked(resolveProviderIdForErase).mockResolvedValue(null);
@@ -660,6 +665,50 @@ describe("POST /api/auth/register (provider compensation)", () => {
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({ error: "Upstream service unavailable" });
     // Compensation removes the orphaned user (no profile ⇒ useless row).
+    expect(db.user.delete).toHaveBeenCalledWith({ where: { id: "u1" } });
+  });
+
+  // #359: the provider-create throwing is ambiguous — provider-service may have
+  // committed the Provider row and only lost its *response* (a timeout).
+  // Deleting the user alone would then leave that Provider orphaned with a
+  // dangling userId, so compensation must also fire the idempotent erase.
+  it("erases the possibly-committed provider before deleting the user (lost-response path)", async () => {
+    db.user.findUnique.mockResolvedValue(null);
+    db.user.create.mockResolvedValue({
+      id: "u1",
+      email: "ann@b.lk",
+      name: "Ann Provider",
+      role: "PROVIDER",
+      sessionVersion: 0,
+    });
+    // Response lost after the row committed: identity sees a timeout, never the id.
+    vi.mocked(createProviderProfile).mockRejectedValue(new Error("timeout"));
+
+    const res = await post("/api/auth/register", registerBody);
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Upstream service unavailable" });
+    // Both cleanups run: erase any orphaned Provider row, then delete the user.
+    expect(eraseProviderProfile).toHaveBeenCalledWith("u1");
+    expect(db.user.delete).toHaveBeenCalledWith({ where: { id: "u1" } });
+  });
+
+  it("still returns a consistent 502 when the compensating provider-erase itself fails", async () => {
+    db.user.findUnique.mockResolvedValue(null);
+    db.user.create.mockResolvedValue({
+      id: "u1",
+      email: "ann@b.lk",
+      name: "Ann Provider",
+      role: "PROVIDER",
+      sessionVersion: 0,
+    });
+    vi.mocked(createProviderProfile).mockRejectedValue(new Error("peer down"));
+    // A failed orphan-erase is best-effort: logged, never escalated to a 500,
+    // and the user cleanup still proceeds.
+    vi.mocked(eraseProviderProfile).mockRejectedValue(new Error("erase down"));
+
+    const res = await post("/api/auth/register", registerBody);
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Upstream service unavailable" });
     expect(db.user.delete).toHaveBeenCalledWith({ where: { id: "u1" } });
   });
 

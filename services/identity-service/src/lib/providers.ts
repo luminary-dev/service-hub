@@ -166,6 +166,26 @@ export type ProviderRegistration = {
   }[];
 };
 
+// Registration compensation (#359): erase any Provider row provider-service
+// may have committed for this user. createProviderProfile throwing is
+// ambiguous — the create may have succeeded and only its *response* was lost
+// (a timeout), leaving a committed Provider whose userId dangles once the
+// just-created user is rolled back. This fires the idempotent
+// POST /internal/users/:id/erase (a no-op when nothing was committed) so no
+// orphan survives. Write-path helper — throws on failure like the others; the
+// caller (register) invokes it best-effort so an upstream blip can't escalate
+// the graceful 502 into a 500.
+export async function eraseProviderProfile(userId: string): Promise<void> {
+  const res = await s2s(
+    PROVIDER_SERVICE_URL,
+    `/internal/users/${encodeURIComponent(userId)}/erase`,
+    { method: "POST", body: "{}" }
+  );
+  if (!res.ok) {
+    throw new Error(`provider-service responded ${res.status}`);
+  }
+}
+
 // Register orchestration: creates the provider profile (+services) in
 // provider-service. Throws on failure — the caller compensates by deleting
 // the just-created user and returning 502.
