@@ -43,6 +43,28 @@ export async function getProviderIdByUser(
   }
 }
 
+// Account-deletion resolver (#360): the user's provider id, needed by the job
+// erase to delete their JobResponses (PII, keyed by provider id — only this
+// orchestrator can resolve it). Unlike getProviderIdByUser above, this is a
+// WRITE-path gate and must NOT degrade to null on failure: a `res.ok` body with
+// `provider: null` legitimately means "no provider profile", but any non-ok
+// status or transport error throws so delete-account returns 502 and deletes
+// nothing, rather than silently proceeding to erase the User while leaving the
+// provider's job responses (PII) behind.
+export async function resolveProviderIdForErase(
+  userId: string
+): Promise<string | null> {
+  const res = await s2s(
+    PROVIDER_SERVICE_URL,
+    `/internal/providers/by-user/${encodeURIComponent(userId)}`
+  );
+  if (!res.ok) {
+    throw new Error(`by-user lookup responded ${res.status}`);
+  }
+  const data = (await res.json()) as { provider: { id: string } | null };
+  return data.provider?.id ?? null;
+}
+
 // Existence check for favorites. Only a 404 means "no such provider"; any
 // other non-ok status is an upstream failure and must throw so the caller
 // returns 502 (writes fail loudly) rather than a misleading 404 that silently

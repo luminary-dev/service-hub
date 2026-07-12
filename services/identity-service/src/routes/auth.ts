@@ -8,7 +8,7 @@ import { log } from "../lib/log";
 import { createSession, destroySession } from "../lib/session";
 import { hashToken } from "../lib/tokens";
 import { eraseUserData } from "../lib/erase";
-import { isLockedOut, recordFailure } from "../lib/lockout";
+import { isLockedOut, lockUntilFor } from "../lib/lockout";
 import { passwordSchema, providerSchema, registerSchema } from "../lib/register-schema";
 import { emailAddress } from "../lib/field-rules";
 import { categoryValidator } from "../lib/categories";
@@ -17,6 +17,7 @@ import {
   deactivateProviderProfile,
   getProviderIdByUser,
   reactivateProviderProfile,
+  resolveProviderIdForErase,
 } from "../lib/providers";
 import { logAudit } from "../lib/audit";
 import {
@@ -341,10 +342,21 @@ authRoutes.post("/login", async (c) => {
   }
 
   if (!(await bcrypt.compare(parsed.data.password, user.passwordHash))) {
-    await db.user.update({
+    // Increment atomically in the DB rather than overwriting from the pre-read
+    // snapshot: concurrent wrong-password attempts must each advance the
+    // counter, otherwise a parallel guesser reaches MAX_FAILED_LOGINS far more
+    // slowly than intended and the brute-force lockout is weakened. Derive the
+    // lock from the *resulting* count, then set lockedUntil only when the
+    // threshold is crossed (a second, conditional write).
+    const { failedLogins } = await db.user.update({
       where: { id: user.id },
-      data: recordFailure(user.failedLogins),
+      data: { failedLogins: { increment: 1 } },
+      select: { failedLogins: true },
     });
+    const lockedUntil = lockUntilFor(failedLogins);
+    if (lockedUntil) {
+      await db.user.update({ where: { id: user.id }, data: { lockedUntil } });
+    }
     return c.json({ error: "Invalid email or password" }, 401);
   }
 
@@ -448,9 +460,12 @@ authRoutes.post("/delete-account", async (c) => {
   }
 
   // providerId must be resolved BEFORE the provider profile is erased —
-  // job-service needs it to delete the provider's job responses.
-  const providerId = await getProviderIdByUser(user.id);
+  // job-service needs it to delete the provider's JobResponses (PII). Resolve
+  // it with the fail-loud helper (NOT getProviderIdByUser, which degrades to
+  // null): a transient blip here must abort with 502, not silently pass null to
+  // the job erase and leave the responses behind while the User is deleted (#360).
   try {
+    const providerId = await resolveProviderIdForErase(user.id);
     await eraseUserData(user.id, providerId);
   } catch (e) {
     log.error("peer erase failed", { context: "delete-account", err: e });
