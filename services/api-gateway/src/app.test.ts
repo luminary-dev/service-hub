@@ -287,17 +287,24 @@ describe("identity headers", () => {
     expect(fwd.get("x-user-name")).toBeNull();
   });
 
-  it("derives x-locale from the lang cookie and x-origin from forwarded headers", async () => {
-    await app.request("/api/providers", {
-      headers: {
-        cookie: "lang=si",
-        "x-forwarded-proto": "https",
-        "x-forwarded-host": "baas.lk",
-      },
-    });
-    const fwd = upstreamRequests[0].headers;
-    expect(fwd.get("x-locale")).toBe("si");
-    expect(fwd.get("x-origin")).toBe("https://baas.lk");
+  it("derives x-locale from the lang cookie and (in dev) x-origin from forwarded headers", async () => {
+    const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
+    process.env.NODE_ENV = "development";
+    try {
+      await app.request("/api/providers", {
+        headers: {
+          cookie: "lang=si",
+          "x-forwarded-proto": "https",
+          "x-forwarded-host": "baas.lk",
+        },
+      });
+      const fwd = upstreamRequests[0].headers;
+      expect(fwd.get("x-locale")).toBe("si");
+      expect(fwd.get("x-origin")).toBe("https://baas.lk");
+    } finally {
+      if (ORIGINAL_NODE_ENV === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = ORIGINAL_NODE_ENV;
+    }
   });
 });
 
@@ -481,6 +488,30 @@ describe("origin poisoning protection", () => {
       );
     } finally {
       delete process.env.WEB_ORIGIN;
+    }
+  });
+
+  it("ignores a spoofed x-forwarded-host outside development when WEB_ORIGIN is unset", async () => {
+    // With no WEB_ORIGIN configured, the client-controllable forwarding headers
+    // must not seed x-origin in prod/staging/test — that would poison the
+    // absolute links in password-reset / verification emails. Only the safe
+    // localhost default is forwarded; the header fallback is dev-only.
+    const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
+    delete process.env.WEB_ORIGIN;
+    process.env.NODE_ENV = "production";
+    try {
+      await app.request("/api/providers", {
+        headers: {
+          "x-forwarded-proto": "https",
+          "x-forwarded-host": "evil.example",
+        },
+      });
+      expect(upstreamRequests.at(-1)!.headers.get("x-origin")).toBe(
+        "http://localhost:3000"
+      );
+    } finally {
+      if (ORIGINAL_NODE_ENV === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = ORIGINAL_NODE_ENV;
     }
   });
 });
