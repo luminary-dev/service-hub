@@ -247,7 +247,7 @@ export default function ProviderRegisterForm({
           {/* Worker photo */}
           <figure className="tech-corners relative mt-8 hidden aspect-[4/3] overflow-hidden border border-ink-300 lg:block">
             <Image
-              src="/images/workers/electrician.jpg"
+              src="/images/workers/electrician-1.jpg"
               alt="A tradesperson at work in Sri Lanka"
               fill
               sizes="320px"

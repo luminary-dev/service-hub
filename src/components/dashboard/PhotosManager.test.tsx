@@ -55,7 +55,7 @@ function renderManager(
 ) {
   return render(
     <ToastProvider>
-      <PhotosManager initial={initial} avatarUrl={null} name="Nuwan" />
+      <PhotosManager initial={initial} avatarUrl={null} coverPhoto={null} name="Nuwan" />
     </ToastProvider>
   );
 }
