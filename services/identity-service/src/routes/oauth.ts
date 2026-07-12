@@ -6,13 +6,7 @@ import { db } from "../db";
 import { getOrigin } from "../lib/http";
 import { log } from "../lib/log";
 import { createSession } from "../lib/session";
-import {
-  GOOGLE_SCOPES,
-  getGoogleClient,
-  isGoogleConfigured,
-  isOAuthProvider,
-  parseGoogleIdToken,
-} from "../lib/oauth";
+import { getAdapter } from "../lib/oauth";
 
 export const oauthRoutes = new Hono();
 
@@ -36,7 +30,7 @@ function sanitizeNext(next: string | undefined): string | null {
 function transientCookie(c: Parameters<typeof setCookie>[0], name: string, value: string) {
   setCookie(c, name, value, {
     httpOnly: true,
-    sameSite: "Lax", // Lax so the cookie rides the top-level GET redirect back from Google.
+    sameSite: "Lax", // Lax so the cookie rides the top-level GET redirect back from the provider.
     secure: isProd(),
     path: "/",
     maxAge: TEN_MINUTES,
@@ -55,11 +49,14 @@ function clearTransientCookies(c: Parameters<typeof deleteCookie>[0]) {
 oauthRoutes.get("/oauth/:provider/start", (c) => {
   const origin = getOrigin(c);
   const provider = c.req.param("provider");
-  if (!isOAuthProvider(provider) || !isGoogleConfigured()) {
+  const adapter = getAdapter(provider);
+  if (!adapter || !adapter.isConfigured()) {
     return c.redirect(`${origin}/login?error=oauth_unavailable`);
   }
 
   const state = generateState();
+  // Always minted + stored; providers that use PKCE (Google) consume it, others
+  // (Facebook) ignore it.
   const codeVerifier = generateCodeVerifier();
   const next = sanitizeNext(c.req.query("next"));
 
@@ -67,11 +64,7 @@ oauthRoutes.get("/oauth/:provider/start", (c) => {
   transientCookie(c, VERIFIER_COOKIE, codeVerifier);
   if (next) transientCookie(c, NEXT_COOKIE, next);
 
-  const url = getGoogleClient(origin).createAuthorizationURL(
-    state,
-    codeVerifier,
-    GOOGLE_SCOPES
-  );
+  const url = adapter.createAuthorizationURL(origin, state, codeVerifier);
   return c.redirect(url.toString());
 });
 
@@ -86,7 +79,8 @@ oauthRoutes.get("/oauth/:provider/callback", async (c) => {
   };
 
   const provider = c.req.param("provider");
-  if (!isOAuthProvider(provider) || !isGoogleConfigured()) {
+  const adapter = getAdapter(provider);
+  if (!adapter || !adapter.isConfigured()) {
     return fail("oauth_unavailable");
   }
 
@@ -111,26 +105,16 @@ oauthRoutes.get("/oauth/:provider/callback", async (c) => {
 
   let identity;
   try {
-    const tokens = await getGoogleClient(origin).validateAuthorizationCode(
-      code,
-      codeVerifier
-    );
-    identity = parseGoogleIdToken(tokens.idToken());
+    identity = await adapter.fetchIdentity(origin, code, codeVerifier);
   } catch (e) {
-    log.error("oauth code exchange failed", { context: "oauth", err: e });
+    log.error("oauth code exchange failed", { context: "oauth", provider, err: e });
     return fail("oauth");
   }
-
-  // Auto-link only on a verified email (Google always verifies); never trust an
-  // unverified address to claim an existing account.
-  if (!identity.email || !identity.emailVerified) {
-    return fail("oauth_email");
-  }
-  const email = identity.email.toLowerCase();
 
   let isNew = false;
   let user;
   try {
+    // 1. Already-linked identity → sign in (works even without an email).
     const existingAccount = await db.account.findUnique({
       where: {
         provider_providerAccountId: {
@@ -143,33 +127,25 @@ oauthRoutes.get("/oauth/:provider/callback", async (c) => {
 
     if (existingAccount) {
       user = existingAccount.user;
-    } else {
+    } else if (identity.email && identity.emailVerified) {
+      // 2. Verified email → link to an existing account or create a new one.
+      const email = identity.email.toLowerCase();
       const existingUser = await db.user.findUnique({ where: { email } });
       if (existingUser) {
-        // Link the social identity to the pre-existing (verified-email) account.
         await db.account
           .create({
-            data: {
-              userId: existingUser.id,
-              provider,
-              providerAccountId: identity.providerAccountId,
-            },
+            data: { userId: existingUser.id, provider, providerAccountId: identity.providerAccountId },
           })
           .catch((e: unknown) => {
             // A concurrent callback linked it first — fine, ignore the dup.
             if (
-              !(
-                e instanceof Prisma.PrismaClientKnownRequestError &&
-                e.code === "P2002"
-              )
+              !(e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002")
             ) {
               throw e;
             }
           });
         user = existingUser;
       } else {
-        // Brand-new signup. Role defaults to CUSTOMER; the /welcome chooser
-        // lets them convert to a provider next. Email is pre-verified by Google.
         isNew = true;
         user = await db.$transaction(async (tx) => {
           const created = await tx.user.create({
@@ -182,18 +158,37 @@ oauthRoutes.get("/oauth/:provider/callback", async (c) => {
             },
           });
           await tx.account.create({
-            data: {
-              userId: created.id,
-              provider,
-              providerAccountId: identity.providerAccountId,
-            },
+            data: { userId: created.id, provider, providerAccountId: identity.providerAccountId },
           });
           return created;
         });
       }
+    } else {
+      // 3. No usable email (e.g. a Facebook account that shared none). Rather
+      // than block, create a CUSTOMER keyed on the provider id with a
+      // non-deliverable placeholder email (never verified). The user can attach
+      // a real email later via the change-email flow (#396). Such an account is
+      // never auto-linked to a real email.
+      isNew = true;
+      const placeholderEmail = `${provider}-${identity.providerAccountId}@placeholder.baas.lk`;
+      user = await db.$transaction(async (tx) => {
+        const created = await tx.user.create({
+          data: {
+            email: placeholderEmail,
+            passwordHash: null,
+            name: identity.name?.slice(0, 80) || "New user",
+            role: "CUSTOMER",
+            emailVerified: null,
+          },
+        });
+        await tx.account.create({
+          data: { userId: created.id, provider, providerAccountId: identity.providerAccountId },
+        });
+        return created;
+      });
     }
   } catch (e) {
-    log.error("oauth user resolution failed", { context: "oauth", err: e });
+    log.error("oauth user resolution failed", { context: "oauth", provider, err: e });
     return fail("oauth");
   }
 

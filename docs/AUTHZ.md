@@ -28,15 +28,23 @@ and the helper predicates live in
 ### Sign-in methods (#398)
 
 A user authenticates with **email + password** (bcrypt) or **social login**
-(Google OAuth, via `arctic`, inside identity-service). Either way identity-service
-mints the same `sh_session` JWT — social login only resolves a verified identity;
-roles, revocation (`sessionVersion`), and S2S trust are unchanged.
+(Google or Facebook OAuth, via `arctic`, inside identity-service). Either way
+identity-service mints the same `sh_session` JWT — social login only resolves an
+identity; roles, revocation (`sessionVersion`), and S2S trust are unchanged.
+Each provider is a small adapter (`src/lib/oauth.ts`): Google uses PKCE + an
+OIDC id_token; Facebook uses no PKCE and a Graph-API profile lookup.
 
 - Linked social identities live in the `Account` table (`(provider,
   providerAccountId)` → `userId`); a user may hold both a password and one or
   more OAuth identities.
 - **Auto-linking** only happens on a provider-**verified** email — an existing
-  account is claimed by a matching Google email; an unverified email is refused.
+  account is claimed by a matching verified email. Google supplies an explicit
+  `email_verified` claim; Facebook has none, so a Facebook-returned email is
+  treated as verified (Facebook verifies emails on file — a slightly weaker
+  guarantee, accepted for auto-linking). A Facebook account that shares **no**
+  email is never auto-linked: it gets a new CUSTOMER keyed on the provider id
+  with a non-deliverable placeholder email, which the user can later replace via
+  the change-email flow (#396).
 - Social signups have **no password** (`User.passwordHash` is nullable):
   password login returns the uniform 401, change-password directs them to the
   reset flow, and delete-account skips the password re-auth (the session is it).

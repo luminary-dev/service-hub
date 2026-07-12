@@ -717,6 +717,7 @@ const en = {
   },
   oauth: {
     continueWithGoogle: "Continue with Google",
+    continueWithFacebook: "Continue with Facebook",
     divider: "or",
     errGeneric: "Sign-in with Google failed. Please try again.",
     errEmail: "Your Google account didn’t share a verified email address.",
@@ -1708,6 +1709,7 @@ const si: Dict = {
   },
   oauth: {
     continueWithGoogle: "Google සමඟ ඉදිරියට",
+    continueWithFacebook: "Facebook සමඟ ඉදිරියට",
     divider: "හෝ",
     errGeneric: "Google සමඟ පිවිසීම අසාර්ථකයි. නැවත උත්සාහ කරන්න.",
     errEmail: "ඔබේ Google ගිණුම තහවුරු කළ විද්‍යුත් තැපෑලක් බෙදා නොගත්තේය.",
