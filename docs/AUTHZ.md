@@ -208,6 +208,7 @@ owning service applies. The two agree.
 | Capability | Tier | Web UI gate | Backend enforced by |
 | --- | --- | --- | --- |
 | Enter `/admin`; read the moderation pages (dashboard, providers, verifications, reports, categories) | SUPPORT+ | `isAdminRole` | `isSupportOrAdmin` |
+| View verification documents (NIC / business-registration PII) | SUPPORT+ | (queue link) | `isSupportOrAdmin` (provider-service serve route, #500) |
 | Resolve / dismiss abuse reports | SUPPORT+ | `hasSupportAccess` | `isSupportOrAdmin` |
 | Provider moderation: verify / suspend / bulk actions | ADMIN | `hasFullAdminAccess` | `isFullAdmin` (provider-service) |
 | Verification queue: approve / reject | ADMIN | `hasFullAdminAccess` | `isFullAdmin` (provider-service) |
