@@ -30,6 +30,9 @@ model Review {
   // in order instead of sorting every page in memory. Covers plain providerId
   // lookups too (leftmost prefix).
   @@index([providerId, createdAt, id])
+  // Account "my reviews" + erase scan by user (#369) — userId is only the 2nd
+  // column of the unique above, so unusable as a leading key on its own.
+  @@index([userId])
 }
 
 // Abuse reports (#50) on reviews — this service owns reviews, so it owns the
@@ -58,6 +61,8 @@ model Report {
   // Admin queue reads by status; duplicate-protection looks up by target.
   @@index([status])
   @@index([targetType, targetId])
+  // Report queue orders newest-first (#369).
+  @@index([createdAt])
 }
 
 model ReviewPhoto {

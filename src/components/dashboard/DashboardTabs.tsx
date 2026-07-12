@@ -44,6 +44,7 @@ export type DashboardData = {
   // ISO string while the provider is away (#49); null when not set.
   awayUntil: string | null;
   avatarUrl: string | null;
+  coverPhoto: string | null;
   whatsapp: string;
   phone2: string;
   facebook: string;
@@ -120,6 +121,7 @@ export default function DashboardTabs({
           <PhotosManager
             initial={data.photos}
             avatarUrl={data.avatarUrl}
+            coverPhoto={data.coverPhoto}
             name={data.name}
           />
         )}

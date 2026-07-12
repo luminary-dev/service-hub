@@ -29,6 +29,10 @@ model User {
   // values above), not represented here since it isn't diffed by
   // `prisma migrate dev` in this project (migrations are hand-written).
   role          String    @default("CUSTOMER")
+  // Profile photo (#434). The single source of truth for a user's avatar across
+  // roles; provider-service keeps a denormalized copy (Provider.avatarUrl),
+  // synced on change, the same way contactName/email are denormalized.
+  avatarUrl     String?
   emailVerified DateTime?
   // Session revocation: tokens carry the version they were minted with (sv
   // claim); a bump (password change/reset, logout-everywhere) invalidates

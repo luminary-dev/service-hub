@@ -1,10 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useT } from "@/components/I18nProvider";
 import { useToast } from "@/components/ToastProvider";
 import { Field } from "@/components/ui/Field";
+import Avatar from "@/components/Avatar";
+import { validateUpload } from "@/lib/upload";
 
 // Account self-service (#396): edit name/phone and start a change-email flow.
 // Backed by identity-service via the gateway (PUT /api/account/profile,
@@ -18,6 +20,7 @@ export default function AccountDetails({
     phone: string | null;
     email: string;
     emailVerified: boolean;
+    avatarUrl: string | null;
   };
 }) {
   const t = useT().account;
@@ -29,6 +32,53 @@ export default function AccountDetails({
   const [phone, setPhone] = useState(initial.phone ?? "");
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileError, setProfileError] = useState("");
+
+  // Avatar (#434)
+  const [avatarUrl, setAvatarUrl] = useState(initial.avatarUrl);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const avatarInput = useRef<HTMLInputElement>(null);
+
+  async function uploadAvatar(file: File) {
+    if (validateUpload(file)) {
+      toast.error(t.genericError);
+      return;
+    }
+    setAvatarBusy(true);
+    try {
+      const body = new FormData();
+      body.set("file", file);
+      const res = await fetch("/api/account/avatar", { method: "POST", body });
+      if (res.ok) {
+        setAvatarUrl((await res.json()).avatarUrl);
+        toast.success(t.photoSaved);
+        router.refresh();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        toast.error(d.error ?? t.genericError);
+      }
+    } catch {
+      toast.error(t.genericError);
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
+
+  async function removeAvatar() {
+    setAvatarBusy(true);
+    try {
+      const res = await fetch("/api/account/avatar", { method: "DELETE" });
+      if (res.ok) {
+        setAvatarUrl(null);
+        router.refresh();
+      } else {
+        toast.error(t.genericError);
+      }
+    } catch {
+      toast.error(t.genericError);
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
 
   // Change email
   const [newEmail, setNewEmail] = useState("");
@@ -86,7 +136,53 @@ export default function AccountDetails({
   }
 
   return (
-    <div className="grid gap-6 md:grid-cols-2">
+    <div className="space-y-6">
+      {/* -- Profile photo (#434) ------------------------------------- */}
+      <div className="tech-corners overflow-hidden rounded-lg border border-ink-300 bg-surface">
+        <div className="flex items-center justify-between border-b border-ink-200 bg-ink-100 px-5 py-3 font-mono text-[11px] uppercase tracking-[0.12em]">
+          <span className="font-bold text-ink-700">00</span>
+          <span className="text-brand-700">{t.photoTitle}</span>
+        </div>
+        <div className="flex items-center gap-5 p-6">
+          <Avatar name={initial.name} url={avatarUrl} size={72} />
+          <div className="space-y-2">
+            <input
+              ref={avatarInput}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void uploadAvatar(file);
+                e.target.value = "";
+              }}
+            />
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => avatarInput.current?.click()}
+                disabled={avatarBusy}
+                className="btn-secondary"
+              >
+                {avatarBusy ? t.photoUploading : t.photoChange}
+              </button>
+              {avatarUrl && (
+                <button
+                  type="button"
+                  onClick={removeAvatar}
+                  disabled={avatarBusy}
+                  className="btn-ghost"
+                >
+                  {t.photoRemove}
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-ink-500">{t.photoHint}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2">
       {/* -- Profile -------------------------------------------------- */}
       <form
         onSubmit={saveProfile}
@@ -190,6 +286,7 @@ export default function AccountDetails({
           </button>
         </div>
       </form>
+      </div>
     </div>
   );
 }
