@@ -443,7 +443,7 @@ describe("POST /api/auth/reset-password", () => {
     });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({
-      error: "Password must be at least 6 characters.",
+      error: "Password must be at least 10 characters.",
     });
     expect(db.passwordResetToken.findUnique).not.toHaveBeenCalled();
   });
@@ -529,7 +529,7 @@ describe("POST /api/auth/change-password", () => {
     );
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({
-      error: "New password must be between 6 and 100 characters.",
+      error: "New password must be between 10 and 100 characters.",
     });
   });
 
@@ -623,6 +623,63 @@ describe("POST /api/auth/logout-all", () => {
     });
     // A fresh session cookie keeps the requester signed in.
     expect(res.headers.get("set-cookie")).toContain("sh_session=");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/register — provider orphan compensation (#359)
+// ---------------------------------------------------------------------------
+describe("POST /api/auth/register (provider compensation)", () => {
+  const registerBody = {
+    role: "PROVIDER",
+    name: "Ann Provider",
+    email: "ann@b.lk",
+    password: STRONG_PASSWORD,
+    phone: "0771234567",
+    category: "electrician",
+    headline: "Experienced electrician",
+    bio: "Twenty-plus characters of provider bio for validation.",
+    district: "Colombo",
+    city: "Colombo",
+    experience: 5,
+    services: [{ title: "Wiring", price: 1500, priceType: "FIXED" }],
+  };
+
+  it("502s and deletes the just-created user when provider creation fails", async () => {
+    db.user.findUnique.mockResolvedValue(null);
+    db.user.create.mockResolvedValue({
+      id: "u1",
+      email: "ann@b.lk",
+      name: "Ann Provider",
+      role: "PROVIDER",
+      sessionVersion: 0,
+    });
+    vi.mocked(createProviderProfile).mockRejectedValue(new Error("peer down"));
+
+    const res = await post("/api/auth/register", registerBody);
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Upstream service unavailable" });
+    // Compensation removes the orphaned user (no profile ⇒ useless row).
+    expect(db.user.delete).toHaveBeenCalledWith({ where: { id: "u1" } });
+  });
+
+  it("still returns a consistent 502 when the compensating delete itself fails", async () => {
+    db.user.findUnique.mockResolvedValue(null);
+    db.user.create.mockResolvedValue({
+      id: "u1",
+      email: "ann@b.lk",
+      name: "Ann Provider",
+      role: "PROVIDER",
+      sessionVersion: 0,
+    });
+    vi.mocked(createProviderProfile).mockRejectedValue(new Error("peer down"));
+    // A DB hiccup on cleanup must not turn the graceful 502 into a 500.
+    db.user.delete.mockRejectedValue(new Error("db down"));
+
+    const res = await post("/api/auth/register", registerBody);
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Upstream service unavailable" });
+    expect(db.user.delete).toHaveBeenCalledWith({ where: { id: "u1" } });
   });
 });
 
