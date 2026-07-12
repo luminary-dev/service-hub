@@ -27,8 +27,10 @@ own account):
   CUSTOMER ↔ ADMIN ↔ SUPPORT) make no provider-service call.
 - **Lock / unlock** — `PATCH /api/admin/users/{id}` `{ action }`. Lock sets a
   far-future `lockedUntil` (effectively permanent manual lock, reusing the same
-  column as the 5-strike / 15-minute auto-lockout); unlock clears it and resets
-  the failed-login counter.
+  column as the 5-strike / 15-minute auto-lockout) **and bumps the user's
+  `sessionVersion`, so any already-issued token is revoked at the gateway
+  immediately rather than surviving until the JWT expires**; unlock clears the
+  lock and resets the failed-login counter (it does not touch `sessionVersion`).
 - **Force logout** — `POST /api/admin/users/{id}/force-logout` bumps the user's
   `sessionVersion`, invalidating every existing token at the gateway's
   revocation check.
