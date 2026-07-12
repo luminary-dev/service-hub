@@ -1,0 +1,9 @@
+# GitBook Git Sync config. The monorepo docs/ tree is the single source of
+# truth for the published GitBook space — point the space's Git Sync at this
+# repository (docs/ is the content root) so GitBook always renders the docs
+# that ship with the code. See docs/README.md.
+root: ./docs/
+
+structure:
+  readme: README.md
+  summary: SUMMARY.md
