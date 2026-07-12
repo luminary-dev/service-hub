@@ -256,6 +256,7 @@ internalRoutes.post("/internal/users/:id/erase", async (c) => {
       ...provider.photos.map((p) => p.url),
       ...provider.verificationDocs.map((d) => d.url),
       ...(provider.avatarUrl ? [provider.avatarUrl] : []),
+      ...(provider.coverPhoto ? [provider.coverPhoto] : []),
     ]) {
       await removeStoredFile(f);
     }
@@ -272,18 +273,23 @@ internalRoutes.post("/internal/users/:id/erase", async (c) => {
 // references any more. Grace window protects in-flight uploads; run it from
 // ops tooling (cron/curl with the internal secret).
 internalRoutes.post("/internal/maintenance/sweep-orphans", async (c) => {
-  const [photos, docs, avatars] = await Promise.all([
+  const [photos, docs, avatars, covers] = await Promise.all([
     db.workPhoto.findMany({ select: { url: true } }),
     db.verificationDocument.findMany({ select: { url: true } }),
     db.provider.findMany({
       where: { avatarUrl: { not: null } },
       select: { avatarUrl: true },
     }),
+    db.provider.findMany({
+      where: { coverPhoto: { not: null } },
+      select: { coverPhoto: true },
+    }),
   ]);
   const referenced = new Set<string>([
     ...photos.map((p) => p.url),
     ...docs.map((d) => d.url),
     ...avatars.map((a) => a.avatarUrl as string),
+    ...covers.map((c) => c.coverPhoto as string),
   ]);
   const result = await sweepMedia("provider", [...referenced]);
   return c.json(result);
