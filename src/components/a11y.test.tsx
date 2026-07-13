@@ -24,6 +24,8 @@ import PhotoGallery from "./PhotoGallery";
 import ReviewSection from "./ReviewSection";
 import LoginPage from "@/app/login/page";
 import CustomerRegisterPage from "@/app/register/customer/page";
+import LegalArticle from "./LegalArticle";
+import { legal } from "@/lib/legal";
 import ProviderRegisterForm from "@/app/register/provider/ProviderRegisterForm";
 
 vi.mock("next/navigation", () => ({
@@ -324,6 +326,20 @@ describe("axe: forms", () => {
 
     fireEvent.click(screen.getByRole("button", { name: t.reviews.write }));
     expect(screen.getByRole("group", { name: t.reviews.rating })).toBeDefined();
+    await expectNoAxeViolations(container);
+  }, AXE_TIMEOUT);
+});
+
+describe("axe: legal pages", () => {
+  it("terms document has no violations", async () => {
+    const { container } = render(<LegalArticle doc={legal.en.terms} tag="TERMS" />);
+    await expectNoAxeViolations(container);
+  }, AXE_TIMEOUT);
+
+  it("privacy document (Sinhala) has no violations", async () => {
+    const { container } = render(
+      <LegalArticle doc={legal.si.privacy} tag="PRIVACY" />
+    );
     await expectNoAxeViolations(container);
   }, AXE_TIMEOUT);
 });
