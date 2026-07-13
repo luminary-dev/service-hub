@@ -81,7 +81,7 @@ jobs:
   # it's a cheap gate. Dummy values satisfy the required `${VAR:?}` guards so
   # interpolation succeeds; the step fails loudly if the file is invalid.
   prod-compose:
-    name: prod compose / config check
+    name: compose-config
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -101,7 +101,7 @@ jobs:
   # vitest config — they pass today, so this never fails the build now; it only
   # trips if coverage regresses below the floor. Separate from the fast matrix.
   coverage:
-    name: coverage / ${{ matrix.package }}
+    name: ${{ matrix.package }} / coverage
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -150,7 +150,7 @@ jobs:
   # stack is heavy) and a separate job, so it never blocks the fast per-package
   # matrix above.
   e2e:
-    name: e2e / compose smoke
+    name: e2e
     runs-on: ubuntu-latest
     timeout-minutes: 30
     if: github.event_name == 'pull_request'
