@@ -187,6 +187,50 @@ describe("GET /internal/providers/matching (#501 lead-gen fan-out)", () => {
   });
 });
 
+describe("POST /internal/providers — social/website URL validation (#518)", () => {
+  const base = {
+    userId: "owner-2",
+    name: "Ravi",
+    email: "r@b.lk",
+    phone: "+94771234567",
+    category: "plumbing",
+    headline: "Plumber for hire",
+    bio: "Twenty-plus characters of provider bio text.",
+    district: "Colombo",
+    city: "Colombo",
+    experience: 3,
+    services: [{ title: "Fix taps", price: 1000, priceType: "FIXED" }],
+  };
+
+  it("rejects a javascript: scheme in a social link (400, no create)", async () => {
+    const res = await post("/internal/providers", {
+      ...base,
+      website: "javascript:alert(1)",
+    });
+    expect(res.status).toBe(400);
+    expect(dbMock.provider.create).not.toHaveBeenCalled();
+  });
+
+  it("normalizes a scheme-less host to an https URL before persisting", async () => {
+    dbMock.provider.create.mockResolvedValue({ id: "prov2" });
+    const res = await post("/internal/providers", {
+      ...base,
+      facebook: "facebook.com/ravi",
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.create.mock.calls[0][0].data.facebook).toBe(
+      "https://facebook.com/ravi"
+    );
+  });
+
+  it("still accepts an explicit null for an omitted link", async () => {
+    dbMock.provider.create.mockResolvedValue({ id: "prov3" });
+    const res = await post("/internal/providers", { ...base, website: null });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.create.mock.calls[0][0].data.website).toBeNull();
+  });
+});
+
 describe("POST /internal/maintenance/sweep-orphans", () => {
   it("treats provider cover photos as referenced (never swept)", async () => {
     dbMock.workPhoto.findMany.mockResolvedValue([{ url: "provider/photo.jpg" }]);

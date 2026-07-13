@@ -28,6 +28,14 @@ model JobRequest {
 
   @@index([category, district, status])
   @@index([customerId])
+  // Admin job list (#521) orders by createdAt desc with an optional bare
+  // status filter and no category/district — the [category, district, status]
+  // index can't serve a status-only predicate or plain createdAt ordering
+  // (category is leftmost). A lone createdAt index serves the unfiltered
+  // ordering; [status, createdAt] serves the status-filtered variant (equality
+  // on status, then an ordered scan on createdAt).
+  @@index([createdAt])
+  @@index([status, createdAt])
 }
 
 model JobResponse {

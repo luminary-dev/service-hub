@@ -37,6 +37,7 @@ describe("internal secret enforcement", () => {
     "/internal/email/verify",
     "/internal/email/password-reset",
     "/internal/email/account-exists",
+    "/internal/email/email-change-attempt",
     "/internal/email/job-response",
     "/internal/email/new-job",
     "/internal/email/inquiry",
@@ -62,6 +63,7 @@ describe("input validation", () => {
     "/internal/email/verify",
     "/internal/email/password-reset",
     "/internal/email/account-exists",
+    "/internal/email/email-change-attempt",
     "/internal/email/job-response",
     "/internal/email/inquiry",
   ])("returns 400 for an invalid body on %s", async (path) => {
@@ -124,6 +126,7 @@ describe("input validation", () => {
     "/internal/email/verify",
     "/internal/email/password-reset",
     "/internal/email/change-email",
+    "/internal/email/email-change-attempt",
     "/internal/email/job-response",
     "/internal/email/inquiry",
   ])("returns 400 when `to` is not a valid email on %s", async (path) => {
@@ -162,6 +165,16 @@ describe("happy paths (no RESEND_API_KEY → console fallback)", () => {
   it("POST /internal/email/account-exists", async () => {
     const res = await postWithSecret("/internal/email/account-exists", {
       to: "user@example.com",
+      url: "https://baas.lk/login",
+      locale: "si",
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, delivered: false });
+  });
+
+  it("POST /internal/email/email-change-attempt", async () => {
+    const res = await postWithSecret("/internal/email/email-change-attempt", {
+      to: "owner@example.com",
       url: "https://baas.lk/login",
       locale: "si",
     });

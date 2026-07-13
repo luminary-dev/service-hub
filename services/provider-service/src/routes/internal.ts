@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "../db";
+import { optionalWebUrl } from "../lib/field-rules";
 import { removeStoredFile, sweepMedia } from "../lib/storage";
 
 export const internalRoutes = new Hono();
@@ -15,6 +16,13 @@ const MAX_BATCH_IDS = 500;
 
 const optionalText = (max: number) =>
   z.string().max(max).optional().or(z.literal("")).nullish();
+
+// Social/website links carry a URL, so they must go through the same scheme
+// validator/normalizer as the profile-EDIT path (provider.ts) rather than a
+// plain length check (#518) — otherwise this S2S create path would persist a
+// `javascript:`/`data:` value that later renders as a live link. `.nullable()`
+// because identity-service sends explicit `null` for an omitted field.
+const optionalWebUrlOrNull = optionalWebUrl.nullable();
 
 const createSchema = z.object({
   userId: z.string().min(1),
@@ -29,11 +37,11 @@ const createSchema = z.object({
   experience: z.number().int().min(0).max(60),
   whatsapp: optionalText(15),
   phone2: optionalText(15),
-  facebook: optionalText(200),
-  instagram: optionalText(200),
-  tiktok: optionalText(200),
-  youtube: optionalText(200),
-  website: optionalText(200),
+  facebook: optionalWebUrlOrNull,
+  instagram: optionalWebUrlOrNull,
+  tiktok: optionalWebUrlOrNull,
+  youtube: optionalWebUrlOrNull,
+  website: optionalWebUrlOrNull,
   services: z
     .array(
       z.object({

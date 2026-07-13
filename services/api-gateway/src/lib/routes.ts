@@ -8,6 +8,17 @@ export type ResolvedRoute = { service: ServiceName; path: string };
 export function resolveRoute(pathname: string): ResolvedRoute | null {
   if (containsInternal(pathname)) return null;
 
+  // Provider verification documents (NIC / business-registration scans, #500)
+  // are PII and must NOT be served on the public media path. Carve the
+  // `verification` prefix out AHEAD of the media forward below and route it to
+  // provider-service's admin-gated serve route, which re-checks the caller is
+  // ADMIN/SUPPORT and fetches the bytes from media over S2S. Every other
+  // /api/files/provider/* upload (work photos, avatars, covers) still goes to
+  // media unchanged.
+  if (pathname.startsWith("/api/files/provider/verification/")) {
+    return { service: "provider", path: pathname };
+  }
+
   // /api/files/<service>/* → upstream /files/*
   // File serving moved to media-service (#media extraction). The namespace
   // segment is preserved so media picks the right store; existing

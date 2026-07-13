@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   accountExistsEmail,
   changeEmail,
+  emailChangeAttemptEmail,
   inquiryEmail,
   jobResponseEmail,
   newJobEmail,
@@ -86,6 +87,15 @@ emailRoutes.post("/account-exists", async (c) => {
   if (!parsed.success) return c.json({ error: "Invalid input" }, 400);
   const { to, url, locale } = parsed.data;
   const { subject, html } = accountExistsEmail(url, coerceLocale(locale));
+  const { delivered } = await sendMail({ to, subject, html });
+  return c.json({ ok: true, delivered });
+});
+
+emailRoutes.post("/email-change-attempt", async (c) => {
+  const parsed = baseSchema.safeParse(await readBody(c));
+  if (!parsed.success) return c.json({ error: "Invalid input" }, 400);
+  const { to, url, locale } = parsed.data;
+  const { subject, html } = emailChangeAttemptEmail(url, coerceLocale(locale));
   const { delivered } = await sendMail({ to, subject, html });
   return c.json({ ok: true, delivered });
 });
