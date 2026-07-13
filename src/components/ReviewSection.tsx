@@ -22,6 +22,8 @@ type ReviewItem = {
   createdAt: string;
   userName: string;
   photos: ReviewPhoto[];
+  // Provider's public reply (#395) — at most one per review.
+  response: { text: string; createdAt: string } | null;
 };
 
 // Optional per-dimension sub-ratings (#528). Keys line up with the columns
@@ -48,15 +50,20 @@ const MAX_PHOTOS = 3;
 
 export default function ReviewSection({
   providerId,
+  providerName,
   reviews,
   canReview,
+  canRespond,
   signedIn,
   myReview,
   summary,
 }: {
   providerId: string;
+  providerName: string;
   reviews: ReviewItem[];
   canReview: boolean;
+  // The profiled provider (owner) may keep one public reply per review (#395).
+  canRespond: boolean;
   signedIn: boolean;
   myReview: { rating: number; comment: string; photos: ReviewPhoto[] } | null;
   summary: RatingSummary | null;
@@ -74,6 +81,12 @@ export default function ReviewSection({
   const t = useT();
   const toast = useToast();
   const locale = useLocale();
+
+  // Provider response state (#395): at most one inline form open at a time.
+  const [respondingTo, setRespondingTo] = useState<string | null>(null);
+  const [responseText, setResponseText] = useState("");
+  const [responseSaving, setResponseSaving] = useState(false);
+  const [responseError, setResponseError] = useState("");
 
   const existingCount = myReview?.photos.length ?? 0;
   const slotsLeft = MAX_PHOTOS - existingCount;
@@ -110,6 +123,46 @@ export default function ReviewSection({
     } else {
       const data = await res.json().catch(() => ({}));
       setError(data.error ?? t.reviews.error);
+    }
+  }
+
+  function openResponseForm(review: ReviewItem) {
+    setRespondingTo(review.id);
+    setResponseText(review.response?.text ?? "");
+    setResponseError("");
+  }
+
+  async function submitResponse(e: React.FormEvent, reviewId: string) {
+    e.preventDefault();
+    setResponseSaving(true);
+    setResponseError("");
+    const res = await fetch(`/api/reviews/${reviewId}/response`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: responseText }),
+    }).catch(() => null);
+    setResponseSaving(false);
+    if (res && res.ok) {
+      setRespondingTo(null);
+      toast.success(t.toast.responseSaved);
+      router.refresh();
+    } else {
+      const data = res ? await res.json().catch(() => ({})) : {};
+      setResponseError(data.error ?? t.reviews.responseError);
+    }
+  }
+
+  async function deleteResponse(reviewId: string) {
+    const res = await fetch(`/api/reviews/${reviewId}/response`, {
+      method: "DELETE",
+    }).catch(() => null);
+    if (res && res.ok) {
+      setRespondingTo(null);
+      toast.success(t.toast.responseDeleted);
+      router.refresh();
+    } else {
+      const data = res ? await res.json().catch(() => ({})) : {};
+      setResponseError(data.error ?? t.reviews.responseError);
     }
   }
 
@@ -437,6 +490,84 @@ export default function ReviewSection({
                     </a>
                   ))}
                 </div>
+              )}
+
+              {/* Provider's public reply (#395), rendered under the review. */}
+              {r.response && respondingTo !== r.id && (
+                <div className="ml-4 mt-3 rounded-lg border-l-2 border-brand-300 bg-ink-50 p-3">
+                  <p className="text-xs font-semibold text-ink-700">
+                    {t.reviews.responseFrom(providerName)}
+                    <span className="ml-2 font-normal text-ink-500">
+                      {formatDate(r.response.createdAt, locale)}
+                    </span>
+                  </p>
+                  <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-ink-600">
+                    {r.response.text}
+                  </p>
+                </div>
+              )}
+
+              {canRespond && respondingTo !== r.id && (
+                <div className="mt-2 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => openResponseForm(r)}
+                    className="text-sm font-medium text-brand-600 hover:text-brand-700"
+                  >
+                    {r.response ? t.reviews.editResponse : t.reviews.respond}
+                  </button>
+                  {r.response && (
+                    <button
+                      type="button"
+                      onClick={() => deleteResponse(r.id)}
+                      className="text-sm font-medium text-red-600 hover:text-red-700"
+                    >
+                      {t.reviews.deleteResponse}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {canRespond && respondingTo === r.id && (
+                <form
+                  onSubmit={(e) => submitResponse(e, r.id)}
+                  className="ml-4 mt-3 rounded-lg border border-ink-200 bg-ink-50 p-3"
+                >
+                  <label className="label" htmlFor={`review-response-${r.id}`}>
+                    {t.reviews.yourResponse}
+                  </label>
+                  <textarea
+                    id={`review-response-${r.id}`}
+                    className="input min-h-20 resize-y"
+                    value={responseText}
+                    onChange={(e) => setResponseText(e.target.value)}
+                    required
+                    minLength={3}
+                    maxLength={1000}
+                    placeholder={t.reviews.responsePh}
+                  />
+                  {responseError && (
+                    <p role="alert" className="mt-2 text-sm text-red-600">
+                      {responseError}
+                    </p>
+                  )}
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="submit"
+                      disabled={responseSaving}
+                      className="btn-primary"
+                    >
+                      {responseSaving ? t.reviews.saving : t.reviews.postResponse}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRespondingTo(null)}
+                      className="btn-ghost"
+                    >
+                      {t.reviews.cancel}
+                    </button>
+                  </div>
+                </form>
               )}
             </li>
           ))}
