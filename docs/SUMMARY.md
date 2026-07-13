@@ -21,6 +21,10 @@
   - [Internal S2S API](api/internal.md)
 - [Authorization & RBAC](AUTHZ.md)
 
+## RFCs
+
+- [Search & discovery service](rfcs/search-discovery-service.md)
+
 ## Product
 
 - [Features](FEATURES.md)
