@@ -249,11 +249,15 @@ adminRoutes.patch("/api/admin/providers/:id", async (c) => {
       data.verificationStatus = "NONE";
       data.verifiedAt = null;
       break;
+    // adminSuspended (#550) marks the suspension as admin-owned so the
+    // self-service reactivate path can't lift it; only this unsuspend clears it.
     case "suspend":
       data.suspended = true;
+      data.adminSuspended = true;
       break;
     case "unsuspend":
       data.suspended = false;
+      data.adminSuspended = false;
       break;
   }
 
@@ -289,7 +293,9 @@ adminRoutes.patch("/api/admin/providers", async (c) => {
   const affected = await db.provider.findMany({ where, select: { id: true } });
   const { count } = await db.provider.updateMany({
     where,
-    data: { suspended: parsed.data.suspended },
+    // adminSuspended mirrors suspended here for the same reason as the
+    // single-provider PATCH above (#550).
+    data: { suspended: parsed.data.suspended, adminSuspended: parsed.data.suspended },
   });
   // Audit trail (#227): one entry per affected provider, mirroring the
   // single-provider PATCH above so bulk actions leave the same trail.

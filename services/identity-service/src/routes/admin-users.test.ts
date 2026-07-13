@@ -9,6 +9,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import { adminUsersRoutes } from "./admin-users";
+import { ProviderAdminSuspendedError } from "../lib/providers";
 
 const {
   db,
@@ -35,6 +36,9 @@ vi.mock("../db", () => ({ db }));
 vi.mock("../lib/audit", () => ({ logAudit }));
 vi.mock("../lib/log", () => ({ log: { error: vi.fn(), info: vi.fn() } }));
 vi.mock("../lib/providers", () => ({
+  // Stand-in for the real class: the route's instanceof (#550) and the test's
+  // throw both resolve to this same mocked export.
+  ProviderAdminSuspendedError: class ProviderAdminSuspendedError extends Error {},
   fetchProvidersByIds: vi.fn(async () => new Map()),
   deactivateProviderProfile,
   reactivateProviderProfile,
@@ -224,6 +228,19 @@ describe("PATCH /api/admin/users/:id PROVIDER-boundary sync", () => {
 
     const res = await patch("u2", { role: "PROVIDER" });
     expect(res.status).toBe(502);
+    expect(db.user.update).not.toHaveBeenCalled();
+  });
+
+  // #550: a role change must not lift a moderation suspension as a side
+  // effect — the promotion is refused until the profile is unsuspended.
+  it("refuses the promotion with 409 when the profile is ADMIN-suspended", async () => {
+    db.user.findUnique.mockResolvedValue({ id: "u2", role: "CUSTOMER" });
+    reactivateProviderProfile.mockRejectedValueOnce(
+      new ProviderAdminSuspendedError()
+    );
+
+    const res = await patch("u2", { role: "PROVIDER" });
+    expect(res.status).toBe(409);
     expect(db.user.update).not.toHaveBeenCalled();
   });
 
