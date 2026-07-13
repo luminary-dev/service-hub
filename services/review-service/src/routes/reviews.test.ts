@@ -135,3 +135,54 @@ describe("POST /api/providers/:id/reviews — interaction gate (#25)", () => {
     expect(s2sMock).not.toHaveBeenCalled();
   });
 });
+
+// Optional per-dimension sub-ratings (#528).
+function postReviewWith(fields: Record<string, string>) {
+  const form = new FormData();
+  form.set("rating", "5");
+  form.set("comment", "Excellent, punctual and tidy work.");
+  for (const [k, v] of Object.entries(fields)) form.set(k, v);
+  return app.request(`/api/providers/${PROVIDER_ID}/reviews`, {
+    method: "POST",
+    headers: { "x-internal-secret": SECRET, "x-user-id": REVIEWER_ID },
+    body: form,
+  });
+}
+
+describe("POST /api/providers/:id/reviews — optional dimensions (#528)", () => {
+  it("persists the per-dimension sub-ratings when provided", async () => {
+    wireS2s({ interaction: "exists" });
+    const res = await postReviewWith({
+      quality: "5",
+      punctuality: "4",
+      value: "3",
+      communication: "5",
+    });
+    expect(res.status).toBe(200);
+    const arg = upsert.mock.calls[0][0] as unknown as {
+      create: Record<string, unknown>;
+      update: Record<string, unknown>;
+    };
+    expect(arg.create).toMatchObject({ quality: 5, punctuality: 4, value: 3, communication: 5 });
+    expect(arg.update).toMatchObject({ quality: 5, punctuality: 4, value: 3, communication: 5 });
+  });
+
+  it("omits blank dimensions so they stay null on create / untouched on edit", async () => {
+    wireS2s({ interaction: "exists" });
+    const res = await postReviewWith({ quality: "4", punctuality: "" });
+    expect(res.status).toBe(200);
+    const arg = upsert.mock.calls[0][0] as unknown as { update: Record<string, unknown> };
+    expect(arg.update.quality).toBe(4);
+    // A blank field is omitted entirely (Prisma-undefined), never 0.
+    expect(arg.update.punctuality).toBeUndefined();
+    expect(arg.update.value).toBeUndefined();
+  });
+
+  it("rejects an out-of-range dimension with 400 and writes nothing", async () => {
+    wireS2s({ interaction: "exists" });
+    const res = await postReviewWith({ quality: "6" });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("Invalid input");
+    expect(upsert).not.toHaveBeenCalled();
+  });
+});

@@ -97,8 +97,8 @@ Every route requires a provider owned by the authenticated user (else
 
 | Method + path | Auth | Summary |
 |---|---|---|
-| `GET /api/providers/:id/reviews` | public | Paginated reviews (`?take` default 10, max 100; `?cursor`) → `{ reviews, nextCursor }`. Suspended/missing provider → 404. |
-| `POST /api/providers/:id/reviews` | authenticated | Multipart `rating`/`comment` + up to 3 photos. Hard interaction gate (must have inquired first, else 403); can't review own profile (400); upsert (one review per provider) → `{ ok: true }`. |
+| `GET /api/providers/:id/reviews` | public | Paginated reviews (`?take` default 10, max 100; `?cursor`) → `{ reviews, nextCursor, summary }`. `summary` (#528) aggregates over **all** non-deleted reviews: `{ rating, count, dimensions: { quality, punctuality, value, communication } (each an avg over non-null values or null), distribution: { "1".."5": count } }`. Suspended/missing provider → 404. |
+| `POST /api/providers/:id/reviews` | authenticated | Multipart `rating`/`comment` + optional 1–5 sub-ratings `quality`/`punctuality`/`value`/`communication` (#528, blank ⇒ omitted) + up to 3 photos. Hard interaction gate (must have inquired first, else 403); can't review own profile (400); upsert (one review per provider) → `{ ok: true }`. |
 | `GET /api/account/reviews` | authenticated | The caller's reviews (cap 50, excludes soft-deleted); provider names hydrated S2S → `{ reviews }`. |
 | `DELETE /api/reviews/photos/:id` | authenticated (owner or ADMIN) | Remove a review photo. |
 

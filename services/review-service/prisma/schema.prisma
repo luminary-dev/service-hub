@@ -14,6 +14,14 @@ model Review {
   providerId String
   userId     String
   rating     Int
+  // Optional per-dimension sub-ratings (#528): each 1–5 when the reviewer set
+  // it, null when left blank. The overall `rating` above stays AUTHORITATIVE
+  // for ranking/sorting — these only feed the profile's rating breakdown and
+  // are averaged over their non-null values in the ratings summary.
+  quality       Int?
+  punctuality   Int?
+  value         Int?
+  communication Int?
   comment    String
   // Backed by a real interaction (reviewer had inquired with the provider),
   // checked S2S at write time. Evidence for a badge, not a hard gate.
