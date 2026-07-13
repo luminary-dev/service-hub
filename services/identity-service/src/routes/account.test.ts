@@ -12,6 +12,7 @@ import {
   sendEmailChangeConfirmation,
 } from "../lib/verification";
 import { removeStoredFile, storeImage } from "../lib/storage";
+import { syncContactToProvider } from "../lib/providers";
 
 const { db } = vi.hoisted(() => ({
   db: {
@@ -36,7 +37,10 @@ vi.mock("../lib/storage", async (importActual) => {
   const actual = await importActual<typeof import("../lib/storage")>();
   return { ...actual, storeImage: vi.fn(), removeStoredFile: vi.fn() };
 });
-vi.mock("../lib/providers", () => ({ syncAvatarToProvider: vi.fn() }));
+vi.mock("../lib/providers", () => ({
+  syncAvatarToProvider: vi.fn(),
+  syncContactToProvider: vi.fn(),
+}));
 
 const app = new Hono();
 app.route("/api/account", accountRoutes);
@@ -98,6 +102,11 @@ describe("PUT /api/account/profile", () => {
     });
     // Session refreshed so the cached display name matches.
     expect(res.headers.get("set-cookie")).toContain("sh_session=");
+    // Denormalized Provider contact columns follow the edit (#553).
+    expect(syncContactToProvider).toHaveBeenCalledWith("u1", {
+      name: "New Name",
+      phone: "+94771234567",
+    });
   });
 
   it("rejects an invalid phone", async () => {
@@ -363,6 +372,11 @@ describe("POST /api/account/email/confirm", () => {
     const call = db.user.update.mock.calls[0][0];
     expect(call.data.email).toBe("new@baas.lk");
     expect(call.data.emailVerified).toBeInstanceOf(Date);
+    // The denormalized Provider contactEmail follows the switch (#553) so
+    // inquiry/lead notifications stop going to the abandoned address.
+    expect(syncContactToProvider).toHaveBeenCalledWith("u1", {
+      email: "new@baas.lk",
+    });
   });
 
   it("stores the address lowercase even if the token carried a mixed-case value (M8)", async () => {

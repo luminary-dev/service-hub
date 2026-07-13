@@ -7,7 +7,10 @@ export const internal = new Hono();
 // identity-service. Deletes the user's JobRequests (responses cascade) and,
 // when the caller passes the user's providerId, their JobResponses on other
 // jobs (responses are keyed by provider id, which only the orchestrator can
-// resolve). Idempotent: erasing an unknown user is a no-op 200.
+// resolve). Idempotent: erasing an unknown user is a no-op 200. The
+// orchestrator erases this service BEFORE the provider profile (#551), so a
+// missing providerId here always means "no responses to erase" — never a
+// retry whose Provider row was already deleted.
 internal.post("/users/:id/erase", async (c) => {
   const userId = c.req.param("id");
   const body = (await c.req.json().catch(() => null)) as {
