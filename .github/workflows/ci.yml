@@ -98,6 +98,7 @@ jobs:
           PROVIDER_DB_PASSWORD: ci-dummy-password
           REVIEW_DB_PASSWORD: ci-dummy-password
           JOB_DB_PASSWORD: ci-dummy-password
+          NOTIFICATION_DB_PASSWORD: ci-dummy-password
           REDIS_PASSWORD: ci-dummy-password
           WEB_ORIGIN: https://ci.example.test
           DOMAIN: ci.example.test
