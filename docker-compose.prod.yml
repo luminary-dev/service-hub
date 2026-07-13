@@ -292,6 +292,10 @@ services:
         condition: service_healthy
       chat-service:
         condition: service_healthy
+    # Probes the app's own /healthz route (deliberately gateway-independent), so
+    # the deploy health-gate covers the user-facing site (#385). $PORT=3000
+    # comes from the image env (see the web Dockerfile).
+    healthcheck: *node-healthcheck
 
   # The only public surface: terminates TLS (auto Let's Encrypt) and proxies to
   # the web app, which in turn proxies /api/* to the gateway internally.
@@ -315,8 +319,18 @@ services:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    # Probes Caddy's always-on admin API (localhost:2019) so the health-gate
+    # also covers the public edge (#385): it fails until the Caddyfile has
+    # loaded, and unlike a probe of :80/:443 it doesn't depend on the domain's
+    # DNS/ACME state — a fresh host must come up healthy before certs exist.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:2019/config/ > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
     depends_on:
-      - web
+      web:
+        condition: service_healthy
 
 volumes:
   pgdata:

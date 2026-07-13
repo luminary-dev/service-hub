@@ -55,10 +55,19 @@ Triggered on **push to `prod`** (and `workflow_dispatch`). Two jobs:
      `docker compose -f docker-compose.prod.yml pull`;
    - **health-gates the rollout**: `up -d --remove-orphans --wait
      --wait-timeout 180` blocks until every container with a healthcheck is
-     healthy and none has exited. A crash-loop or a failed `prisma migrate
-     deploy` fails the deploy instead of silently replacing the running stack;
-   - **auto-rolls-back on failure**: rewrites `IMAGE_TAG` back to `PREV_TAG`,
-     re-pulls, brings the previous images up, and exits non-zero;
+     healthy and none has exited. Every container has one — including `web`
+     (the app's `/healthz` route) and `caddy` (its admin API), so the gate
+     covers the user-facing site (#385). A crash-loop or a failed `prisma
+     migrate deploy` fails the deploy instead of silently replacing the
+     running stack;
+   - **auto-rolls-back on failure**: rewrites `IMAGE_TAG` back to `PREV_TAG`
+     **and restores the previously-deployed `docker-compose.prod.yml` +
+     `deploy/`** (recorded as the git SHA before the `reset --hard`) — if the
+     compose change itself broke the rollout, re-running the new file against
+     the old images would fail identically (#385). It then re-pulls, brings
+     the previous state up, and exits non-zero; a rollback that still comes up
+     unhealthy is reported loudly (`ROLLBACK FAILED`) in the job log instead
+     of being swallowed;
    - **prunes only after a healthy rollout** (`docker image prune -f`), so the
      previous image stays on disk and rollback remains a one-liner.
 
@@ -200,7 +209,10 @@ monorepo's `prod` branch so the mirrors reflect production.
 ## Rollback
 
 - **Automatic** — a failed health-gated rollout rolls itself back to the
-  previous image tag (see the CD pipeline); no action needed.
+  previous image tag **and** the previously-deployed compose/`deploy/` config
+  (see the CD pipeline); no action needed unless the job log says `ROLLBACK
+  FAILED`, in which case the stack may be down — SSH in and recover manually
+  (the two manual paths below).
 - **Manual, fast** — set `IMAGE_TAG=<previous-sha>` in the host `.env` and
   `docker compose -f docker-compose.prod.yml up -d`. The previous image is still
   on disk (pruning only happens after a healthy deploy).

@@ -131,15 +131,22 @@ jobs:
           } | "${SSH[@]}" "umask 077 && mkdir -p '$APP_DIR' && cat > '$APP_DIR/.env'"
           # 2) Pull the prod branch + images, then a HEALTH-GATED (re)start:
           #    `up -d --wait` blocks until every container with a healthcheck is
-          #    healthy and none has exited, so a crash-loop or a failed
-          #    `prisma migrate deploy` fails the deploy instead of silently
-          #    replacing the running stack. On failure we roll the stack back to
-          #    the previous IMAGE_TAG and exit non-zero. The old image is pruned
-          #    only AFTER a healthy rollout, so rollback stays a one-liner.
+          #    healthy and none has exited (every container has one — including
+          #    web and caddy, #385 — so the gate covers the public site), so a
+          #    crash-loop or a failed `prisma migrate deploy` fails the deploy
+          #    instead of silently replacing the running stack. On failure we
+          #    roll back to the previous IMAGE_TAG AND the previous compose/
+          #    deploy config (#385): `git reset --hard origin/prod` above may
+          #    itself be what broke the rollout, so re-running the new compose
+          #    file against the old images could fail identically. A rollback
+          #    that STILL comes up unhealthy is reported loudly instead of
+          #    swallowed. The old image is pruned only AFTER a healthy rollout,
+          #    so rollback stays a one-liner.
           "${SSH[@]}" bash -s <<EOF
             set -euo pipefail
             cd "$APP_DIR"
             COMPOSE="docker compose -f docker-compose.prod.yml"
+            PREV_SHA=\$(git rev-parse HEAD 2>/dev/null || true)
             git fetch origin prod && git reset --hard origin/prod
             \$COMPOSE pull
             if \$COMPOSE up -d --remove-orphans --wait --wait-timeout 180; then
@@ -150,9 +157,20 @@ jobs:
               \$COMPOSE ps
               if [ -n "${PREV_TAG:-}" ]; then
                 sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${PREV_TAG}/" .env
+                # Restore the previously-deployed compose file + deploy config
+                # alongside the image tag. The next successful deploy's
+                # `git reset --hard origin/prod` clears this checkout again.
+                if [ -n "\$PREV_SHA" ]; then
+                  git checkout "\$PREV_SHA" -- docker-compose.prod.yml deploy/ \
+                    || echo "WARNING: could not restore compose/deploy config from \$PREV_SHA; retrying with the new one." >&2
+                fi
                 \$COMPOSE pull
-                \$COMPOSE up -d --remove-orphans --wait --wait-timeout 180 || true
-                echo "Rolled back to ${PREV_TAG}." >&2
+                if \$COMPOSE up -d --remove-orphans --wait --wait-timeout 180; then
+                  echo "Rolled back to ${PREV_TAG}." >&2
+                else
+                  echo "ROLLBACK FAILED — stack may be down or unhealthy. Manual intervention required (see docs/DEPLOYMENT.md#rollback)." >&2
+                  \$COMPOSE ps >&2
+                fi
               else
                 echo "No previous IMAGE_TAG recorded; cannot auto-roll back." >&2
               fi
