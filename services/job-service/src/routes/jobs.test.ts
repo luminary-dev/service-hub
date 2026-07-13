@@ -58,8 +58,18 @@ function wireS2s(opts: {
   providerByUser?: typeof PROVIDER | null | "fail";
   users?: { id: string; name: string; email: string }[];
   providers?: { id: string; contactName: string | null; contactPhone: string | null }[];
+  // #501 forward fan-out: matching providers returned to the create path, and
+  // whether the matching lookup / new-job notification blows up.
+  matching?: { id: string; contactName: string | null; contactEmail: string }[] | "fail";
+  newJob?: "fail";
 } = {}) {
-  const { providerByUser = PROVIDER, users = [], providers = [] } = opts;
+  const {
+    providerByUser = PROVIDER,
+    users = [],
+    providers = [],
+    matching = [],
+    newJob,
+  } = opts;
   s2sMock.mockImplementation(async (_base: string, path: string) => {
     if (path.includes("/internal/categories")) {
       return json({ categories: [{ slug: "plumbing" }, { slug: "electrical" }] });
@@ -68,8 +78,16 @@ function wireS2s(opts: {
       if (providerByUser === "fail") return new Response("boom", { status: 503 });
       return json({ provider: providerByUser });
     }
+    if (path.includes("/internal/providers/matching")) {
+      if (matching === "fail") throw new Error("provider-service down");
+      return json({ providers: matching });
+    }
     if (path.includes("/internal/users?ids=")) return json({ users });
     if (path.includes("/internal/providers?ids=")) return json({ providers });
+    if (path.includes("/internal/email/new-job")) {
+      if (newJob === "fail") throw new Error("notification down");
+      return json({ ok: true, sent: 0, delivered: 0 });
+    }
     if (path.includes("/internal/email/job-response")) return json({ ok: true });
     throw new Error(`unexpected s2s path: ${path}`);
   });
@@ -143,6 +161,104 @@ describe("POST /api/jobs (create)", () => {
         budget: null,
       }),
     });
+  });
+
+  it("notifies matching providers (fan-out) after creating the job", async () => {
+    dbMock.jobRequest.create.mockResolvedValue({
+      id: "job_1",
+      title: validJob.title,
+      category: "plumbing",
+      district: "Colombo",
+    });
+    wireS2s({
+      matching: [
+        { id: "prov_1", contactName: "Jane", contactEmail: "jane@example.com" },
+        { id: "prov_2", contactName: "Sam", contactEmail: "sam@example.com" },
+      ],
+    });
+    const res = await req(
+      "/api/jobs",
+      { method: "POST", body: JSON.stringify(validJob) },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: "job_1" });
+
+    // The matching lookup is scoped to the job's category+district and excludes
+    // the poster.
+    const matchCall = s2sMock.mock.calls.find(([, p]) =>
+      p.includes("/internal/providers/matching")
+    );
+    expect(matchCall?.[1]).toContain("category=plumbing");
+    expect(matchCall?.[1]).toContain("district=Colombo");
+    expect(matchCall?.[1]).toContain(`excludeUserId=${CUSTOMER_ID}`);
+
+    // Every matching provider's email is handed to notification in one call.
+    const notifyCall = s2sMock.mock.calls.find(([, p]) =>
+      p.includes("/internal/email/new-job")
+    );
+    expect(notifyCall).toBeDefined();
+    const body = JSON.parse((notifyCall?.[2]?.body as string) ?? "{}");
+    expect(body.recipients).toEqual(["jane@example.com", "sam@example.com"]);
+    expect(body.jobTitle).toBe(validJob.title);
+    expect(body.district).toBe("Colombo");
+  });
+
+  it("skips the notification call when no providers match", async () => {
+    dbMock.jobRequest.create.mockResolvedValue({
+      id: "job_1",
+      title: validJob.title,
+      category: "plumbing",
+      district: "Colombo",
+    });
+    wireS2s({ matching: [] });
+    const res = await req(
+      "/api/jobs",
+      { method: "POST", body: JSON.stringify(validJob) },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(200);
+    const notifyCall = s2sMock.mock.calls.find(([, p]) =>
+      p.includes("/internal/email/new-job")
+    );
+    expect(notifyCall).toBeUndefined();
+  });
+
+  it("still returns { id } when the matching lookup fails (best-effort)", async () => {
+    dbMock.jobRequest.create.mockResolvedValue({
+      id: "job_1",
+      title: validJob.title,
+      category: "plumbing",
+      district: "Colombo",
+    });
+    wireS2s({ matching: "fail" });
+    const res = await req(
+      "/api/jobs",
+      { method: "POST", body: JSON.stringify(validJob) },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: "job_1" });
+  });
+
+  it("still returns { id } when the notification call fails (best-effort)", async () => {
+    dbMock.jobRequest.create.mockResolvedValue({
+      id: "job_1",
+      title: validJob.title,
+      category: "plumbing",
+      district: "Colombo",
+    });
+    wireS2s({
+      matching: [{ id: "prov_1", contactName: "Jane", contactEmail: "jane@example.com" }],
+      newJob: "fail",
+    });
+    const res = await req(
+      "/api/jobs",
+      { method: "POST", body: JSON.stringify(validJob) },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: "job_1" });
   });
 });
 

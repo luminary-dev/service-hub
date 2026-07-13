@@ -219,6 +219,35 @@ export function inquiryEmail(
   };
 }
 
+// New-matching-job alert (#501): sent to every provider whose category +
+// district match a freshly posted job, so the lead-gen loop reaches them
+// instead of relying on them to browse the board. Mirrors jobResponseEmail's
+// bilingual structure; `jobTitle` is user-controlled and escaped for the body
+// (the subject is a plain-text header, so `district` is used raw there).
+export function newJobEmail(
+  url: string,
+  jobTitle: string,
+  district: string,
+  locale: Locale = "en"
+) {
+  const si = locale === "si";
+  const title = escapeHtml(jobTitle);
+  const area = escapeHtml(district);
+  return {
+    subject: si
+      ? `${district} හි ඔබට ගැලපෙන නව රැකියාවක්`
+      : `New job in ${district} matching your services`,
+    html: layout(
+      si ? "ඔබට ගැලපෙන නව රැකියාවක්" : "A new job matches your services",
+      si
+        ? `ඔබේ ප්‍රවර්ගයට සහ ${area} දිස්ත්‍රික්කයට ගැලපෙන "${title}" නමින් නව රැකියාවක් පළ කර ඇත. එය බලා ප්‍රතිචාර දැක්වීමට ඔබේ රැකියා පුවරුවට පිවිසෙන්න.`
+        : `A new job "${title}" was posted in ${area} matching your category. Log in to your job board to view it and respond.`,
+      si ? "රැකියාව බලන්න" : "View job",
+      url
+    ),
+  };
+}
+
 export function jobResponseEmail(
   url: string,
   providerName: string,

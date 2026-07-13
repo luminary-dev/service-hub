@@ -204,6 +204,48 @@ internalRoutes.post("/internal/providers/avatar", async (c) => {
   return c.json({ ok: true });
 });
 
+// Forward lead-gen fan-out (#501): the providers to notify when a customer
+// posts a job. Mirrors the job board's scoping exactly — a provider matches a
+// job when its `category` and `district` equal the job's AND it is not
+// suspended (the same `suspended: false` gate browse applies; verification and
+// availability are display concerns the board itself doesn't filter on). So the
+// set emailed about a new job is precisely the set that would see it on their
+// board. `excludeUserId` drops the poster if they happen to also be a provider,
+// mirroring the board's not-own-job rule. Returns each match's denormalized
+// `contactEmail` — the same address recorded at registration and the canonical
+// provider contact (customer emails live in identity, but provider emails live
+// here). Capped and deduped by email so no provider is alerted twice.
+const MAX_MATCHING_PROVIDERS = 200;
+
+internalRoutes.get("/internal/providers/matching", async (c) => {
+  const category = c.req.query("category");
+  const district = c.req.query("district");
+  if (!category || !district) {
+    return c.json({ error: "category and district are required" }, 400);
+  }
+  const excludeUserId = c.req.query("excludeUserId");
+  const matches = await db.provider.findMany({
+    where: {
+      category,
+      district,
+      suspended: false,
+      ...(excludeUserId ? { NOT: { userId: excludeUserId } } : {}),
+    },
+    select: { id: true, contactName: true, contactEmail: true },
+    take: MAX_MATCHING_PROVIDERS,
+  });
+  // Dedupe by contact email — two profiles could share an address; a provider
+  // must never get two copies of the same new-job alert.
+  const seen = new Set<string>();
+  const providers = matches.filter((p) => {
+    const email = p.contactEmail.toLowerCase();
+    if (seen.has(email)) return false;
+    seen.add(email);
+    return true;
+  });
+  return c.json({ providers });
+});
+
 // Batch hydration (job-service response lists).
 internalRoutes.get("/internal/providers", async (c) => {
   const idsParam = c.req.query("ids") ?? "";
