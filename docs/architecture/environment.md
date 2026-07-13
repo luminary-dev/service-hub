@@ -22,4 +22,5 @@
 | `GATEWAY_URL` | web (runtime `/api/*` proxy target in `src/proxy.ts` + `src/lib/api.ts` server fetches + `sitemap.ts`; read per request, never baked into the build), chat-service (its tools call the gateway) |
 | `NEXT_PUBLIC_SITE_URL` | web (sitemap/robots/OG canonical origin, optional) |
 | `DOMAIN`, `ACME_EMAIL`, `IMAGE_TAG`, `POSTGRES_PASSWORD` | prod compose only (`docker-compose.prod.yml` / `.env.prod.example` — Caddy TLS host, ACME email, published image tag, Postgres superuser password used in every `DATABASE_URL`) |
+| `BACKUP_R2_ENDPOINT`, `BACKUP_R2_BUCKET`, `BACKUP_R2_ACCESS_KEY_ID`, `BACKUP_R2_SECRET_ACCESS_KEY`, `BACKUP_HEARTBEAT_URL` | backup scripts only (#389) — nightly offsite copy to a dedicated R2 bucket + dead-man's-switch ping. Host-local `.backup.env` (not GitHub secrets, not the CD-rendered `.env`); see [BACKUPS.md](../BACKUPS.md) |
 
