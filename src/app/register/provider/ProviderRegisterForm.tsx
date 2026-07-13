@@ -690,7 +690,7 @@ export default function ProviderRegisterForm({
                     </div>
                     <select
                       className="input w-36"
-                      aria-label={r.serviceN(i + 1)}
+                      aria-label={r.priceType}
                       value={s.priceType}
                       onChange={(e) =>
                         setService(i, "priceType", e.target.value)

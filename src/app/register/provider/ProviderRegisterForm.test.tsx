@@ -69,7 +69,11 @@ describe("ProviderRegisterForm (authed mode, #552)", () => {
     fireEvent.click(screen.getByRole("button", { name: t.continue }));
     // Contact & socials step is optional.
     fireEvent.click(screen.getByRole("button", { name: t.continue }));
-    // Services step.
+    // Services step — the price-type select carries its own label, not the
+    // service heading (#565).
+    expect(
+      screen.getByRole("combobox", { name: t.priceType }).tagName
+    ).toBe("SELECT");
     fireEvent.change(screen.getByPlaceholderText(t.serviceTitlePh), {
       target: { value: "Full house wiring" },
     });
