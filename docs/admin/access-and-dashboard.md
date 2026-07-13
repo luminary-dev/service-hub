@@ -42,17 +42,19 @@ moderation set above.
 Route: **`/admin`** (`src/app/admin/page.tsx`,
 `src/components/admin/AdminDashboardCharts.tsx`).
 
-The home screen is the metrics view plus the nav grid. It fetches three
+The home screen is the metrics view plus the nav grid. It fetches four
 sources in parallel, each degrading to zeros rather than erroring:
 
 - `GET /api/admin/stats` (provider-service) — active/suspended/total providers,
   `pendingVerifications`, `openReports`, `categoryDistribution`.
 - `GET /api/admin/review-stats` (review-service) — review-side open reports.
+- `GET /api/admin/job-reports/count` (job-service, #375) — job-side open
+  reports.
 - `GET /api/admin/signups` (identity-service) — 30-day daily signup series and
   totals split by customers vs providers.
 
 **Stat tiles:** total signups, pending verifications, open reports (provider +
-review reports summed), active providers, suspended providers.
+review + job reports summed), active providers, suspended providers.
 
 **Charts** (recharts, colored from CSS vars so they follow dark mode):
 

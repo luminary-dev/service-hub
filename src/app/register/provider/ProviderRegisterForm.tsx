@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   DISTRICTS,
   PASSWORD_MAX_LENGTH,
@@ -63,6 +63,16 @@ export default function ProviderRegisterForm({
   const r = t.providerReg;
   const STEPS = r.steps;
 
+  // On step change (not initial mount) move focus to the panel heading so
+  // keyboard users land at the top of the new step and screen readers
+  // announce it (#564).
+  const stepHeadingRef = useRef<HTMLHeadingElement>(null);
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (mountedRef.current) stepHeadingRef.current?.focus();
+    else mountedRef.current = true;
+  }, [step]);
+
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -108,6 +118,10 @@ export default function ProviderRegisterForm({
         errs["pr-password"] = r.errPassword;
     }
     if (step === 1) {
+      // Authed mode skips step 0, so the (required) phone is collected and
+      // validated here instead (#552).
+      if (authed && form.phone.trim().length < 9)
+        errs["pr-phone"] = r.errPhone;
       if (!form.category) errs["pr-category"] = r.errCategory;
       if (form.headline.trim().length < 5) errs["pr-headline"] = r.errHeadline;
       if (form.bio.trim().length < 20) errs["pr-bio"] = r.errBio;
@@ -135,6 +149,7 @@ export default function ProviderRegisterForm({
   }
 
   async function submit() {
+    if (loading) return;
     const errs = validateStep();
     setFieldErrors(errs);
     if (Object.keys(errs).length > 0) return;
@@ -243,8 +258,13 @@ export default function ProviderRegisterForm({
               const done = i < step;
               const active = i === step;
               return (
-                <li key={label} className="relative">
+                <li
+                  key={label}
+                  className="relative"
+                  aria-current={active ? "step" : undefined}
+                >
                   <span
+                    aria-hidden
                     className={`absolute -left-[38px] flex h-7 w-7 items-center justify-center rounded-sm border-2 font-mono text-[10px] font-bold transition ${
                       done
                         ? "border-brand-600 bg-brand-600 text-white dark:text-ink-50"
@@ -261,6 +281,9 @@ export default function ProviderRegisterForm({
                     }`}
                   >
                     {label}
+                    {done && (
+                      <span className="sr-only"> ({r.stepCompleted})</span>
+                    )}
                   </span>
                 </li>
               );
@@ -271,14 +294,14 @@ export default function ProviderRegisterForm({
           <figure className="tech-corners relative mt-8 hidden aspect-[4/3] overflow-hidden border border-ink-300 lg:block">
             <Image
               src="/images/workers/electrician-1.jpg"
-              alt="A tradesperson at work in Sri Lanka"
+              alt={r.asideWorkerAlt}
               fill
               sizes="320px"
               className="object-cover"
             />
             <div className="blueprint-grid pointer-events-none absolute inset-0 opacity-25 mix-blend-overlay" />
             <span className="absolute left-2 top-2 rounded-sm bg-brand-700 px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-white dark:text-ink-50">
-              Registry
+              {r.asideBadge}
             </span>
           </figure>
         </aside>
@@ -287,13 +310,35 @@ export default function ProviderRegisterForm({
         <div>
           <div className="tech-corners overflow-hidden rounded-lg border border-ink-300 bg-surface">
             <div className="flex items-center justify-between border-b border-ink-200 bg-ink-100 px-5 py-3 font-mono text-[11px] uppercase tracking-[0.12em]">
-              <span className="font-bold tabular-nums text-ink-700">
+              <span aria-hidden className="font-bold tabular-nums text-ink-700">
                 {String(step + 1).padStart(2, "0")} /{" "}
                 {String(STEPS.length).padStart(2, "0")}
               </span>
-              <span className="text-brand-700">{STEPS[step]}</span>
+              {/* Focus target on step change (#564): the sr-only text reads
+                  the full "Step n of N" context the visual chrome splits up. */}
+              <h2
+                ref={stepHeadingRef}
+                tabIndex={-1}
+                className="text-brand-700 focus:outline-none"
+              >
+                <span className="sr-only">
+                  {r.stepOf(step + 1, STEPS.length, STEPS[step])}
+                </span>
+                <span aria-hidden>{STEPS[step]}</span>
+              </h2>
             </div>
-            <div className="p-6">
+            {/* One <form> per step: Continue/Create is its submit button, so
+                Enter in a field advances the wizard (#564). Validation stays
+                in JS for localized messages, hence noValidate. */}
+            <form
+              className="p-6"
+              noValidate
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (step < STEPS.length - 1) next();
+                else void submit();
+              }}
+            >
         {step === 0 && (
           <div className="space-y-4">
             <div>
@@ -357,6 +402,23 @@ export default function ProviderRegisterForm({
 
         {step === 1 && (
           <div className="space-y-4">
+            {authed && (
+              <div>
+                <label className="label" htmlFor="pr-phone">
+                  {r.phone}
+                </label>
+                <input
+                  id="pr-phone"
+                  className="input"
+                  type="tel"
+                  placeholder="07X XXX XXXX"
+                  value={form.phone}
+                  onChange={(e) => set("phone", e.target.value)}
+                  {...errorProps("pr-phone")}
+                />
+                <p className="mt-1 text-xs text-ink-500">{r.phoneHint}</p>
+              </div>
+            )}
             <div>
               {/* The category picker is a group of toggle buttons, not a
                   single field — a <label> has nothing to point at, so the
@@ -716,21 +778,16 @@ export default function ProviderRegisterForm({
             <span />
           )}
           {step < STEPS.length - 1 ? (
-            <button type="button" onClick={next} className="btn-primary">
+            <button type="submit" className="btn-primary">
               {r.continue}
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={submit}
-              disabled={loading}
-              className="btn-primary"
-            >
+            <button type="submit" disabled={loading} className="btn-primary">
               {loading ? r.creating : r.create}
             </button>
           )}
             </div>
-            </div>
+            </form>
           </div>
 
           <p className="mt-6 text-center text-sm text-ink-500">

@@ -326,6 +326,61 @@ describe("axe: forms", () => {
     await expectNoAxeViolations(container);
   }, AXE_TIMEOUT);
 
+  it("provider registration wizard submits as a form and manages focus on step change (#564)", async () => {
+    const { container } = render(
+      <ProviderRegisterForm
+        categories={[
+          { slug: "electrician", labelEn: "Electrician", labelSi: "විදුලි කාර්මික", icon: null },
+        ]}
+      />
+    );
+    const r = t.providerReg;
+    // Each step renders inside a <form> whose Continue/Create button is the
+    // submit, so Enter in a field advances instead of doing nothing.
+    const form = container.querySelector("form");
+    expect(form).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: r.continue }).getAttribute("type")
+    ).toBe("submit");
+
+    // Submitting (as Enter would) runs the same step validation, surfacing
+    // the error summary (#378)…
+    fireEvent.submit(form!);
+    expect(screen.getByRole("alert").textContent).toContain(r.errName);
+
+    // …and with valid fields advances to the next step.
+    fireEvent.change(screen.getByLabelText(r.fullName), {
+      target: { value: "Nuwan Perera" },
+    });
+    fireEvent.change(screen.getByLabelText(r.email), {
+      target: { value: "nuwan@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText(r.phone), {
+      target: { value: "0771234567" },
+    });
+    fireEvent.change(screen.getByLabelText(r.password), {
+      target: { value: "correct-horse-battery" },
+    });
+    fireEvent.submit(form!);
+
+    // Focus moves to the new step's heading, which announces the full
+    // "Step n of N" context to screen readers.
+    const heading = screen.getByRole("heading", {
+      name: r.stepOf(2, r.steps.length, r.steps[1]),
+    });
+    expect(document.activeElement).toBe(heading);
+
+    // The stepper marks the active step, and Back also refocuses the heading.
+    expect(
+      container.querySelector('[aria-current="step"]')?.textContent
+    ).toContain(r.steps[1]);
+    fireEvent.click(screen.getByRole("button", { name: r.back }));
+    expect(document.activeElement?.textContent).toContain(
+      r.stepOf(1, r.steps.length, r.steps[0])
+    );
+    await expectNoAxeViolations(container);
+  }, AXE_TIMEOUT);
+
   it("inquiry form has no violations and links inline validation errors (#378)", async () => {
     const { container } = render(
       <InquiryForm providerId="prov_1" providerName="Sunil Perera" defaultName="" />
@@ -437,6 +492,7 @@ describe("axe: forms", () => {
       <ToastProvider>
         <ReviewSection
           providerId="prov_1"
+          providerName="Nimal"
           reviews={[
             {
               id: "rev_1",
@@ -445,9 +501,14 @@ describe("axe: forms", () => {
               createdAt: "2025-05-01T00:00:00.000Z",
               userName: "Kasun",
               photos: [{ id: "rph_1", url: "/uploads/review.jpg" }],
+              response: {
+                text: "Thank you for the kind words!",
+                createdAt: "2025-05-02T00:00:00.000Z",
+              },
             },
           ]}
           canReview
+          canRespond={false}
           signedIn
           myReview={null}
           summary={{

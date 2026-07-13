@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useLocale, useT } from "@/components/I18nProvider";
-import { localizedHref } from "@/lib/links";
+import { localizedHref, sanitizeNext } from "@/lib/links";
 import PasswordInput from "@/components/PasswordInput";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
 import FacebookSignInButton from "@/components/FacebookSignInButton";
@@ -24,6 +24,10 @@ export default function LoginPage() {
   const locale = useLocale();
   // OAuth failures redirect back here as ?error=<code>; map it to a message.
   const searchParams = useSearchParams();
+  // Post-login return-to (#560): "sign in to continue" entry points arrive as
+  // /login?next=<locale-prefixed path>. Validated same-origin paths win over
+  // the role default below; anything else is dropped (no open redirects).
+  const next = sanitizeNext(searchParams.get("next"));
   const oauthError = searchParams.get("error");
   const initialError =
     oauthError === "oauth_email"
@@ -58,10 +62,11 @@ export default function LoginPage() {
       if (res.ok) {
         const data = await res.json();
         router.push(
-          localizedHref(
-            data.user.role === "PROVIDER" ? "/dashboard" : "/providers",
-            locale,
-          ),
+          next ??
+            localizedHref(
+              data.user.role === "PROVIDER" ? "/dashboard" : "/providers",
+              locale,
+            ),
         );
         router.refresh();
       } else {
@@ -164,8 +169,14 @@ export default function LoginPage() {
           <span className="h-px flex-1 bg-ink-200" />
         </div>
         <div className="mt-6 space-y-3">
-          <GoogleSignInButton label={t.oauth.continueWithGoogle} />
-          <FacebookSignInButton label={t.oauth.continueWithFacebook} />
+          <GoogleSignInButton
+            label={t.oauth.continueWithGoogle}
+            next={next ?? undefined}
+          />
+          <FacebookSignInButton
+            label={t.oauth.continueWithFacebook}
+            next={next ?? undefined}
+          />
         </div>
         <p className="mt-3 text-center text-xs text-ink-500">{t.oauth.dataUse}</p>
 

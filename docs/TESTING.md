@@ -98,9 +98,11 @@ What's automated and what still needs a human (#66):
   wiring (#378): inline errors linked to their fields via
   `aria-describedby`/`aria-invalid` with focus moved to the first invalid
   control, and the provider wizard's focus-managed error summary whose
-  in-page links focus the offending field. Add new interactive components to
-  this file as they're built, and surface their errors through the `Field`
-  error prop / `src/components/ui/FormError.tsx` helpers so the wiring stays
+  in-page links focus the offending field. The wizard test likewise asserts
+  real form semantics (Enter submits each step) and that focus moves to the
+  step heading on step change. Add new interactive components to this file
+  as they're built, and surface their errors through the `Field` error prop
+  / `src/components/ui/FormError.tsx` helpers so the wiring stays
   consistent.
 - **Not automatable here — needs a browser.** axe's `color-contrast` rule is
   disabled because jsdom has no layout engine; contrast must be re-verified
