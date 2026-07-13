@@ -5,6 +5,7 @@ import { useState } from "react";
 import { FaEnvelope, FaInbox, FaPhone } from "@/components/icons";
 import EmptyState from "@/components/ui/EmptyState";
 import { useLocale, useT } from "../I18nProvider";
+import { useToast } from "../ToastProvider";
 import { formatDate } from "@/lib/format";
 import type { InquiryItem } from "./DashboardTabs";
 
@@ -17,6 +18,7 @@ const STATUS_STYLES: Record<string, string> = {
 export default function InquiriesList({ initial }: { initial: InquiryItem[] }) {
   const [inquiries, setInquiries] = useState(initial);
   const t = useT();
+  const toast = useToast();
   const q = t.dashboard.inquiries;
   const locale = useLocale();
   const statusLabel: Record<string, string> = {
@@ -30,11 +32,13 @@ export default function InquiriesList({ initial }: { initial: InquiryItem[] }) {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
-    });
-    if (res.ok) {
+    }).catch(() => null);
+    if (res && res.ok) {
       setInquiries((list) =>
         list.map((i) => (i.id === id ? { ...i, status } : i))
       );
+    } else {
+      toast.error(t.toast.inquiryStatusError);
     }
   }
 
