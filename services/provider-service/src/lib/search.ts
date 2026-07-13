@@ -68,7 +68,11 @@ export function buildBrowseWhere(
   return {
     suspended: false,
     ...(f.category ? { category: f.category } : {}),
-    ...(f.district ? { district: f.district } : {}),
+    // Multi-district service area (#502): a district filter matches any
+    // provider whose served set contains it, not only those based there.
+    // Every row carries the set (backfilled to [district] by migration
+    // 20260714090000), backed by the GIN index on serviceDistricts.
+    ...(f.district ? { serviceDistricts: { has: f.district } } : {}),
     ...(f.availableOnly
       ? {
           available: true,

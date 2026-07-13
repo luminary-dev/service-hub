@@ -68,11 +68,11 @@ describe("buildBrowseWhere", () => {
     expect(buildBrowseWhere({})).toEqual({ suspended: false });
   });
 
-  it("applies category and district exact filters", () => {
+  it("applies the category exact filter and the district membership filter (#502)", () => {
     expect(buildBrowseWhere({ category: "plumber", district: "Kandy" })).toEqual({
       suspended: false,
       category: "plumber",
-      district: "Kandy",
+      serviceDistricts: { has: "Kandy" },
     });
   });
 
@@ -126,7 +126,9 @@ describe("buildBrowseWhere", () => {
       availableOnly: true,
     });
     expect(where.suspended).toBe(false);
-    expect(where.district).toBe("Colombo");
+    // Multi-district (#502): the filter is membership in the served set, so a
+    // provider based elsewhere but serving Colombo matches too.
+    expect(where.serviceDistricts).toEqual({ has: "Colombo" });
     expect(where.available).toBe(true);
     expect(where.OR).toContainEqual({ category: { in: ["mechanic"] } });
   });

@@ -12,7 +12,10 @@ providers from `GET /api/providers`. Signed-in users also fetch
 - Free-text search `q` (matches name, category EN/SI labels, and the English
   **and** optional Sinhala headline/bio (#515) so a Sinhala query finds a
   Sinhala-authored pitch).
-- `category` and `district` selects (25 districts).
+- `category` and `district` selects (25 districts). The district filter is a
+  **membership test on the provider's service area** (#502): it matches any
+  provider whose `serviceDistricts` set contains the chosen district, not
+  only providers based there.
 - Price range `priceMin` / `priceMax`.
 - Minimum rating `ratingMin` (4+ / 3+ / 2+).
 - `availableOnly` toggle.

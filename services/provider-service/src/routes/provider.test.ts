@@ -36,6 +36,7 @@ vi.mock("../lib/storage", () => ({
 }));
 
 import { app } from "../app";
+import { fetchOpenJobsCount } from "../lib/clients";
 
 const SECRET = "dev-internal-secret";
 type Role = "ADMIN" | "SUPPORT" | "CUSTOMER" | "PROVIDER" | null;
@@ -104,6 +105,39 @@ describe("getCurrentProvider gate", () => {
     const body = await res.json();
     expect(body.provider.id).toBe("prov1");
     expect(body).toHaveProperty("openJobsCount");
+  });
+
+  it("GET /api/provider/dashboard: counts open jobs across the served set (#502)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({
+      ...MY_PROVIDER,
+      serviceDistricts: ["Colombo", "Gampaha"],
+    });
+    dbMock.service.findMany.mockResolvedValue([]);
+    dbMock.workPhoto.findMany.mockResolvedValue([]);
+    dbMock.inquiry.findMany.mockResolvedValue([]);
+    dbMock.inquiry.count.mockResolvedValue(0);
+    const res = await req("/api/provider/dashboard", { role: "PROVIDER" });
+    expect(res.status).toBe(200);
+    expect(vi.mocked(fetchOpenJobsCount)).toHaveBeenCalledWith(
+      "plumbing",
+      ["Colombo", "Gampaha"],
+      "owner-1"
+    );
+  });
+
+  it("GET /api/provider/dashboard: falls back to [district] for a pre-#502 row", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(MY_PROVIDER);
+    dbMock.service.findMany.mockResolvedValue([]);
+    dbMock.workPhoto.findMany.mockResolvedValue([]);
+    dbMock.inquiry.findMany.mockResolvedValue([]);
+    dbMock.inquiry.count.mockResolvedValue(0);
+    const res = await req("/api/provider/dashboard", { role: "PROVIDER" });
+    expect(res.status).toBe(200);
+    expect(vi.mocked(fetchOpenJobsCount)).toHaveBeenCalledWith(
+      "plumbing",
+      ["Colombo"],
+      "owner-1"
+    );
   });
 
   it("GET /api/provider/dashboard: embeds only the first inquiries page + totals (#372)", async () => {
@@ -345,6 +379,72 @@ describe("PUT /api/provider/profile — bilingual content (#515)", () => {
     const arg = dbMock.provider.update.mock.calls[0][0];
     expect(arg.data.headlineSi).toBeNull();
     expect(arg.data.bioSi).toBeNull();
+  });
+});
+
+describe("PUT /api/provider/profile — multi-district service area (#502)", () => {
+  const baseBody = {
+    name: "Ann Silva",
+    phone: "0771234567",
+    category: "plumber",
+    headline: "Reliable plumber",
+    bio: "Twenty-plus characters of provider bio text here.",
+    district: "Colombo",
+    city: "Colombo",
+    experience: 5,
+    available: true,
+  };
+
+  it("persists the served set, deduped with the primary district pinned first", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(MY_PROVIDER);
+    dbMock.provider.update.mockResolvedValue({ id: "prov1" });
+    const res = await req("/api/provider/profile", {
+      method: "PUT",
+      role: "PROVIDER",
+      body: { ...baseBody, serviceDistricts: ["Gampaha", "Colombo", "Gampaha"] },
+    });
+    expect(res.status).toBe(200);
+    const arg = dbMock.provider.update.mock.calls[0][0];
+    expect(arg.data.serviceDistricts).toEqual(["Colombo", "Gampaha"]);
+  });
+
+  it("collapses the served set to [district] when omitted", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(MY_PROVIDER);
+    dbMock.provider.update.mockResolvedValue({ id: "prov1" });
+    const res = await req("/api/provider/profile", {
+      method: "PUT",
+      role: "PROVIDER",
+      body: baseBody,
+    });
+    expect(res.status).toBe(200);
+    const arg = dbMock.provider.update.mock.calls[0][0];
+    expect(arg.data.serviceDistricts).toEqual(["Colombo"]);
+  });
+
+  it("400s when the union with the primary district exceeds the cap", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(MY_PROVIDER);
+    const res = await req("/api/provider/profile", {
+      method: "PUT",
+      role: "PROVIDER",
+      body: {
+        ...baseBody,
+        serviceDistricts: ["Gampaha", "Kalutara", "Kandy", "Galle", "Matara"],
+      },
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/at most 5 districts/i);
+    expect(dbMock.provider.update).not.toHaveBeenCalled();
+  });
+
+  it("400s on an unknown district in the served set", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(MY_PROVIDER);
+    const res = await req("/api/provider/profile", {
+      method: "PUT",
+      role: "PROVIDER",
+      body: { ...baseBody, serviceDistricts: ["Atlantis"] },
+    });
+    expect(res.status).toBe(400);
+    expect(dbMock.provider.update).not.toHaveBeenCalled();
   });
 });
 

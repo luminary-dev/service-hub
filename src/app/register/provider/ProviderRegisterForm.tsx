@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   DISTRICTS,
+  MAX_SERVICE_DISTRICTS,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
   PRICE_TYPES,
@@ -17,6 +18,7 @@ import { useLocale, useT } from "@/components/I18nProvider";
 import { ConsentCheckbox } from "@/components/LegalConsent";
 import PasswordInput from "@/components/PasswordInput";
 import CategoryIcon from "@/components/CategoryIcon";
+import ServiceDistrictsPicker from "@/components/ServiceDistrictsPicker";
 import {
   ErrorSummary,
   FormError,
@@ -99,6 +101,9 @@ export default function ProviderRegisterForm({
   const [services, setServices] = useState<ServiceInput[]>([
     { ...emptyService },
   ]);
+  // Extra served districts beyond the home district (#502) — the home
+  // district is pinned by the picker and unioned in at submit time.
+  const [serviceDistricts, setServiceDistricts] = useState<string[]>([]);
   const [agree, setAgree] = useState(false);
 
   function set(field: string, value: string) {
@@ -129,6 +134,13 @@ export default function ProviderRegisterForm({
       if (form.headline.trim().length < 5) errs["pr-headline"] = r.errHeadline;
       if (form.bio.trim().length < 20) errs["pr-bio"] = r.errBio;
       if (!form.district) errs["pr-district"] = r.errDistrict;
+      // Served-set cap (#502): the picker disables further picks at the cap,
+      // so this only trips if the state drifts — mirrors the server's guard.
+      if (
+        [form.district, ...serviceDistricts.filter((d) => d !== form.district)]
+          .length > MAX_SERVICE_DISTRICTS
+      )
+        errs["pr-service-districts"] = t.serviceDistricts.limitReached;
       if (!form.city.trim()) errs["pr-city"] = r.errCity;
     }
     if (step === 3) {
@@ -172,6 +184,11 @@ export default function ProviderRegisterForm({
       headlineSi: form.headlineSi.trim() || undefined,
       bioSi: form.bioSi.trim() || undefined,
       district: form.district,
+      // Full served set (#502): home district first, extras after.
+      serviceDistricts: [
+        form.district,
+        ...serviceDistricts.filter((d) => d !== form.district),
+      ],
       city: form.city.trim(),
       experience: Number(form.experience) || 0,
       whatsapp: form.whatsapp.trim(),
@@ -574,6 +591,14 @@ export default function ProviderRegisterForm({
                 />
               </div>
             </div>
+            {/* Multi-district service area (#502). */}
+            <ServiceDistrictsPicker
+              id="pr-service-districts"
+              primary={form.district}
+              value={serviceDistricts}
+              onChange={setServiceDistricts}
+              hasError={Boolean(fieldErrors["pr-service-districts"])}
+            />
           </div>
         )}
 

@@ -83,6 +83,9 @@ type FullProvider = {
   headlineSi?: string | null;
   bioSi?: string | null;
   district: string;
+  // Multi-district service area (#502); always includes `district`. Optional
+  // on the type so cached pre-#502 payloads need no churn.
+  serviceDistricts?: string[];
   city: string;
   experience: number;
   // `available` is the EFFECTIVE availability (the service folds the away
@@ -341,6 +344,16 @@ export default async function ProviderProfilePage({
                   {provider.experience > 0 &&
                     ` · ${t.profile.exp(provider.experience)}`}
                 </p>
+                {/* Multi-district service area (#502): the full served set,
+                    shown when it goes beyond the home district. */}
+                {(provider.serviceDistricts?.length ?? 0) > 1 && (
+                  <p className="mt-1 font-mono text-[11px] uppercase tracking-wider text-ink-500">
+                    {t.serviceDistricts.areasLabel}:{" "}
+                    {provider
+                      .serviceDistricts!.map((d) => districtLabelLoc(d, locale))
+                      .join(", ")}
+                  </p>
+                )}
                 <div className="mt-2.5 flex items-center gap-2">
                   {ratingAvg !== null ? (
                     <>

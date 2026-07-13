@@ -54,13 +54,33 @@ describe("internal secret enforcement", () => {
 });
 
 describe("GET /internal/jobs/count", () => {
-  it("returns { count } for a valid request", async () => {
+  it("counts across a comma-separated served set (#502)", async () => {
     dbMock.jobRequest.count.mockResolvedValue(5);
-    const res = await req("/internal/jobs/count?category=plumbing&district=Colombo");
+    const res = await req(
+      "/internal/jobs/count?category=plumbing&districts=Colombo,Gampaha"
+    );
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ count: 5 });
     expect(dbMock.jobRequest.count).toHaveBeenCalledWith({
-      where: { status: "OPEN", category: "plumbing", district: "Colombo" },
+      where: {
+        status: "OPEN",
+        category: "plumbing",
+        district: { in: ["Colombo", "Gampaha"] },
+      },
+    });
+  });
+
+  it("still honors the legacy single district param", async () => {
+    dbMock.jobRequest.count.mockResolvedValue(2);
+    const res = await req("/internal/jobs/count?category=plumbing&district=Colombo");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ count: 2 });
+    expect(dbMock.jobRequest.count).toHaveBeenCalledWith({
+      where: {
+        status: "OPEN",
+        category: "plumbing",
+        district: { in: ["Colombo"] },
+      },
     });
   });
 });

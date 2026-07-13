@@ -5,7 +5,11 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "../db";
 import { moderateContent } from "../lib/auto-report";
-import { optionalWebUrl } from "../lib/field-rules";
+import {
+  normalizeServiceDistricts,
+  optionalWebUrl,
+  serviceDistrictsField,
+} from "../lib/field-rules";
 import { removeStoredFile, sweepMedia } from "../lib/storage";
 
 export const internalRoutes = new Hono();
@@ -38,6 +42,9 @@ const createSchema = z.object({
   headlineSi: optionalText(120),
   bioSi: optionalText(2000),
   district: z.string().min(1),
+  // Multi-district service area (#502). Optional so older callers keep
+  // working; the create below always persists at least [district].
+  serviceDistricts: serviceDistrictsField.nullish(),
   city: z.string().min(1).max(60),
   experience: z.number().int().min(0).max(60),
   whatsapp: optionalText(15),
@@ -83,6 +90,17 @@ internalRoutes.post("/internal/providers", async (c) => {
   }
   const data = parsed.data;
 
+  // Served set (#502): dedupe and pin the primary district; refuse (never
+  // truncate) a union over the cap. identity-service pre-validates this, so a
+  // 400 here only catches a drifted/hostile caller.
+  const serviceDistricts = normalizeServiceDistricts(
+    data.district,
+    data.serviceDistricts ?? undefined
+  );
+  if (!serviceDistricts) {
+    return c.json({ error: "Invalid input" }, 400);
+  }
+
   try {
     const provider = await db.provider.create({
       data: {
@@ -96,6 +114,7 @@ internalRoutes.post("/internal/providers", async (c) => {
         headlineSi: data.headlineSi || null,
         bioSi: data.bioSi || null,
         district: data.district,
+        serviceDistricts,
         city: data.city,
         experience: data.experience,
         whatsapp: data.whatsapp || null,
@@ -205,6 +224,7 @@ internalRoutes.get("/internal/providers/by-user/:userId", async (c) => {
       userId: true,
       category: true,
       district: true,
+      serviceDistricts: true,
       contactName: true,
     },
   });
@@ -267,8 +287,9 @@ internalRoutes.post("/internal/providers/contact", async (c) => {
 
 // Forward lead-gen fan-out (#501): the providers to notify when a customer
 // posts a job. Mirrors the job board's scoping exactly — a provider matches a
-// job when its `category` and `district` equal the job's AND it is not
-// suspended (the same `suspended: false` gate browse applies; verification and
+// job when its `category` equals the job's, its served set (`serviceDistricts`,
+// #502) contains the job's district, AND it is not suspended (the same
+// `suspended: false` gate browse applies; verification and
 // availability are display concerns the board itself doesn't filter on). So the
 // set emailed about a new job is precisely the set that would see it on their
 // board. `excludeUserId` drops the poster if they happen to also be a provider,
@@ -288,7 +309,7 @@ internalRoutes.get("/internal/providers/matching", async (c) => {
   const matches = await db.provider.findMany({
     where: {
       category,
-      district,
+      serviceDistricts: { has: district },
       suspended: false,
       ...(excludeUserId ? { NOT: { userId: excludeUserId } } : {}),
     },

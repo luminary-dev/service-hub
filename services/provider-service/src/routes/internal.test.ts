@@ -172,6 +172,48 @@ describe("POST /internal/providers re-upgrade", () => {
     );
   });
 
+  it("defaults the served set to [district] when serviceDistricts is omitted (#502)", async () => {
+    dbMock.provider.create.mockResolvedValue({ id: "prov11" });
+    const res = await post("/internal/providers", body);
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ serviceDistricts: ["Colombo"] }),
+      })
+    );
+  });
+
+  it("dedupes the served set and pins the primary district first (#502)", async () => {
+    dbMock.provider.create.mockResolvedValue({ id: "prov12" });
+    const res = await post("/internal/providers", {
+      ...body,
+      serviceDistricts: ["Gampaha", "Colombo", "Gampaha", "Kalutara"],
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          serviceDistricts: ["Colombo", "Gampaha", "Kalutara"],
+        }),
+      })
+    );
+  });
+
+  it("400s when the served set exceeds the cap or holds an unknown district (#502)", async () => {
+    const over = await post("/internal/providers", {
+      ...body,
+      // 5 extras + the primary = 6 > MAX_SERVICE_DISTRICTS.
+      serviceDistricts: ["Gampaha", "Kalutara", "Kandy", "Galle", "Matara"],
+    });
+    expect(over.status).toBe(400);
+    const unknown = await post("/internal/providers", {
+      ...body,
+      serviceDistricts: ["Atlantis"],
+    });
+    expect(unknown.status).toBe(400);
+    expect(dbMock.provider.create).not.toHaveBeenCalled();
+  });
+
   it("returns the existing id without lifting a suspension (invariant guard)", async () => {
     // create() hits the unique-userId constraint (profile already exists) and
     // that profile is suspended. Re-registration must be idempotent but must
@@ -306,12 +348,12 @@ describe("GET /internal/providers/matching (#501 lead-gen fan-out)", () => {
         { id: "p2", contactName: "Sam", contactEmail: "sam@example.com" },
       ],
     });
-    // Mirrors the board's scoping: category + district equality, suspended
-    // excluded, poster excluded, capped.
+    // Mirrors the board's scoping: category equality + served-set membership
+    // (#502), suspended excluded, poster excluded, capped.
     expect(dbMock.provider.findMany).toHaveBeenCalledWith({
       where: {
         category: "plumbing",
-        district: "Colombo",
+        serviceDistricts: { has: "Colombo" },
         suspended: false,
         NOT: { userId: "owner-1" },
       },
@@ -335,7 +377,11 @@ describe("GET /internal/providers/matching (#501 lead-gen fan-out)", () => {
     // No excludeUserId → no NOT clause.
     expect(dbMock.provider.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { category: "plumbing", district: "Colombo", suspended: false },
+        where: {
+          category: "plumbing",
+          serviceDistricts: { has: "Colombo" },
+          suspended: false,
+        },
       })
     );
   });
