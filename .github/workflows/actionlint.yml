@@ -39,9 +39,10 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
-      # Pinned to a released image tag (matching the repo's major-tag pinning
-      # for actions). The entrypoint is `actionlint`; `args` are appended to it.
+      # Pinned by digest (#573, matching the repo's SHA-pinned actions and
+      # digest-pinned base images) — the tag is documentation only. The
+      # entrypoint is `actionlint`; `args` are appended to it.
       - name: Run actionlint
-        uses: docker://rhysd/actionlint:1.7.12
+        uses: docker://rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
         with:
           args: -shellcheck= -color

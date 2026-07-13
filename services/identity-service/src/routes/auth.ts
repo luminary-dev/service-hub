@@ -19,6 +19,7 @@ import {
   getProviderIdByUser,
   reactivateProviderProfile,
   resolveProviderIdForErase,
+  syncContactToProvider,
 } from "../lib/providers";
 import { logAudit } from "../lib/audit";
 import { publishRevocation } from "../lib/revocation";
@@ -268,6 +269,10 @@ authRoutes.post("/complete-provider", async (c) => {
       log.error("provider reactivation failed", { context: "complete-provider", err: e });
       return c.json({ error: "Upstream service unavailable" }, 502);
     }
+    // The reused profile kept the contactPhone from its first registration;
+    // mirror the wizard's fresh phone onto it (#553). Best-effort — the
+    // create path above already writes it, so only this reuse path syncs.
+    await syncContactToProvider(user.id, { phone: data.phone });
   }
 
   // Flip the role and bump sessionVersion so the old CUSTOMER token is revoked

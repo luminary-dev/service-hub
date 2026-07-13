@@ -701,3 +701,34 @@ describe("POST /api/admin/categories — imageUrl path validation (#519)", () =>
     expect(dbMock.category.create).toHaveBeenCalled();
   });
 });
+
+describe("GET /api/admin/providers?sort=mostReviews — bounded ranking (#372)", () => {
+  it("loads at most the candidate cap (+1 sentinel) instead of the whole table", async () => {
+    const res = await req("/api/admin/providers?sort=mostReviews", { role: "ADMIN" });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 1001, orderBy: { createdAt: "desc" } })
+    );
+  });
+
+  it("still returns the paginated envelope from the ranked slice", async () => {
+    dbMock.provider.findMany.mockResolvedValue(
+      Array.from({ length: 3 }, (_, i) => ({
+        id: `p${i}`,
+        contactName: `P${i}`,
+        contactEmail: `p${i}@x.lk`,
+        createdAt: new Date(2026, 0, i + 1),
+        _count: { photos: 0 },
+      }))
+    );
+    const res = await req("/api/admin/providers?sort=mostReviews&pageSize=2", {
+      role: "ADMIN",
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.total).toBe(3);
+    expect(body.page).toBe(1);
+    expect(body.pageSize).toBe(2);
+    expect(body.providers).toHaveLength(2);
+  });
+});

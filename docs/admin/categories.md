@@ -34,5 +34,13 @@ category has a `slug`, English label (`labelEn`), Sinhala label (`labelSi`),
   deactivating hides a category from public lists while existing providers keep
   the slug.
 
+Public surfaces follow the managed list: the browse filters, job forms, the
+provider wizard, the homepage ticker/trade grid, and the sitemap's
+`?category=` entries all read the active categories via
+`fetchCategoryOptions()` (#561), so an added category appears — and a
+deactivated one disappears — everywhere within the cache TTL (≤5 min pages,
+≤1 h sitemap). The static `CATEGORIES` constant remains only as the
+degradation fallback when provider-service is unreachable.
+
 ---
 
