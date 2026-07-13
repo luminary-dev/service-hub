@@ -22,6 +22,7 @@ import {
 } from "../lib/providers";
 import { logAudit } from "../lib/audit";
 import { publishRevocation } from "../lib/revocation";
+import { removeStoredFile } from "../lib/storage";
 import {
   sendAccountExistsEmail,
   sendPasswordResetEmail,
@@ -524,6 +525,14 @@ authRoutes.post("/delete-account", async (c) => {
     }),
     db.user.delete({ where: { id: user.id } }),
   ]);
+
+  // The avatar file (PII, #434) lives in media-service and would otherwise
+  // outlive the account (#555). After the local delete so a failed transaction
+  // can't erase a still-referenced file; best-effort — removeStoredFile
+  // swallows errors and the `user`-namespace orphan sweep catches any miss.
+  if (user.avatarUrl) {
+    await removeStoredFile(user.avatarUrl);
+  }
 
   destroySession(c);
   return c.json({ ok: true });
