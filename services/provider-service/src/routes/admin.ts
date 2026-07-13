@@ -818,14 +818,17 @@ const categorySlug = z
   .string()
   .regex(/^[a-z0-9-]{2,40}$/, "Slug must be 2-40 lowercase letters, digits or dashes");
 
-// A stored image path — a relative /path only (never a scheme/host), so a
-// category can only point at our own media (/api/files/category/… or a seeded
-// /images/… asset), not an arbitrary external URL.
+// A stored image path — a relative /path under one of our own media roots, so
+// a category can only point at an uploaded cover (/api/files/category/… — see
+// storeImage → media-service) or a seeded /images/… asset, never an external
+// URL. The prefix is pinned because a bare `/^\/…/` also matches a
+// protocol-relative `//evil.com/x.jpg` (leading `//` → `//host`), which the
+// browser resolves against the current scheme and loads cross-origin (#519).
 const imagePath = z
   .string()
   .trim()
   .max(300)
-  .regex(/^\/[\w./-]*$/, "Image URL must be a relative path");
+  .regex(/^\/(?:api\/files|images)\/[\w./-]+$/, "Image URL must be a relative path");
 
 const categoryCreateSchema = z.object({
   slug: categorySlug,

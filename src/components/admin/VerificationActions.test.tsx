@@ -73,7 +73,7 @@ describe("VerificationActions", () => {
     renderActions();
     fireEvent.click(screen.getByRole("button", { name: t.admin.approve }));
 
-    const toast = await screen.findByRole("status");
+    const toast = await screen.findByRole("alert");
     expect(toast.textContent).toContain(t.toast.adminVerificationApproveError);
     expect(refresh).not.toHaveBeenCalled();
   });

@@ -88,3 +88,35 @@ describe("localized label lookups", () => {
     expect(priceTypeLabelLoc("BARTER", "en")).toBe("BARTER");
   });
 });
+
+// Listing-page SEO (#513): category/district permutations must produce a
+// distinct, keyword-rich title so they stop inheriting the generic root one.
+describe("browse listing metadata", () => {
+  const { metaTitle, metaDesc } = dict.en.browse;
+
+  it("weaves category and/or district into the title", () => {
+    expect(metaTitle("Electrician", null)).toBe("Electrician in Sri Lanka");
+    expect(metaTitle(null, "Colombo")).toBe(
+      "Trusted tradespeople in Colombo, Sri Lanka"
+    );
+    expect(metaTitle("Electrician", "Colombo")).toBe(
+      "Electrician in Colombo, Sri Lanka"
+    );
+  });
+
+  it("uses a generic title/description for the unfiltered default", () => {
+    expect(metaTitle(null, null)).toBe("Find trusted tradespeople in Sri Lanka");
+    expect(metaDesc(null, null)).toContain("Sri Lanka");
+  });
+
+  it("mentions the category in the description", () => {
+    expect(metaDesc("Plumber", "Kandy")).toContain("Plumber");
+    expect(metaDesc("Plumber", "Kandy")).toContain("Kandy");
+  });
+
+  it("localizes the title for Sinhala", () => {
+    const si = dict.si.browse;
+    expect(si.metaTitle("විදුලි කාර්මික", null)).toContain("විදුලි කාර්මික");
+    expect(si.metaTitle(null, "කොළඹ")).toContain("කොළඹ");
+  });
+});

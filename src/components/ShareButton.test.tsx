@@ -73,7 +73,7 @@ describe("ShareButton", () => {
     renderShare();
     fireEvent.click(screen.getByRole("button", { name: shareLabel }));
 
-    const toast = await screen.findByRole("status");
+    const toast = await screen.findByRole("alert");
     expect(toast.textContent).toContain(dict.en.profile.shareError);
   });
 

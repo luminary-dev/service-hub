@@ -8,9 +8,11 @@ import { dict, categoryLabelLoc, districtLabelLoc } from "@/lib/i18n";
 import { languageAlternates, localizedHref } from "@/lib/links";
 import { getLocale, getUrlLocale } from "@/lib/locale";
 import { getSession } from "@/lib/auth";
+import { SITE_NAME, SITE_URL } from "@/lib/site";
 import ProviderCard, { ProviderCardDTO } from "@/components/ProviderCard";
 import SearchBar from "@/components/SearchBar";
 import InView from "@/components/InView";
+import JsonLd from "@/components/JsonLd";
 
 export async function generateMetadata(): Promise<Metadata> {
   return { alternates: languageAlternates("/", await getUrlLocale()) };
@@ -39,6 +41,35 @@ function Marker({ code, children }: { code: string; children: React.ReactNode })
     </div>
   );
 }
+
+// Site-wide structured data for the homepage (#514). The WebSite node carries a
+// SearchAction so Google can surface a sitelinks searchbox that deep-links into
+// our provider search (/providers?q=…). The Organization node advertises the
+// brand identity. sameAs (socials) is omitted deliberately — we have no
+// canonical social profiles to point at yet, and inventing them would be wrong.
+const HOME_JSON_LD = [
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: SITE_NAME,
+    url: SITE_URL,
+    potentialAction: {
+      "@type": "SearchAction",
+      target: {
+        "@type": "EntryPoint",
+        urlTemplate: `${SITE_URL}/providers?q={search_term_string}`,
+      },
+      "query-input": "required name=search_term_string",
+    },
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: SITE_NAME,
+    url: SITE_URL,
+    logo: `${SITE_URL}/icon.svg`,
+  },
+];
 
 export default async function HomePage() {
   const [locale, listing, stats] = await Promise.all([
@@ -72,6 +103,7 @@ export default async function HomePage() {
 
   return (
     <div>
+      <JsonLd data={HOME_JSON_LD} />
       {/* -- STATUS / SPEC BAR ------------------------------------------ */}
       <div className="border-b border-ink-300 bg-ink-100">
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-500 sm:px-6">
