@@ -38,14 +38,14 @@ Route: **`/admin/reports`** (`src/app/admin/reports/page.tsx`,
 
 Merges three backends into one queue, sorted **open first, then newest
 first**: `GET /api/admin/reports` (provider-service — `PROVIDER`,
-`WORK_PHOTO` and `INQUIRY` targets), `GET /api/admin/review-reports`
-(review-service — `REVIEW` targets) and `GET /api/admin/job-reports`
-(job-service — `JOB` and `JOB_RESPONSE` targets, #375). Header stats:
-open / total.
+`WORK_PHOTO`, `INQUIRY` and `MESSAGE` targets, #375/#376),
+`GET /api/admin/review-reports` (review-service — `REVIEW` targets) and
+`GET /api/admin/job-reports` (job-service — `JOB` and `JOB_RESPONSE` targets,
+#375/#376). Header stats: open / total.
 
 - **Filters** (URL-backed): target type (all / provider / photo / review /
-  inquiry / job post / job response) and status (all / open / resolved /
-  dismissed).
+  inquiry / message / job post / job response) and status (all / open /
+  resolved / dismissed).
 - **Pagination.** All backends are paginated 20 per page (#255); the page
   requests the same page N from each and merges the results, so a page can hold
   up to 20 rows from each source. Prev/next controls span the deepest source's
@@ -62,13 +62,23 @@ open / total.
 - **Audit stamp.** A closed report shows *who* closed it and *when*
   (`resolvedBy` / `resolvedAt`).
 - Each row shows the target (review preview, provider/photo with suspended /
-  content-removed chips, inquiry-thread context, or job title + text) with a
-  **Moderate** deep link, the reason and details, the reporter ("anonymous",
-  or "System (auto-flagged)" for `SYSTEM`-sourced rows), and the created date.
+  content-removed chips, inquiry-thread context, job title + text with a
+  taken-down chip, or the reported thread message body) with a **Moderate**
+  deep link, the reason and details, the reporter ("anonymous", or
+  "System (auto-flagged)" for `SYSTEM`-sourced rows), and the created date.
+- **Takedown from the queue (#376).** A reported job row links to the admin
+  job detail, where a full admin can take it down (see
+  [Jobs](jobs.md)). A reported thread message has no separate admin surface,
+  so its row carries the ADMIN-only *Delete*/*Restore* control inline —
+  `DELETE /api/admin/messages/{id}` soft-deletes the message (it vanishes from
+  the thread for both parties), `PATCH /api/admin/messages/{id}/restore`
+  reverses it. Both are audit-logged.
 
 Report reasons are `spam | scam | offensive | fake | other` (plus free-text
-details, max 500 chars). Reports can be filed anonymously; the gateway rate-
-limits the report endpoints (see [RATE_LIMITING.md](../RATE_LIMITING.md)).
+details, max 500 chars). Reports on public content can be filed anonymously
+(thread messages are private, so only the two thread parties can report one);
+the gateway rate-limits the report endpoints (see
+[RATE_LIMITING.md](../RATE_LIMITING.md)).
 
 #### Auto-flagging ("Run flagging")
 

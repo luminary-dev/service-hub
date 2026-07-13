@@ -1,10 +1,11 @@
-// Admin moderation queue for reports on content this service owns: job posts
-// and job responses. Same shape and semantics as provider-service's
-// /api/admin/reports and review-service's /api/admin/review-reports, under
-// its own path so the gateway can route by owner. Every report here is
-// SYSTEM-created by the write-time content filter (#375) — there is no public
-// report-a-job flow (yet), so unlike the sibling services this file has no
-// public create endpoint.
+// Abuse reporting for content this service owns: job posts and job
+// responses. Reports arrive two ways — the public report-a-job endpoint
+// below (#376: session OPTIONAL, anonymous visitors can report too; the
+// gateway rate-limits it on the shared "report" budget) and SYSTEM rows
+// auto-created by the write-time content filter (#375). The admin queue has
+// the same shape and semantics as provider-service's /api/admin/reports and
+// review-service's /api/admin/review-reports, under its own path so the
+// gateway can route by owner.
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
@@ -13,6 +14,68 @@ import { getAuth, isSupportOrAdmin } from "../lib/http";
 import { normalizePagination, sliceOpenClosed } from "../lib/pagination";
 
 export const reports = new Hono();
+
+export const REPORT_REASONS = ["spam", "scam", "offensive", "fake", "other"] as const;
+
+const reportSchema = z.object({
+  reason: z.enum(REPORT_REASONS),
+  details: z.string().trim().max(500).optional().or(z.literal("")),
+});
+
+reports.post("/api/jobs/:id/report", async (c) => {
+  const id = c.req.param("id");
+  // Hidden (taken-down) jobs are invisible to the public, so they can't be
+  // reported either — same 404 as a job that never existed.
+  const job = await db.jobRequest.findUnique({
+    where: { id },
+    select: { id: true, hiddenAt: true },
+  });
+  if (!job || job.hiddenAt) {
+    return c.json({ error: "Job not found" }, 404);
+  }
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = reportSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid input" }, 400);
+  }
+  const { reason } = parsed.data;
+  const details = parsed.data.details || null;
+
+  // Duplicate protection: a signed-in user re-reporting the same job just
+  // refreshes their existing OPEN report's reason/details — one queue entry
+  // per (user, target). Anonymous reports have no identity to key on, so
+  // duplicates are allowed (the rate limiter is the backstop).
+  const auth = getAuth(c);
+  if (auth) {
+    const existing = await db.report.findFirst({
+      where: {
+        targetType: "JOB",
+        targetId: id,
+        reporterId: auth.userId,
+        status: "OPEN",
+      },
+    });
+    if (existing) {
+      await db.report.update({
+        where: { id: existing.id },
+        data: { reason, details },
+      });
+      return c.json({ ok: true });
+    }
+  }
+
+  await db.report.create({
+    data: {
+      targetType: "JOB",
+      targetId: id,
+      reporterId: auth?.userId ?? null,
+      reason,
+      details,
+    },
+  });
+  return c.json({ ok: true });
+});
 
 const REPORT_STATUSES = ["OPEN", "RESOLVED", "DISMISSED"] as const;
 // This queue only ever holds JOB/JOB_RESPONSE reports — the other target
@@ -112,7 +175,13 @@ reports.get("/api/admin/job-reports", async (c) => {
     jobIds.length
       ? db.jobRequest.findMany({
           where: { id: { in: jobIds } },
-          select: { id: true, title: true, description: true, status: true },
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            status: true,
+            hiddenAt: true,
+          },
         })
       : [],
     responseIds.length
@@ -141,6 +210,8 @@ reports.get("/api/admin/job-reports", async (c) => {
           title: job.title,
           description: job.description,
           status: job.status,
+          // Taken down by an admin (#376) — reversible soft-hide.
+          removed: job.hiddenAt !== null,
         };
       }
     } else {
