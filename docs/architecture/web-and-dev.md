@@ -14,7 +14,8 @@
   still drives the rendered locale via `getLocale()`, which reads it directly.
 - Server components fetch the gateway directly (`src/lib/api.ts`: `GATEWAY_URL` +
   forwarded `cookie`, `cache: "no-store"`); `src/app/sitemap.ts` fetches
-  `/api/providers/ids`.
+  `/api/providers/ids` and the active category list (`fetchCategoryOptions`,
+  static fallback when the gateway is unreachable) for the `?category=` pages.
 - Page gating: `auth.ts#getSession` (JWT verify only) + `src/lib/roles.ts`
   (admin tiers) + `src/lib/session-version.ts` (soft revocation check to
   identity via `IDENTITY_SERVICE_URL`, fail-open). CSRF, rate-limit, tokens,
