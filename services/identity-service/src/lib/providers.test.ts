@@ -79,6 +79,45 @@ describe("resolveProviderIdForErase", () => {
   });
 });
 
+// #554: the reactivate helper reports whether a profile actually existed so
+// the admin promotion path can refuse to promote a user with no profile
+// (provider-service answers 200 `reactivated: false` on the missing-profile
+// no-op). Still a write-path gate: any non-ok status throws for a 502.
+describe("reactivateProviderProfile", () => {
+  it("returns true when a profile existed and was reactivated", async () => {
+    stubFetch(200, { ok: true, reactivated: true });
+    expect(await reactivateProviderProfile("u1")).toBe(true);
+  });
+
+  it("returns false when provider-service reports no profile", async () => {
+    stubFetch(200, { ok: true, reactivated: false });
+    expect(await reactivateProviderProfile("u1")).toBe(false);
+  });
+
+  it("throws on a 5xx so the caller 502s instead of guessing", async () => {
+    stubFetch(500, { error: "boom" });
+    await expect(reactivateProviderProfile("u1")).rejects.toThrow(/500/);
+  });
+
+  // #550: provider-service refuses to reactivate a profile under an ADMIN
+  // suspension (409). That refusal must surface as the typed error so
+  // complete-provider answers 403 (and the admin promotion 409) instead of
+  // the generic 502 — and never lifts the suspension.
+  it("throws ProviderAdminSuspendedError on 409 (admin suspension)", async () => {
+    stubFetch(409, { error: "Suspended by admin" });
+    await expect(reactivateProviderProfile("u1")).rejects.toBeInstanceOf(
+      ProviderAdminSuspendedError
+    );
+  });
+
+  it("does not classify other non-ok statuses as admin suspensions", async () => {
+    stubFetch(500, { error: "boom" });
+    const err = await reactivateProviderProfile("u1").catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(ProviderAdminSuspendedError);
+  });
+});
+
 // #359: the compensating erase for a failed registration. Idempotent on the
 // provider side, so a 200 (nothing committed, or an orphan removed) resolves;
 // a non-ok status throws so the caller can log the failed cleanup.
@@ -102,30 +141,5 @@ describe("eraseProviderProfile", () => {
   it("throws on a non-ok status so the failed cleanup is logged", async () => {
     stubFetch(500, { error: "boom" });
     await expect(eraseProviderProfile("u1")).rejects.toThrow(/500/);
-  });
-});
-
-// #550: provider-service refuses to reactivate a profile under an ADMIN
-// suspension (409). That refusal must surface as the typed error so
-// complete-provider answers 403 and never flips the role; every other failure
-// stays the generic write-path throw (→ 502).
-describe("reactivateProviderProfile", () => {
-  it("resolves on 200", async () => {
-    stubFetch(200, { ok: true, reactivated: true });
-    await expect(reactivateProviderProfile("u1")).resolves.toBeUndefined();
-  });
-
-  it("throws ProviderAdminSuspendedError on 409 (admin suspension)", async () => {
-    stubFetch(409, { error: "Suspended by admin" });
-    await expect(reactivateProviderProfile("u1")).rejects.toBeInstanceOf(
-      ProviderAdminSuspendedError
-    );
-  });
-
-  it("throws a generic error on other non-ok statuses", async () => {
-    stubFetch(500, { error: "boom" });
-    const err = await reactivateProviderProfile("u1").catch((e) => e);
-    expect(err).toBeInstanceOf(Error);
-    expect(err).not.toBeInstanceOf(ProviderAdminSuspendedError);
   });
 });

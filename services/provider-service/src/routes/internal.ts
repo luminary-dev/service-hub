@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "../db";
+import { moderateContent } from "../lib/auto-report";
 import { optionalWebUrl } from "../lib/field-rules";
 import { removeStoredFile, sweepMedia } from "../lib/storage";
 
@@ -111,6 +112,17 @@ internalRoutes.post("/internal/providers", async (c) => {
         },
       },
     });
+    // Content filter (#375): AFTER the write on purpose — the profile stays
+    // visible and a filter hit only queues a SYSTEM report for admin triage.
+    await moderateContent("PROVIDER", provider.id, {
+      headline: data.headline,
+      bio: data.bio,
+      headlineSi: data.headlineSi,
+      bioSi: data.bioSi,
+      services: data.services
+        .map((s) => `${s.title} ${s.description ?? ""}`)
+        .join("\n"),
+    });
     return c.json({ id: provider.id });
   } catch (e) {
     // userId is unique: a retried/concurrent registration for the same user
@@ -212,6 +224,41 @@ internalRoutes.post("/internal/providers/avatar", async (c) => {
     where: { userId: body.userId },
     data: { avatarUrl: body.avatarUrl ?? null },
   });
+  return c.json({ ok: true });
+});
+
+// Denormalized contact sync from identity (#553). Mirrors User name/phone/
+// email changes onto the provider's cached contact columns — the ones that
+// drive public cards, admin lists, contact reveal and the inquiry / new-job
+// lead emails. Only fields present in the body are written; matches suspended
+// profiles too so a hidden profile is fresh if reactivated. Always 200 — the
+// caller's own update already succeeded; this is a best-effort mirror like
+// the avatar sync above.
+const contactSyncSchema = z.object({
+  userId: z.string().min(1),
+  name: z.string().min(1).max(80).optional(),
+  email: z.string().min(1).optional(),
+  phone: z.string().max(15).nullish(),
+});
+
+internalRoutes.post("/internal/providers/contact", async (c) => {
+  const parsed = contactSyncSchema.safeParse(
+    await c.req.json().catch(() => null)
+  );
+  if (!parsed.success) {
+    return c.json({ error: "Invalid input" }, 400);
+  }
+  const { name, email, phone } = parsed.data;
+  const data: Prisma.ProviderUpdateManyMutationInput = {};
+  if (name !== undefined) data.contactName = name;
+  if (email !== undefined) data.contactEmail = email;
+  if (phone !== undefined) data.contactPhone = phone || null;
+  if (Object.keys(data).length > 0) {
+    await db.provider.updateMany({
+      where: { userId: parsed.data.userId },
+      data,
+    });
+  }
   return c.json({ ok: true });
 });
 

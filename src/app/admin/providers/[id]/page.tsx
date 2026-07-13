@@ -175,7 +175,10 @@ export default async function AdminProviderModeratePage({
                       <span className="text-sm font-medium text-ink-800">
                         {r.user.name}
                       </span>
-                      <Stars rating={r.rating} />
+                      <Stars
+                        rating={r.rating}
+                        label={dict[locale].a11y.rated(r.rating.toFixed(1))}
+                      />
                       {r.deletedAt && (
                         <span className="chip bg-red-50 text-red-700 ring-1 ring-red-200">
                           {t.reportContentRemoved}
@@ -228,7 +231,7 @@ export default async function AdminProviderModeratePage({
                   <div className="relative aspect-square">
                     <Image
                       src={ph.url}
-                      alt={ph.caption ?? "Work photo"}
+                      alt={ph.caption ?? dict[locale].profile.workPhoto}
                       fill
                       sizes="(min-width: 640px) 33vw, 50vw"
                       unoptimized={isSvg(ph.url)}
