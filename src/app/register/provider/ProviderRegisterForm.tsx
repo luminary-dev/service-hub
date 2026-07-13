@@ -259,14 +259,14 @@ export default function ProviderRegisterForm({
           <figure className="tech-corners relative mt-8 hidden aspect-[4/3] overflow-hidden border border-ink-300 lg:block">
             <Image
               src="/images/workers/electrician-1.jpg"
-              alt="A tradesperson at work in Sri Lanka"
+              alt={r.asideWorkerAlt}
               fill
               sizes="320px"
               className="object-cover"
             />
             <div className="blueprint-grid pointer-events-none absolute inset-0 opacity-25 mix-blend-overlay" />
             <span className="absolute left-2 top-2 rounded-sm bg-brand-700 px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-white dark:text-ink-50">
-              Registry
+              {r.asideBadge}
             </span>
           </figure>
         </aside>

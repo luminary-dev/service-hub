@@ -132,16 +132,18 @@ export default async function JobsPage({
   }
 
   // Instrument readout in the header band — board-focused for providers,
-  // posting-focused for customers. Labels are decorative mono captions
-  // (matching the registry header), values are localized counts.
+  // posting-focused for customers. Captions and counts are both localized.
   const stats = provider
     ? [
-        { label: "MATCHING", value: boardTotal },
-        { label: "RESPONDED", value: board.filter((j) => j.responded).length },
+        { label: t.stats.matching, value: boardTotal },
+        {
+          label: t.stats.responded,
+          value: board.filter((j) => j.responded).length,
+        },
       ]
     : [
-        { label: "POSTED", value: mineTotal },
-        { label: "OPEN", value: openCount },
+        { label: t.stats.posted, value: mineTotal },
+        { label: t.stats.open, value: openCount },
       ];
 
   return (

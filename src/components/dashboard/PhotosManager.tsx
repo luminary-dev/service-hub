@@ -103,7 +103,8 @@ export default function PhotosManager({
   const dragFrom = useRef<number | null>(null);
   const router = useRouter();
   const toast = useToast();
-  const ph = useT().dashboard.photos;
+  const t = useT();
+  const ph = t.dashboard.photos;
 
   function patchUpload(key: number, patch: Partial<UploadItem>) {
     setUploads((list) =>
@@ -547,7 +548,7 @@ export default function PhotosManager({
                 >
                   <Image
                     src={p.url}
-                    alt={p.caption || "Work photo"}
+                    alt={p.caption || t.profile.workPhoto}
                     fill
                     sizes="(min-width: 640px) 33vw, 50vw"
                     unoptimized={isSvg(p.url)}
