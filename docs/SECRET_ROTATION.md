@@ -47,9 +47,10 @@ steps. Because the deploy is gated on the repo variable `DEPLOY_ENABLED == 'true
 and the `production` environment, dispatching before the server exists (#110)
 only republishes images.
 
-> **Prefer a maintenance window** for `AUTH_SECRET`, `INTERNAL_API_SECRET` and
-> `POSTGRES_PASSWORD`. Each briefly disrupts either sessions or in-flight S2S /
-> DB connections while containers recreate. The optional third-party keys are
+> **Prefer a maintenance window** for `AUTH_SECRET`, `INTERNAL_API_SECRET`,
+> `POSTGRES_PASSWORD`, the per-service `*_DB_PASSWORD`s and `REDIS_PASSWORD`.
+> Each briefly disrupts either sessions or in-flight S2S / DB / Redis
+> connections while containers recreate. The optional third-party keys are
 > low-risk and can rotate any time.
 
 ---
@@ -112,42 +113,76 @@ but rotate anyway).
 
 ## POSTGRES_PASSWORD
 
-**What it protects.** The `postgres` superuser password. It appears in **two**
-places in `docker-compose.prod.yml`: the `postgres` container's
-`POSTGRES_PASSWORD`, and — interpolated inline — inside every
-`DATABASE_URL` for the four DB-owning services (identity, provider, review, job).
+**What it protects.** The `postgres` superuser password. Since the
+per-service DB roles landed (#387) it no longer appears in any `DATABASE_URL`
+— the four DB-owning services connect as their own roles (below). The
+superuser remains for cluster administration and the backup tooling
+(`scripts/backup-dbs.sh` execs `pg_dump -U postgres` over the container's
+local socket, which trusts local connections, so backups don't even read the
+password — but keep the secret and the in-DB password in sync anyway).
 
 **Critical caveat — the env var alone will NOT change the password.** Postgres
 only reads `POSTGRES_PASSWORD` when it **initializes an empty data directory**.
-On an existing `pgdata` volume it is ignored. So bumping the secret and
-redeploying would leave the real DB password unchanged while the services'
-`DATABASE_URL`s carry the *new* password → every DB connection fails → the
-DB-owning services go unhealthy → the deploy fails and rolls back the image
-(but not the bad `.env`). You must change the password **inside Postgres** and
-the secret **together**:
+On an existing `pgdata` volume it is ignored. You must change the password
+**inside Postgres** and the secret **together**:
 
 ```bash
 # On the prod host, change the actual role password in the running database:
 docker compose -f docker-compose.prod.yml exec postgres \
   psql -U postgres -c "ALTER USER postgres WITH PASSWORD '<NEW_PASSWORD>';"
 
-# Then make GitHub match and redeploy so all DATABASE_URLs re-render:
+# Then make GitHub match and redeploy so .env re-renders:
 gh secret set POSTGRES_PASSWORD        # the same <NEW_PASSWORD>
 gh workflow run deploy.yml --ref prod
 ```
 
-Keep the `ALTER USER` and the redeploy close together (a maintenance window):
-between them, already-open pooled connections keep working but any *new*
-connection with the stale credential fails. The redeploy recreates the four DB
-services (new `DATABASE_URL`) and the `postgres` container; the existing volume —
-and its data — is untouched.
-
-**Blast radius.** A brief connection blip for the four DB services while they
-recreate. No schema or data change. Redis holds no password and needs nothing.
+**Blast radius.** Small since #387: no service `DATABASE_URL` carries it, and
+backups connect over the container's local socket. A stale value mostly means
+a wrong credential lying in `.env`. No schema or data change.
 
 **When to rotate.** Routinely once a year, or immediately if the DB credential
 may be exposed. Coordinate with [BACKUPS.md](BACKUPS.md) — take a fresh
 `pg_dump` before rotating.
+
+## Per-service DB passwords (`IDENTITY_DB_PASSWORD` … `JOB_DB_PASSWORD`, #387)
+
+**What they protect.** Each DB-owning service connects as its own
+least-privilege role (`identity` / `provider` / `review` / `job`), whose
+password is interpolated into that service's `DATABASE_URL` and passed to the
+`postgres` container for bootstrap/migration tooling.
+
+**Same caveat as `POSTGRES_PASSWORD`**: the in-DB password and the secret must
+change together, and the values are **URL-interpolated** — generate them with
+`openssl rand -hex 32` (URL-safe), not base64. The simplest in-DB step is to
+re-run the idempotent role script with the new value(s) exported — it
+`ALTER ROLE … PASSWORD`s each role it touches:
+
+```bash
+# On the prod host (only the vars you're rotating need to be exported):
+IDENTITY_DB_PASSWORD='<NEW>' PROVIDER_DB_PASSWORD='<OLD>' \
+REVIEW_DB_PASSWORD='<OLD>' JOB_DB_PASSWORD='<OLD>' ./deploy/migrate-db-roles.sh
+
+gh secret set IDENTITY_DB_PASSWORD     # the same <NEW> value
+gh workflow run deploy.yml --ref prod  # re-renders DATABASE_URL, recreates the service
+```
+
+**Blast radius.** Only the owning service reconnects; its peers are untouched.
+
+## REDIS_PASSWORD (#387)
+
+**What it protects.** Redis AUTH (`requirepass`) over the gateway's rate-limit
+windows and the session-revocation list (#374). Consumed by the `redis`
+container (command flag + healthcheck) and by the gateway's and identity's
+`REDIS_URL`s.
+
+**Rotation.** Standard procedure — unlike Postgres, the value lives only in
+the container config, so the redeploy's container recreation applies it
+everywhere at once (`gh secret set REDIS_PASSWORD` with a URL-safe
+`openssl rand -hex 32` value → `gh workflow run deploy.yml --ref prod`).
+Recreating the `redis` container keeps `/data` (the `redis_data` volume), so
+the revocation list survives. During the seconds the consumers cycle, rate
+limiting falls back to per-instance in-memory and revocation checks fall back
+to the identity lookup — both by design.
 
 ## Third-party API keys (optional secrets)
 
@@ -204,8 +239,10 @@ After any rotation, confirm the deploy went green and the stack is healthy:
    across services (e.g. the provider directory → gateway → provider/review, or
    the admin dashboard). No `403 Forbidden` in
    `docker compose -f docker-compose.prod.yml logs api-gateway`.
-5. **DB connectivity** (after `POSTGRES_PASSWORD`) — the four DB services stay
-   `healthy`; no `authentication failed` lines in their logs.
+5. **DB connectivity** (after `POSTGRES_PASSWORD` or a `*_DB_PASSWORD`) — the
+   four DB services stay `healthy`; no `authentication failed` lines in their
+   logs. After `REDIS_PASSWORD`: no `NOAUTH`/`WRONGPASS` lines from the
+   gateway or identity.
 6. **Feature check** (after a third-party key) — send a test email / do an
    upload / open the chat assistant as appropriate.
 
@@ -221,21 +258,23 @@ is **not** self-healing. To recover:
   `$APP_DIR/.env`, then `docker compose -f docker-compose.prod.yml up -d --wait`.
   Remember the **next** deploy re-renders `.env` from GitHub, so you must still
   fix the GitHub secret to make it stick.
-- For `POSTGRES_PASSWORD` specifically, a broken rotation usually means the
-  in-DB password and the secret disagree — re-run the `ALTER USER` and the
-  secret update so they match, then redeploy.
+- For `POSTGRES_PASSWORD` and the `*_DB_PASSWORD`s specifically, a broken
+  rotation usually means the in-DB password and the secret disagree — re-run
+  the `ALTER USER` / `deploy/migrate-db-roles.sh` step and the secret update
+  so they match, then redeploy.
 
 ---
 
 ## Cadence
 
-- **Routine** — rotate `AUTH_SECRET`, `INTERNAL_API_SECRET` and
-  `POSTGRES_PASSWORD` on a 6–12 month schedule (whichever the team adopts);
-  rotate third-party keys on the provider's own recommended cadence.
+- **Routine** — rotate `AUTH_SECRET`, `INTERNAL_API_SECRET`,
+  `POSTGRES_PASSWORD`, the `*_DB_PASSWORD`s and `REDIS_PASSWORD` on a 6–12
+  month schedule (whichever the team adopts); rotate third-party keys on the
+  provider's own recommended cadence.
 - **Incident response** — on any suspected exposure (leaked `.env`, compromised
   CI run, lost laptop, key committed by mistake), rotate the affected secret
-  **immediately** and, if the exposure scope is unclear, rotate all three core
-  secrets. Rotating `AUTH_SECRET` doubles as a global force-logout; rotating
+  **immediately** and, if the exposure scope is unclear, rotate the whole core
+  set. Rotating `AUTH_SECRET` doubles as a global force-logout; rotating
   `INTERNAL_API_SECRET` closes any forged-identity risk. Follow the
   responsible-disclosure / incident steps in
   [SECURITY.md](../SECURITY.md) and take a DB backup first

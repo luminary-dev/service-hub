@@ -35,6 +35,15 @@ describe("formatLKR", () => {
     expect(formatLKR(60000, "en")).toBe("Rs. 60,000");
     expect(formatLKR(60000, "si")).toMatch(/^Rs\. 60.000$/);
   });
+
+  // The API contract carries money as whole-rupee JSON numbers (#371 — stored
+  // DECIMAL(12,2), converted back to numbers at the service edge). Lock the
+  // display for the values the marketplace actually emits.
+  it("renders whole-rupee amounts across the validated price range", () => {
+    expect(formatLKR(50, "en")).toBe("Rs. 50");
+    expect(formatLKR(12500, "en")).toBe("Rs. 12,500");
+    expect(formatLKR(10_000_000, "en")).toBe("Rs. 10,000,000");
+  });
 });
 
 describe("formatDate", () => {

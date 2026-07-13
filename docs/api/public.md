@@ -4,6 +4,12 @@
 All routes below are reached through the gateway. The **Service** column notes
 the upstream that owns the handler.
 
+**Money fields** (`Service.price` / `fromPrice`, `JobRequest.budget`,
+`priceMin`/`priceMax`) are always **whole LKR rupees as JSON numbers** —
+inputs are validated as integers, and although the columns are stored as
+`DECIMAL(12,2)` (#371) every service converts back to a plain number at the
+JSON edge, so consumers never see a string-typed amount.
+
 ### Auth & session — identity-service
 
 | Method + path | Auth | Summary |

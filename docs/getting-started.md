@@ -38,7 +38,11 @@ docker compose up --build
 | Postgres | **5433** on the host | one cluster, one database per service |
 | Redis | internal | shared rate-limit window |
 
-Postgres binds host port 5433 because many dev machines already run a local Postgres on 5432.
+Postgres binds host port 5433 because many dev machines already run a local
+Postgres on 5432. In the Docker dev stack, every published port except web's
+3000 is bound to **127.0.0.1** (#387), so on shared wifi nobody can reach
+Postgres or call a service directly with the well-known dev internal secret;
+test from a phone via `http://<your-ip>:3000` (web proxies `/api/*` internally).
 
 ## Seeded accounts (password: `password123`)
 
