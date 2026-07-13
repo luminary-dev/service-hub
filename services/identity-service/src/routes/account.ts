@@ -23,7 +23,10 @@ import {
   removeStoredFile,
   storeImage,
 } from "../lib/storage";
-import { syncAvatarToProvider } from "../lib/providers";
+import {
+  syncAvatarToProvider,
+  syncContactToProvider,
+} from "../lib/providers";
 
 export const accountRoutes = new Hono();
 
@@ -140,6 +143,13 @@ accountRoutes.put("/profile", async (c) => {
   const updated = await db.user.update({
     where: { id: auth.userId },
     data: { name: parsed.data.name, phone: parsed.data.phone },
+  });
+
+  // Mirror the new name/phone onto the denormalized Provider contact columns
+  // (#553) — best-effort, no-op for users without a provider profile.
+  await syncContactToProvider(auth.userId, {
+    name: updated.name,
+    phone: updated.phone,
   });
 
   // The session JWT carries the display name (used in the header/UserMenu);
@@ -279,6 +289,11 @@ accountRoutes.post("/email/confirm", async (c) => {
     }
     throw e;
   }
+
+  // Mirror the new address onto the denormalized Provider contact email (#553)
+  // so inquiry/lead notifications follow the account — best-effort, no-op for
+  // users without a provider profile.
+  await syncContactToProvider(record.userId, { email: newEmail });
 
   return c.json({ ok: true });
 });
