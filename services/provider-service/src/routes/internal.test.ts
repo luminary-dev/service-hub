@@ -13,6 +13,7 @@ const { dbMock, storageMock } = vi.hoisted(() => ({
       findMany: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       delete: vi.fn(),
     },
     workPhoto: { findMany: vi.fn() },
@@ -190,6 +191,64 @@ describe("POST /internal/providers re-upgrade", () => {
     expect(res.status).toBe(200);
     expect(dbMock.report.findFirst).not.toHaveBeenCalled();
     expect(dbMock.report.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /internal/providers/contact (#553 contact sync)", () => {
+  it("mirrors only the provided fields onto the contact columns", async () => {
+    dbMock.provider.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await post("/internal/providers/contact", {
+      userId: "u1",
+      name: "New Name",
+      phone: "+94771234567",
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(dbMock.provider.updateMany).toHaveBeenCalledWith({
+      where: { userId: "u1" },
+      data: { contactName: "New Name", contactPhone: "+94771234567" },
+    });
+  });
+
+  it("updates the contact email alone (change-email confirm)", async () => {
+    dbMock.provider.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await post("/internal/providers/contact", {
+      userId: "u1",
+      email: "new@baas.lk",
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.updateMany).toHaveBeenCalledWith({
+      where: { userId: "u1" },
+      data: { contactEmail: "new@baas.lk" },
+    });
+  });
+
+  it("stores null when phone is cleared", async () => {
+    dbMock.provider.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await post("/internal/providers/contact", {
+      userId: "u1",
+      phone: null,
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.updateMany).toHaveBeenCalledWith({
+      where: { userId: "u1" },
+      data: { contactPhone: null },
+    });
+  });
+
+  it("no-ops (200) when no contact fields are provided", async () => {
+    const res = await post("/internal/providers/contact", { userId: "u1" });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("400s without a userId", async () => {
+    const res = await post("/internal/providers/contact", { name: "X" });
+    expect(res.status).toBe(400);
+    expect(dbMock.provider.updateMany).not.toHaveBeenCalled();
   });
 });
 

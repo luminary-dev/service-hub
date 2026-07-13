@@ -1,7 +1,8 @@
 // Route-handler tests for job-service's public /api/jobs endpoints. app.test.ts
 // covers the /internal S2S contracts and query.test.ts covers pagination
 // normalization; this file exercises the route handlers themselves: job
-// creation (+ category validation), the board's category/district scoping and
+// creation (+ category validation, the #556 verified-email gate and daily
+// posting cap), the board's category/district scoping and
 // exclude-own filter, /mine, the owner-only status patch, and the response flow
 // (provider gate, out-of-scope / own-job / closed-job rejection, one-per-job
 // dedup + the P2002 race guard). Prisma is mocked and s2s is stubbed per path —
@@ -65,6 +66,9 @@ function wireS2s(opts: {
   // whether the matching lookup / new-job notification blows up.
   matching?: { id: string; contactName: string | null; contactEmail: string }[] | "fail";
   newJob?: "fail";
+  // #556 gate: the emailVerified value identity returns for any looked-up user
+  // (verified by default); "fail" makes the identity lookup blow up.
+  emailVerified?: string | null | "fail";
 } = {}) {
   const {
     providerByUser = PROVIDER,
@@ -72,6 +76,7 @@ function wireS2s(opts: {
     providers = [],
     matching = [],
     newJob,
+    emailVerified = "2026-01-01T00:00:00.000Z",
   } = opts;
   s2sMock.mockImplementation(async (_base: string, path: string) => {
     if (path.includes("/internal/categories")) {
@@ -85,11 +90,25 @@ function wireS2s(opts: {
       if (matching === "fail") throw new Error("provider-service down");
       return json({ providers: matching });
     }
-    if (path.includes("/internal/users?ids=")) return json({ users });
+    if (path.includes("/internal/users?ids=")) {
+      if (emailVerified === "fail") return new Response("boom", { status: 503 });
+      if (users.length > 0) return json({ users });
+      // Echo the queried ids back with the configured emailVerified so the
+      // create path's gate resolves without per-test wiring.
+      const ids = decodeURIComponent(path.split("ids=")[1] ?? "").split(",");
+      return json({
+        users: ids.filter(Boolean).map((id) => ({
+          id,
+          name: "User",
+          email: "user@example.com",
+          emailVerified,
+        })),
+      });
+    }
     if (path.includes("/internal/providers?ids=")) return json({ providers });
     if (path.includes("/internal/email/new-job")) {
       if (newJob === "fail") throw new Error("notification down");
-      return json({ ok: true, sent: 0, delivered: 0 });
+      return json({ ok: true, accepted: 0 }, 202);
     }
     if (path.includes("/internal/email/job-response")) return json({ ok: true });
     throw new Error(`unexpected s2s path: ${path}`);
@@ -118,6 +137,8 @@ const validJob = {
 beforeEach(() => {
   vi.clearAllMocks();
   wireS2s();
+  // Create-path daily cap (#556): default to no posts in the window.
+  dbMock.jobRequest.count.mockResolvedValue(0);
 });
 
 describe("POST /api/jobs (create)", () => {
@@ -145,6 +166,48 @@ describe("POST /api/jobs (create)", () => {
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe("Invalid category");
     expect(dbMock.jobRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("403s when the poster's email is unverified (#556)", async () => {
+    wireS2s({ emailVerified: null });
+    const res = await req(
+      "/api/jobs",
+      { method: "POST", body: JSON.stringify(validJob) },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toMatch(/verify your email/i);
+    expect(dbMock.jobRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("502s when the email-verification lookup fails (write-path gate)", async () => {
+    wireS2s({ emailVerified: "fail" });
+    const res = await req(
+      "/api/jobs",
+      { method: "POST", body: JSON.stringify(validJob) },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(502);
+    expect(dbMock.jobRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("429s when the daily posting cap is reached (#556)", async () => {
+    dbMock.jobRequest.count.mockResolvedValue(10);
+    const res = await req(
+      "/api/jobs",
+      { method: "POST", body: JSON.stringify(validJob) },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(429);
+    expect((await res.json()).error).toMatch(/daily job posting limit/i);
+    expect(dbMock.jobRequest.create).not.toHaveBeenCalled();
+    // The cap counts only the caller's posts inside the 24h window.
+    expect(dbMock.jobRequest.count).toHaveBeenCalledWith({
+      where: {
+        customerId: CUSTOMER_ID,
+        createdAt: { gte: expect.any(Date) },
+      },
+    });
   });
 
   it("creates the job and returns its id", async () => {

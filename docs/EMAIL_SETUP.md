@@ -55,5 +55,9 @@ and template list.
   send: job-service resolves the matching providers once and passes the whole
   `{ recipients: string[], url, jobTitle, district, locale? }` list, and the
   route sends one copy of the EN/SI "new matching job" template per recipient
-  (deduped), returning `{ ok, sent, delivered }`. A single failed send does not
-  abort the batch.
+  (deduped). It acks `202 { ok, accepted }` immediately and sends in the
+  background (#557) — up to 200 sequential sends can't fit the caller's 5s S2S
+  budget — logging the delivered count when the batch completes. A single
+  failed send does not abort the batch. Job posting itself is gated on a
+  verified email plus a per-account daily cap (#556), so an unverified or
+  spamming account never reaches this fan-out.

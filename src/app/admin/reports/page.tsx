@@ -165,8 +165,8 @@ export default async function AdminReportsPage({
       >
         <StatReadout
           stats={[
-            { label: "OPEN", value: openCount },
-            { label: "TOTAL", value: total },
+            { label: t.stats.open, value: openCount },
+            { label: t.stats.total, value: total },
           ]}
         />
       </PageHeader>

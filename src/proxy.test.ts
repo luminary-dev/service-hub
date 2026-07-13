@@ -132,6 +132,25 @@ describe("proxy", () => {
       expect(response.headers.get("x-middleware-request-x-locale")).toBe("si");
     });
 
+    it("does not rewrite root metadata files under /si — they 404 (#379)", () => {
+      for (const path of [
+        "/si/sitemap.xml",
+        "/si/robots.txt",
+        "/si/manifest.webmanifest",
+      ]) {
+        const response = proxy(
+          new NextRequest(`http://localhost:3000${path}`),
+        );
+        // No rewrite: /si/* has no app route of its own, so the request
+        // falls through to not-found instead of serving a duplicate of the
+        // English-root file.
+        expect(isRewrite(response)).toBe(false);
+        expect(response.headers.get("x-middleware-request-x-locale")).toBe(
+          "si",
+        );
+      }
+    });
+
     it("does not send /si pages to the gateway", () => {
       process.env.GATEWAY_URL = "http://api-gateway:4000";
       const response = proxy(

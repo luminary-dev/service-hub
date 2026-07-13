@@ -15,6 +15,7 @@ import {
 } from "../lib/storage";
 import { fetchProviderReviews, fetchRatings, fetchRatingsResult } from "../lib/clients";
 import { computeQualityScore } from "../lib/quality-score";
+import { log } from "../lib/log";
 import {
   buildAdminProvidersWhere,
   normalizeAdminListQuery,
@@ -23,6 +24,11 @@ import {
 } from "../lib/admin-list";
 
 export const adminRoutes = new Hono();
+
+// Upper bound on providers loaded for the in-memory mostReviews ranking
+// (#372) — mirrors MAX_BROWSE_CANDIDATES on the public directory. If ever
+// hit, we log and rank the newest slice.
+const MOST_REVIEWS_CANDIDATES = 1000;
 
 // Moderation audit trail (#227): fire-and-record after every write below.
 // Best-effort — a logging failure must never roll back or block the
@@ -74,14 +80,22 @@ adminRoutes.get("/api/admin/providers", async (c) => {
 
   if (sort === "mostReviews") {
     // Review counts are derived data owned by review-service, so ranking by
-    // them means hydrating and sorting the full match set in memory rather
-    // than paginating in the database (same tradeoff the public directory
-    // makes for its rating-based sorts — see providers.ts).
+    // them means hydrating and sorting the match set in memory rather than
+    // paginating in the database (same tradeoff the public directory makes
+    // for its rating-based sorts — see providers.ts). Bounded (#372): at most
+    // MOST_REVIEWS_CANDIDATES rows (newest first) are loaded and ranked.
     const all = await db.provider.findMany({
       where,
       orderBy: { createdAt: "desc" },
+      take: MOST_REVIEWS_CANDIDATES + 1,
       include: { _count: { select: { photos: true } } },
     });
+    if (all.length > MOST_REVIEWS_CANDIDATES) {
+      all.length = MOST_REVIEWS_CANDIDATES;
+      log.warn("admin mostReviews sort hit candidate cap — ranking may be incomplete", {
+        cap: MOST_REVIEWS_CANDIDATES,
+      });
+    }
     const ratings = await fetchRatings(all.map((p) => p.id));
     const ranked = [...all].sort(
       (a, b) =>

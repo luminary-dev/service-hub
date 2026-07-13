@@ -35,6 +35,7 @@ model Review {
   // last change, not only creation time.
   updatedAt  DateTime @updatedAt
   photos     ReviewPhoto[]
+  response   ReviewResponse?
 
   @@unique([providerId, userId])
   // Matches the provider-profile hot path: filter by providerId, order by
@@ -85,6 +86,21 @@ model Report {
   @@index([targetType, targetId])
   // Report queue orders newest-first (#369).
   @@index([createdAt])
+}
+
+// Provider's public reply to a review (#395): at most one per review
+// (reviewId unique), written only by the reviewed profile's owner — ownership
+// is checked over S2S at write time (same convention as review creation).
+// Cascades with the review; soft-deleted reviews hide it because public
+// queries filter the parent.
+model ReviewResponse {
+  id        String   @id @default(cuid())
+  reviewId  String   @unique
+  review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  text      String
+  createdAt DateTime @default(now())
+  // Auto-stamped on edit so the UI can flag an edited response.
+  updatedAt DateTime @updatedAt
 }
 
 model ReviewPhoto {

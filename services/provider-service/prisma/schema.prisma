@@ -26,7 +26,9 @@ model Category {
 
 // userId references a User owned by identity-service; no FK across service
 // boundaries. Contact fields are denormalized from the user at registration
-// and kept in sync on profile updates (S2S PATCH to identity).
+// and kept in sync both ways: provider-side profile edits PATCH identity;
+// identity-side account/email changes mirror back via
+// POST /internal/providers/contact (#553).
 model Provider {
   id           String  @id @default(cuid())
   userId       String  @unique

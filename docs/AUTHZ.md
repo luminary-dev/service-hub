@@ -236,7 +236,10 @@ Role changes (including assigning **`SUPPORT`**) go through
 `PATCH /api/admin/users/:id`; the target role enum is
 `CUSTOMER | PROVIDER | ADMIN | SUPPORT`, and any actual role change bumps
 `sessionVersion` so the affected user's existing tokens are revoked and the new
-role takes effect on their next request. **Locking an account
+role takes effect on their next request. Promoting a user to **PROVIDER**
+requires an existing (possibly hidden) provider profile — without one the PATCH
+is rejected with `400` (#554), because a profile-less PROVIDER account can
+neither use the provider dashboard nor complete the signup wizard. **Locking an account
 (`{ action: "lock" }`) bumps `sessionVersion` the same way**, so a locked user's
 active sessions are cut off at the gateway immediately instead of surviving
 until the JWT expires. A SUPPORT account can also be
