@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { FaCircleCheck, FaCircleXmark } from "@/components/icons";
-import { useT } from "@/components/I18nProvider";
+import { useLocale, useT } from "@/components/I18nProvider";
+import { localizedHref } from "@/lib/links";
 
 type State = "loading" | "success" | "fail";
 
@@ -14,6 +15,7 @@ function ConfirmInner() {
   const [state, setState] = useState<State>(token ? "loading" : "fail");
   const ran = useRef(false);
   const t = useT();
+  const locale = useLocale();
 
   useEffect(() => {
     if (!token || ran.current) return;
@@ -56,7 +58,7 @@ function ConfirmInner() {
         <p className="mt-2 text-sm leading-relaxed text-ink-600">
           {t.verify.changeSuccessBody}
         </p>
-        <Link href="/account" className="btn-primary mt-6">
+        <Link href={localizedHref("/account", locale)} className="btn-primary mt-6">
           {t.verify.goAccount}
         </Link>
       </div>
@@ -76,7 +78,7 @@ function ConfirmInner() {
       <p className="mt-2 text-sm leading-relaxed text-ink-600">
         {t.verify.changeFailBody}
       </p>
-      <Link href="/account" className="btn-primary mt-6">
+      <Link href={localizedHref("/account", locale)} className="btn-primary mt-6">
         {t.verify.goAccount}
       </Link>
     </div>

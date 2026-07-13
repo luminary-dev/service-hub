@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { FaCircleCheck } from "@/components/icons";
-import { useT } from "@/components/I18nProvider";
+import { useLocale, useT } from "@/components/I18nProvider";
+import { localizedHref } from "@/lib/links";
 import PasswordInput from "@/components/PasswordInput";
 import { Field } from "@/components/ui/Field";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/constants";
@@ -17,6 +18,7 @@ function ResetForm() {
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
   const t = useT();
+  const locale = useLocale();
 
   if (!token) {
     return <InvalidLink />;
@@ -56,7 +58,7 @@ function ResetForm() {
         <p className="mt-2 text-sm leading-relaxed text-ink-600">
           {t.reset.doneBody}
         </p>
-        <Link href="/login" className="btn-primary mt-6">
+        <Link href={localizedHref("/login", locale)} className="btn-primary mt-6">
           {t.reset.signIn}
         </Link>
       </div>
@@ -117,6 +119,7 @@ function ResetForm() {
 
 function InvalidLink() {
   const t = useT();
+  const locale = useLocale();
   return (
     <div className="tech-corners card flex flex-col items-center border-ink-300 p-8 text-center">
       <h1 className="text-xl font-semibold text-ink-900">
@@ -125,7 +128,7 @@ function InvalidLink() {
       <p className="mt-2 text-sm leading-relaxed text-ink-600">
         {t.reset.invalidBody}
       </p>
-      <Link href="/forgot-password" className="btn-primary mt-6">
+      <Link href={localizedHref("/forgot-password", locale)} className="btn-primary mt-6">
         {t.reset.requestNew}
       </Link>
     </div>

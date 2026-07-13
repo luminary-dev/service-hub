@@ -20,11 +20,13 @@ import {
   sendPasswordResetEmail,
 } from "../lib/verification";
 import { eraseUserData } from "../lib/erase";
+import { removeStoredFile } from "../lib/storage";
 import {
   createProviderProfile,
   deactivateProviderProfile,
   eraseProviderProfile,
   getProviderIdByUser,
+  ProviderAdminSuspendedError,
   reactivateProviderProfile,
   resolveProviderIdForErase,
   syncContactToProvider,
@@ -62,7 +64,11 @@ vi.mock("../lib/verification", () => ({
   sendAccountExistsEmail: vi.fn(),
 }));
 vi.mock("../lib/erase", () => ({ eraseUserData: vi.fn() }));
+vi.mock("../lib/storage", () => ({ removeStoredFile: vi.fn() }));
 vi.mock("../lib/providers", () => ({
+  // Stand-in for the real class: the route's instanceof (#550) and the test's
+  // throw both resolve to this same mocked export.
+  ProviderAdminSuspendedError: class ProviderAdminSuspendedError extends Error {},
   getProviderIdByUser: vi.fn(async () => null),
   createProviderProfile: vi.fn(),
   deactivateProviderProfile: vi.fn(),
@@ -973,6 +979,26 @@ describe("POST /api/auth/complete-provider", () => {
     expect(res.status).toBe(502);
     expect(db.user.update).not.toHaveBeenCalled();
   });
+
+  // #550: the exploit chain — admin suspends, provider leave-providers (role →
+  // CUSTOMER), then complete-providers. The reactivate refusal must surface as
+  // a 403 with NO role flip, so the ADMIN suspension stays in force.
+  it("403s the re-upgrade when the profile is ADMIN-suspended (role not flipped)", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "a@b.lk",
+      name: "Ann",
+      role: "CUSTOMER",
+    });
+    vi.mocked(getProviderIdByUser).mockResolvedValue("prov-1");
+    vi.mocked(reactivateProviderProfile).mockRejectedValue(
+      new ProviderAdminSuspendedError()
+    );
+
+    const res = await post("/api/auth/complete-provider", providerBody, AUTH_HEADERS);
+    expect(res.status).toBe(403);
+    expect(db.user.update).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1126,6 +1152,43 @@ describe("POST /api/auth/delete-account", () => {
     expect(db.user.delete).toHaveBeenCalledWith({ where: { id: "u1" } });
   });
 
+  // #555: the avatar file (PII) lives in media-service; deleting the account
+  // must also erase it, after the local rows are gone.
+  it("removes the stored avatar file after a successful deletion", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "a@b.lk",
+      role: "CUSTOMER",
+      passwordHash: currentHash,
+      avatarUrl: "/api/files/user/avatars/u1.jpg",
+    });
+    const res = await post(
+      "/api/auth/delete-account",
+      { password: CURRENT_PASSWORD },
+      AUTH_HEADERS
+    );
+    expect(res.status).toBe(200);
+    expect(removeStoredFile).toHaveBeenCalledWith("/api/files/user/avatars/u1.jpg");
+  });
+
+  it("keeps the avatar file when the deletion aborts on a failed peer erase", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "a@b.lk",
+      role: "CUSTOMER",
+      passwordHash: currentHash,
+      avatarUrl: "/api/files/user/avatars/u1.jpg",
+    });
+    vi.mocked(eraseUserData).mockRejectedValue(new Error("peer down"));
+    const res = await post(
+      "/api/auth/delete-account",
+      { password: CURRENT_PASSWORD },
+      AUTH_HEADERS
+    );
+    expect(res.status).toBe(502);
+    expect(removeStoredFile).not.toHaveBeenCalled();
+  });
+
   // #360: a provider's JobResponses (their written message — PII) are keyed by
   // provider id, and the job erase only deletes them when it receives that id.
   // The resolved providerId must therefore reach eraseUserData so the responses
@@ -1172,5 +1235,45 @@ describe("POST /api/auth/delete-account", () => {
     expect(eraseUserData).not.toHaveBeenCalled();
     expect(db.$transaction).not.toHaveBeenCalled();
     expect(db.user.delete).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/auth/me
+// ---------------------------------------------------------------------------
+describe("GET /api/auth/me", () => {
+  const ME_ROW = {
+    id: "u1",
+    name: "Test User",
+    email: "a@b.lk",
+    phone: null,
+    emailVerified: null,
+    role: "CUSTOMER",
+    avatarUrl: null,
+    sessionVersion: 1,
+  };
+
+  function getMe() {
+    return app.request("/api/auth/me", { headers: AUTH_HEADERS });
+  }
+
+  // hasPassword drives the web's password-confirmation field on sensitive ops
+  // (#504 change-email re-auth): shown for password accounts, skipped for
+  // social-only accounts (#398) that have no password to confirm.
+  it("reports hasPassword=true for a password account without leaking the hash", async () => {
+    db.user.findUnique.mockResolvedValue({ ...ME_ROW, passwordHash: currentHash });
+    const res = await getMe();
+    expect(res.status).toBe(200);
+    const { user } = await res.json();
+    expect(user.hasPassword).toBe(true);
+    expect(user.passwordHash).toBeUndefined();
+  });
+
+  it("reports hasPassword=false for a social-only account", async () => {
+    db.user.findUnique.mockResolvedValue({ ...ME_ROW, passwordHash: null });
+    const res = await getMe();
+    expect(res.status).toBe(200);
+    const { user } = await res.json();
+    expect(user.hasPassword).toBe(false);
   });
 });

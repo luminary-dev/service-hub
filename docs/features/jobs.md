@@ -39,7 +39,11 @@ provider's served districts** (`serviceDistricts`, #502 — falls back to the
 home district for a payload predating the field), excluding the provider's own
 postings. The board is only
 shown to users who actually have a provider profile (role alone is not enough).
-Each board card is flagged `responded` if the provider already replied.
+Each board card is flagged `responded` if the provider already replied, and
+carries a **Report** action (`POST /api/jobs/{jobId}/report`, #376) feeding the
+[admin reports queue](../admin/moderation.md#reports-queue); an admin can take
+a reported job down (it leaves the board and stops accepting responses — see
+[admin jobs](../admin/jobs.md)).
 
 ### Responding
 

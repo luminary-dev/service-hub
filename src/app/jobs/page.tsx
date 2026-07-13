@@ -7,12 +7,14 @@ import { getLocale } from "@/lib/locale";
 import { loginNext } from "@/lib/login";
 import { formatDate, formatNumber } from "@/lib/format";
 import { dict, categoryLabelLoc, districtLabelLoc } from "@/lib/i18n";
+import { localizedHref } from "@/lib/links";
 import InView from "@/components/InView";
 import PageHeader from "@/components/ui/PageHeader";
 import StatReadout from "@/components/ui/StatReadout";
 import EmptyState from "@/components/ui/EmptyState";
 import JobRespondForm from "@/components/jobs/JobRespondForm";
 import JobStatusToggle from "@/components/jobs/JobStatusToggle";
+import ReportButton from "@/components/ReportButton";
 
 // Caching (#57): session-gated and must reflect the user's own writes
 // immediately — stays fully dynamic (no-store).
@@ -85,6 +87,7 @@ export default async function JobsPage({
   ]);
   const t = dict[locale].jobs;
   const nav = dict[locale].nav;
+  const tr = dict[locale].report;
   const provider = dashboard?.provider ?? null;
 
   const [boardData, mineData] = await Promise.all([
@@ -113,7 +116,7 @@ export default async function JobsPage({
     if (boardPage > 1) sp.set("boardPage", String(boardPage));
     if (minePage > 1) sp.set("minePage", String(minePage));
     sp.set(key, String(value));
-    return `/jobs?${sp.toString()}`;
+    return localizedHref(`/jobs?${sp.toString()}`, locale);
   }
 
   function pager(key: "boardPage" | "minePage", current: number, totalPages: number) {
@@ -176,7 +179,7 @@ export default async function JobsPage({
       >
         <div className="flex flex-col items-start gap-4 sm:items-end">
           <StatReadout stats={stats} />
-          <Link href="/jobs/new" className="btn-primary">
+          <Link href={localizedHref("/jobs/new", locale)} className="btn-primary">
             <FaPlus className="h-3.5 w-3.5" />
             {t.postCta}
           </Link>
@@ -218,13 +221,23 @@ export default async function JobsPage({
                       {job.description}
                     </p>
                     <div className="mt-3.5 border-t border-dashed border-ink-300 pt-3.5">
-                      {job.responded ? (
-                        <span className="chip bg-emerald-50 text-emerald-700">
-                          {t.respondedTag}
-                        </span>
-                      ) : (
-                        <JobRespondForm jobId={job.id} />
-                      )}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          {job.responded ? (
+                            <span className="chip bg-emerald-50 text-emerald-700">
+                              {t.respondedTag}
+                            </span>
+                          ) : (
+                            <JobRespondForm jobId={job.id} />
+                          )}
+                        </div>
+                        {/* Abuse reporting (#376): scam/abusive postings feed
+                            the admin job-reports queue. */}
+                        <ReportButton
+                          endpoint={`/api/jobs/${job.id}/report`}
+                          label={tr.reportJob}
+                        />
+                      </div>
                     </div>
                   </li>
                 ))}
@@ -253,7 +266,10 @@ export default async function JobsPage({
                 icon={FaBriefcase}
                 title={t.myEmpty}
                 action={
-                  <Link href="/jobs/new" className="btn-primary">
+                  <Link
+                    href={localizedHref("/jobs/new", locale)}
+                    className="btn-primary"
+                  >
                     {t.postCta}
                   </Link>
                 }
@@ -301,7 +317,10 @@ export default async function JobsPage({
                           <li key={r.id} className="py-3">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <Link
-                                href={`/providers/${r.provider.id}`}
+                                href={localizedHref(
+                                  `/providers/${r.provider.id}`,
+                                  locale
+                                )}
                                 className="text-sm font-medium text-ink-800 hover:text-brand-700"
                               >
                                 {r.provider.name}

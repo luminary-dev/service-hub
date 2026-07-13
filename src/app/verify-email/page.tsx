@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { FaCircleCheck, FaCircleXmark } from "@/components/icons";
-import { useT } from "@/components/I18nProvider";
+import { useLocale, useT } from "@/components/I18nProvider";
+import { localizedHref } from "@/lib/links";
 
 type State = "loading" | "success" | "fail";
 
@@ -14,6 +15,7 @@ function VerifyInner() {
   const [state, setState] = useState<State>(token ? "loading" : "fail");
   const ran = useRef(false);
   const t = useT();
+  const locale = useLocale();
 
   useEffect(() => {
     if (!token || ran.current) return;
@@ -49,10 +51,10 @@ function VerifyInner() {
           {t.verify.successBody}
         </p>
         <div className="mt-6 flex gap-3">
-          <Link href="/dashboard" className="btn-primary">
+          <Link href={localizedHref("/dashboard", locale)} className="btn-primary">
             {t.verify.goDashboard}
           </Link>
-          <Link href="/" className="btn-secondary">
+          <Link href={localizedHref("/", locale)} className="btn-secondary">
             {t.verify.goHome}
           </Link>
         </div>
@@ -69,7 +71,7 @@ function VerifyInner() {
       <p className="mt-2 text-sm leading-relaxed text-ink-600">
         {t.verify.failBody}
       </p>
-      <Link href="/login" className="btn-primary mt-6">
+      <Link href={localizedHref("/login", locale)} className="btn-primary mt-6">
         {t.verify.signIn}
       </Link>
     </div>

@@ -52,7 +52,7 @@ export default async function Footer() {
             <ul className="mt-3 space-y-2">
               <li>
                 <Link
-                  href="/register/provider"
+                  href={localizedHref("/register/provider", locale)}
                   className="text-sm text-ink-600 transition-colors duration-200 hover:text-brand-700"
                 >
                   {t.footer.joinPro}
@@ -60,7 +60,7 @@ export default async function Footer() {
               </li>
               <li>
                 <Link
-                  href="/login"
+                  href={localizedHref("/login", locale)}
                   className="text-sm text-ink-600 transition-colors duration-200 hover:text-brand-700"
                 >
                   {t.footer.signIn}
@@ -68,7 +68,7 @@ export default async function Footer() {
               </li>
               <li>
                 <Link
-                  href="/dashboard"
+                  href={localizedHref("/dashboard", locale)}
                   className="text-sm text-ink-600 transition-colors duration-200 hover:text-brand-700"
                 >
                   {t.footer.dashboard}
@@ -92,7 +92,7 @@ export default async function Footer() {
               </li>
               <li>
                 <Link
-                  href="/register/customer"
+                  href={localizedHref("/register/customer", locale)}
                   className="text-sm text-ink-600 transition-colors duration-200 hover:text-brand-700"
                 >
                   {t.footer.createAccount}
@@ -107,6 +107,20 @@ export default async function Footer() {
           <span>Baas.lk · {t.footer.made1}</span>
           <FaHeart className="h-3 w-3 text-brand-500" />
           {t.footer.made2}
+          <span className="ml-auto flex items-center gap-4">
+            <Link
+              href={localizedHref("/terms", locale)}
+              className="transition-colors duration-200 hover:text-brand-700"
+            >
+              {t.footer.terms}
+            </Link>
+            <Link
+              href={localizedHref("/privacy", locale)}
+              className="transition-colors duration-200 hover:text-brand-700"
+            >
+              {t.footer.privacy}
+            </Link>
+          </span>
         </div>
       </div>
     </footer>

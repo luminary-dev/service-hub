@@ -111,19 +111,25 @@ export default function ReviewSection({
     }
     if (files) for (const f of Array.from(files)) fd.append("photos", f);
 
-    const res = await fetch(`/api/providers/${providerId}/reviews`, {
-      method: "POST",
-      body: fd,
-    });
-    setLoading(false);
-    if (res.ok) {
-      setShowForm(false);
-      if (fileRef.current) fileRef.current.value = "";
-      toast.success(t.toast.reviewSaved);
-      router.refresh();
-    } else {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? t.reviews.error);
+    try {
+      const res = await fetch(`/api/providers/${providerId}/reviews`, {
+        method: "POST",
+        body: fd,
+      });
+      if (res.ok) {
+        setShowForm(false);
+        if (fileRef.current) fileRef.current.value = "";
+        toast.success(t.toast.reviewSaved);
+        router.refresh();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? t.reviews.error);
+      }
+    } catch {
+      // Network failure — recover instead of wedging the button (#363).
+      setError(t.reviews.error);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -199,9 +205,13 @@ export default function ReviewSection({
         )}
         {!signedIn && (
           <Link
-            // Return here after sign-in (#560) instead of the generic listing.
-            href={loginNextHref(
-              localizedHref(`/providers/${providerId}`, locale),
+            // Return here after sign-in (#560) instead of the generic
+            // listing; the /login URL itself stays in the /si space (#364).
+            href={localizedHref(
+              loginNextHref(
+                localizedHref(`/providers/${providerId}`, locale),
+              ),
+              locale,
             )}
             className="text-sm font-medium text-brand-600 hover:text-brand-700"
           >

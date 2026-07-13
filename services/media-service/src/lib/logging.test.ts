@@ -1,9 +1,14 @@
 // Unit tests for the canonical structured logger — identical copy in every
 // service (same rationale as categories.test.ts). The write fn is injected so
 // nothing here parses stdout.
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
-import { createLogger, getRequestId, requestLogger } from "./logging";
+import {
+  createLogger,
+  getRequestId,
+  installProcessErrorHandlers,
+  requestLogger,
+} from "./logging";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -120,5 +125,60 @@ describe("requestLogger", () => {
     const res = await app.request("/healthz");
     expect(res.status).toBe(200);
     expect(lines).toHaveLength(0);
+  });
+});
+
+describe("installProcessErrorHandlers", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function fakeProc() {
+    const listeners = new Map<string, (reason: unknown) => void>();
+    const exits: number[] = [];
+    const proc = {
+      on: (event: string, listener: (reason: unknown) => void) => {
+        listeners.set(event, listener);
+      },
+      exit: (code: number) => {
+        exits.push(code);
+      },
+    };
+    return { listeners, exits, proc };
+  }
+
+  it("logs an uncaught exception, then exits 1 after the flush delay", () => {
+    vi.useFakeTimers();
+    const { lines, write } = capture();
+    const { listeners, exits, proc } = fakeProc();
+    installProcessErrorHandlers(createLogger("test-service", write), proc);
+    listeners.get("uncaughtException")!(new Error("boom"));
+    expect(lines).toHaveLength(1);
+    const entry = JSON.parse(lines[0]);
+    expect(entry).toMatchObject({
+      level: "error",
+      service: "test-service",
+      msg: "uncaught exception",
+    });
+    expect(entry.err.message).toBe("boom");
+    expect(typeof entry.err.stack).toBe("string");
+    // The exit is deferred so the stdout pipe can flush the line first.
+    expect(exits).toEqual([]);
+    vi.runAllTimers();
+    expect(exits).toEqual([1]);
+  });
+
+  it("normalizes a non-Error rejection reason into an err field", () => {
+    vi.useFakeTimers();
+    const { lines, write } = capture();
+    const { listeners, exits, proc } = fakeProc();
+    installProcessErrorHandlers(createLogger("test-service", write), proc);
+    listeners.get("unhandledRejection")!("string reason");
+    const entry = JSON.parse(lines[0]);
+    expect(entry.msg).toBe("unhandled rejection");
+    expect(entry.err.name).toBe("Error");
+    expect(entry.err.message).toBe("string reason");
+    vi.runAllTimers();
+    expect(exits).toEqual([1]);
   });
 });

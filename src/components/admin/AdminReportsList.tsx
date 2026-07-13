@@ -12,21 +12,24 @@ import { hasSupportAccess } from "@/lib/roles";
 import Stars from "../Stars";
 import InView from "../InView";
 import EmptyState from "../ui/EmptyState";
+import AdminDeleteButton from "./AdminDeleteButton";
+import AdminRestoreButton from "./AdminRestoreButton";
 import ReportActions from "./ReportActions";
 
 // The moderation queue (#50) merges three sources — provider-service owns
-// reports on providers, work photos and inquiry threads
+// reports on providers, work photos, inquiry threads and thread messages
 // (`GET /api/admin/reports`), review-service owns reports on reviews
 // (`GET /api/admin/review-reports`), job-service owns reports on job posts
-// and responses (`GET /api/admin/job-reports`, #375). All return OPEN first
-// (newest first) with a hydrated target summary (null when the target no
-// longer exists).
+// and responses (`GET /api/admin/job-reports`, #375/#376). All return OPEN
+// first (newest first) with a hydrated target summary (null when the target
+// no longer exists).
 type ReportBase = {
   id: string;
   targetType:
     | "PROVIDER"
     | "WORK_PHOTO"
     | "INQUIRY"
+    | "MESSAGE"
     | "REVIEW"
     | "JOB"
     | "JOB_RESPONSE";
@@ -47,7 +50,7 @@ type ReportBase = {
 };
 
 type ProviderReport = ReportBase & {
-  targetType: "PROVIDER" | "WORK_PHOTO" | "INQUIRY";
+  targetType: "PROVIDER" | "WORK_PHOTO" | "INQUIRY" | "MESSAGE";
   target: {
     providerId: string;
     providerName: string;
@@ -59,6 +62,10 @@ type ProviderReport = ReportBase & {
     // in the report's `details`.
     customerName?: string;
     message?: string;
+    // MESSAGE targets (#376): the reported thread message.
+    messageId?: string;
+    sender?: "CUSTOMER" | "PROVIDER";
+    body?: string;
   } | null;
 };
 
@@ -81,6 +88,8 @@ type JobReport = ReportBase & {
     title?: string;
     description?: string;
     status?: string;
+    // Taken down by an admin (#376) — reversible soft-hide.
+    removed?: boolean;
     // JOB_RESPONSE targets
     jobTitle?: string;
     message?: string;
@@ -183,6 +192,7 @@ export default function AdminReportsList({
     WORK_PHOTO: t.reportedPhoto,
     REVIEW: t.reportedReview,
     INQUIRY: t.reportedInquiry,
+    MESSAGE: t.reportedMessage,
     JOB: t.reportedJob,
     JOB_RESPONSE: t.reportedJobResponse,
   } as const;
@@ -332,9 +342,16 @@ export default function AdminReportsList({
                 // the admin job detail as the moderation surface.
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-ink-800">
-                      {r.targetType === "JOB" ? r.target.title : r.target.jobTitle}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate text-sm font-medium text-ink-800">
+                        {r.targetType === "JOB" ? r.target.title : r.target.jobTitle}
+                      </p>
+                      {r.target.removed && (
+                        <span className="chip bg-red-50 text-red-700 ring-1 ring-red-200">
+                          {t.jobHiddenTag}
+                        </span>
+                      )}
+                    </div>
                     <p className="mt-1 line-clamp-3 text-sm text-ink-600">
                       {r.targetType === "JOB"
                         ? r.target.description
@@ -347,6 +364,51 @@ export default function AdminReportsList({
                   >
                     {t.moderate}
                   </Link>
+                </div>
+              ) : r.service === "provider" && r.targetType === "MESSAGE" ? (
+                // Reported thread message (#376): show the body with the
+                // takedown/restore control inline — there is no separate
+                // admin surface for private threads.
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate text-sm font-medium text-ink-800">
+                        {r.target.providerName}
+                      </p>
+                      <span className="chip bg-ink-100 text-ink-500">
+                        {r.target.sender === "PROVIDER"
+                          ? t.msgSenderProvider
+                          : t.msgSenderCustomer}
+                      </span>
+                      {r.target.removed && (
+                        <span className="chip bg-red-50 text-red-700 ring-1 ring-red-200">
+                          {t.reportContentRemoved}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 line-clamp-3 text-sm text-ink-600">
+                      {r.target.body}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3">
+                    {r.target.removed ? (
+                      <AdminRestoreButton
+                        endpoint={`/api/admin/messages/${r.target.messageId}/restore`}
+                        role={role}
+                      />
+                    ) : (
+                      <AdminDeleteButton
+                        endpoint={`/api/admin/messages/${r.target.messageId}`}
+                        role={role}
+                      />
+                    )}
+                    <Link
+                      href={`/admin/providers/${r.target.providerId}`}
+                      className="text-sm font-semibold text-brand-700 transition-colors duration-200 ease-snap hover:text-brand-800"
+                    >
+                      {t.moderate}
+                    </Link>
+                  </div>
                 </div>
               ) : r.service === "provider" && r.targetType === "INQUIRY" ? (
                 // Inquiry thread (#375): who wrote to which provider, plus the

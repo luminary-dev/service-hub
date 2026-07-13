@@ -378,6 +378,7 @@ describe("GET /api/jobs/board", () => {
       expect.objectContaining({
         where: {
           status: "OPEN",
+          hiddenAt: null,
           category: "plumbing",
           district: { in: ["Colombo", "Gampaha"] },
           NOT: { customerId: PROVIDER_USER_ID },
@@ -536,6 +537,17 @@ describe("POST /api/jobs/:id/responses (provider responds)", () => {
       { "x-user-id": PROVIDER_USER_ID }
     );
     expect(res.status).toBe(404);
+  });
+
+  it("404s when the job was taken down by an admin (#376)", async () => {
+    dbMock.jobRequest.findUnique.mockResolvedValue({ ...openJob, hiddenAt: new Date() });
+    const res = await req(
+      "/api/jobs/job_1/responses",
+      { method: "POST", body: JSON.stringify(message) },
+      { "x-user-id": PROVIDER_USER_ID }
+    );
+    expect(res.status).toBe(404);
+    expect(dbMock.jobResponse.create).not.toHaveBeenCalled();
   });
 
   it("400s when responding to your own job", async () => {

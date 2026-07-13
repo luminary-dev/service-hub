@@ -15,8 +15,11 @@ session version, and the user's favorites. Actions (hidden when viewing your
 own account):
 
 - **Change role** — CUSTOMER / PROVIDER / ADMIN / SUPPORT via
-  `PATCH /api/admin/users/{id}` `{ role }` (a role change bumps the user's
-  `sessionVersion`, forcing a re-login on their next request). A change that
+  `PATCH /api/admin/users/{id}` `{ role }`. The role select stages the choice
+  locally; nothing is sent until the explicit **Apply role** button is clicked
+  (a closed native select fires `change` per arrow keypress, so committing from
+  `onChange` was a keyboard hazard — WCAG 3.2.2, #563). A role change bumps the user's
+  `sessionVersion`, forcing a re-login on their next request. A change that
   crosses the PROVIDER boundary mirrors the self-service flows so
   provider-service stays consistent: demoting **PROVIDER → non-PROVIDER**
   deactivates (hides) their provider profile, and promoting **non-PROVIDER →
@@ -25,7 +28,10 @@ own account):
   wizard data to create one from, and a profile-less PROVIDER account would be
   unusable (`complete-provider` refuses PROVIDER-role callers and every provider
   dashboard route needs a profile); such users must complete provider signup
-  themselves. The provider-service call is a write-path
+  themselves. A profile under an **ADMIN suspension** refuses the promotion
+  with `409` (#550) — lifting a moderation suspension stays exclusive to the
+  unsuspend action on Admin → Providers, so a role change can't lift one as a
+  side effect. The provider-service call is a write-path
   gate: if it fails the API returns `502` and the role is left unchanged, so the
   two services never drift. Role changes that don't involve PROVIDER (e.g.
   CUSTOMER ↔ ADMIN ↔ SUPPORT) make no provider-service call.
@@ -38,6 +44,9 @@ own account):
 - **Force logout** — `POST /api/admin/users/{id}/force-logout` bumps the user's
   `sessionVersion`, invalidating every existing token at the gateway's
   revocation check.
+
+Every action surfaces a success or error toast (errors show the server's
+message when it sends one, and are announced assertively for screen readers).
 
 You cannot modify or force-logout your own account (the API returns 400).
 
