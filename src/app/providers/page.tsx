@@ -148,9 +148,9 @@ export default async function ProvidersPage({
   }
 
   const stats: [string, number][] = [
-    ["TOTAL", total],
-    ["TRADES", categories.length],
-    ["DISTRICTS", DISTRICTS.length],
+    [t.browse.stats.total, total],
+    [t.browse.stats.trades, categories.length],
+    [t.browse.stats.districts, DISTRICTS.length],
   ];
 
   return (

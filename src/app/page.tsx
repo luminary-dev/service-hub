@@ -127,7 +127,7 @@ export default async function HomePage() {
           </div>
           <span className="inline-flex flex-shrink-0 items-center gap-1.5 font-semibold text-brand-700">
             <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-brand-600" />
-            Online
+            {t.home.statusOnline}
           </span>
         </div>
       </div>
@@ -188,12 +188,12 @@ export default async function HomePage() {
               />
               <div className="blueprint-grid pointer-events-none absolute inset-0 opacity-30 mix-blend-overlay" />
               <span className="absolute left-3 top-3 rounded-sm bg-brand-700 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-white dark:text-ink-50">
-                Verified trade
+                {t.home.heroBadge}
               </span>
             </div>
             <figcaption className="flex items-center justify-between border border-t-0 border-ink-300 bg-ink-100 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-500">
-              <span>Fig.01</span>
-              <span>Certified builder · LK</span>
+              <span>{t.home.heroFigNo}</span>
+              <span>{t.home.heroFigCaption}</span>
             </figcaption>
           </figure>
         </div>

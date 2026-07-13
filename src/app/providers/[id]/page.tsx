@@ -238,14 +238,14 @@ export default async function ProviderProfilePage({
     !!provider.awayUntil && new Date(provider.awayUntil) > new Date();
 
   // Instrument-style readout mirroring the registry header on the listing.
-  // Labels are the same terse English mono captions the shipped pages use;
-  // the localized experience/review copy still reads in the meta line below.
+  // Captions are localized (#380); the localized experience/review copy
+  // still reads in the meta line below.
   const stats: Stat[] = [];
   if (provider.experience > 0)
-    stats.push({ label: "EXP · YRS", value: provider.experience });
+    stats.push({ label: t.profile.stats.expYears, value: provider.experience });
   if (ratingAvg !== null)
-    stats.push({ label: "RATING", value: ratingAvg.toFixed(1) });
-  stats.push({ label: "REVIEWS", value: reviewCount });
+    stats.push({ label: t.profile.stats.rating, value: ratingAvg.toFixed(1) });
+  stats.push({ label: t.profile.stats.reviews, value: reviewCount });
 
   return (
     <div>

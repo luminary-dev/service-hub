@@ -84,6 +84,13 @@ const en = {
     prev: "← Previous",
     next: "Next →",
     pageOf: (p: number, t: number) => `Page ${p} of ${t}`,
+    // Captions for the jobs-header StatReadout instruments.
+    stats: {
+      matching: "Matching",
+      responded: "Responded",
+      posted: "Posted",
+      open: "Open",
+    },
   },
   home: {
     heroTitle1: "The tradespeople Sri Lanka",
@@ -132,6 +139,10 @@ const en = {
     ctaSee: "See who's on it",
     heroWorkerAlt: "A builder in safety gear holding a hammer",
     heroTeaAlt: "Tea pluckers working on a Sri Lankan estate",
+    statusOnline: "Online",
+    heroBadge: "Verified trade",
+    heroFigNo: "Fig.01",
+    heroFigCaption: "Certified builder · LK",
   },
   search: {
     placeholder: "What do you need? e.g. wiring, brake repair…",
@@ -186,6 +197,12 @@ const en = {
       price: "Lowest price",
       experience: "Most experienced",
       newest: "Newest",
+    },
+    // Captions for the registry-header StatReadout instruments.
+    stats: {
+      total: "Total",
+      trades: "Trades",
+      districts: "Districts",
     },
   },
   card: {
@@ -252,6 +269,12 @@ const en = {
     leavingProvider: "Closing…",
     leaveProviderDone: "Your provider profile has been closed.",
     cancel: "Cancel",
+    // Captions for the account-header StatReadout instruments.
+    stats: {
+      saved: "Saved",
+      sent: "Sent",
+      reviews: "Reviews",
+    },
   },
   security: {
     link: "Account security",
@@ -378,6 +401,15 @@ const en = {
     statOpenReports: "Open reports",
     statActiveProviders: "Active providers",
     statSuspendedProviders: "Suspended providers",
+    // Captions for the admin-header StatReadout instruments.
+    stats: {
+      total: "Total",
+      active: "Active",
+      inactive: "Inactive",
+      open: "Open",
+      pending: "Pending",
+      docs: "Docs",
+    },
     manageTitle: "Manage",
     chartSignupsTitle: "Signups over time",
     chartCategoryTitle: "Providers by category",
@@ -629,6 +661,12 @@ const en = {
     workPhoto: "Work photo",
     photoViewer: "Photo viewer",
     closePhoto: "Close photo viewer",
+    // Captions for the profile-hero StatReadout instruments.
+    stats: {
+      expYears: "Exp · yrs",
+      rating: "Rating",
+      reviews: "Reviews",
+    },
   },
   toast: {
     favAdded: "Saved to your list.",
@@ -1067,6 +1105,8 @@ const en = {
     errServiceCount: "Add at least one service.",
     errServiceTitle: "Every service needs a title.",
     errServicePrice: "Every service needs a valid price.",
+    asideWorkerAlt: "A tradesperson at work in Sri Lanka",
+    asideBadge: "Registry",
   },
 };
 
@@ -1153,6 +1193,12 @@ const si: Dict = {
     prev: "← පෙර",
     next: "ඊළඟ →",
     pageOf: (p: number, t: number) => `පිටුව ${p} / ${t}`,
+    stats: {
+      matching: "ගැලපෙන",
+      responded: "ප්‍රතිචාර දැක්වූ",
+      posted: "පළ කළ",
+      open: "විවෘත",
+    },
   },
   home: {
     heroTitle1: "විශ්වාසවන්ත කාර්මිකයන්,",
@@ -1201,6 +1247,10 @@ const si: Dict = {
     ctaSee: "කවුද ඉන්නේ බලන්න",
     heroWorkerAlt: "ආරක්ෂිත උපකරණ පැළඳ මිටියක් අතැතිව සිටින ගොඩනැගිලි කම්කරුවෙක්",
     heroTeaAlt: "ශ්‍රී ලාංකික තේ වතුයායක වැඩ කරන තේ දළු නෙළන්නන්",
+    statusOnline: "සබැඳියි",
+    heroBadge: "සත්‍යාපිත වෘත්තිකයෙක්",
+    heroFigNo: "රූපය 01",
+    heroFigCaption: "සහතික ලත් ඉදිකිරීම්කරු · LK",
   },
   search: {
     placeholder: "ඔබට අවශ්‍ය කුමක්ද? උදා: වයරින්, බ්‍රේක්…",
@@ -1255,6 +1305,11 @@ const si: Dict = {
       price: "අඩුම මිල",
       experience: "වැඩිම පළපුරුද්ද",
       newest: "අලුත්ම",
+    },
+    stats: {
+      total: "මුළු ගණන",
+      trades: "ක්ෂේත්‍ර",
+      districts: "දිස්ත්‍රික්ක",
     },
   },
   card: {
@@ -1321,6 +1376,11 @@ const si: Dict = {
     leavingProvider: "වසමින්…",
     leaveProviderDone: "ඔබේ වෘත්තික පැතිකඩ වසා ඇත.",
     cancel: "අවලංගු කරන්න",
+    stats: {
+      saved: "සුරකා ඇත",
+      sent: "යවා ඇත",
+      reviews: "සමාලෝචන",
+    },
   },
   security: {
     link: "ගිණුම් ආරක්ෂාව",
@@ -1443,6 +1503,14 @@ const si: Dict = {
     statOpenReports: "විවෘත වාර්තා",
     statActiveProviders: "සක්‍රිය වෘත්තිකයන්",
     statSuspendedProviders: "අත්හිටුවූ වෘත්තිකයන්",
+    stats: {
+      total: "මුළු ගණන",
+      active: "සක්‍රිය",
+      inactive: "අක්‍රිය",
+      open: "විවෘත",
+      pending: "පොරොත්තුවෙන්",
+      docs: "ලේඛන",
+    },
     manageTitle: "කළමනාකරණය",
     chartSignupsTitle: "කාලයත් සමඟ ලියාපදිංචි වීම්",
     chartCategoryTitle: "ක්ෂේත්‍රය අනුව වෘත්තිකයන්",
@@ -1687,6 +1755,11 @@ const si: Dict = {
     workPhoto: "වැඩ ඡායාරූපය",
     photoViewer: "ඡායාරූප දර්ශකය",
     closePhoto: "ඡායාරූප දර්ශකය වසන්න",
+    stats: {
+      expYears: "පළපුරුද්ද · අවු.",
+      rating: "ඇගයීම",
+      reviews: "සමාලෝචන",
+    },
   },
   toast: {
     favAdded: "ඔබේ ලැයිස්තුවට සුරකින ලදී.",
@@ -2119,6 +2192,8 @@ const si: Dict = {
     errServiceCount: "අවම වශයෙන් එක් සේවාවක් එක් කරන්න.",
     errServiceTitle: "සෑම සේවාවකටම නාමයක් අවශ්‍යයි.",
     errServicePrice: "සෑම සේවාවකටම වලංගු මිලක් අවශ්‍යයි.",
+    asideWorkerAlt: "ශ්‍රී ලංකාවේ වැඩ කරමින් සිටින කාර්මිකයෙක්",
+    asideBadge: "ලියාපදිංචිය",
   },
 };
 
