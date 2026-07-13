@@ -37,9 +37,11 @@ and **three** audit logs client-side (§6).
 
 ## 2. Proposal
 
-Extract a **trust-safety-service** on port **:4008** (next free; chat holds
-:4007), with its own database `trust_safety_db` and Postgres role
-`trust_safety` per the #612 least-privilege pattern.
+Extract a **trust-safety-service** on port **:4009**, with its own database
+`trust_safety_db` and Postgres role `trust_safety` per the #612
+least-privilege pattern. (Port allocation: chat-service holds :4007; **:4008
+is reserved for search-service** — the Stage-2 Track 1 extraction in the
+search & discovery RFC, which builds first — so trust-safety takes :4009.)
 
 **It owns:**
 
@@ -261,7 +263,7 @@ if (/^\/api\/(providers|photos|reviews|jobs|messages)\/[^/]+\/report$/.test(path
 `/api/admin/job-reports*`, `/api/admin/job-audit-log` (routes.ts:65–76,
 105–107, 122–128). The `/api/admin/*` → provider fallback stays for the
 provider-owned admin surface, but loses its biggest tenant. `serviceUrl()`
-gains `TRUST_SAFETY_SERVICE_URL ?? "http://localhost:4008"`.
+gains `TRUST_SAFETY_SERVICE_URL ?? "http://localhost:4009"`.
 
 ### 5.5 Roles (docs/AUTHZ.md unchanged in spirit)
 
@@ -303,8 +305,8 @@ Components that simplify (this merging code just landed with #605/#607/#376):
 Per the #612 pattern, the new service touches:
 
 - **docker-compose.yml / docker-compose.prod.yml:** `trust-safety-service`
-  block (`PORT: 4008`, `mem_limit`, hardening anchors, healthcheck,
-  `depends_on: postgres`), `TRUST_SAFETY_SERVICE_URL: http://trust-safety-service:4008`
+  block (`PORT: 4009`, `mem_limit`, hardening anchors, healthcheck,
+  `depends_on: postgres`), `TRUST_SAFETY_SERVICE_URL: http://trust-safety-service:4009`
   in the shared `x-service-env`, gateway `depends_on` entry.
 - **DB bootstrap:** `scripts/init-db.sql` gains `CREATE DATABASE
   trust_safety_db` (local); `deploy/postgres-init.sh` gains the
