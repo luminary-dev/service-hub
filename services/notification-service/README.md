@@ -26,14 +26,17 @@ rejected with `403 { "error": "Forbidden" }`. See
 | `POST` | `/internal/email/account-exists` | `{ to, url, locale? }` | `200 { ok: true, delivered: boolean }` |
 | `POST` | `/internal/email/inquiry` | `{ to, url, customerName, locale? }` | `200 { ok: true, delivered: boolean }` |
 | `POST` | `/internal/email/job-response` | `{ to, url, providerName, jobTitle, locale? }` | `200 { ok: true, delivered: boolean }` |
-| `POST` | `/internal/email/new-job` | `{ recipients: string[], url, jobTitle, district, locale? }` | `200 { ok: true, sent, delivered }` |
+| `POST` | `/internal/email/new-job` | `{ recipients: string[], url, jobTitle, district, locale? }` | `202 { ok: true, accepted }` (sends in the background, #557) |
+| `POST` | `/internal/email/new-provider-match` | `{ recipients: string[], url, providerName, district, locale? }` | `202 { ok: true, accepted }` (sends in the background) |
 
 - Each endpoint maps to a template in `src/lib/email.ts`: verify-email
   (24h link), password-reset (1h link), change-email (1h link, #396),
   account-exists (registration anti-enumeration, #373 — links to sign-in),
-  new-inquiry, job-response, and new-job (matching-provider lead-gen alert on a
+  new-inquiry, job-response, new-job (matching-provider lead-gen alert on a
   new job post, #501 — a fan-out that emails every matching provider one copy)
-  — all rendered EN + SI through a shared branded `layout()`.
+  and new-provider-match (saved-search alert on a new provider publish, #516 —
+  the reverse-direction fan-out) — all rendered EN + SI through a shared
+  branded `layout()`.
 - `locale` is `"en"` or `"si"`; it defaults to `"en"` and any other value is
   coerced to `"en"`.
 - Invalid bodies return `400 { "error": "Invalid input" }`.

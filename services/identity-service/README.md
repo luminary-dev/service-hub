@@ -3,8 +3,8 @@
 > [!WARNING]
 > This repository is a **read-only mirror** of [`services/identity-service`](https://github.com/luminary-dev/service-hub/tree/main/services/identity-service) in the service-hub monorepo. Do not push or open PRs here — changes land via monorepo PRs and are synced out with `npm run sync:repos`. Direct pushes are blocked by branch protection.
 
-Owns users, sessions, email-verification / password-reset tokens, and provider
-favorites for Service Hub (Baas.lk). It is the **only** signer of the
+Owns users, sessions, email-verification / password-reset tokens, provider
+favorites and saved searches for Service Hub (Baas.lk). It is the **only** signer of the
 `sh_session` JWT cookie (HS256 via `AUTH_SECRET`); the api-gateway and web app
 only verify it. Runs on port **4001** with its own `identity_db` Postgres
 database.
@@ -39,6 +39,14 @@ the gateway-forwarded `x-user-id` / `x-user-role` / `x-user-name` headers.
 | POST | `/api/favorites/:id` | Favorite a provider (S2S existence check). |
 | DELETE | `/api/favorites/:id` | Unfavorite a provider. |
 
+### Public — saved searches (`/api/saved-searches`, CUSTOMER-only, #516)
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/saved-searches` | `{ savedSearches }` for the session user, newest first. |
+| POST | `/api/saved-searches` | Save named `/providers` filters `{ name, query?, category?, district? }` (≥1 filter; duplicates return the existing row; cap 20/user → 429). |
+| DELETE | `/api/saved-searches/:id` | Delete an own saved search (idempotent). |
+
 ### Admin (reads require SUPPORT or ADMIN via `isSupportOrAdmin`; user-management + impersonation writes require full ADMIN via `isFullAdmin`; else 403)
 
 | Method | Path | Description |
@@ -51,7 +59,7 @@ the gateway-forwarded `x-user-id` / `x-user-role` / `x-user-name` headers.
 | POST | `/api/admin/impersonate/end` | Destroy the impersonation cookie, close the log row (#234). |
 | GET | `/api/admin/signups` | Daily signup counts for the trailing 30 days, split customer vs provider (#219). |
 
-### Internal (service-to-service, `/internal/users`)
+### Internal (service-to-service)
 
 | Method | Path | Description |
 |---|---|---|
@@ -59,6 +67,8 @@ the gateway-forwarded `x-user-id` / `x-user-role` / `x-user-name` headers.
 | GET | `/internal/users/:id/session-version` | `{ v }` — the gateway's revocation check (`null` if the user is gone). |
 | GET | `/internal/users/count` | `{ count }`. |
 | PATCH | `/internal/users/:id` | `{ name?, phone? }` profile sync from provider-service. |
+| GET | `/internal/saved-searches/candidates?category&districts&excludeUserId?` | Saved searches a newly published provider could match (#516; `districts` = the full served set, #502): verified CUSTOMER owners only, ≥24 h since `lastNotifiedAt`, capped 500 → `{ savedSearches: [{ id, query, locale, email }] }`. |
+| POST | `/internal/saved-searches/notified` | `{ ids }` — stamp `lastNotifiedAt` after the fan-out emailed those searches' owners. |
 
 `GET /healthz` → `{ ok: true, service: "identity-service" }` (no secret; checks Postgres).
 
@@ -66,6 +76,7 @@ the gateway-forwarded `x-user-id` / `x-user-role` / `x-user-name` headers.
 
 - **User** — account: `email`, `passwordHash`, `name`, `phone?`, `role`, `emailVerified?`, `sessionVersion` (revocation counter), `failedLogins` / `lockedUntil?` (lockout).
 - **Favorite** — a user's favorited provider (`userId` FK, `providerId` cross-service ref); unique per pair.
+- **SavedSearch** — a named snapshot of the `/providers` browse filters (`query?`, `category?`, `district?`) + `locale` and `lastNotifiedAt` (alert cooldown), FK to User (cascade) (#516).
 - **PasswordResetToken** / **EmailVerificationToken** — hashed single-use tokens (sha256; raw never stored) with expiry, FK to User (cascade).
 - **AccountDeletion** — audit trail for self-service deletion (#123); no FK (survives the deleted user).
 - **ImpersonationLog** — audit trail for admin "view as" (#234): `adminId`, `targetUserId`, `startedAt`, `endedAt?`.

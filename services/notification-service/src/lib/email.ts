@@ -248,6 +248,34 @@ export function newJobEmail(
   };
 }
 
+// Saved-search new-match alert (#516): sent to customers whose saved search
+// matches a newly published provider — the reverse direction of newJobEmail
+// above. `providerName`/`district` are user-controlled and escaped for the
+// body; the subject is a plain-text header so the raw values are used there.
+export function newProviderMatchEmail(
+  url: string,
+  providerName: string,
+  district: string,
+  locale: Locale = "en"
+) {
+  const si = locale === "si";
+  const name = escapeHtml(providerName);
+  const area = escapeHtml(district);
+  return {
+    subject: si
+      ? `ඔබේ සුරැකි සෙවුමට ගැලපෙන නව වෘත්තිකයෙක්`
+      : `New professional matching your saved search`,
+    html: layout(
+      si ? "ඔබේ සුරැකි සෙවුමට නව ගැලපීමක්" : "A new match for your saved search",
+      si
+        ? `${area} දිස්ත්‍රික්කයේ ${name} Baas.lk හා අලුතින් එක් වූ අතර ඔබේ සුරැකි සෙවුමකට ගැලපේ. ඔවුන්ගේ පැතිකඩ, සේවා සහ ගාස්තු බලන්න.`
+        : `${name} in ${area} just joined Baas.lk and matches one of your saved searches. Take a look at their profile, services and rates.`,
+      si ? "පැතිකඩ බලන්න" : "View profile",
+      url
+    ),
+  };
+}
+
 export function jobResponseEmail(
   url: string,
   providerName: string,

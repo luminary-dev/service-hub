@@ -92,7 +92,7 @@ shown only to full admins); other reports are `USER`-sourced.
 | Method | Path | Description |
 |---|---|---|
 | GET | `/internal/categories` | Category list for siblings' validation caches. |
-| POST | `/internal/providers` | Registration orchestration (idempotent on `userId`) → `{ id }`. |
+| POST | `/internal/providers` | Registration orchestration (idempotent on `userId`) → `{ id }`. A fresh create also fires the best-effort saved-search alert fan-out (#516, `src/lib/saved-search-alerts.ts`) after responding. |
 | GET | `/internal/providers/by-user/:userId` | The provider owned by a user (login / job-board gate). |
 | GET | `/internal/providers/matching?category&district&excludeUserId?` | Matching providers' contact emails for the new-job fan-out (#501); mirrors the board scoping, capped ≤ 200, deduped. |
 | GET | `/internal/providers?ids=` | Batch hydration (≤ 500). |

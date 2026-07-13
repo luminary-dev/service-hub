@@ -9,6 +9,18 @@ describe("resolveRoute (routing table)", () => {
     expect(resolveRoute("/api/favorites/prov-1")).toEqual({ service: "identity", path: "/api/favorites/prov-1" });
   });
 
+  it("routes saved searches to identity (#516)", () => {
+    expect(resolveRoute("/api/saved-searches")).toEqual({
+      service: "identity",
+      path: "/api/saved-searches",
+    });
+    expect(resolveRoute("/api/saved-searches/s-1")).toEqual({
+      service: "identity",
+      path: "/api/saved-searches/s-1",
+    });
+    expect(resolveRoute("/api/saved-searchesx")).toBeNull();
+  });
+
   it("routes admin user management to identity-service (#220 carve-out)", () => {
     expect(resolveRoute("/api/admin/users")).toEqual({ service: "identity", path: "/api/admin/users" });
     expect(resolveRoute("/api/admin/users/user-1")).toEqual({

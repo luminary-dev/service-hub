@@ -50,7 +50,8 @@ and template list.
 - Related code: `services/notification-service/src/lib/email.ts` (templates +
   Resend/console send), `src/routes/email.ts` (endpoints). Callers:
   identity-service (verify / password-reset / change-email #396),
-  provider-service (inquiry), job-service (job-response and new-job #501).
+  provider-service (inquiry and new-provider-match #516), job-service
+  (job-response and new-job #501).
 - **`POST /internal/email/new-job` (#501)** is a fan-out, not a single-recipient
   send: job-service resolves the matching providers once and passes the whole
   `{ recipients: string[], url, jobTitle, district, locale? }` list, and the
@@ -61,3 +62,12 @@ and template list.
   failed send does not abort the batch. Job posting itself is gated on a
   verified email plus a per-account daily cap (#556), so an unverified or
   spamming account never reaches this fan-out.
+- **`POST /internal/email/new-provider-match` (#516)** is the reverse-direction
+  fan-out with the same contract: provider-service resolves the customers whose
+  saved search matches a newly published provider and passes
+  `{ recipients: string[], url, providerName, district, locale? }`; the route
+  sends one copy of the EN/SI "new match for your saved search" template per
+  recipient (deduped), acking `202 { ok, accepted }` and delivering in the
+  background. Recipients are bounded upstream (verified customer emails only,
+  ≤200, one alert per saved search per 24 h — see
+  `docs/features/saved-searches.md`).

@@ -17,6 +17,8 @@ using the shared `s2s()` helper (one bounded retry on idempotent GETs).
 | `GET /internal/users/:id/session-version` | Gateway revocation check → `{ v: number \| null }`. |
 | `GET /internal/users/count` | Total user count. |
 | `PATCH /internal/users/:id` | Profile sync `{ name?, phone? }` from provider-service. |
+| `GET /internal/saved-searches/candidates?category=&districts=a,b&excludeUserId=` | Saved-search alert feed (#516): the searches a newly published provider could match, joined with the owner's email → `{ savedSearches: [{ id, query, locale, email }] }`. `districts` is the provider's full served set (#502 multi-district), so a search for any served district qualifies; a null filter on a search means "any". Only current CUSTOMER accounts with a verified email, cooled down ≥24 h since `lastNotifiedAt`; capped at 500 (oldest first). Free-text `query` is returned unevaluated — provider-service decides the actual match. |
+| `POST /internal/saved-searches/notified` | Cooldown bookkeeping (#516): `{ ids[] (≤500) }` — stamps `lastNotifiedAt` on the searches whose owners were just emailed. |
 | `POST /internal/maintenance/sweep-orphans` | Remove orphaned `user`-namespace avatar files (#555, ops tooling). |
 
 ### provider-service
@@ -24,7 +26,7 @@ using the shared `s2s()` helper (one bounded retry on idempotent GETs).
 | Method + path | Purpose |
 |---|---|
 | `GET /internal/categories` | Full category list (incl. inactive) for peers' validation caches. |
-| `POST /internal/providers` | Registration orchestration (called by identity); optional `serviceDistricts` served set (#502) is deduped with the primary `district` pinned first, defaulting to `[district]`; idempotent on the unique userId → `{ id }`. |
+| `POST /internal/providers` | Registration orchestration (called by identity); optional `serviceDistricts` served set (#502) is deduped with the primary `district` pinned first, defaulting to `[district]`; idempotent on the unique userId → `{ id }`. A fresh create also fires the saved-search alert fan-out (#516) after responding — fetch matching candidates from identity (scoped to the full served set), evaluate free-text queries with `buildBrowseWhere` pinned to the new row, batch per-locale to notification, stamp the cooldown. Best-effort, never on the idempotent duplicate path. |
 | `GET /internal/providers/by-user/:userId` | Provider owned by a user (login / job-board gate) — includes the `serviceDistricts` served set (#502). |
 | `GET /internal/providers/matching?category&district&excludeUserId?` | Lead-gen fan-out (#501): non-suspended providers whose `category` matches and whose `serviceDistricts` set contains the district (#502) — capped at 200, deduped by contact email → `{ providers }`. |
 | `POST /internal/providers/by-user/:userId/deactivate` | Self-downgrade (#403, called by identity `leave-provider`): hide the user's provider profile (`suspended = true`; `adminSuspended` untouched, so an active ADMIN suspension survives, #550). Idempotent. |
@@ -70,6 +72,7 @@ Single-recipient sends return `{ ok, delivered }` (`delivered:false` when
 | `POST /internal/email/inquiry` | New-inquiry notification (`customerName`). |
 | `POST /internal/email/job-response` | Job-response notification (`providerName`, `jobTitle`). |
 | `POST /internal/email/new-job` | New-matching-job fan-out (#501): `{ recipients[] (≤200), url, jobTitle, district, locale? }`. Acks `202 { ok, accepted }` immediately and sends in the background (#557); the delivered count is logged, not returned. |
+| `POST /internal/email/new-provider-match` | Saved-search new-match fan-out (#516): `{ recipients[] (≤200), url, providerName, district, locale? }`. Same accept-and-return contract as `/new-job`. |
 
 ### media-service
 

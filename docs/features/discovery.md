@@ -30,6 +30,10 @@ keyboard-hostile (WCAG 3.2.2). Results paginate with prev/next. Ranking over the
 matched set is bounded server-side (up to 1000 candidates) and backed by pg_trgm
 indexes.
 
+Signed-in customers with at least one primary filter (`q`/`category`/
+`district`) active also get a **"Save this search"** affordance under the
+filter bar — see [Saved searches & alerts](saved-searches.md) (#516).
+
 Provider cards (`ProviderCard`) show a cover image (provider's own cover →
 admin-set category cover image (#436) → placeholder), category, experience,
 availability chip ("Available" or

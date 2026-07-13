@@ -9,5 +9,8 @@ fetches `GET /api/favorites`, hydrates the provider cards
 (`GET /api/providers?ids=...`) preserving newest-first order, and excludes
 suspended profiles.
 
+To save a *search* (and get emailed about future matches) rather than a
+specific provider, see [Saved searches & alerts](saved-searches.md) (#516).
+
 ---
 

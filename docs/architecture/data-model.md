@@ -4,6 +4,9 @@
 - **identity-service** (`identity_db`): `User`, `PasswordResetToken`,
   `EmailVerificationToken`, `EmailChangeToken` (change-email flow #396 —
   hash-only, 1h TTL), `Favorite` (providerId is a plain string),
+  `SavedSearch` (named `/providers` filter snapshot + locale +
+  `lastNotifiedAt` alert cooldown, #516 — the category is a plain
+  provider-service slug validated over S2S at write time),
   `Account` (linked OAuth accounts — Google login #398, unique
   `[provider, providerAccountId]`), `AccountDeletion` (audit row that outlives
   the User), `ImpersonationLog` (admin "view as", #234 — adminId + targetUserId
