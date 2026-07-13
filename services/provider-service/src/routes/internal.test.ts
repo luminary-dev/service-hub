@@ -18,6 +18,7 @@ const { dbMock, storageMock } = vi.hoisted(() => ({
     },
     workPhoto: { findMany: vi.fn() },
     verificationDocument: { findMany: vi.fn() },
+    category: { findMany: vi.fn() },
     inquiry: { deleteMany: vi.fn() },
     // Content filter (#375) on the registration create path.
     report: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
@@ -381,6 +382,7 @@ describe("POST /internal/maintenance/sweep-orphans", () => {
     dbMock.verificationDocument.findMany.mockResolvedValue([
       { url: "provider/doc.pdf" },
     ]);
+    dbMock.category.findMany.mockResolvedValue([]);
     // avatar query then cover-photo query, in Promise.all order.
     dbMock.provider.findMany
       .mockResolvedValueOnce([{ avatarUrl: "provider/avatar.jpg" }])
@@ -388,7 +390,6 @@ describe("POST /internal/maintenance/sweep-orphans", () => {
 
     const res = await post("/internal/maintenance/sweep-orphans");
     expect(res.status).toBe(200);
-    expect(storageMock.sweepMedia).toHaveBeenCalledTimes(1);
 
     const [namespace, referenced] = storageMock.sweepMedia.mock.calls[0];
     expect(namespace).toBe("provider");
@@ -398,6 +399,25 @@ describe("POST /internal/maintenance/sweep-orphans", () => {
     expect(referenced).toContain("provider/avatar.jpg");
     expect(referenced).toContain("provider/photo.jpg");
     expect(referenced).toContain("provider/doc.pdf");
+  });
+
+  // #555: category cover images share this DB, so the same maintenance call
+  // sweeps their namespace, keeping the saved imageUrls.
+  it("also sweeps the category namespace with saved covers referenced", async () => {
+    dbMock.workPhoto.findMany.mockResolvedValue([]);
+    dbMock.verificationDocument.findMany.mockResolvedValue([]);
+    dbMock.category.findMany.mockResolvedValue([
+      { imageUrl: "/api/files/category/covers/live.jpg" },
+    ]);
+    dbMock.provider.findMany.mockResolvedValue([]);
+
+    const res = await post("/internal/maintenance/sweep-orphans");
+    expect(res.status).toBe(200);
+    expect(storageMock.sweepMedia).toHaveBeenCalledTimes(2);
+
+    const [namespace, referenced] = storageMock.sweepMedia.mock.calls[1];
+    expect(namespace).toBe("category");
+    expect(referenced).toContain("/api/files/category/covers/live.jpg");
   });
 });
 

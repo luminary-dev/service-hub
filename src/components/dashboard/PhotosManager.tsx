@@ -210,18 +210,24 @@ export default function PhotosManager({
     // Avatars are unified on the User (#434): upload through the account
     // endpoint (identity), which sets User.avatarUrl and syncs the denormalized
     // copy back to this provider profile. Response shape is unchanged.
-    const res = await fetch("/api/account/avatar", {
-      method: "POST",
-      body: fd,
-    });
-    setAvatarUploading(false);
-    if (res.ok) {
-      const data = await res.json();
-      setAvatarUrl(data.avatarUrl);
-      router.refresh();
-    } else {
-      const d = await res.json().catch(() => ({}));
-      setAvatarError(d.error ?? ph.uploadError);
+    try {
+      const res = await fetch("/api/account/avatar", {
+        method: "POST",
+        body: fd,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAvatarUrl(data.avatarUrl);
+        router.refresh();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setAvatarError(d.error ?? ph.uploadError);
+      }
+    } catch {
+      // Network failure — recover instead of wedging the picker (#363).
+      setAvatarError(ph.uploadError);
+    } finally {
+      setAvatarUploading(false);
     }
   }
 
