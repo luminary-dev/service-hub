@@ -136,6 +136,48 @@ Once the host exists, set `DEPLOY_ENABLED = true` and the `PROD_SSH_*` secrets;
 from then on merging `dev → prod` builds the images and redeploys the host
 automatically (see the CD pipeline above).
 
+## Container runtime hardening (#526)
+
+Every container in `docker-compose.prod.yml` runs with defense-in-depth defaults,
+merged in via the `x-hardening` YAML anchor:
+
+- **`security_opt: [no-new-privileges:true]`** — a process can never gain
+  privileges (e.g. through a setuid binary) after it starts.
+- **`cap_drop: [ALL]`** — every Linux capability is stripped. The Node services
+  bind ports >1024 as the non-root `node` user and need none. Three infra
+  containers add back the minimum their entrypoints require:
+  - **postgres** — `CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID` (its entrypoint
+    starts as root to prepare the data/socket dirs, then drops to `postgres`).
+  - **caddy** — `NET_BIND_SERVICE` to bind the privileged ports 80/443 (its
+    binary carries this as a file capability, so without it Caddy won't even
+    exec under `cap_drop: ALL`).
+  - **redis** boots fine with all capabilities dropped.
+
+A **read-only root filesystem** (`read_only: true`) is set only where every
+writable path is known and backed by a tmpfs or volume:
+
+| Service | `read_only` | Writable backing |
+| --- | --- | --- |
+| api-gateway, notification-service, chat-service | yes | tmpfs `/tmp` (stateless; state lives in Redis / upstream APIs) |
+| web | yes | tmpfs `/tmp` + `/app/.next/cache` (Next's standalone server writes only its response cache) |
+| identity/provider/review/job-service | no | run `prisma migrate deploy` on boot; the migration engine's temp behaviour under a read-only rootfs is unverified against a live DB (see the `# TODO read_only` notes) |
+| media-service | no | local-disk fallback writes the `category`/`user` namespaces under `/app/data` on the rootfs (only `provider`/`review` have volumes) |
+| postgres, redis, caddy | no | write their own data/cert state |
+
+The read-only choices were validated by booting the pinned base images with
+`cap_drop: ALL` + `read_only` + the tmpfs mounts; the `# TODO read_only` blocks
+mark services to revisit once their writable paths can be confirmed on a live
+stack.
+
+## Edge access logs (#527)
+
+`deploy/Caddyfile`'s `{$DOMAIN}` site block emits per-request access logs as JSON
+to **stdout** (`log { output stdout; format json }`). Caddy writes none by
+default; sending them to stdout lands them in the container's `json-file` log
+driver, which is already size-capped and rotated (`max-size: 10m`, `max-file: 3`)
+in `docker-compose.prod.yml`. Tail them with
+`docker compose -f docker-compose.prod.yml logs -f caddy`.
+
 ## Releasing
 
 ```

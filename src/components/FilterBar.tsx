@@ -77,6 +77,12 @@ export default function FilterBar({
 
   return (
     <div className="space-y-2">
+      {/*
+        Selects only update local state on change; the Search button (form
+        submit) is the single apply path. Auto-navigating on select change is
+        keyboard-hostile — a closed native select fires `change` on each arrow
+        keypress, so a keyboard user can't browse options (WCAG 3.2.2).
+      */}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -95,10 +101,7 @@ export default function FilterBar({
           />
           <select
             value={category}
-            onChange={(e) => {
-              setCategory(e.target.value);
-              apply({ category: e.target.value });
-            }}
+            onChange={(e) => setCategory(e.target.value)}
             aria-label={t.search.allCategories}
             className="input cursor-pointer sm:w-48"
           >
@@ -111,10 +114,7 @@ export default function FilterBar({
           </select>
           <select
             value={district}
-            onChange={(e) => {
-              setDistrict(e.target.value);
-              apply({ district: e.target.value });
-            }}
+            onChange={(e) => setDistrict(e.target.value)}
             aria-label={t.browse.allDistricts}
             className="input cursor-pointer sm:w-44"
           >
@@ -152,10 +152,7 @@ export default function FilterBar({
           />
           <select
             value={ratingMin}
-            onChange={(e) => {
-              setRatingMin(e.target.value);
-              apply({ ratingMin: e.target.value });
-            }}
+            onChange={(e) => setRatingMin(e.target.value)}
             aria-label={t.browse.ratingLabel}
             className="input cursor-pointer sm:w-40"
           >
@@ -188,11 +185,11 @@ export default function FilterBar({
         <select
           id="sort"
           value={sort}
-          onChange={(e) => {
-            const next = e.target.value as SortKey;
-            setSort(next);
-            apply({ sort: next });
-          }}
+          onChange={(e) => setSort(e.target.value as SortKey)}
+          // Commit on blur, not on every change: a closed native select
+          // fires `change` on each arrow keypress, so applying there would
+          // navigate (and remount, losing focus) mid-browse (WCAG 3.2.2).
+          onBlur={(e) => apply({ sort: e.target.value as SortKey })}
           className="input cursor-pointer !w-auto !py-2"
         >
           {SORT_KEYS.map((key) => (

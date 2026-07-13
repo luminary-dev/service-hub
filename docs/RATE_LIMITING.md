@@ -20,6 +20,7 @@ them. Only `POST` requests are checked.
 | `POST /api/auth/delete-account` | `authStrict` | 8 / 15 min |
 | `POST /api/auth/register` | `authSignup` | 10 / hour |
 | `POST /api/auth/resend-verification` | `resend` | 4 / 15 min |
+| `POST /api/account/email/change` | `resend` | 4 / 15 min |
 | `POST /api/jobs` | `inquiry` | 6 / 10 min |
 | `POST /api/providers/[id]/inquiries` | `inquiry` | 6 / 10 min |
 | `POST /api/providers/[id]/contact` | `contactReveal` | 20 / 10 min |
@@ -27,6 +28,7 @@ them. Only `POST` requests are checked.
 | `POST /api/providers/[id]/reviews` | `review` | 10 / hour |
 | `POST /api/inquiries/[id]/messages` | `message` | 30 / 10 min |
 | `POST /api/providers/[id]/report`, `POST /api/photos/[id]/report`, `POST /api/reviews/[id]/report` | `review` | 10 / hour (shared `report` bucket) |
+| `POST /api/account/avatar`, `POST /api/provider/photos`, `POST /api/provider/verification`, `POST /api/admin/categories/image` | `upload` | 20 / 15 min (shared `upload` bucket) |
 
 `change-password` and `delete-account` sit on the strict login budget because
 each verifies the current password and is therefore a guessing oracle for a
@@ -36,6 +38,12 @@ is the main spam control. The phone-number reveal (`contactReveal`, #64) sits
 on its own per-IP budget: provider phone/WhatsApp numbers are withheld from the
 public directory payloads and fetched only on an explicit tap, so this limit is
 the main defence against a crawler harvesting the whole directory's numbers.
+Change-email (`resend`, #505) reuses the email-sending budget because it fires a
+confirmation email to an attacker-*chosen* address on every call, so an
+unthrottled endpoint is a mail-bomb vector. The four image-upload endpoints
+share one `upload` bucket (#520): each runs a CPU-expensive `sharp` re-encode,
+so the budget is wide enough for a provider filling out a photo gallery in one
+sitting yet tight enough to blunt an attacker hammering the re-encode path.
 
 Over-limit requests get `429` with a JSON body
 (`{ "error": "Too many requests. Please slow down and try again shortly." }`)

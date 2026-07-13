@@ -20,7 +20,8 @@ async function sendEmail(
     | "/internal/email/verify"
     | "/internal/email/password-reset"
     | "/internal/email/change-email"
-    | "/internal/email/account-exists",
+    | "/internal/email/account-exists"
+    | "/internal/email/email-change-attempt",
   body: { to: string; url: string; locale: Locale }
 ) {
   const res = await s2s(NOTIFICATION_SERVICE_URL, path, {
@@ -117,4 +118,20 @@ export async function sendAccountExistsEmail(
 ) {
   const url = `${origin}/login`;
   await sendEmail("/internal/email/account-exists", { to: email, url, locale });
+}
+
+// Change-email attempt on a taken address (#503): the change-email endpoint
+// returns the same generic success whether or not the target address is already
+// registered, so it cannot be used to enumerate accounts. When the address IS
+// taken we do NOT start a change; instead we send this out-of-band notice to the
+// real owner — someone tried to move an account onto their address. No token or
+// DB write; the link points at sign-in. The caller fires this and-forgets it
+// (like forgot-password) so the taken-address branch isn't measurably slower.
+export async function sendEmailChangeAttemptNotice(
+  email: string,
+  origin: string,
+  locale: Locale = "en"
+) {
+  const url = `${origin}/login`;
+  await sendEmail("/internal/email/email-change-attempt", { to: email, url, locale });
 }

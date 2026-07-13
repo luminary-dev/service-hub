@@ -61,6 +61,8 @@ unset — console fallback). Bodies carry `{ to, url, locale, ... }`.
 | `POST /internal/email/verify` | Email-verification message. |
 | `POST /internal/email/password-reset` | Password-reset message. |
 | `POST /internal/email/change-email` | Change-email confirmation message (#396), sent to the new address. |
+| `POST /internal/email/account-exists` | "Account already exists" notice (#373/#498), sent to the real owner when a registration reuses their email. |
+| `POST /internal/email/email-change-attempt` | "Someone tried to move an account to your email" notice (#503), sent to the real owner when a change-email targets their (taken) address. |
 | `POST /internal/email/inquiry` | New-inquiry notification (`customerName`). |
 | `POST /internal/email/job-response` | Job-response notification (`providerName`, `jobTitle`). |
 

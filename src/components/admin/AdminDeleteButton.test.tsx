@@ -51,7 +51,7 @@ describe("AdminDeleteButton", () => {
     renderButton("ADMIN");
     fireEvent.click(screen.getByRole("button", { name: t.admin.delete }));
 
-    const toast = await screen.findByRole("status");
+    const toast = await screen.findByRole("alert");
     expect(toast.textContent).toContain(t.toast.adminDeleteError);
     expect(refresh).not.toHaveBeenCalled();
   });

@@ -213,6 +213,21 @@ describe("resolveRoute (routing table)", () => {
       service: "media",
       path: "/files/review/reviews/r.png",
     });
+    // Work photos under the provider namespace still go to media unchanged.
+    expect(resolveRoute("/api/files/provider/uploads/w.jpg")).toEqual({
+      service: "media",
+      path: "/files/provider/uploads/w.jpg",
+    });
+  });
+
+  it("routes provider verification documents to provider-service, NOT media (#500)", () => {
+    // PII (NIC / business-registration scans) must be admin-gated, so the
+    // verification prefix is carved out of the public media forward and handed
+    // to provider-service's gated serve route (path unchanged).
+    expect(resolveRoute("/api/files/provider/verification/doc.jpg")).toEqual({
+      service: "provider",
+      path: "/api/files/provider/verification/doc.jpg",
+    });
   });
 
   it("never forwards /internal paths", () => {

@@ -37,7 +37,9 @@ describe("internal secret enforcement", () => {
     "/internal/email/verify",
     "/internal/email/password-reset",
     "/internal/email/account-exists",
+    "/internal/email/email-change-attempt",
     "/internal/email/job-response",
+    "/internal/email/new-job",
     "/internal/email/inquiry",
   ])("rejects %s without x-internal-secret", async (path) => {
     const res = await post(path, { to: "a@b.lk", url: "https://baas.lk" });
@@ -61,6 +63,7 @@ describe("input validation", () => {
     "/internal/email/verify",
     "/internal/email/password-reset",
     "/internal/email/account-exists",
+    "/internal/email/email-change-attempt",
     "/internal/email/job-response",
     "/internal/email/inquiry",
   ])("returns 400 for an invalid body on %s", async (path) => {
@@ -91,6 +94,25 @@ describe("input validation", () => {
     expect(await res.json()).toEqual({ error: "Invalid input" });
   });
 
+  it("returns 400 when new-job is missing recipients/jobTitle/district", async () => {
+    const res = await postWithSecret("/internal/email/new-job", {
+      url: "https://baas.lk/jobs",
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Invalid input" });
+  });
+
+  it("returns 400 when a new-job recipient is not a valid email", async () => {
+    const res = await postWithSecret("/internal/email/new-job", {
+      recipients: ["not-an-email"],
+      url: "https://baas.lk/jobs",
+      jobTitle: "Fix a leaking tap",
+      district: "Colombo",
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Invalid input" });
+  });
+
   it("returns 400 when inquiry is missing customerName", async () => {
     const res = await postWithSecret("/internal/email/inquiry", {
       to: "a@b.lk",
@@ -104,6 +126,7 @@ describe("input validation", () => {
     "/internal/email/verify",
     "/internal/email/password-reset",
     "/internal/email/change-email",
+    "/internal/email/email-change-attempt",
     "/internal/email/job-response",
     "/internal/email/inquiry",
   ])("returns 400 when `to` is not a valid email on %s", async (path) => {
@@ -149,6 +172,16 @@ describe("happy paths (no RESEND_API_KEY → console fallback)", () => {
     expect(await res.json()).toEqual({ ok: true, delivered: false });
   });
 
+  it("POST /internal/email/email-change-attempt", async () => {
+    const res = await postWithSecret("/internal/email/email-change-attempt", {
+      to: "owner@example.com",
+      url: "https://baas.lk/login",
+      locale: "si",
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, delivered: false });
+  });
+
   it("POST /internal/email/job-response", async () => {
     const res = await postWithSecret("/internal/email/job-response", {
       to: "user@example.com",
@@ -158,6 +191,30 @@ describe("happy paths (no RESEND_API_KEY → console fallback)", () => {
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, delivered: false });
+  });
+
+  it("POST /internal/email/new-job (fan-out to all recipients)", async () => {
+    const res = await postWithSecret("/internal/email/new-job", {
+      recipients: ["jane@example.com", "sam@example.com"],
+      url: "https://baas.lk/jobs",
+      jobTitle: "Fix a leaking tap",
+      district: "Colombo",
+      locale: "si",
+    });
+    expect(res.status).toBe(200);
+    // Deduped recipient count; delivered is 0 with no RESEND_API_KEY.
+    expect(await res.json()).toEqual({ ok: true, sent: 2, delivered: 0 });
+  });
+
+  it("POST /internal/email/new-job dedupes case-insensitive recipients", async () => {
+    const res = await postWithSecret("/internal/email/new-job", {
+      recipients: ["jane@example.com", "JANE@example.com"],
+      url: "https://baas.lk/jobs",
+      jobTitle: "Fix a leaking tap",
+      district: "Colombo",
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, sent: 1, delivered: 0 });
   });
 
   it("POST /internal/email/inquiry", async () => {

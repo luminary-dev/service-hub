@@ -40,6 +40,19 @@ x-logging: &logging
       max-size: "10m"
       max-file: "3"
 
+# Container runtime hardening (#526): defense-in-depth merged into every
+# container. `no-new-privileges` stops a process ever gaining privileges (e.g.
+# via a setuid binary); `cap_drop: ALL` strips every Linux capability — the Node
+# services bind ports >1024 as the non-root `node` user and need none.
+# postgres/redis/caddy add back only the capabilities their entrypoints require
+# (see `cap_add` on those blocks). `read_only` rootfs is applied per-service
+# below, only where every writable path is known and backed by a tmpfs/volume.
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
 services:
   postgres:
     # Base image pinned by digest (#238); Dependabot's docker ecosystem bumps
@@ -47,7 +60,17 @@ services:
     # dependabot: postgres:16-alpine
     image: postgres:16-alpine@sha256:e013e867e712fec275706a6c51c966f0bb0c93cfa8f51000f85a15f9865a28cb
     mem_limit: 1g
-    <<: [*restart, *logging]
+    <<: [*restart, *logging, *hardening]
+    # The entrypoint starts as root to chown/chmod the data dir and the socket
+    # dir, then drops to the `postgres` user via su-exec — so with cap_drop: ALL
+    # it needs these back or it can't initialise (verified: without them the boot
+    # fails with "chown: /var/lib/postgresql/data: Operation not permitted").
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
@@ -64,7 +87,7 @@ services:
     # dependabot: redis:7-alpine
     image: redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
     mem_limit: 256m
-    <<: [*restart, *logging]
+    <<: [*restart, *logging, *hardening]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -74,7 +97,10 @@ services:
   identity-service:
     image: ghcr.io/luminary-dev/service-hub-identity-service:${IMAGE_TAG:-prod}
     mem_limit: 384m
-    <<: [*restart, *logging]
+    <<: [*restart, *logging, *hardening]
+    # TODO read_only: verify writable paths. Runs `prisma migrate deploy` on
+    # boot; the migration engine's on-disk temp behaviour under a read-only
+    # rootfs is unverified against a live DB, so left writable for now.
     environment:
       <<: *service-env
       PORT: 4001
@@ -99,7 +125,9 @@ services:
   provider-service:
     image: ghcr.io/luminary-dev/service-hub-provider-service:${IMAGE_TAG:-prod}
     mem_limit: 384m
-    <<: [*restart, *logging]
+    <<: [*restart, *logging, *hardening]
+    # TODO read_only: verify writable paths (runs `prisma migrate deploy` on
+    # boot — same unverified migration-engine temp behaviour as identity).
     environment:
       <<: *service-env
       PORT: 4002
@@ -114,7 +142,9 @@ services:
   review-service:
     image: ghcr.io/luminary-dev/service-hub-review-service:${IMAGE_TAG:-prod}
     mem_limit: 384m
-    <<: [*restart, *logging]
+    <<: [*restart, *logging, *hardening]
+    # TODO read_only: verify writable paths (runs `prisma migrate deploy` on
+    # boot — same unverified migration-engine temp behaviour as identity).
     environment:
       <<: *service-env
       PORT: 4003
@@ -129,7 +159,9 @@ services:
   job-service:
     image: ghcr.io/luminary-dev/service-hub-job-service:${IMAGE_TAG:-prod}
     mem_limit: 384m
-    <<: [*restart, *logging]
+    <<: [*restart, *logging, *hardening]
+    # TODO read_only: verify writable paths (runs `prisma migrate deploy` on
+    # boot — same unverified migration-engine temp behaviour as identity).
     environment:
       <<: *service-env
       PORT: 4004
@@ -142,7 +174,11 @@ services:
   notification-service:
     image: ghcr.io/luminary-dev/service-hub-notification-service:${IMAGE_TAG:-prod}
     mem_limit: 256m
-    <<: [*restart, *logging]
+    <<: [*restart, *logging, *hardening]
+    # Stateless — sends mail via the Resend API and writes nothing to disk.
+    read_only: true
+    tmpfs:
+      - /tmp
     environment:
       <<: *service-env
       PORT: 4005
@@ -153,7 +189,12 @@ services:
   media-service:
     image: ghcr.io/luminary-dev/service-hub-media-service:${IMAGE_TAG:-prod}
     mem_limit: 512m
-    <<: [*restart, *logging]
+    <<: [*restart, *logging, *hardening]
+    # TODO read_only: verify writable paths. Only the `provider`/`review`
+    # namespaces have volumes below; in the local-disk fallback the `category`
+    # and `user` namespaces write under /app/data on the rootfs, so a read-only
+    # rootfs would break that path. Safe to enable only once R2 is guaranteed or
+    # those two namespaces also get a volume/tmpfs.
     environment:
       <<: *service-env
       PORT: 4006
@@ -174,7 +215,11 @@ services:
   chat-service:
     image: ghcr.io/luminary-dev/service-hub-chat-service:${IMAGE_TAG:-prod}
     mem_limit: 512m
-    <<: [*restart, *logging]
+    <<: [*restart, *logging, *hardening]
+    # Stateless — proxies to the Anthropic API and the gateway; no disk writes.
+    read_only: true
+    tmpfs:
+      - /tmp
     environment:
       <<: *service-env
       PORT: 4007
@@ -185,7 +230,12 @@ services:
   api-gateway:
     image: ghcr.io/luminary-dev/service-hub-api-gateway:${IMAGE_TAG:-prod}
     mem_limit: 384m
-    <<: [*restart, *logging]
+    <<: [*restart, *logging, *hardening]
+    # Stateless proxy — keeps its rate-limit state in Redis and writes nothing to
+    # its own filesystem, so the rootfs is read-only with just a tmpfs for /tmp.
+    read_only: true
+    tmpfs:
+      - /tmp
     environment:
       <<: *service-env
       PORT: 4000
@@ -218,7 +268,15 @@ services:
   web:
     image: ghcr.io/luminary-dev/service-hub-web:${IMAGE_TAG:-prod}
     mem_limit: 640m
-    <<: [*restart, *logging]
+    <<: [*restart, *logging, *hardening]
+    # Next's standalone server writes only its response cache under
+    # /app/.next/cache (see the web Dockerfile), so the rootfs is read-only with a
+    # tmpfs for that cache and for /tmp. The cache is per-container ephemeral data
+    # (regenerated on demand), so a tmpfs is the right backing.
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/.next/cache
     environment:
       NODE_ENV: production
       GATEWAY_URL: http://api-gateway:4000
@@ -241,7 +299,12 @@ services:
     # dependabot: caddy:2-alpine
     image: caddy:2-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
     mem_limit: 128m
-    <<: [*restart, *logging]
+    <<: [*restart, *logging, *hardening]
+    # Caddy binds the privileged ports 80/443; its binary ships with the
+    # net_bind_service file capability, so under cap_drop: ALL + no-new-privileges
+    # it can't even exec ("Operation not permitted") until this is granted back.
+    cap_add:
+      - NET_BIND_SERVICE
     ports:
       - "80:80"
       - "443:443"

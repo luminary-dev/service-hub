@@ -579,6 +579,43 @@ describe("PATCH /api/admin/review-reports/:id (resolve / dismiss)", () => {
   });
 });
 
+describe("PATCH /api/admin/review-reports (bulk resolve / dismiss)", () => {
+  it("403s a plain CUSTOMER", async () => {
+    const res = await req(
+      "/api/admin/review-reports",
+      { method: "PATCH", body: JSON.stringify({ ids: ["rep1"], status: "RESOLVED" }) },
+      { "x-user-id": REVIEWER_ID }
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("400s on an invalid status", async () => {
+    const res = await req(
+      "/api/admin/review-reports",
+      { method: "PATCH", body: JSON.stringify({ ids: ["rep1"], status: "MAYBE" }) },
+      { "x-user-id": "sup_1", "x-user-role": "SUPPORT" }
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("writes one audit entry per affected report on a bulk close", async () => {
+    // updateMany silently skips unknown ids, so the audit trail keys off the
+    // ids actually matched by the pre-write findMany — here two of three.
+    dbMock.report.findMany.mockResolvedValue([{ id: "rep1" }, { id: "rep2" }]);
+    dbMock.report.updateMany.mockResolvedValue({ count: 2 });
+    const res = await req(
+      "/api/admin/review-reports",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ ids: ["rep1", "rep2", "gone"], status: "RESOLVED" }),
+      },
+      { "x-user-id": "sup_1", "x-user-role": "SUPPORT" }
+    );
+    expect(res.status).toBe(200);
+    expect(dbMock.adminAuditLog.create).toHaveBeenCalledTimes(2);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Review-audit-log date filtering: a *date-only* `to` bound must include the
 // whole named day. Previously `to=2026-07-12` parsed to midnight UTC and was

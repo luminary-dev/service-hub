@@ -38,9 +38,19 @@ describe("ToastProvider", () => {
     renderWithProvider();
     fireEvent.click(screen.getByText("ok"));
     fireEvent.click(screen.getByText("fail"));
-    const toasts = screen.getAllByRole("status");
-    expect(toasts).toHaveLength(2);
-    expect(toasts[1].textContent).toContain("boom");
+    // Success stays polite (role="status"); errors interrupt (role="alert").
+    expect(screen.getByRole("status").textContent).toContain("saved!");
+    expect(screen.getByRole("alert").textContent).toContain("boom");
+  });
+
+  it("announces error toasts assertively", () => {
+    renderWithProvider();
+    fireEvent.click(screen.getByText("fail"));
+    const errorToast = screen.getByRole("alert");
+    expect(errorToast.textContent).toContain("boom");
+    // The error lives in the assertive live region, not the polite one.
+    expect(errorToast.closest("[aria-live='assertive']")).not.toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("auto-dismisses after the toast duration", () => {
