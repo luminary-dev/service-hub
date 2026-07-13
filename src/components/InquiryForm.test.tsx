@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { dict } from "@/lib/i18n";
 import InquiryForm from "./InquiryForm";
 
@@ -101,7 +101,8 @@ describe("InquiryForm", () => {
     expect(status.textContent).toContain(t.sentTitle);
     // ...whose heading grabs focus so keyboard users aren't dropped on <body>.
     const heading = screen.getByText(t.sentTitle);
-    expect(document.activeElement).toBe(heading);
+    // Focus moves in a useEffect — wait for it to flush (avoids a coverage-run flake).
+    await waitFor(() => expect(document.activeElement).toBe(heading));
     // The form (and its submit button) is replaced by the confirmation.
     expect(screen.queryByRole("button", { name: t.send })).toBeNull();
   });
