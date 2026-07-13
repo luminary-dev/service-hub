@@ -122,8 +122,13 @@ export async function deactivateProviderProfile(userId: string): Promise<void> {
 // becomes a provider again. complete-provider reuses the existing (suspended)
 // profile rather than recreating it, so it must explicitly reactivate it here.
 // Write-path gate — throws on failure so complete-provider returns 502 rather
-// than flipping the role to PROVIDER while the profile stays hidden.
-export async function reactivateProviderProfile(userId: string): Promise<void> {
+// than flipping the role to PROVIDER while the profile stays hidden. Returns
+// whether a profile actually existed (provider-service no-ops with
+// `reactivated: false` otherwise) so the admin promotion path can refuse to
+// promote a user who has no profile at all (#554).
+export async function reactivateProviderProfile(
+  userId: string
+): Promise<boolean> {
   const res = await s2s(
     PROVIDER_SERVICE_URL,
     `/internal/providers/by-user/${encodeURIComponent(userId)}/reactivate`,
@@ -132,6 +137,8 @@ export async function reactivateProviderProfile(userId: string): Promise<void> {
   if (!res.ok) {
     throw new Error(`provider-service responded ${res.status}`);
   }
+  const data = (await res.json()) as { reactivated: boolean };
+  return data.reactivated;
 }
 
 export type ProviderSummary = {
