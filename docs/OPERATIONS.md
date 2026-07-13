@@ -315,7 +315,32 @@ gateway generates the id and propagates it upstream as `x-request-id`, so a
 single request can be traced across services. Container stdout is captured by
 the json-file driver (rotated, see above).
 
-**Uptime and error monitoring are still pending** — tracked by **#113 / #34** and
-listed among the pre-launch requirements in DEPLOYMENT.md. There is currently no
-external uptime probe, metrics/APM, or alerting; log inspection is manual
-(`docker compose logs`) until those land.
+**Every error path is captured structured** (#34): startup/shutdown lines in
+`src/index.ts` go through the logger, each app's Hono `onError` logs
+`unhandled error` with the `requestId` and the flattened error
+(`err.name/message/stack`) before returning the standard
+`{ "error": "Internal server error" }` 500, and
+`installProcessErrorHandlers(log)` (called first thing in every
+`src/index.ts`) hooks `uncaughtException` / `unhandledRejection` — errors
+outside any request log one structured line, then the process exits 1 (Node's
+default is already a crash; `restart: unless-stopped` brings the container
+back). A future error-monitoring backend (Sentry, GlitchTip, …) can hook into
+these two choke points — `onError` and `installProcessErrorHandlers` — without
+touching call sites.
+
+**Reading logs.** Everything is on container stdout, one JSON object per line:
+
+```bash
+docker compose logs -f api-gateway            # follow one service
+docker compose logs --since 1h identity-service provider-service
+# errors only:
+docker compose logs --no-log-prefix api-gateway | jq -c 'select(.level == "error")'
+# trace one request across services (grab requestId from any line):
+docker compose logs --no-log-prefix | grep '"requestId":"<id>"'
+```
+
+**Uptime probing, alerting, and an error-monitoring backend are still
+pending** — tracked by **#113 / #34** and listed among the pre-launch
+requirements in DEPLOYMENT.md. There is currently no external uptime probe,
+metrics/APM, or alerting; log inspection is manual (`docker compose logs`)
+until those land.
