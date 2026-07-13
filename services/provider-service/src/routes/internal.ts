@@ -59,7 +59,10 @@ const createSchema = z.object({
       z.object({
         title: z.string().min(2).max(100),
         description: z.string().max(500).optional(),
-        price: z.number().positive(),
+        // Whole LKR rupees (#371) — identity-service already validates with
+        // priceRupees before forwarding; enforcing .int() here keeps a float
+        // from ever entering the DECIMAL(12,2) column over S2S.
+        price: z.number().int().positive(),
         priceType: z.enum(["HOURLY", "DAILY", "FIXED", "VISIT"]),
       })
     )

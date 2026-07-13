@@ -15,12 +15,17 @@ export default function ServiceDistrictsPicker({
   primary,
   value,
   onChange,
+  hasError = false,
 }: {
   id: string;
   // The home district; "" while the wizard hasn't collected it yet.
   primary: string;
   value: string[];
   onChange: (next: string[]) => void;
+  // Field-error wiring (#378): when the owning form flags this field, the
+  // group is described by the caller-owned `<id>-error` message (an
+  // ErrorSummary entry or inline alert).
+  hasError?: boolean;
 }) {
   const locale = useLocale();
   const t = useT().serviceDistricts;
@@ -41,10 +46,16 @@ export default function ServiceDistrictsPicker({
         {t.label}
       </span>
       <p className="mb-2 text-xs text-ink-500">{t.hint}</p>
+      {/* id + tabIndex let an error-summary link land focus on the group;
+          aria-invalid is not valid on `group`, so only the error text is
+          linked via aria-describedby (mirrors the wizard's category group). */}
       <div
         role="group"
+        id={id}
+        tabIndex={-1}
         aria-labelledby={`${id}-label`}
-        className="flex flex-wrap gap-2"
+        aria-describedby={hasError ? `${id}-error` : undefined}
+        className="flex flex-wrap gap-2 focus:outline-none"
       >
         {DISTRICTS.map((d) => {
           const isPrimary = d === primary;

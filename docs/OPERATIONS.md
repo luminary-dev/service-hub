@@ -133,8 +133,13 @@ Runs on push and PR to `dev` and `prod`. Jobs:
   `healthcheck`/`mem_limit` would surface only then. `config` fully
   parses/interpolates without pulling images or starting containers, so it's a
   fast gate; the job supplies **dummy** values for the required `${VAR:?}` secrets
-  (`AUTH_SECRET`, `INTERNAL_API_SECRET`, `POSTGRES_PASSWORD`, `WEB_ORIGIN`,
-  `DOMAIN`) so interpolation succeeds, and fails loudly if the file is invalid.
+  (`AUTH_SECRET`, `INTERNAL_API_SECRET`, `POSTGRES_PASSWORD`, the four
+  per-service `*_DB_PASSWORD`s, `REDIS_PASSWORD`, `WEB_ORIGIN`, `DOMAIN`) so
+  interpolation succeeds — `ACME_EMAIL` is left unset to exercise its
+  `admin@${DOMAIN}` compose default (#387) — and fails loudly if the file is
+  invalid. The job also runs **`caddy validate`** over `deploy/Caddyfile`
+  (same digest-pinned image), so a Caddyfile that would crash-loop the only
+  public entrypoint fails CI instead of the live deploy.
 
 A `concurrency` group (`${{ github.workflow }}-${{ github.ref }}`,
 `cancel-in-progress: true`) cancels superseded runs when a PR is pushed again,
@@ -327,8 +332,18 @@ so `migrate deploy` stops erroring with P3005); fresh DBs never need it.
 | postgres | 5432 (host **5433**) | remapped so it won't clash with a local Postgres |
 | redis | 6379 | shared rate-limit windows + session-revocation list |
 
+In the **dev compose stack** every published port except web's `3000` is bound
+to **127.0.0.1** (#387): on shared wifi nobody else can reach Postgres (its dev
+password is well-known) or hit a service directly with the dev internal secret
+and forged `x-user-*` headers. Web stays LAN-reachable for phone testing — it
+proxies `/api/*` to the gateway server-side, so that path suffices.
+
 In prod, service and datastore ports are **not** published — only Caddy binds
-80/443 on the host; everything else talks over the internal compose network.
+80/443 on the host, and the compose networks are split edge/backend/egress
+(#387: Caddy reaches only web; gateway/provider/review/job + postgres + redis
+have no internet route; Redis requires AUTH and each DB service connects as its
+own least-privilege role — see
+[DEPLOYMENT.md](DEPLOYMENT.md#network--datastore-isolation-387)).
 
 ## Monitoring & alerting
 

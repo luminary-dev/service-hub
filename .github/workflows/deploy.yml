@@ -125,10 +125,18 @@ jobs:
           # nothing sensitive lives in the tree). Optional vars may be empty;
           # docker-compose.prod.yml's ${VAR:?} guards fail loudly on a missing
           # required one (AUTH_SECRET / INTERNAL_API_SECRET / POSTGRES_PASSWORD /
-          # WEB_ORIGIN / DOMAIN).
+          # the per-service *_DB_PASSWORDs / REDIS_PASSWORD / WEB_ORIGIN /
+          # DOMAIN).
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           INTERNAL_API_SECRET: ${{ secrets.INTERNAL_API_SECRET }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          # Per-service DB roles + Redis AUTH (#387). URL-interpolated by the
+          # compose file, so generate URL-safe values: `openssl rand -hex 32`.
+          IDENTITY_DB_PASSWORD: ${{ secrets.IDENTITY_DB_PASSWORD }}
+          PROVIDER_DB_PASSWORD: ${{ secrets.PROVIDER_DB_PASSWORD }}
+          REVIEW_DB_PASSWORD: ${{ secrets.REVIEW_DB_PASSWORD }}
+          JOB_DB_PASSWORD: ${{ secrets.JOB_DB_PASSWORD }}
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
           WEB_ORIGIN: ${{ secrets.WEB_ORIGIN }}
           DOMAIN: ${{ secrets.DOMAIN }}
           ACME_EMAIL: ${{ secrets.ACME_EMAIL }}
@@ -168,7 +176,9 @@ jobs:
           #    double-quoted with compose-dotenv escaping (\ → \\, " → \",
           #    $ → $$, newline/CR → \n/\r), which round-trips arbitrary strings.
           {
-            for k in AUTH_SECRET INTERNAL_API_SECRET POSTGRES_PASSWORD WEB_ORIGIN \
+            for k in AUTH_SECRET INTERNAL_API_SECRET POSTGRES_PASSWORD \
+                     IDENTITY_DB_PASSWORD PROVIDER_DB_PASSWORD REVIEW_DB_PASSWORD \
+                     JOB_DB_PASSWORD REDIS_PASSWORD WEB_ORIGIN \
                      DOMAIN ACME_EMAIL ANTHROPIC_API_KEY RESEND_API_KEY EMAIL_FROM \
                      R2_ENDPOINT R2_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY \
                      GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET \

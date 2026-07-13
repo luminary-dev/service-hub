@@ -25,6 +25,9 @@ function fillAndSubmit(container: HTMLElement) {
   fireEvent.change(screen.getByLabelText(t.password), {
     target: { value: "password123" },
   });
+  // The consent tick (#62) is enforced by the JS validation (#378), not just
+  // the native `required` attribute (which fireEvent.submit bypasses anyway).
+  fireEvent.click(screen.getByRole("checkbox"));
   fireEvent.submit(container.querySelector("form")!);
 }
 

@@ -24,6 +24,7 @@ import {
 } from "../lib/clients";
 import { getCurrentProvider } from "../lib/provider-auth";
 import { isSupportOrAdmin, s2s } from "../lib/http";
+import { moneyToNumber } from "../lib/money";
 import { normalizePagination } from "../lib/admin-list";
 import { unreadCounts } from "./messages";
 import {
@@ -101,7 +102,9 @@ providerDashboardRoutes.get("/api/provider/dashboard", async (c) => {
         phone: provider.contactPhone,
         emailVerified,
       },
-      services,
+      // price is DECIMAL in the DB (#371) — a Decimal JSON-serializes as a
+      // string, so convert back to the number this payload has always carried.
+      services: services.map((s) => ({ ...s, price: moneyToNumber(s.price) })),
       photos,
       inquiries,
       inquiriesTotal,
@@ -271,7 +274,9 @@ providerDashboardRoutes.post("/api/provider/services", async (c) => {
     description: parsed.data.description,
   });
 
-  return c.json({ service });
+  // price comes back from Prisma as a Decimal (#371) — convert so the JSON
+  // payload keeps carrying a number.
+  return c.json({ service: { ...service, price: moneyToNumber(service.price) } });
 });
 
 providerDashboardRoutes.put("/api/provider/services/:id", async (c) => {
@@ -308,7 +313,8 @@ providerDashboardRoutes.put("/api/provider/services/:id", async (c) => {
     description: parsed.data.description,
   });
 
-  return c.json({ service: updated });
+  // Same Decimal → number edge conversion as the create path (#371).
+  return c.json({ service: { ...updated, price: moneyToNumber(updated.price) } });
 });
 
 providerDashboardRoutes.delete("/api/provider/services/:id", async (c) => {

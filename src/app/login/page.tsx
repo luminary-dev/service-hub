@@ -10,6 +10,12 @@ import GoogleSignInButton from "@/components/GoogleSignInButton";
 import FacebookSignInButton from "@/components/FacebookSignInButton";
 import { ConsentNotice } from "@/components/LegalConsent";
 import { Field } from "@/components/ui/Field";
+import {
+  FormError,
+  isValidEmail,
+  useFieldErrors,
+  type FieldErrors,
+} from "@/components/ui/FormError";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -33,12 +39,21 @@ export default function LoginPage() {
           ? t.oauth.errGeneric
           : "";
   const [error, setError] = useState(initialError);
+  const { fieldErrors, show, errorProps } = useFieldErrors();
   const router = useRouter();
+
+  function validate(): FieldErrors {
+    const errs: FieldErrors = {};
+    if (!isValidEmail(email)) errs["login-email"] = t.fieldErrors.email;
+    if (!password) errs["login-password"] = t.fieldErrors.passwordRequired;
+    return errs;
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
     setError("");
+    if (show(validate())) return;
+    setLoading(true);
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
@@ -90,8 +105,14 @@ export default function LoginPage() {
               SESSION
             </span>
           </div>
-          <form onSubmit={submit} className="space-y-4 p-6">
-            <Field label={t.login.email} htmlFor="login-email">
+          {/* noValidate: validation happens in JS so errors are localized,
+              inline and linked to their fields (#378), not browser bubbles. */}
+          <form onSubmit={submit} noValidate className="space-y-4 p-6">
+            <Field
+              label={t.login.email}
+              htmlFor="login-email"
+              error={fieldErrors["login-email"]}
+            >
               <input
                 id="login-email"
                 className="input"
@@ -120,14 +141,19 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 autoComplete="current-password"
-                aria-describedby={error ? "login-error" : undefined}
+                {...errorProps("login-password")}
               />
+              {fieldErrors["login-password"] && (
+                <p
+                  id="login-password-error"
+                  role="alert"
+                  className="mt-1 text-xs text-red-600"
+                >
+                  {fieldErrors["login-password"]}
+                </p>
+              )}
             </div>
-            {error && (
-              <p id="login-error" role="alert" className="text-sm text-red-600">
-                {error}
-              </p>
-            )}
+            <FormError>{error}</FormError>
             <button
               type="submit"
               disabled={loading}

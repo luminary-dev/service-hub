@@ -8,6 +8,12 @@ import { ConsentCheckbox } from "@/components/LegalConsent";
 import { localizedHref } from "@/lib/links";
 import PasswordInput from "@/components/PasswordInput";
 import { Field } from "@/components/ui/Field";
+import {
+  FormError,
+  isValidEmail,
+  useFieldErrors,
+  type FieldErrors,
+} from "@/components/ui/FormError";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/constants";
 
 export default function CustomerRegisterPage() {
@@ -20,6 +26,7 @@ export default function CustomerRegisterPage() {
   const [agree, setAgree] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const { fieldErrors, show } = useFieldErrors();
   const router = useRouter();
   const t = useT();
   const locale = useLocale();
@@ -28,10 +35,22 @@ export default function CustomerRegisterPage() {
     setForm((f) => ({ ...f, [field]: value }));
   }
 
+  function validate(): FieldErrors {
+    const errs: FieldErrors = {};
+    if (form.name.trim().length < 2) errs["reg-name"] = t.fieldErrors.name;
+    if (!isValidEmail(form.email)) errs["reg-email"] = t.fieldErrors.email;
+    if (form.phone.trim().length < 9) errs["reg-phone"] = t.fieldErrors.phone;
+    if (form.password.length < PASSWORD_MIN_LENGTH)
+      errs["reg-password"] = t.fieldErrors.passwordMin(PASSWORD_MIN_LENGTH);
+    if (!agree) errs["reg-agree"] = t.legal.errAgree;
+    return errs;
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
     setError("");
+    if (show(validate())) return;
+    setLoading(true);
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
@@ -72,8 +91,14 @@ export default function CustomerRegisterPage() {
             <span className="font-bold tabular-nums text-ink-700">REG-C</span>
             <span className="text-brand-700">CUSTOMER</span>
           </div>
-          <form onSubmit={submit} className="space-y-4 p-6">
-            <Field label={t.custReg.fullName} htmlFor="reg-name">
+          {/* noValidate: validation happens in JS so errors are localized,
+              inline and linked to their fields (#378), not browser bubbles. */}
+          <form onSubmit={submit} noValidate className="space-y-4 p-6">
+            <Field
+              label={t.custReg.fullName}
+              htmlFor="reg-name"
+              error={fieldErrors["reg-name"]}
+            >
               <input
                 id="reg-name"
                 className="input"
@@ -83,7 +108,11 @@ export default function CustomerRegisterPage() {
                 minLength={2}
               />
             </Field>
-            <Field label={t.custReg.email} htmlFor="reg-email">
+            <Field
+              label={t.custReg.email}
+              htmlFor="reg-email"
+              error={fieldErrors["reg-email"]}
+            >
               <input
                 id="reg-email"
                 className="input"
@@ -94,7 +123,11 @@ export default function CustomerRegisterPage() {
                 autoComplete="email"
               />
             </Field>
-            <Field label={t.custReg.phone} htmlFor="reg-phone">
+            <Field
+              label={t.custReg.phone}
+              htmlFor="reg-phone"
+              error={fieldErrors["reg-phone"]}
+            >
               <input
                 id="reg-phone"
                 className="input"
@@ -109,9 +142,8 @@ export default function CustomerRegisterPage() {
             <Field
               label={t.custReg.password}
               htmlFor="reg-password"
-              help={
-                <span id="reg-password-hint">{t.custReg.passwordHint}</span>
-              }
+              help={t.custReg.passwordHint}
+              error={fieldErrors["reg-password"]}
             >
               <PasswordInput
                 id="reg-password"
@@ -121,15 +153,15 @@ export default function CustomerRegisterPage() {
                 minLength={PASSWORD_MIN_LENGTH}
                 maxLength={PASSWORD_MAX_LENGTH}
                 autoComplete="new-password"
-                aria-describedby="reg-password-hint"
               />
             </Field>
-            <ConsentCheckbox id="reg-agree" checked={agree} onChange={setAgree} />
-            {error && (
-              <p role="alert" className="text-sm text-red-600">
-                {error}
-              </p>
-            )}
+            <ConsentCheckbox
+              id="reg-agree"
+              checked={agree}
+              onChange={setAgree}
+              error={fieldErrors["reg-agree"]}
+            />
+            <FormError>{error}</FormError>
             <button
               type="submit"
               disabled={loading}

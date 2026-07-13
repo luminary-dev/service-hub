@@ -57,6 +57,8 @@
   both SI columns join the `/api/providers` free-text search (pg_trgm-indexed).
   Per-service Sinhala titles are a deliberate follow-up. `userId` is a plain
   string.
+  `Service.price` is money: **`DECIMAL(12,2)` holding whole LKR rupees**
+  (#371) — see the money convention note under job-service.
   `Report` fields: `targetType` (`PROVIDER`|`WORK_PHOTO`|`INQUIRY`|`MESSAGE`
   — INQUIRY rows are auto-filed by the write-time content filter #375;
   MESSAGE rows are user reports on individual thread messages #376),
@@ -86,7 +88,17 @@
   only in the admin frontend).
   `customerId`/`providerId` plain strings. **Monetization (pricing, commission,
   payments) is intentionally deferred to v0.2** — v0.1 is free to use, so there
-  is no transaction ledger and no price/commission field on a job.
+  is no transaction ledger and no price/commission field on a job. Display-only
+  pricing (provider rates, price filters, and the optional customer-stated
+  `JobRequest.budget`) stays in v0.1: payment happens off-platform.
+  **Money convention (#371):** every money column — `Service.price`
+  (provider-service) and `JobRequest.budget` (job-service) — is
+  **`DECIMAL(12,2)` holding whole LKR rupees** (never a float; the API-edge
+  validators accept integers only, the two decimal places just keep the column
+  future-proof). The Prisma client surfaces these as `Decimal` instances,
+  which JSON-serialize as *strings*, so each service converts back to a plain
+  number at every JSON edge (`lib/money.ts` in both services) — API payloads
+  carry money as JSON **numbers**, exactly as before the migration.
 - **notification-service**: stateless; owns the en/si email templates ported
   from `src/lib/email.ts`.
 - **media-service** / **chat-service**: stateless (no DB).
