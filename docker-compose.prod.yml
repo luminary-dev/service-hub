@@ -22,11 +22,21 @@ x-service-env: &service-env
   MEDIA_SERVICE_URL: http://media-service:4006
   CHAT_SERVICE_URL: http://chat-service:4007
 
+# Probe failures during start_period don't count against the retry budget
+# (#568) — without it a boot longer than ~100s marked the container unhealthy
+# and tripped the deploy gate into rollback. A success ends the grace early.
 x-node-healthcheck: &node-healthcheck
   test: ["CMD-SHELL", "wget -qO- http://localhost:$$PORT/healthz > /dev/null || exit 1"]
   interval: 10s
   timeout: 3s
   retries: 10
+  start_period: 30s
+
+# DB-owning services run `prisma migrate deploy` before listening
+# (start:migrate), so a slow migration needs more headroom (#568).
+x-db-healthcheck: &db-healthcheck
+  <<: *node-healthcheck
+  start_period: 120s
 
 x-restart: &restart
   restart: unless-stopped
@@ -88,6 +98,12 @@ services:
     image: redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
     mem_limit: 256m
     <<: [*restart, *logging, *hardening]
+    # Redis holds the session-revocation list (#374) as well as rate-limit
+    # windows, so its default RDB snapshot in /data must survive container
+    # recreation (#571) — otherwise every `revocation:<userId>` key is wiped by
+    # any image bump or compose change.
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -120,7 +136,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    healthcheck: *node-healthcheck
+    healthcheck: *db-healthcheck
 
   provider-service:
     image: ghcr.io/luminary-dev/service-hub-provider-service:${IMAGE_TAG:-prod}
@@ -137,7 +153,7 @@ services:
         condition: service_healthy
       media-service:
         condition: service_healthy
-    healthcheck: *node-healthcheck
+    healthcheck: *db-healthcheck
 
   review-service:
     image: ghcr.io/luminary-dev/service-hub-review-service:${IMAGE_TAG:-prod}
@@ -154,7 +170,7 @@ services:
         condition: service_healthy
       media-service:
         condition: service_healthy
-    healthcheck: *node-healthcheck
+    healthcheck: *db-healthcheck
 
   job-service:
     image: ghcr.io/luminary-dev/service-hub-job-service:${IMAGE_TAG:-prod}
@@ -169,7 +185,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    healthcheck: *node-healthcheck
+    healthcheck: *db-healthcheck
 
   notification-service:
     image: ghcr.io/luminary-dev/service-hub-notification-service:${IMAGE_TAG:-prod}
@@ -320,6 +336,7 @@ services:
 
 volumes:
   pgdata:
+  redis_data:
   provider_uploads:
   review_uploads:
   caddy_data:

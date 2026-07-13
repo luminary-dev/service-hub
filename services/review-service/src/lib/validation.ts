@@ -26,3 +26,8 @@ export const reviewSchema = z.object({
   value: optionalDimension,
   communication: optionalDimension,
 });
+
+// Provider response to a review (#395) — same length bounds as the comment.
+export const reviewResponseSchema = z.object({
+  text: z.string().trim().min(3).max(1000),
+});

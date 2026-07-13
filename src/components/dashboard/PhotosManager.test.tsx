@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { dict } from "@/lib/i18n";
 import { MAX_UPLOAD_SIZE } from "@/lib/upload";
 import { ToastProvider } from "../ToastProvider";
@@ -233,5 +240,68 @@ describe("PhotosManager reorder", () => {
     expect((right[1] as HTMLButtonElement).disabled).toBe(true);
     expect((left[1] as HTMLButtonElement).disabled).toBe(false);
     expect((right[0] as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+describe("PhotosManager delete", () => {
+  const photos = [
+    { id: "p1", url: "/uploads/1.webp", caption: "one" },
+    { id: "p2", url: "/uploads/2.webp", caption: "two" },
+  ];
+
+  // Deleting is confirmed on the tile (#562): the first tap only arms it.
+  function armFirstTile() {
+    fireEvent.click(screen.getAllByRole("button", { name: ph.delete })[0]);
+    const prompt = screen.getByText(ph.confirmDelete);
+    return within(prompt.parentElement as HTMLElement);
+  }
+
+  it("asks for confirmation and cancel makes no request", () => {
+    renderManager(photos);
+    const confirm = armFirstTile();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fireEvent.click(confirm.getByRole("button", { name: ph.cancel }));
+    expect(screen.queryByText(ph.confirmDelete)).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("DELETEs the photo after confirming and drops it from the grid", async () => {
+    fetchMock.mockResolvedValue({ ok: true });
+    renderManager(photos);
+    const confirm = armFirstTile();
+    fireEvent.click(confirm.getByRole("button", { name: ph.delete }));
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/provider/photos/p1", {
+      method: "DELETE",
+    });
+    await vi.waitFor(() => expect(screen.queryByAltText("one")).toBeNull());
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("toasts the failure and keeps the photo when the delete fails", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      json: async () => ({ error: "Photo is locked" }),
+    });
+    renderManager(photos);
+    const confirm = armFirstTile();
+    fireEvent.click(confirm.getByRole("button", { name: ph.delete }));
+
+    const toast = await screen.findByRole("alert");
+    expect(toast.textContent).toContain("Photo is locked");
+    expect(screen.getByAltText("one")).toBeTruthy();
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("toasts a generic error when the delete request throws", async () => {
+    fetchMock.mockRejectedValue(new TypeError("network down"));
+    renderManager(photos);
+    const confirm = armFirstTile();
+    fireEvent.click(confirm.getByRole("button", { name: ph.delete }));
+
+    const toast = await screen.findByRole("alert");
+    expect(toast.textContent).toContain(ph.deleteError);
+    expect(screen.getByAltText("one")).toBeTruthy();
   });
 });

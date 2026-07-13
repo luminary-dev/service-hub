@@ -67,6 +67,8 @@ type FullReview = {
   createdAt: string;
   user: { name: string };
   photos: { id: string; url: string }[];
+  // Provider's public reply (#395); optional so cached pre-#395 payloads parse.
+  response?: { text: string; createdAt: string } | null;
 };
 
 type FullProvider = {
@@ -251,14 +253,14 @@ export default async function ProviderProfilePage({
     !!provider.awayUntil && new Date(provider.awayUntil) > new Date();
 
   // Instrument-style readout mirroring the registry header on the listing.
-  // Labels are the same terse English mono captions the shipped pages use;
-  // the localized experience/review copy still reads in the meta line below.
+  // Captions are localized (#380); the localized experience/review copy
+  // still reads in the meta line below.
   const stats: Stat[] = [];
   if (provider.experience > 0)
-    stats.push({ label: "EXP · YRS", value: provider.experience });
+    stats.push({ label: t.profile.stats.expYears, value: provider.experience });
   if (ratingAvg !== null)
-    stats.push({ label: "RATING", value: ratingAvg.toFixed(1) });
-  stats.push({ label: "REVIEWS", value: reviewCount });
+    stats.push({ label: t.profile.stats.rating, value: ratingAvg.toFixed(1) });
+  stats.push({ label: t.profile.stats.reviews, value: reviewCount });
 
   return (
     <div>
@@ -472,6 +474,7 @@ export default async function ProviderProfilePage({
 
             <ReviewSection
               providerId={provider.id}
+              providerName={provider.user.name}
               reviews={provider.reviews.map((r) => ({
                 id: r.id,
                 rating: r.rating,
@@ -479,8 +482,12 @@ export default async function ProviderProfilePage({
                 createdAt: r.createdAt,
                 userName: r.user.name,
                 photos: r.photos.map((ph) => ({ id: ph.id, url: ph.url })),
+                response: r.response
+                  ? { text: r.response.text, createdAt: r.response.createdAt }
+                  : null,
               }))}
               canReview={!!session && !isOwner}
+              canRespond={isOwner}
               signedIn={!!session}
               summary={reviewSummary}
               myReview={
