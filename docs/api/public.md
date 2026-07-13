@@ -55,7 +55,7 @@ the upstream that owns the handler.
 
 | Param | Meaning |
 |---|---|
-| `q` | Free text over headline/bio/city/contactName/services (pg_trgm) + Category label match (en/si). |
+| `q` | Free text over headline/bio, the optional Sinhala headlineSi/bioSi (#515), city, contactName, services (pg_trgm) + Category label match (en/si). |
 | `category`, `district` | Exact filters. |
 | `sort` | `recommended` (default), `rating`, `reviews`, `price`, `experience`, `newest`. |
 | `page` | ≥ 1 (default 1). |

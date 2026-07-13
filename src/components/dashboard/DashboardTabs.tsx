@@ -37,6 +37,10 @@ export type DashboardData = {
   category: string;
   headline: string;
   bio: string;
+  // Optional Sinhala variants (#515); "" / absent when unset (the form treats
+  // blank as "clear to null" on save).
+  headlineSi?: string;
+  bioSi?: string;
   district: string;
   city: string;
   experience: number;

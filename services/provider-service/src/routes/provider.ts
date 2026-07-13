@@ -115,6 +115,10 @@ const profileSchema = z.object({
   category: z.string().min(1).max(40),
   headline: z.string().min(5).max(120),
   bio: z.string().min(20).max(2000),
+  // Optional Sinhala variants (#515). No minimum (they're optional), same
+  // maximums as the English originals; empty/absent clears to null.
+  headlineSi: z.string().max(120).optional().or(z.literal("")).nullish(),
+  bioSi: z.string().max(2000).optional().or(z.literal("")).nullish(),
   district: districtEnum,
   city: z.string().min(1).max(60),
   experience: z.number().int().min(0).max(60),
@@ -149,6 +153,8 @@ providerDashboardRoutes.put("/api/provider/profile", async (c) => {
     where: { id: provider.id },
     data: {
       ...profile,
+      headlineSi: profile.headlineSi || null,
+      bioSi: profile.bioSi || null,
       whatsapp: profile.whatsapp || null,
       phone2: profile.phone2 || null,
       facebook: profile.facebook || null,

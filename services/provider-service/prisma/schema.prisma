@@ -37,6 +37,13 @@ model Provider {
   category   String
   headline   String
   bio        String
+  // Optional Sinhala variants of the free-text pitch (#515). Providers may
+  // author their headline/bio in Sinhala as well as English; public rendering
+  // prefers the SI variant under the `si` locale and falls back to the English
+  // original when absent. Nullable + additive — English stays the required
+  // source of truth. Per-service SI titles are a deliberate follow-up.
+  headlineSi String?
+  bioSi      String?
   district   String
   city       String
   experience Int     @default(0)
