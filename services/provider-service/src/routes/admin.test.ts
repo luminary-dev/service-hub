@@ -656,3 +656,48 @@ describe("GET /api/admin/audit-log date range", () => {
     expect(createdAt?.gte).toEqual(new Date("2026-07-12T00:00:00Z"));
   });
 });
+
+describe("POST /api/admin/categories — imageUrl path validation (#519)", () => {
+  const base = { slug: "roofing", labelEn: "Roofing", labelSi: "වහල" };
+
+  it("rejects a protocol-relative //host imageUrl (would load cross-origin)", async () => {
+    const res = await req("/api/admin/categories", {
+      role: "ADMIN",
+      method: "POST",
+      body: { ...base, imageUrl: "//evil.com/x.jpg" },
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("Image URL must be a relative path");
+    expect(dbMock.category.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects an absolute external URL", async () => {
+    const res = await req("/api/admin/categories", {
+      role: "ADMIN",
+      method: "POST",
+      body: { ...base, imageUrl: "https://evil.com/x.jpg" },
+    });
+    expect(res.status).toBe(400);
+    expect(dbMock.category.create).not.toHaveBeenCalled();
+  });
+
+  it("accepts an uploaded /api/files cover path", async () => {
+    const res = await req("/api/admin/categories", {
+      role: "ADMIN",
+      method: "POST",
+      body: { ...base, imageUrl: "/api/files/category/covers/roofing.jpg" },
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.category.create).toHaveBeenCalled();
+  });
+
+  it("accepts a seeded /images asset path", async () => {
+    const res = await req("/api/admin/categories", {
+      role: "ADMIN",
+      method: "POST",
+      body: { ...base, imageUrl: "/images/workers/roofing-1.jpg" },
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.category.create).toHaveBeenCalled();
+  });
+});
