@@ -58,17 +58,27 @@ Triggered on **push to `prod`** (and `workflow_dispatch`). Three jobs:
    - reads the currently-deployed `IMAGE_TAG` from the server's `.env`
      (`PREV_TAG`) **before** overwriting it, so a bad rollout can be reverted;
    - **renders `$APP_DIR/.env` from GitHub secrets**, piped over the encrypted
-     SSH channel (never printed to the log), and pins `IMAGE_TAG=<this sha>`;
+     SSH channel (never printed to the log), and pins `IMAGE_TAG=<this sha>`.
+     Values are written double-quoted with Compose-dotenv escaping (`\`→`\\`,
+     `"`→`\"`, `$`→`$$`, newlines→`\n`), so secrets containing `$`, `#`,
+     quotes, or whitespace survive Compose's `.env` parsing verbatim — rotate
+     to any `openssl rand` output without worrying about the charset (#572);
    - `git fetch origin prod && git reset --hard origin/prod`, then
      `docker compose -f docker-compose.prod.yml pull`;
    - **health-gates the rollout**: `up -d --remove-orphans --wait
-     --wait-timeout 180` blocks until every container with a healthcheck is
+     --wait-timeout 300` blocks until every container with a healthcheck is
      healthy and none has exited. A crash-loop or a failed `prisma migrate
-     deploy` fails the deploy instead of silently replacing the running stack;
+     deploy` fails the deploy instead of silently replacing the running stack.
+     The 300s wait covers the DB services' 120s healthcheck `start_period`
+     (migration allowance, #568) plus the retry budget;
    - **auto-rolls-back on failure**: rewrites `IMAGE_TAG` back to `PREV_TAG`,
      re-pulls, brings the previous images up, and exits non-zero;
-   - **prunes only after a healthy rollout** (`docker image prune -f`), so the
-     previous image stays on disk and rollback remains a one-liner.
+   - **prunes only after a healthy rollout** (#567): removes every
+     `ghcr.io/luminary-dev/service-hub-*:<sha>` tag **except the tag just
+     deployed and its predecessor** (kept on disk so rollback needs no
+     re-pull), then `docker image prune -f` clears the now-dangling layers.
+     Tagged images are never "dangling", so without the explicit `rmi` pass
+     each deploy's nine `:<sha>` images accumulated on the VPS forever.
 
 ## Releases (`release.yml`)
 
@@ -216,8 +226,9 @@ monorepo's `prod` branch so the mirrors reflect production.
 - **Automatic** — a failed health-gated rollout rolls itself back to the
   previous image tag (see the CD pipeline); no action needed.
 - **Manual, fast** — set `IMAGE_TAG=<previous-sha>` in the host `.env` and
-  `docker compose -f docker-compose.prod.yml up -d`. The previous image is still
-  on disk (pruning only happens after a healthy deploy).
+  `docker compose -f docker-compose.prod.yml up -d`. The previous deploy's
+  images are still on disk (post-deploy pruning keeps the current and previous
+  `:<sha>` tags; anything older is removed and would be re-pulled).
 - **Manual, clean** — revert the `dev → prod` merge; the next push re-deploys the
   prior state.
 

@@ -76,7 +76,11 @@ These endpoints back the layered gates:
 
 - **Compose healthchecks** — every service uses the shared node healthcheck
   (`wget -qO- http://localhost:$PORT/healthz`); Postgres uses `pg_isready`, Redis
-  `redis-cli ping`. Prod intervals are 10s with 10 retries.
+  `redis-cli ping`. Prod intervals are 10s with 10 retries, plus a
+  `start_period` (30s; **120s for the DB-owning services**, whose boot runs
+  `prisma migrate deploy` first) during which failed probes don't count against
+  the retry budget — so a slow migration no longer trips the deploy gate into
+  rollback (#568). A passing probe ends the grace period early.
 - **`depends_on: condition: service_healthy`** — services wait for Postgres /
   media-service, and the gateway waits for all upstreams, so boot order is
   correct.
@@ -231,8 +235,10 @@ Database and upload backup/restore procedures live in
 `scripts/backup-dbs.sh` (daily cron on the prod host, 14-snapshot retention),
 upload volumes tarred alongside — or Cloudflare R2 when the `R2_*` vars are set
 (durable managed storage, no self-managed backup needed). Restore with
-`scripts/restore-db.sh`. Redis rate-limit windows are intentionally **not**
-backed up (ephemeral by design).
+`scripts/restore-db.sh`. Redis is intentionally **not** backed up: rate-limit
+windows are ephemeral by design, and the session-revocation list (#374) is a
+mirror of identity_db's `sessionVersion` (which is backed up) — but it *is*
+persisted across container recreation via the prod `redis_data` volume (#571).
 
 ## Secret rotation
 
@@ -304,7 +310,7 @@ so `migrate deploy` stops erroring with P3005); fresh DBs never need it.
 | media-service | 4006 | uploads (local disk or R2) |
 | chat-service | 4007 | holds the Anthropic key |
 | postgres | 5432 (host **5433**) | remapped so it won't clash with a local Postgres |
-| redis | 6379 | shared rate-limit windows |
+| redis | 6379 | shared rate-limit windows + session-revocation list |
 
 In prod, service and datastore ports are **not** published — only Caddy binds
 80/443 on the host; everything else talks over the internal compose network.

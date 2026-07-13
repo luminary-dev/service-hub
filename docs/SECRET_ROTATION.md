@@ -12,7 +12,10 @@ public, so nothing sensitive lives in the tree. On every deploy, the `deploy`
 job in `.github/workflows/deploy.yml`:
 
 1. renders `$PROD_APP_DIR/.env` on the server **from the GitHub secrets**, piped
-   over the encrypted SSH channel (never printed to the log);
+   over the encrypted SSH channel (never printed to the log). Values are
+   double-quoted and escaped for Compose's dotenv parser, so a rotated secret
+   containing `$`, `#`, quotes, or whitespace lands verbatim (#572) — no
+   charset restrictions on new values;
 2. `git reset --hard origin/prod`, `docker compose -f docker-compose.prod.yml
    pull`, then a **health-gated** `up -d --wait` that recreates any container
    whose environment changed;
