@@ -25,7 +25,10 @@ category has a `slug`, English label (`labelEn`), Sinhala label (`labelSi`),
   `POST /api/admin/categories/image` (full-admin only; multipart → media-service
   `category` namespace, R2 in prod; jpeg/png/webp ≤5MB). It becomes the card
   cover fallback when a provider has no cover of their own. Distinct from `icon`
-  (a font-awesome component name, not an image).
+  (a font-awesome component name, not an image). The saved `imageUrl` must be a
+  relative path under one of our own media roots (`/api/files/…` upload or a
+  seeded `/images/…` asset) — external and protocol-relative (`//host/…`) URLs
+  are rejected (#519).
 - **Active flag** — Activate / Deactivate toggles the `active` flag via
   `PATCH /api/admin/categories/{slug}`. There is **no hard delete by design**:
   deactivating hides a category from public lists while existing providers keep
