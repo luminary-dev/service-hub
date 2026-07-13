@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   trivy:
-    name: Trivy dependency scan
+    name: trivy-fs
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -52,7 +52,7 @@ jobs:
           category: trivy
 
   trivy-image:
-    name: Trivy image scan / ${{ matrix.image }}
+    name: ${{ matrix.image }} / trivy-image
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -121,7 +121,7 @@ jobs:
           category: trivy-image-${{ matrix.image }}
 
   npm-audit:
-    name: npm audit / ${{ matrix.package }}
+    name: ${{ matrix.package }} / npm-audit
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:

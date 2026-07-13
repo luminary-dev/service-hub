@@ -20,6 +20,29 @@ bucket** through the `/files` route, so stored URLs stay same-origin and match
 the local-disk shape (no public bucket/domain needed). **No Vercel Blob.**
 Limits: 5MB, jpeg/png/webp.
 
+## Verification documents are PII — admin-gated, never public (#500)
+
+Provider verification uploads (NIC / business-registration scans) are stored
+under the media **`verification`** prefix (`provider/verification/...`) and must
+never be served on the public `/files` path. Two layers enforce this:
+
+- **Gateway:** `/api/files/provider/verification/*` is carved out **ahead** of
+  the public media forward and routed to **provider-service** instead of media
+  (see `services/api-gateway/src/lib/routes.ts`). Every other
+  `/api/files/provider/*` upload (work photos, avatars, covers) still forwards
+  to media unchanged.
+- **provider-service** answers that path with an **ADMIN/SUPPORT-gated** route
+  (`isSupportOrAdmin`; a non-admin gets `403`). It fetches the bytes from media
+  over S2S via `GET /internal/media/raw?url=<stored /api/files url>` and streams
+  them back with `Cache-Control: private, no-store` (PII is never shared-cached).
+- **media** refuses the `verification` prefix on its public `/files` route as
+  defence-in-depth (`isVerificationSubpath`), and only hands the bytes out
+  through the internal-secret-gated `/internal/media/raw` endpoint.
+
+The document's stored URL is unchanged (`/api/files/provider/verification/...`),
+so the orphan sweep, account-erasure delete, and any pre-existing documents keep
+working and are served through the gated route with no data migration.
+
 **Resized variants (#382).** `storeFile` writes two downscaled derivatives next
 to each original — `thumb` (400px) and `medium` (800px) — under a deterministic
 `<uuid>.<variant>.<ext>` name in the same backend/namespace, re-encoded through

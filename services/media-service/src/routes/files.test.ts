@@ -93,6 +93,16 @@ describe("GET /files/:namespace/*", () => {
     const res = await get("/files/provider/uploads/..%2f..%2f..%2fsecret.jpg");
     expect(res.status).toBe(404);
   });
+
+  it("404s a verification document even though the bytes exist (#500)", async () => {
+    // Verification PII is served ONLY through provider-service's admin-gated
+    // route; the public /files path must refuse it regardless of the file
+    // existing on disk.
+    const url = await storeFile("provider", "verification", await jpeg());
+    const res = await get(url.replace("/api/files/", "/files/"));
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "Not found" });
+  });
 });
 
 describe("GET /files/:namespace/* variants (#382)", () => {

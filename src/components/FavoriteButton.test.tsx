@@ -70,7 +70,7 @@ describe("FavoriteButton", () => {
     const button = screen.getByRole("button", { name: dict.en.card.save });
     fireEvent.click(button);
 
-    const toast = await screen.findByRole("status");
+    const toast = await screen.findByRole("alert");
     expect(toast.textContent).toContain(dict.en.toast.favError);
     expect(button.getAttribute("aria-pressed")).toBe("false");
     expect(refresh).not.toHaveBeenCalled();
@@ -83,7 +83,7 @@ describe("FavoriteButton", () => {
     const button = screen.getByRole("button", { name: dict.en.card.save });
     fireEvent.click(button);
 
-    const toast = await screen.findByRole("status");
+    const toast = await screen.findByRole("alert");
     expect(toast.textContent).toContain(dict.en.toast.favError);
     expect(button.getAttribute("aria-pressed")).toBe("false");
   });
