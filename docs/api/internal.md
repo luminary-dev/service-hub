@@ -26,8 +26,9 @@ using the shared `s2s()` helper (one bounded retry on idempotent GETs).
 | `POST /internal/providers` | Registration orchestration (called by identity); idempotent on the unique userId → `{ id }`. |
 | `GET /internal/providers/by-user/:userId` | Provider owned by a user (login / job-board gate). |
 | `POST /internal/providers/by-user/:userId/deactivate` | Self-downgrade (#403, called by identity `leave-provider`): hide the user's provider profile (`suspended = true`). Idempotent. |
-| `POST /internal/providers/by-user/:userId/reactivate` | Re-upgrade (#403, called by identity `complete-provider` when a hidden profile exists): clear `suspended`. Idempotent. |
+| `POST /internal/providers/by-user/:userId/reactivate` | Re-upgrade (#403, called by identity `complete-provider` and the admin CUSTOMER→PROVIDER promotion): clear `suspended`. Idempotent — answers `{ reactivated: false }` when no profile exists, which the admin promotion treats as a 400 (#554). |
 | `POST /internal/providers/avatar` | Denormalized avatar sync from identity (#434), `{ userId, avatarUrl }` — updates the provider's cached `avatarUrl`. No-op if the user has no provider. |
+| `POST /internal/providers/contact` | Denormalized contact sync from identity (#553), `{ userId, name?, email?, phone? }` — mirrors account name/phone edits and email changes onto the cached `contactName`/`contactEmail`/`contactPhone`. Only provided fields are written; no-op if the user has no provider. |
 | `GET /internal/providers?ids=` | Batch provider hydration (≤500). |
 | `GET /internal/inquiries/exists?providerId=&userId=` | Review gate — has this user inquired with this provider? → `{ exists }`. |
 | `GET /internal/providers/:id/summary` | Existence/suspended check (favorites, reviews) — always 200. |
@@ -39,7 +40,7 @@ using the shared `s2s()` helper (one bounded retry on idempotent GETs).
 | Method + path | Purpose |
 |---|---|
 | `GET /internal/ratings?providerIds=a,b,c` | Batch rating summaries → `{ ratings }`. Each entry: `{ rating, count }` (authoritative for ranking) plus the additive per-dimension averages and 5→1 star `distribution` (#528) — existing consumers keep reading `rating`/`count`. |
-| `GET /internal/by-provider/:id?take&cursor&includeDeleted` | Reviews for one provider (cursor-paginated) → `{ reviews, nextCursor }`. |
+| `GET /internal/by-provider/:id?take&cursor&includeDeleted` | Reviews for one provider (cursor-paginated) → `{ reviews, nextCursor }`. Each review carries the provider's reply as `response` (#395), threaded through provider-service's `/full` composition unchanged. |
 | `GET /internal/count` | Total (non-deleted) review count. |
 | `POST /internal/users/:id/erase` | Account-deletion fan-out: delete the user's reviews + photo files. Idempotent. |
 | `POST /internal/maintenance/sweep-orphans` | Remove orphaned review-photo files (ops tooling). |
@@ -49,7 +50,7 @@ using the shared `s2s()` helper (one bounded retry on idempotent GETs).
 | Method + path | Purpose |
 |---|---|
 | `GET /internal/jobs/count?category&district&excludeCustomerId` | Open-jobs count for the provider dashboard. |
-| `POST /internal/users/:id/erase` | Account-deletion fan-out: delete the user's JobRequests, plus JobResponses when `{ providerId }` is passed. Idempotent. |
+| `POST /internal/users/:id/erase` | Account-deletion fan-out: delete the user's JobRequests, plus JobResponses when `{ providerId }` is passed. Idempotent. Identity erases this service before provider-service (#551), so the erase always receives the `providerId` while the Provider row (its only source) still exists. |
 
 ### notification-service
 

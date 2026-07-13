@@ -26,6 +26,7 @@ them. Only `POST` requests are checked.
 | `POST /api/providers/[id]/contact` | `contactReveal` | 20 / 10 min |
 | `POST /api/jobs/[id]/responses` | `review` | 10 / hour |
 | `POST /api/providers/[id]/reviews` | `review` | 10 / hour |
+| `POST /api/reviews/[id]/response` | `review` | 10 / hour (own `review-response` bucket) |
 | `POST /api/inquiries/[id]/messages` | `message` | 30 / 10 min |
 | `POST /api/providers/[id]/report`, `POST /api/photos/[id]/report`, `POST /api/reviews/[id]/report` | `review` | 10 / hour (shared `report` bucket) |
 | `POST /api/account/avatar`, `POST /api/provider/photos`, `POST /api/provider/verification`, `POST /api/admin/categories/image` | `upload` | 20 / 15 min (shared `upload` bucket) |

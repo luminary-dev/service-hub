@@ -39,6 +39,7 @@ const data: DashboardData = {
   services: [],
   photos: [],
   inquiries: [],
+  inquiriesTotal: 0,
   stats: { rating: 4.6, reviewCount: 12, photoCount: 3, newInquiries: 1 },
 };
 
