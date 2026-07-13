@@ -1196,3 +1196,43 @@ describe("POST /api/auth/delete-account", () => {
     expect(db.user.delete).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// GET /api/auth/me
+// ---------------------------------------------------------------------------
+describe("GET /api/auth/me", () => {
+  const ME_ROW = {
+    id: "u1",
+    name: "Test User",
+    email: "a@b.lk",
+    phone: null,
+    emailVerified: null,
+    role: "CUSTOMER",
+    avatarUrl: null,
+    sessionVersion: 1,
+  };
+
+  function getMe() {
+    return app.request("/api/auth/me", { headers: AUTH_HEADERS });
+  }
+
+  // hasPassword drives the web's password-confirmation field on sensitive ops
+  // (#504 change-email re-auth): shown for password accounts, skipped for
+  // social-only accounts (#398) that have no password to confirm.
+  it("reports hasPassword=true for a password account without leaking the hash", async () => {
+    db.user.findUnique.mockResolvedValue({ ...ME_ROW, passwordHash: currentHash });
+    const res = await getMe();
+    expect(res.status).toBe(200);
+    const { user } = await res.json();
+    expect(user.hasPassword).toBe(true);
+    expect(user.passwordHash).toBeUndefined();
+  });
+
+  it("reports hasPassword=false for a social-only account", async () => {
+    db.user.findUnique.mockResolvedValue({ ...ME_ROW, passwordHash: null });
+    const res = await getMe();
+    expect(res.status).toBe(200);
+    const { user } = await res.json();
+    expect(user.hasPassword).toBe(false);
+  });
+});

@@ -573,6 +573,11 @@ authRoutes.get("/me", async (c) => {
       role: user.role,
       avatarUrl: user.avatarUrl,
       providerId,
+      // Whether this account has a password at all — social-only accounts
+      // (#398) don't. The web uses this to show the password-confirmation
+      // field the sensitive-op re-auth (#504: change-email) requires, instead
+      // of asking a social-only user for a password they can't have.
+      hasPassword: user.passwordHash != null,
     },
   });
 });

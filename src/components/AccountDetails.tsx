@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { useT } from "@/components/I18nProvider";
+import PasswordInput from "@/components/PasswordInput";
 import { useToast } from "@/components/ToastProvider";
 import { Field } from "@/components/ui/Field";
 import Avatar from "@/components/Avatar";
@@ -21,6 +22,10 @@ export default function AccountDetails({
     email: string;
     emailVerified: boolean;
     avatarUrl: string | null;
+    // Change-email is a sensitive op: password accounts must confirm their
+    // current password (#504); social-only accounts (#398) have none, so for
+    // them the field is hidden and the session alone is the re-auth.
+    hasPassword: boolean;
   };
 }) {
   const t = useT().account;
@@ -82,6 +87,7 @@ export default function AccountDetails({
 
   // Change email
   const [newEmail, setNewEmail] = useState("");
+  const [emailPassword, setEmailPassword] = useState("");
   const [changingEmail, setChangingEmail] = useState(false);
   const [emailError, setEmailError] = useState("");
   const [sentTo, setSentTo] = useState("");
@@ -119,11 +125,16 @@ export default function AccountDetails({
       const res = await fetch("/api/account/email/change", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: newEmail }),
+        body: JSON.stringify(
+          initial.hasPassword
+            ? { email: newEmail, password: emailPassword }
+            : { email: newEmail }
+        ),
       });
       if (res.ok) {
         setSentTo(newEmail);
         setNewEmail("");
+        setEmailPassword("");
       } else {
         const data = await res.json().catch(() => ({}));
         setEmailError(data.error ?? t.genericError);
@@ -267,6 +278,23 @@ export default function AccountDetails({
               aria-describedby={emailError ? "account-email-error" : undefined}
             />
           </Field>
+          {/* Sensitive-op re-auth (#504): the backend rejects a password
+              account's change without the current password, so only ask
+              when there is one — social-only accounts (#398) have none. */}
+          {initial.hasPassword && (
+            <Field label={t.emailPassword} htmlFor="account-email-password">
+              <PasswordInput
+                id="account-email-password"
+                value={emailPassword}
+                onChange={(e) => setEmailPassword(e.target.value)}
+                required
+                autoComplete="current-password"
+                aria-describedby={
+                  emailError ? "account-email-error" : undefined
+                }
+              />
+            </Field>
+          )}
           {emailError && (
             <p id="account-email-error" role="alert" className="text-sm text-red-600">
               {emailError}
@@ -279,7 +307,11 @@ export default function AccountDetails({
           )}
           <button
             type="submit"
-            disabled={changingEmail || newEmail.length === 0}
+            disabled={
+              changingEmail ||
+              newEmail.length === 0 ||
+              (initial.hasPassword && emailPassword.length === 0)
+            }
             className="btn-secondary"
           >
             {changingEmail ? t.changingEmail : t.changeEmail}
