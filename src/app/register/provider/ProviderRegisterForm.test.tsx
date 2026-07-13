@@ -110,6 +110,8 @@ describe("ProviderRegisterForm (authed mode, #552)", () => {
     fireEvent.change(screen.getByPlaceholderText(t.pricePh), {
       target: { value: "5000" },
     });
+    // Registration consent (#62) gates the final step.
+    fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: t.create }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));

@@ -45,8 +45,14 @@ const SECRET = "dev-internal-secret";
 const CUSTOMER_ID = "user_customer";
 const PROVIDER_USER_ID = "user_provider";
 // Served set (#502): the fixture provider covers a second district so the
-// board/response scoping tests exercise membership, not equality.
-const PROVIDER = {
+// board/response scoping tests exercise membership, not equality. The field
+// is optional on the type so the pre-#502-payload fallback test can omit it.
+const PROVIDER: {
+  id: string;
+  category: string;
+  district: string;
+  serviceDistricts?: string[];
+} = {
   id: "prov_1",
   category: "plumbing",
   district: "Colombo",
