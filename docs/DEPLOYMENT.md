@@ -50,7 +50,11 @@ Triggered on **push to `prod`** (and `workflow_dispatch`). Two jobs:
    - reads the currently-deployed `IMAGE_TAG` from the server's `.env`
      (`PREV_TAG`) **before** overwriting it, so a bad rollout can be reverted;
    - **renders `$APP_DIR/.env` from GitHub secrets**, piped over the encrypted
-     SSH channel (never printed to the log), and pins `IMAGE_TAG=<this sha>`;
+     SSH channel (never printed to the log), and pins `IMAGE_TAG=<this sha>`.
+     Values are written double-quoted with Compose-dotenv escaping (`\`→`\\`,
+     `"`→`\"`, `$`→`$$`, newlines→`\n`), so secrets containing `$`, `#`,
+     quotes, or whitespace survive Compose's `.env` parsing verbatim — rotate
+     to any `openssl rand` output without worrying about the charset (#572);
    - `git fetch origin prod && git reset --hard origin/prod`, then
      `docker compose -f docker-compose.prod.yml pull`;
    - **health-gates the rollout**: `up -d --remove-orphans --wait

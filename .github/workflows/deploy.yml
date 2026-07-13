@@ -119,14 +119,27 @@ jobs:
           echo "Previous IMAGE_TAG: ${PREV_TAG:-<none>}"
           # 1) Render $APP_DIR/.env from the secrets above — piped over the
           #    encrypted channel, so no value is ever printed to the log.
+          #    Compose's dotenv parser interpolates `$` and truncates unquoted
+          #    values at ` #`, so raw KEY=value lines silently mangle rotated
+          #    secrets containing $, #, or whitespace (#572). Values are written
+          #    double-quoted with compose-dotenv escaping (\ → \\, " → \",
+          #    $ → $$, newline/CR → \n/\r), which round-trips arbitrary strings.
           {
             for k in AUTH_SECRET INTERNAL_API_SECRET POSTGRES_PASSWORD WEB_ORIGIN \
                      DOMAIN ACME_EMAIL ANTHROPIC_API_KEY RESEND_API_KEY EMAIL_FROM \
                      R2_ENDPOINT R2_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY \
                      GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET \
                      FACEBOOK_CLIENT_ID FACEBOOK_CLIENT_SECRET; do
-              printf '%s=%s\n' "$k" "${!k}"
+              v="${!k}"
+              v="${v//\\/\\\\}"
+              v="${v//\"/\\\"}"
+              v="${v//\$/\$\$}"
+              v="${v//$'\n'/\\n}"
+              v="${v//$'\r'/\\r}"
+              printf '%s="%s"\n' "$k" "$v"
             done
+            # IMAGE_TAG is a git sha — kept unquoted so the PREV_TAG grep/cut
+            # readback (step 0) and the rollback sed (step 2) stay verbatim.
             printf 'IMAGE_TAG=%s\n' "$TAG"
           } | "${SSH[@]}" "umask 077 && mkdir -p '$APP_DIR' && cat > '$APP_DIR/.env'"
           # 2) Pull the prod branch + images, then a HEALTH-GATED (re)start:
