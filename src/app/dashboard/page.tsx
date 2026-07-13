@@ -26,6 +26,8 @@ type DashboardProvider = {
   category: string;
   headline: string;
   bio: string;
+  headlineSi?: string | null;
+  bioSi?: string | null;
   district: string;
   city: string;
   experience: number;
@@ -163,6 +165,8 @@ export default async function DashboardPage({
           category: provider.category,
           headline: provider.headline,
           bio: provider.bio,
+          headlineSi: provider.headlineSi ?? "",
+          bioSi: provider.bioSi ?? "",
           district: provider.district,
           city: provider.city,
           experience: provider.experience,

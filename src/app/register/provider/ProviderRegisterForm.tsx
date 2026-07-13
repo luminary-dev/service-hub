@@ -59,6 +59,8 @@ export default function ProviderRegisterForm({
     category: "",
     headline: "",
     bio: "",
+    headlineSi: "",
+    bioSi: "",
     district: "",
     city: "",
     experience: "0",
@@ -134,6 +136,10 @@ export default function ProviderRegisterForm({
       category: form.category,
       headline: form.headline.trim(),
       bio: form.bio.trim(),
+      // Optional Sinhala variants (#515) — send undefined when blank so the
+      // API stores null.
+      headlineSi: form.headlineSi.trim() || undefined,
+      bioSi: form.bioSi.trim() || undefined,
       district: form.district,
       city: form.city.trim(),
       experience: Number(form.experience) || 0,
@@ -396,6 +402,37 @@ export default function ProviderRegisterForm({
                 onChange={(e) => set("bio", e.target.value)}
                 placeholder={r.aboutPh}
               />
+            </div>
+            {/* Optional Sinhala variants (#515): shown to visitors browsing in
+                Sinhala; English stays the required source of truth. */}
+            <div>
+              <label className="label" htmlFor="pr-headline-si">
+                {r.headlineSi}
+              </label>
+              <input
+                id="pr-headline-si"
+                className="input"
+                value={form.headlineSi}
+                onChange={(e) => set("headlineSi", e.target.value)}
+                placeholder={r.headlineSiPh}
+                maxLength={120}
+                lang="si"
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="pr-bio-si">
+                {r.aboutSi}
+              </label>
+              <textarea
+                id="pr-bio-si"
+                className="input min-h-32 resize-y"
+                value={form.bioSi}
+                onChange={(e) => set("bioSi", e.target.value)}
+                placeholder={r.aboutSiPh}
+                maxLength={2000}
+                lang="si"
+              />
+              <p className="mt-1 text-xs text-ink-500">{r.sinhalaOptional}</p>
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
               <div>

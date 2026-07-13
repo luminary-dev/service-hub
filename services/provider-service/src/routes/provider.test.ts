@@ -200,6 +200,54 @@ describe("inquiry ownership", () => {
   });
 });
 
+describe("PUT /api/provider/profile — bilingual content (#515)", () => {
+  const baseBody = {
+    name: "Ann Silva",
+    phone: "0771234567",
+    category: "plumber",
+    headline: "Reliable plumber",
+    bio: "Twenty-plus characters of provider bio text here.",
+    district: "Colombo",
+    city: "Colombo",
+    experience: 5,
+    available: true,
+  };
+
+  it("persists the optional Sinhala headline/bio", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(MY_PROVIDER);
+    dbMock.provider.update.mockResolvedValue({ id: "prov1" });
+    const res = await req("/api/provider/profile", {
+      method: "PUT",
+      role: "PROVIDER",
+      body: {
+        ...baseBody,
+        headlineSi: "විශ්වාසවන්ත ජලනළ කාර්මිකයා",
+        bioSi: "අවුරුදු දහයකට වැඩි පළපුරුද්දක් සහිත ජලනළ සේවා සපයයි.",
+      },
+    });
+    expect(res.status).toBe(200);
+    const arg = dbMock.provider.update.mock.calls[0][0];
+    expect(arg.data.headlineSi).toBe("විශ්වාසවන්ත ජලනළ කාර්මිකයා");
+    expect(arg.data.bioSi).toBe(
+      "අවුරුදු දහයකට වැඩි පළපුරුද්දක් සහිත ජලනළ සේවා සපයයි."
+    );
+  });
+
+  it("clears the Sinhala variants to null when omitted/empty", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(MY_PROVIDER);
+    dbMock.provider.update.mockResolvedValue({ id: "prov1" });
+    const res = await req("/api/provider/profile", {
+      method: "PUT",
+      role: "PROVIDER",
+      body: { ...baseBody, headlineSi: "", bioSi: "" },
+    });
+    expect(res.status).toBe(200);
+    const arg = dbMock.provider.update.mock.calls[0][0];
+    expect(arg.data.headlineSi).toBeNull();
+    expect(arg.data.bioSi).toBeNull();
+  });
+});
+
 // Verification documents are PII (NIC / business-registration scans). The
 // gateway routes /api/files/provider/verification/* here instead of to the
 // public media path (#500); only ADMIN/SUPPORT may fetch the bytes, which this

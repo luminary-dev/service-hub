@@ -9,6 +9,7 @@ import { isSvg } from "@/lib/image";
 import { formatDate, formatLKR } from "@/lib/format";
 import {
   dict,
+  bilingualText,
   categoryLabelLoc,
   districtLabelLoc,
   priceTypeLabelLoc,
@@ -28,6 +29,10 @@ export type ProviderCardDTO = {
   // has no cover/work photo of their own.
   categoryImageUrl: string | null;
   headline: string;
+  // Optional Sinhala headline (#515); rendered under the `si` locale with an
+  // English fallback via bilingualText. Optional on the DTO so existing
+  // fixtures/consumers need no churn.
+  headlineSi?: string | null;
   district: string;
   city: string;
   experience: number;
@@ -146,7 +151,7 @@ export default function ProviderCard({
           </div>
 
           <p className="mt-3 line-clamp-2 text-sm leading-relaxed text-ink-600">
-            {p.headline}
+            {bilingualText(p.headline, p.headlineSi, locale)}
           </p>
 
           <div className="mt-4 flex items-center justify-between border-t border-dashed border-ink-300 pt-3.5">

@@ -9,7 +9,9 @@ providers from `GET /api/providers`. Signed-in users also fetch
 
 **Filters** (`FilterBar`, all pass through to provider-service):
 
-- Free-text search `q` (matches name and category EN/SI labels).
+- Free-text search `q` (matches name, category EN/SI labels, and the English
+  **and** optional Sinhala headline/bio (#515) so a Sinhala query finds a
+  Sinhala-authored pitch).
 - `category` and `district` selects (25 districts).
 - Price range `priceMin` / `priceMax`.
 - Minimum rating `ratingMin` (4+ / 3+ / 2+).
@@ -29,7 +31,9 @@ Provider cards (`ProviderCard`) show a cover image (provider's own cover →
 admin-set category cover image (#436) → placeholder), category, experience,
 availability chip ("Available" or
 "Away until…"), verified tick, location, headline, rating, "from" price, and an
-optional favorite button.
+optional favorite button. The headline (and, on the profile page, the bio)
+render the provider's Sinhala variant under the `si` locale when present,
+falling back to the English original (#515).
 
 ### Provider profile
 

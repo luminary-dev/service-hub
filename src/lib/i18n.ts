@@ -895,6 +895,9 @@ const en = {
       townCity: "Town / City",
       headline: "Headline",
       about: "About",
+      headlineSi: "Headline (Sinhala)",
+      aboutSi: "About (Sinhala)",
+      sinhalaHint: "Optional — shown to visitors browsing in Sinhala.",
       contactSocial: "Contact & social links",
       whatsapp: "WhatsApp",
       altPhone: "Alternate phone",
@@ -996,6 +999,13 @@ const en = {
     about: "About you & your work",
     aboutPh:
       "Describe your skills, the kinds of jobs you take on, areas you cover, and what makes your work stand out…",
+    headlineSi: "Headline (Sinhala)",
+    headlineSiPh: "උදා: වසර 10+ පළපුරුද්දක් සහිත විශ්වාසවන්ත රථ අලුත්වැඩියා",
+    aboutSi: "About you & your work (Sinhala)",
+    aboutSiPh:
+      "ඔබේ කුසලතා, ඔබ බාරගන්නා වැඩ වර්ග, ආවරණය කරන ප්‍රදේශ, සහ ඔබේ වැඩ කැපී පෙනෙන්නේ ඇයිද යන්න විස්තර කරන්න…",
+    sinhalaOptional:
+      "Optional — a Sinhala version, shown to visitors browsing in Sinhala.",
     district: "District",
     selectPlaceholder: "Select…",
     townCity: "Town / City",
@@ -1916,6 +1926,9 @@ const si: Dict = {
       townCity: "නගරය",
       headline: "සිරස්තලය",
       about: "පිළිබඳව",
+      headlineSi: "සිරස්තලය (සිංහල)",
+      aboutSi: "පිළිබඳව (සිංහල)",
+      sinhalaHint: "විකල්පයි — සිංහලෙන් බලන අමුත්තන්ට පෙන්වයි.",
       contactSocial: "සම්බන්ධතා සහ සමාජ මාධ්‍ය",
       whatsapp: "WhatsApp",
       altPhone: "වෙනත් දුරකථනය",
@@ -2014,6 +2027,13 @@ const si: Dict = {
     about: "ඔබ සහ ඔබේ වැඩ පිළිබඳව",
     aboutPh:
       "ඔබේ කුසලතා, ඔබ බාරගන්නා වැඩ වර්ග, ආවරණය කරන ප්‍රදේශ, සහ ඔබේ වැඩ කැපී පෙනෙන්නේ ඇයිද යන්න විස්තර කරන්න…",
+    headlineSi: "සිරස්තලය (සිංහල)",
+    headlineSiPh: "උදා: වසර 10+ පළපුරුද්දක් සහිත විශ්වාසවන්ත රථ අලුත්වැඩියා",
+    aboutSi: "ඔබ සහ ඔබේ වැඩ පිළිබඳව (සිංහල)",
+    aboutSiPh:
+      "ඔබේ කුසලතා, ඔබ බාරගන්නා වැඩ වර්ග, ආවරණය කරන ප්‍රදේශ, සහ ඔබේ වැඩ කැපී පෙනෙන්නේ ඇයිද යන්න විස්තර කරන්න…",
+    sinhalaOptional:
+      "විකල්පයි — සිංහලෙන් බලන අමුත්තන්ට පෙන්වන සිංහල අනුවාදයකි.",
     district: "දිස්ත්‍රික්කය",
     selectPlaceholder: "තෝරන්න…",
     townCity: "නගරය",
@@ -2121,4 +2141,18 @@ export function districtLabelLoc(name: string, locale: Locale) {
 export function priceTypeLabelLoc(value: string, locale: Locale) {
   if (locale === "si") return PRICE_TYPES_SI[value] ?? value;
   return PRICE_TYPES.find((p) => p.value === value)?.label ?? value;
+}
+
+// Bilingual free-text fields (#515): providers may supply an optional Sinhala
+// variant of their headline/bio. Under the Sinhala locale we show it when
+// present and fall back to the English original otherwise; the English locale
+// always shows the English text. Kept here so cards and the profile page
+// resolve the variant the same way.
+export function bilingualText(
+  en: string,
+  si: string | null | undefined,
+  locale: Locale
+): string {
+  if (locale === "si" && si && si.trim() !== "") return si;
+  return en;
 }

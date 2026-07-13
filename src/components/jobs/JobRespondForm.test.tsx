@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { dict } from "@/lib/i18n";
 import JobRespondForm from "./JobRespondForm";
 
@@ -47,9 +47,11 @@ describe("JobRespondForm", () => {
     // The form is replaced by a live-region confirmation (#510)...
     const status = await screen.findByRole("status");
     expect(status.textContent).toContain(t.responseSent);
-    // ...that grabs focus so keyboard users aren't dropped on <body>.
+    // ...that grabs focus so keyboard users aren't dropped on <body>. Focus is
+    // moved in a useEffect, so wait for it to flush rather than asserting on the
+    // same tick as the render (which flaked under coverage instrumentation).
     const heading = screen.getByText(t.responseSent);
-    expect(document.activeElement).toBe(heading);
+    await waitFor(() => expect(document.activeElement).toBe(heading));
     // The form (and its submit button) is gone.
     expect(screen.queryByLabelText(t.respondPh)).toBeNull();
   });

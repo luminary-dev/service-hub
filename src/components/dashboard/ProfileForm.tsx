@@ -41,6 +41,9 @@ export default function ProfileForm({
     category: data.category,
     headline: data.headline,
     bio: data.bio,
+    // Optional Sinhala variants (#515); default to "" for the controlled input.
+    headlineSi: data.headlineSi ?? "",
+    bioSi: data.bioSi ?? "",
     district: data.district,
     city: data.city,
     experience: String(data.experience),
@@ -230,6 +233,29 @@ export default function ProfileForm({
           onChange={(e) => set("bio", e.target.value)}
           required
           minLength={20}
+        />
+      </Field>
+
+      {/* Optional Sinhala variants (#515): shown to visitors browsing in
+          Sinhala; the English fields above stay the required source of truth. */}
+      <Field label={p.headlineSi} htmlFor="pf-headline-si" help={p.sinhalaHint}>
+        <input
+          id="pf-headline-si"
+          className="input"
+          value={form.headlineSi}
+          onChange={(e) => set("headlineSi", e.target.value)}
+          maxLength={120}
+          lang="si"
+        />
+      </Field>
+      <Field label={p.aboutSi} htmlFor="pf-about-si" help={p.sinhalaHint}>
+        <textarea
+          id="pf-about-si"
+          className="input min-h-32 resize-y"
+          value={form.bioSi}
+          onChange={(e) => set("bioSi", e.target.value)}
+          maxLength={2000}
+          lang="si"
         />
       </Field>
 
