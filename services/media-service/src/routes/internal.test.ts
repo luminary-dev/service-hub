@@ -12,7 +12,7 @@ const MEDIA_DIR = vi.hoisted(() => {
 import { rm, utimes } from "node:fs/promises";
 import sharp from "sharp";
 import { app } from "../app";
-import { MAX_UPLOAD_SIZE, resolveFilePath } from "../lib/media";
+import { MAX_UPLOAD_SIZE, resolveFilePath, storeFile } from "../lib/media";
 
 const SECRET = "dev-internal-secret";
 
@@ -218,6 +218,45 @@ describe("POST /internal/media/store", () => {
     });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "Invalid input" });
+  });
+});
+
+describe("GET /internal/media/raw", () => {
+  function getRaw(url: string, headers: Record<string, string> = { "x-internal-secret": SECRET }) {
+    return app.request(`/internal/media/raw?url=${encodeURIComponent(url)}`, { headers });
+  }
+
+  it("requires the internal secret", async () => {
+    const res = await getRaw("/api/files/provider/verification/x.jpg", {});
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "Forbidden" });
+  });
+
+  it("streams a stored verification document's bytes as private/no-store PII", async () => {
+    const url = await storeFile("provider", "verification", Buffer.from(await jpeg()));
+    const res = await getRaw(url);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/jpeg");
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect((await res.arrayBuffer()).byteLength).toBeGreaterThan(0);
+  });
+
+  it("400s without a url", async () => {
+    const res = await app.request("/internal/media/raw", { headers: { "x-internal-secret": SECRET } });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Invalid input" });
+  });
+
+  it("404s a missing file", async () => {
+    const res = await getRaw("/api/files/provider/verification/nope.jpg");
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "Not found" });
+  });
+
+  it("404s an unknown namespace and a non-image extension", async () => {
+    expect((await getRaw("/api/files/evil/verification/x.jpg")).status).toBe(404);
+    expect((await getRaw("/api/files/provider/verification/x.txt")).status).toBe(404);
   });
 });
 

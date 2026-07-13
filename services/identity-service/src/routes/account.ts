@@ -3,6 +3,7 @@
 // /api/account. Kept separate from auth.ts (login/register/reset lifecycle) so
 // the "manage my own account" surface is easy to find.
 import { Hono } from "hono";
+import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "../db";
@@ -11,7 +12,10 @@ import { log } from "../lib/log";
 import { createSession } from "../lib/session";
 import { hashToken } from "../lib/tokens";
 import { emailAddress, slPhone } from "../lib/field-rules";
-import { sendEmailChangeConfirmation } from "../lib/verification";
+import {
+  sendEmailChangeAttemptNotice,
+  sendEmailChangeConfirmation,
+} from "../lib/verification";
 import {
   ALLOWED_IMAGE_TYPES,
   InvalidImageError,
@@ -159,7 +163,14 @@ accountRoutes.put("/profile", async (c) => {
 // actually store: the taken-check can't miss a case-variant of an existing
 // account, and the value we later persist is one that password login (which
 // lowercases its input) can still match (security-audit M8).
-const emailSchema = z.object({ email: emailAddress });
+//
+// password is optional: social-only accounts (#398) have none, so a valid
+// session is their re-auth. Password accounts must confirm it (checked below,
+// #504).
+const emailSchema = z.object({
+  email: emailAddress,
+  password: z.string().min(1).optional(),
+});
 
 accountRoutes.post("/email/change", async (c) => {
   const auth = getAuth(c);
@@ -177,19 +188,48 @@ accountRoutes.post("/email/change", async (c) => {
     return c.json({ error: "That is already your email address." }, 400);
   }
 
-  // Same 409 as registration when the address is taken — no new enumeration
-  // surface beyond what register already exposes.
-  const taken = await db.user.findUnique({ where: { email: newEmail } });
-  if (taken) {
-    return c.json({ error: "An account with this email already exists." }, 409);
+  // #504: changing the login email is a sensitive op, so re-authenticate the
+  // current password before issuing the confirmation link — the same guard
+  // delete-account and change-password use. Social-only accounts (#398) have no
+  // passwordHash; for them the valid session IS the re-auth, so they keep the
+  // session-only path. This check depends only on the caller's own hash, so it
+  // costs the same whether or not the target address is free and never becomes
+  // an enumeration signal itself.
+  if (user.passwordHash) {
+    if (
+      !parsed.data.password ||
+      !(await bcrypt.compare(parsed.data.password, user.passwordHash))
+    ) {
+      return c.json({ error: "Incorrect password." }, 400);
+    }
   }
 
-  try {
-    await sendEmailChangeConfirmation(user.id, newEmail, getOrigin(c), getLocale(c));
-  } catch (e) {
-    log.error("change-email send failed", { context: "account", err: e });
-    return c.json({ error: "Could not send the confirmation email." }, 500);
+  // #503: anti-enumeration. Whether or not the target address already belongs to
+  // another account, answer with the SAME generic success — a distinguishable
+  // 409 "already exists" here let a signed-in attacker probe which addresses
+  // have accounts (the leak register/login/forgot-password already close). When
+  // the address IS taken we do NOT start a change; instead we mail the real
+  // owner an out-of-band "someone tried to move an account to your email" notice.
+  // Both branches fire their mail and-forget it (never awaited, like
+  // forgot-password / register #498) and return the identical shape, so the
+  // taken branch is neither observably different nor measurably faster.
+  const taken = await db.user.findUnique({ where: { email: newEmail } });
+  if (taken) {
+    void sendEmailChangeAttemptNotice(newEmail, getOrigin(c), getLocale(c)).catch(
+      (e) =>
+        log.error("email-change-attempt notice failed", { context: "account", err: e })
+    );
+    return c.json({ ok: true });
   }
+
+  void sendEmailChangeConfirmation(
+    user.id,
+    newEmail,
+    getOrigin(c),
+    getLocale(c)
+  ).catch((e) =>
+    log.error("change-email send failed", { context: "account", err: e })
+  );
 
   return c.json({ ok: true });
 });
