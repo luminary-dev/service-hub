@@ -12,6 +12,7 @@ import { log } from "../lib/log";
 import {
   deactivateProviderProfile,
   fetchProvidersByIds,
+  ProviderAdminSuspendedError,
   reactivateProviderProfile,
 } from "../lib/providers";
 import { publishRevocation } from "../lib/revocation";
@@ -195,11 +196,22 @@ adminUsersRoutes.patch("/api/admin/users/:id", async (c) => {
       // PROVIDER, and every provider dashboard route 401s without a profile, so
       // promoting anyway would brick the account (#554). The missing-profile
       // reactivate is a no-op upstream, so refusing after the call leaves both
-      // services unchanged.
+      // services unchanged. An ADMIN-suspended profile is refused too (#550) —
+      // lifting a moderation suspension stays exclusive to the provider
+      // unsuspend action, so a role change can't lift one as a side effect.
       let hadProfile: boolean;
       try {
         hadProfile = await reactivateProviderProfile(id);
       } catch (e) {
+        if (e instanceof ProviderAdminSuspendedError) {
+          return c.json(
+            {
+              error:
+                "This user's provider profile is suspended by moderation. Unsuspend it in Admin → Providers first.",
+            },
+            409
+          );
+        }
         log.error("provider reactivate failed", { context: "admin-role-change", err: e });
         return c.json({ error: "Upstream service unavailable" }, 502);
       }

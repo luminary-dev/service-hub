@@ -193,6 +193,8 @@ jobs.get("/board", async (c) => {
 
   const where = {
     status: "OPEN" as const,
+    // Admin-taken-down jobs (#376) are invisible to the board.
+    hiddenAt: null,
     category: provider.category,
     district: provider.district,
     NOT: { customerId: auth.userId },
@@ -342,7 +344,9 @@ jobs.post("/:id/responses", async (c) => {
 
   const id = c.req.param("id");
   const job = await db.jobRequest.findUnique({ where: { id } });
-  if (!job) {
+  // A job hidden by an admin takedown (#376) is gone from the board, so a
+  // response to it gets the same 404 as a job that never existed.
+  if (!job || job.hiddenAt) {
     return c.json({ error: "Job not found" }, 404);
   }
   // Enforce the same scoping the board query applies (category + district +

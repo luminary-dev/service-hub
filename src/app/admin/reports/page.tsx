@@ -22,7 +22,7 @@ import ReportsFilterBar, {
 export const dynamic = "force-dynamic";
 
 // The moderation queue (#50) merges three sources — provider-service owns
-// reports on providers, work photos and inquiry threads
+// reports on providers, work photos, inquiry threads and thread messages
 // (`GET /api/admin/reports`), review-service owns reports on reviews
 // (`GET /api/admin/review-reports`), and job-service owns reports on job
 // posts/responses (`GET /api/admin/job-reports`, #375). All return OPEN
@@ -33,6 +33,7 @@ const TARGET_TYPES: TargetTypeFilter[] = [
   "WORK_PHOTO",
   "REVIEW",
   "INQUIRY",
+  "MESSAGE",
   "JOB",
   "JOB_RESPONSE",
 ];

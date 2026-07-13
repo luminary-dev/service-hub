@@ -84,14 +84,16 @@ four jobs:
 What's automated and what still needs a human (#66):
 
 - **Automated — `src/components/a11y.test.tsx`.** Each test renders a
-  high-traffic component (Navbar's mobile menu, provider cards, filter/search
-  bars, the login/registration/inquiry/review/security forms, message thread,
-  chat assistant, report modal, photo lightbox) and runs
+  high-traffic component (Navbar's mobile menu and user menu, provider cards,
+  filter/search bars, the login/registration/inquiry/review/security forms,
+  the email-verify banner, message thread, chat assistant, report modal,
+  photo lightbox) and runs
   [axe-core](https://github.com/dequelabs/axe-core) on the result, failing on
   any violation axe rates *serious* or *critical* — missing accessible names,
   broken label/input association, bad ARIA wiring, missing image alt text.
-  The modal tests additionally assert focus behavior directly: focus moves
-  into the dialog on open, `Escape` closes it, and focus returns to the
+  The modal tests additionally assert focus and scroll behavior directly:
+  focus moves into the dialog on open, background scrolling locks
+  (`useScrollLock`), `Escape` closes it, and focus + scrolling return to the
   trigger. The provider-registration wizard test likewise asserts real form
   semantics (Enter submits each step) and that focus moves to the step
   heading on step change. Add new interactive components to this file as

@@ -10,8 +10,10 @@ const { dbMock } = vi.hoisted(() => ({
     jobRequest: {
       findMany: vi.fn(),
       findUnique: vi.fn(),
+      update: vi.fn(),
       count: vi.fn(),
     },
+    adminAuditLog: { create: vi.fn() },
   },
 }));
 vi.mock("../db", () => ({ db: dbMock }));
@@ -28,12 +30,15 @@ const SECRET = "dev-internal-secret";
 
 // Admin routes trust the gateway-forwarded identity headers behind the internal
 // secret; an ADMIN role clears isSupportOrAdmin.
-function adminReq(path: string) {
+function adminReq(path: string, init: RequestInit = {}, role = "ADMIN") {
   return app.request(path, {
+    ...init,
     headers: {
+      "content-type": "application/json",
       "x-internal-secret": SECRET,
       "x-user-id": "admin_1",
-      "x-user-role": "ADMIN",
+      "x-user-role": role,
+      ...(init.headers as object),
     },
   });
 }
@@ -78,6 +83,73 @@ describe("GET /api/admin/jobs — filter validation", () => {
     expect(dbMock.jobRequest.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { category: "electrical" } })
     );
+  });
+});
+
+// Takedown (#376): hide/unhide is destructive, so it's full-ADMIN only —
+// SUPPORT keeps read access but gets 403 here.
+describe("PATCH /api/admin/jobs/:id (takedown)", () => {
+  it("403s the SUPPORT tier", async () => {
+    const res = await adminReq(
+      "/api/admin/jobs/job_1",
+      { method: "PATCH", body: JSON.stringify({ action: "hide" }) },
+      "SUPPORT"
+    );
+    expect(res.status).toBe(403);
+    expect(dbMock.jobRequest.update).not.toHaveBeenCalled();
+  });
+
+  it("404s an unknown job", async () => {
+    dbMock.jobRequest.findUnique.mockResolvedValue(null);
+    const res = await adminReq("/api/admin/jobs/nope", {
+      method: "PATCH",
+      body: JSON.stringify({ action: "hide" }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("400s an unknown action", async () => {
+    dbMock.jobRequest.findUnique.mockResolvedValue({ id: "job_1" });
+    const res = await adminReq("/api/admin/jobs/job_1", {
+      method: "PATCH",
+      body: JSON.stringify({ action: "delete" }),
+    });
+    expect(res.status).toBe(400);
+    expect(dbMock.jobRequest.update).not.toHaveBeenCalled();
+  });
+
+  it("hide stamps hiddenAt and audits the action", async () => {
+    dbMock.jobRequest.findUnique.mockResolvedValue({ id: "job_1" });
+    dbMock.jobRequest.update.mockResolvedValue({});
+    const res = await adminReq("/api/admin/jobs/job_1", {
+      method: "PATCH",
+      body: JSON.stringify({ action: "hide" }),
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.jobRequest.update).toHaveBeenCalledWith({
+      where: { id: "job_1" },
+      data: { hiddenAt: expect.any(Date) },
+    });
+    expect(dbMock.adminAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: "hide-job", targetId: "job_1" }),
+    });
+  });
+
+  it("unhide clears hiddenAt", async () => {
+    dbMock.jobRequest.findUnique.mockResolvedValue({ id: "job_1" });
+    dbMock.jobRequest.update.mockResolvedValue({});
+    const res = await adminReq("/api/admin/jobs/job_1", {
+      method: "PATCH",
+      body: JSON.stringify({ action: "unhide" }),
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.jobRequest.update).toHaveBeenCalledWith({
+      where: { id: "job_1" },
+      data: { hiddenAt: null },
+    });
+    expect(dbMock.adminAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: "unhide-job", targetId: "job_1" }),
+    });
   });
 });
 

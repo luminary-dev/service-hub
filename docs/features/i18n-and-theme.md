@@ -5,7 +5,11 @@
 
 The app is fully bilingual English/Sinhala. All UI strings live in
 `src/lib/i18n.ts` (`Locale = "en" | "si"`), with helper localizers for category,
-district, and price-type labels.
+district, and price-type labels. The one exception is the long-form legal copy
+for `/terms` and `/privacy` (#62), which lives in `src/lib/legal.ts` so it is
+only loaded server-side instead of shipping in the client dict; its EN/SI
+structural parity is guarded by `src/lib/legal.test.ts` the same way
+`i18n.test.ts` guards the dict.
 
 - **`/si` routing.** `src/proxy.ts` matches `/si` and `/si/*`, rewrites to the
   same path minus the `/si` prefix (keeping a single route tree), and sets an

@@ -68,6 +68,11 @@ model Provider {
   // automatically once the date passes; no cron needed.
   awayUntil  DateTime?
   suspended  Boolean @default(false)
+  // Suspension origin (#550). `suspended` alone drives public visibility for
+  // both ADMIN moderation and the self-service downgrade (#403); this marks it
+  // as an ADMIN suspension, which only the admin unsuspend action clears — the
+  // self-service /internal reactivate path refuses while it is set.
+  adminSuspended Boolean @default(false)
   // NONE | PENDING | VERIFIED | REJECTED
   verificationStatus String    @default("NONE")
   verifiedAt         DateTime?
@@ -142,8 +147,10 @@ model WorkPhoto {
 // still see what happened.
 model Report {
   id         String  @id @default(cuid())
-  // "PROVIDER" | "WORK_PHOTO" | "INQUIRY" — INQUIRY rows (#375) are only ever
-  // SYSTEM-created by the write-time content filter on inquiry/thread text.
+  // "PROVIDER" | "WORK_PHOTO" | "MESSAGE" | "INQUIRY". MESSAGE rows (#376)
+  // are user reports on individual thread messages; INQUIRY rows (#375) are
+  // only ever SYSTEM-created by the write-time content filter on
+  // inquiry/thread text.
   targetType String
   targetId   String
   reporterId String?
@@ -217,6 +224,11 @@ model InquiryMessage {
   inquiry   Inquiry  @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
   sender    String // "CUSTOMER" | "PROVIDER"
   body      String
+  // Moderation soft delete (#376): set by admin takedown of a reported
+  // message, cleared by restore. Thread reads and unread counts filter it;
+  // the row survives so the action is reversible and the reports queue can
+  // still show what was removed.
+  deletedAt DateTime?
   createdAt DateTime @default(now())
 
   @@index([inquiryId, createdAt])
