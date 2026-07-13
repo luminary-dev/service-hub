@@ -129,6 +129,15 @@ and every job has a `timeout-minutes` cap (15 for the matrix legs, 30 for the
 `e2e` compose job, 5 for `prod-compose`) so a hung run can't burn the 6-hour
 default.
 
+**Check-name convention.** Every check across the CI and security-scan
+workflows follows one format: a **per-package** check is `<package> / <task>`
+(e.g. `web / typecheck`, `api-gateway / build`, `web / coverage`,
+`media-service / npm-audit`, `web / trivy-image`); a **repo-wide** check is a
+single lowercase-kebab name with no slash (`e2e`, `compose-config`, `trivy-fs`,
+`actionlint`). The 28 `<package> / {typecheck,test,build}` legs are the required
+status checks in the `dev`/`prod` rulesets — keep those exact names stable, and
+if you rename one, update the ruleset's required-checks list in the same change.
+
 See [TESTING.md](TESTING.md) for the test layers behind these jobs.
 
 ## Security scanning (`security-scan.yml`)
