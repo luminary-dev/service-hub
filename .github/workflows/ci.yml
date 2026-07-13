@@ -71,6 +71,31 @@ jobs:
       - run: npm ci
       - run: npm run ${{ matrix.check }}
 
+  # Prod compose validation (#512): the fast per-package matrix and the e2e
+  # smoke both exercise the *dev* `docker-compose.yml`; the file that actually
+  # ships — `docker-compose.prod.yml` — was only ever parsed at deploy time over
+  # SSH, so a syntax error, bad anchor, broken `${VAR:?}`, wrong image name, or
+  # malformed healthcheck/mem_limit surfaced only during a live deploy (and the
+  # two files had already drifted). `docker compose config` fully
+  # parses/interpolates the file without pulling images or starting anything, so
+  # it's a cheap gate. Dummy values satisfy the required `${VAR:?}` guards so
+  # interpolation succeeds; the step fails loudly if the file is invalid.
+  prod-compose:
+    name: prod compose / config check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - name: Validate docker-compose.prod.yml
+        # Dummies only satisfy interpolation — nothing connects or is pulled.
+        env:
+          AUTH_SECRET: ci-dummy-secret
+          INTERNAL_API_SECRET: ci-dummy-secret
+          POSTGRES_PASSWORD: ci-dummy-password
+          WEB_ORIGIN: https://ci.example.test
+          DOMAIN: ci.example.test
+        run: docker compose -f docker-compose.prod.yml config -q
+
   # Coverage (#262): collect per-package coverage for visibility + a ratchet.
   # `npm run coverage` enforces the low baseline thresholds in each package's
   # vitest config — they pass today, so this never fails the build now; it only
