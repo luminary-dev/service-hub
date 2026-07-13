@@ -108,7 +108,10 @@ model Service {
   provider    Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
   title       String
   description String?
-  price       Float
+  // Whole LKR rupees (#371). DECIMAL, not double precision: currency must
+  // compare and sort exactly. Route code converts the Decimal back to a plain
+  // number at every JSON edge (see lib/money.ts).
+  price       Decimal  @db.Decimal(12, 2)
   priceType   String   @default("FIXED")
 
   @@index([providerId])

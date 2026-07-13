@@ -61,7 +61,7 @@ export function buildBrowseWhere(
   f: BrowseFilters,
   now: Date = new Date()
 ): Prisma.ProviderWhereInput {
-  const price: Prisma.FloatFilter = {
+  const price: Prisma.DecimalFilter = {
     ...(f.priceMin != null ? { gte: f.priceMin } : {}),
     ...(f.priceMax != null ? { lte: f.priceMax } : {}),
   };

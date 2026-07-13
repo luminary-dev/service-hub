@@ -6,6 +6,7 @@ import { moderateContent } from "../lib/auto-report";
 import { getAuth, getLocale, getOrigin, s2s } from "../lib/http";
 import { log } from "../lib/log";
 import { jobSchema, jobResponseSchema } from "../lib/job-schema";
+import { moneyToNumberOrNull } from "../lib/money";
 import { categoryValidator } from "../lib/categories";
 import { fetchUsers, fetchProviders } from "../lib/hydrate";
 import { normalizeListQuery } from "../lib/query";
@@ -224,7 +225,9 @@ jobs.get("/board", async (c) => {
       description: job.description,
       category: job.category,
       district: job.district,
-      budget: job.budget,
+      // budget is DECIMAL in the DB (#371) — a Decimal JSON-serializes as a
+      // string, so convert back to the number this payload has always carried.
+      budget: moneyToNumberOrNull(job.budget),
       status: job.status,
       createdAt: job.createdAt,
       customer: { name: users.get(job.customerId)?.name ?? "Unknown" },
@@ -276,7 +279,8 @@ jobs.get("/mine", async (c) => {
       description: job.description,
       category: job.category,
       district: job.district,
-      budget: job.budget,
+      // Same Decimal → number edge conversion as the board payload (#371).
+      budget: moneyToNumberOrNull(job.budget),
       status: job.status,
       createdAt: job.createdAt,
       responses: job.responses.map((r) => ({
