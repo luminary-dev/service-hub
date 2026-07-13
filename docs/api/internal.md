@@ -17,6 +17,7 @@ using the shared `s2s()` helper (one bounded retry on idempotent GETs).
 | `GET /internal/users/:id/session-version` | Gateway revocation check → `{ v: number \| null }`. |
 | `GET /internal/users/count` | Total user count. |
 | `PATCH /internal/users/:id` | Profile sync `{ name?, phone? }` from provider-service. |
+| `POST /internal/maintenance/sweep-orphans` | Remove orphaned `user`-namespace avatar files (#555, ops tooling). |
 
 ### provider-service
 
@@ -33,7 +34,7 @@ using the shared `s2s()` helper (one bounded retry on idempotent GETs).
 | `GET /internal/inquiries/exists?providerId=&userId=` | Review gate — has this user inquired with this provider? → `{ exists }`. |
 | `GET /internal/providers/:id/summary` | Existence/suspended check (favorites, reviews) — always 200. |
 | `POST /internal/users/:id/erase` | Account-deletion fan-out: delete the user's provider + files + sent inquiries. Idempotent. |
-| `POST /internal/maintenance/sweep-orphans` | Remove stored files no row references (ops tooling). |
+| `POST /internal/maintenance/sweep-orphans` | Remove stored files no row references, in the `provider` **and** `category` namespaces (#555, ops tooling). |
 
 ### review-service
 
