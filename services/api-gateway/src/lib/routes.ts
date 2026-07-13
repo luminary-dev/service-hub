@@ -115,6 +115,18 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
     return { service: "job", path: pathname };
   }
 
+  // Job moderation queue (#375): reports auto-filed by the content filter on
+  // job posts/responses, plus job-service's slice of the moderation audit
+  // trail — both owned by job-service, carved out of the /api/admin/ →
+  // provider-service fallback like the review-owned queues above.
+  if (
+    pathname === "/api/admin/job-reports" ||
+    pathname.startsWith("/api/admin/job-reports/") ||
+    pathname === "/api/admin/job-audit-log"
+  ) {
+    return { service: "job", path: pathname };
+  }
+
   // Everything else under /api/admin/, including the notification-badge
   // counts endpoint (#233, /api/admin/notifications/counts), belongs to
   // provider-service; the review-owned counterpart above

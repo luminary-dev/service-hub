@@ -50,7 +50,8 @@ Public entry. Responsibilities:
    - `/api/reviews/*` → review
    - `/api/admin/users*`, `/api/admin/impersonate*`, `/api/admin/signups` →
      identity
-   - `/api/admin/jobs*` → job
+   - `/api/admin/jobs*`, `/api/admin/job-reports*`,
+     `/api/admin/job-audit-log` → job
    - all other `/api/admin/*` (providers, verifications, reports, photos,
      categories, stats, `notifications/counts`, `audit-log`) → provider
    - `/api/photos/:id/report` → provider (work-photo abuse reports)
@@ -88,8 +89,9 @@ by service:
   (`/api/providers/:id/reviews`), `/api/account/reviews`, review photo delete,
   review abuse reports, and the admin review moderation queues
   (`/api/admin/review-*`).
-- **job-service (:4004)** — `/api/jobs*` (post, board, mine, responses, status)
-  and the read-only admin jobs oversight. **Monetization (pricing, commission,
+- **job-service (:4004)** — `/api/jobs*` (post, board, mine, responses, status),
+  the read-only admin jobs oversight, and the job moderation queue + audit log
+  (`/api/admin/job-reports*`, `/api/admin/job-audit-log`, #375). **Monetization (pricing, commission,
   payments) is intentionally deferred to v0.2** — v0.1 is free to use, so there
   is no transaction ledger and no price/commission field on a job (a JobRequest
   carries only an optional customer-stated `budget`).

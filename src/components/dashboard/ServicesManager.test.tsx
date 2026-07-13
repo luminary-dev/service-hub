@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { dict } from "@/lib/i18n";
 import ServicesManager from "./ServicesManager";
 import type { ServiceItem } from "./DashboardTabs";
@@ -130,13 +136,32 @@ describe("ServicesManager", () => {
     renderManager([services[0]]);
     fireEvent.click(screen.getByRole("button", { name: s.delete }));
     expect(screen.getByRole("alert").textContent).toContain(s.keepOne);
+    expect(screen.queryByText(s.confirmDelete)).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("DELETEs a service and drops it from the list", async () => {
+  // Deleting is confirmed inline (#562): the first click only arms the row.
+  function armFirstRow() {
+    fireEvent.click(screen.getAllByRole("button", { name: s.delete })[0]);
+    const prompt = screen.getByText(s.confirmDelete);
+    return within(prompt.parentElement as HTMLElement);
+  }
+
+  it("asks for confirmation and cancel makes no request", () => {
+    renderManager();
+    const confirm = armFirstRow();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fireEvent.click(confirm.getByRole("button", { name: s.cancel }));
+    expect(screen.queryByText(s.confirmDelete)).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("DELETEs a service after confirming and drops it from the list", async () => {
     fetchMock.mockResolvedValue({ ok: true });
     renderManager();
-    fireEvent.click(screen.getAllByRole("button", { name: s.delete })[0]);
+    const confirm = armFirstRow();
+    fireEvent.click(confirm.getByRole("button", { name: s.delete }));
 
     expect(fetchMock).toHaveBeenCalledWith("/api/provider/services/svc_1", {
       method: "DELETE",
@@ -146,12 +171,27 @@ describe("ServicesManager", () => {
     );
   });
 
-  // A dropped connection must not fail silently (#363): the row stays and the
-  // error is announced.
-  it("keeps the service and shows an error when the DELETE rejects", async () => {
-    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+  it("shows the server error when the delete fails and keeps the service", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      json: async () => ({ error: "Service has open inquiries" }),
+    });
     renderManager();
-    fireEvent.click(screen.getAllByRole("button", { name: s.delete })[0]);
+    const confirm = armFirstRow();
+    fireEvent.click(confirm.getByRole("button", { name: s.delete }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Service has open inquiries");
+    expect(screen.getByText("Full house wiring")).toBeTruthy();
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  // A dropped connection must not fail silently (#363).
+  it("shows a generic error when the delete request throws", async () => {
+    fetchMock.mockRejectedValue(new TypeError("network down"));
+    renderManager();
+    const confirm = armFirstRow();
+    fireEvent.click(confirm.getByRole("button", { name: s.delete }));
 
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain(s.deleteError);
