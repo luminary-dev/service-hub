@@ -61,7 +61,9 @@ describe("MessageThread", () => {
       })
     ).toBeTruthy();
     expect(screen.getByText("Yes, I can come on Monday.")).toBeTruthy();
-    expect(fetchMock).toHaveBeenCalledWith("/api/inquiries/inq_1/messages");
+    expect(fetchMock).toHaveBeenCalledWith("/api/inquiries/inq_1/messages", {
+      signal: expect.any(AbortSignal),
+    });
   });
 
   it("shows a load-failure alert when the initial fetch fails", async () => {
@@ -150,6 +152,36 @@ describe("MessageThread", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reason: "spam", details: undefined }),
     });
+  });
+
+  it("shows the load-failure alert when the initial fetch rejects (#377)", async () => {
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    renderThread();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(t.loadFailed);
+  });
+
+  it("recovers from a rejected send with an alert and a re-enabled button (#363)", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => threadFixture,
+    });
+    const { container } = renderThread();
+    await screen.findByRole("heading", { name: t.threadWith("Sunil Perera") });
+
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    fireEvent.change(screen.getByLabelText(t.placeholder), {
+      target: { value: "See you Monday" },
+    });
+    fireEvent.submit(container.querySelector("form")!);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(t.sendFailed);
+    const button = screen.getByRole("button", {
+      name: t.send,
+    }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
   });
 
   it("shows a send-failure alert when the POST fails", async () => {

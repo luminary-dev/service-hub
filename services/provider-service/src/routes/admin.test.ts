@@ -236,7 +236,7 @@ describe("SUPPORT cannot mutate provider/verification state", () => {
 // gated actions so the tests assert real effects, not just the guard.
 // ---------------------------------------------------------------------------
 describe("PATCH /api/admin/providers/:id (ADMIN actions)", () => {
-  it("suspend flips suspended=true and records an audit entry", async () => {
+  it("suspend flips suspended+adminSuspended=true and records an audit entry", async () => {
     dbMock.provider.findUnique.mockResolvedValue({ id: "p1", suspended: false });
     const res = await req("/api/admin/providers/p1", {
       method: "PATCH",
@@ -247,9 +247,24 @@ describe("PATCH /api/admin/providers/:id (ADMIN actions)", () => {
     expect(await res.json()).toEqual({ ok: true });
     expect(dbMock.provider.update).toHaveBeenCalledWith({
       where: { id: "p1" },
-      data: { suspended: true },
+      data: { suspended: true, adminSuspended: true },
     });
     expect(dbMock.adminAuditLog.create).toHaveBeenCalledOnce();
+  });
+
+  // #550: this is the single path that lifts an ADMIN suspension.
+  it("unsuspend clears both suspended and adminSuspended", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({ id: "p1", suspended: true });
+    const res = await req("/api/admin/providers/p1", {
+      method: "PATCH",
+      body: { action: "unsuspend" },
+      role: "ADMIN",
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.update).toHaveBeenCalledWith({
+      where: { id: "p1" },
+      data: { suspended: false, adminSuspended: false },
+    });
   });
 
   it("verify sets VERIFIED + verifiedAt", async () => {
@@ -660,6 +675,12 @@ describe("bulk moderation records one audit entry per affected target", () => {
       role: "ADMIN",
     });
     expect(res.status).toBe(200);
+    // adminSuspended mirrors suspended (#550): a bulk suspend is admin-owned
+    // and must not be self-liftable via the #403 downgrade → re-upgrade cycle.
+    expect(dbMock.provider.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["p1", "p2", "ghost"] } },
+      data: { suspended: true, adminSuspended: true },
+    });
     expect(dbMock.adminAuditLog.create).toHaveBeenCalledTimes(2);
     const entries = dbMock.adminAuditLog.create.mock.calls.map((call) => call[0].data);
     expect(entries).toEqual([

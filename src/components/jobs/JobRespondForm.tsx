@@ -17,20 +17,26 @@ export default function JobRespondForm({ jobId }: { jobId: string }) {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const res = await fetch(`/api/jobs/${jobId}/responses`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: message.trim() }),
-    });
-    setLoading(false);
-    if (res.ok) {
-      // Show an announced, focus-catching confirmation in place rather than
-      // refreshing away to a static "Responded" chip: a plain refresh unmounts
-      // this form, drops the focused submit button, and announces nothing (#510).
-      setSent(true);
-    } else {
-      const d = await res.json().catch(() => ({}));
-      setError(d.error ?? t.respondError);
+    try {
+      const res = await fetch(`/api/jobs/${jobId}/responses`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: message.trim() }),
+      });
+      if (res.ok) {
+        // Show an announced, focus-catching confirmation in place rather than
+        // refreshing away to a static "Responded" chip: a plain refresh unmounts
+        // this form, drops the focused submit button, and announces nothing (#510).
+        setSent(true);
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setError(d.error ?? t.respondError);
+      }
+    } catch {
+      // Network failure — recover instead of wedging the button (#363).
+      setError(t.respondError);
+    } finally {
+      setLoading(false);
     }
   }
 

@@ -39,7 +39,11 @@
   `Provider` denormalizes `contactName`/`contactEmail`/`contactPhone` (copied
   from the user at registration; profile updates write both locally and S2S to
   identity) and carries `awayUntil` (#49), `verificationStatus`/`verifiedAt`/
-  `rejectionReason`, `suspended`. The free-text pitch is bilingual (#515):
+  `rejectionReason`, `suspended` + `adminSuspended` (#550 — `suspended` alone
+  drives public visibility for both ADMIN moderation and the self-service
+  downgrade #403; `adminSuspended` marks it admin-owned, which only the admin
+  unsuspend action clears — the self-service reactivate refuses it). The
+  free-text pitch is bilingual (#515):
   `headline`/`bio` (English, required) plus **optional nullable**
   `headlineSi`/`bioSi` (Sinhala variants) — the public payload prefers the SI
   variant under the `si` locale and falls back to the English original, and
