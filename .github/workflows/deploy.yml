@@ -57,13 +57,45 @@ jobs:
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           # web builds from the repo root; each service from its own directory.
+          # Pushed by SHA only — :prod is re-pointed atomically by tag-prod
+          # below, so a partial matrix failure never leaves :prod mixed (#573).
           context: ${{ matrix.image == 'web' && '.' || format('services/{0}', matrix.image) }}
           push: true
-          tags: |
-            ghcr.io/luminary-dev/service-hub-${{ matrix.image }}:prod
-            ghcr.io/luminary-dev/service-hub-${{ matrix.image }}:${{ github.sha }}
+          tags: ghcr.io/luminary-dev/service-hub-${{ matrix.image }}:${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  # Move every :prod tag in one post-matrix job that only runs when ALL nine
+  # builds succeeded (#573). Tagging :prod inside the matrix re-pointed it
+  # per-image as legs finished, so one failed leg (e.g. a media/sharp flake,
+  # #351) left :prod as a mixed-version set that a manual `IMAGE_TAG=prod`
+  # `up -d` would happily run. `imagetools create` copies the manifest in the
+  # registry — no rebuild, no pull.
+  tag-prod:
+    name: Tag :prod
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.ref == 'refs/heads/prod'
+    permissions:
+      packages: write
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Point every :prod tag at ${{ github.sha }}
+        run: |
+          for image in web identity-service provider-service review-service \
+                       job-service notification-service media-service \
+                       chat-service api-gateway; do
+            docker buildx imagetools create \
+              --tag "ghcr.io/luminary-dev/service-hub-$image:prod" \
+              "ghcr.io/luminary-dev/service-hub-$image:$GITHUB_SHA"
+          done
 
   deploy:
     needs: build-and-push

@@ -8,11 +8,12 @@ backups, monitoring) see [OPERATIONS.md](OPERATIONS.md).
 - **Branch model** — work merges to `dev` (integration); releasing is a PR
   `dev → prod`. The push to `prod` is the deploy trigger.
 - **CD** — `.github/workflows/deploy.yml` builds and pushes an image per service +
-  web to `ghcr.io/luminary-dev/service-hub-<name>` (tagged `prod` and the commit
-  SHA), then, if enabled, redeploys the host over SSH with a health gate and
-  automatic rollback.
+  web to `ghcr.io/luminary-dev/service-hub-<name>` (tagged with the commit SHA;
+  `:prod` is re-pointed atomically once all nine builds succeed), then, if
+  enabled, redeploys the host over SSH with a health gate and automatic rollback.
 - **Releases** — `.github/workflows/release.yml`: a `v*` git tag publishes
-  semver-tagged images and cuts a GitHub Release.
+  semver-tagged images and cuts a GitHub Release. Only tags pointing at commits
+  contained in `prod` are released.
 - **Compose** — `docker-compose.prod.yml` (GHCR images, `restart: unless-stopped`,
   required-secret enforcement, internal-only network + Caddy on 80/443).
 
@@ -36,15 +37,22 @@ security scans (`security-scan.yml`) run on pushes and PRs to both `dev` and
 
 ## CD pipeline (`deploy.yml`)
 
-Triggered on **push to `prod`** (and `workflow_dispatch`). Two jobs:
+Triggered on **push to `prod`** (and `workflow_dispatch`). Three jobs:
 
 1. **`build-and-push`** — a matrix over web + all eight services. Each is built
    with Buildx (web from the repo root, each service from `services/<name>`) and
-   pushed to `ghcr.io/luminary-dev/service-hub-<image>` tagged both `:prod` and
-   `:<commit-sha>`, using a per-image GitHub Actions layer cache. This job runs
-   unconditionally, so images are always published even before a server exists.
+   pushed to `ghcr.io/luminary-dev/service-hub-<image>` tagged `:<commit-sha>`,
+   using a per-image GitHub Actions layer cache. This job runs unconditionally,
+   so images are always published even before a server exists.
 
-2. **`deploy`** — gated on the repo variable **`DEPLOY_ENABLED == 'true'`** and
+2. **`tag-prod`** — re-points every image's `:prod` tag at the new
+   `:<commit-sha>` in one post-matrix job (`docker buildx imagetools create`, a
+   registry-side manifest copy). It only runs when **all nine** matrix builds
+   succeeded, so a partial matrix failure can never leave `:prod` as a
+   mixed-version set (#573) — previously each leg moved its own `:prod` tag as
+   it finished.
+
+3. **`deploy`** — gated on the repo variable **`DEPLOY_ENABLED == 'true'`** and
    the `production` GitHub Environment; runs under a `deploy-prod` concurrency
    group (no cancel-in-progress) so two deploys never overlap. It:
    - reads the currently-deployed `IMAGE_TAG` from the server's `.env`
@@ -66,6 +74,11 @@ Triggered on **push to `prod`** (and `workflow_dispatch`). Two jobs:
 
 Pushing a semver git tag (e.g. `v0.1.0`) runs the Release workflow:
 
+- **guards branch containment first** (#569): a `guard` job fails the run
+  unless the tagged commit is contained in `prod` (`git merge-base
+  --is-ancestor`), so a tag on a feature-branch or local commit cannot publish
+  images or write the shared build cache — the release-side counterpart of
+  `deploy.yml`'s prod-branch ref guard (#383);
 - publishes a versioned image per service + web to GHCR, tagged `:<tag>` and
   `:latest` (in addition to the `:prod` / `:<sha>` tags `deploy.yml` pushes),
   reusing the same per-image layer cache;
@@ -185,8 +198,9 @@ PR dev → prod  →  CI + security scans pass  →  merge  →  images built + 
 ```
 
 To cut a versioned release, tag a `prod` commit: `git tag v0.1.0 && git push
-origin v0.1.0` (fires `release.yml`). After a release, sync the read-only
-service mirrors from `prod`:
+origin v0.1.0` (fires `release.yml`; its guard job rejects tags on commits not
+contained in `prod`). After a release, sync the read-only service mirrors from
+`prod`:
 
 ```bash
 npm run sync:repos          # scripts/sync-service-repos.sh

@@ -44,7 +44,8 @@ together. Compose base images (`postgres:16-alpine`, `redis:7-alpine`,
   a trailing comment (`uses: actions/checkout@<sha> # v7`), so a hijacked tag
   can't run with our `packages: write` / `contents: write` scopes or deploy
   secrets; Dependabot bumps the SHA and the comment together. (`actionlint.yml`'s
-  `docker://rhysd/actionlint` is pinned by image tag.)
+  `docker://rhysd/actionlint` is pinned by **image digest** with the tag as the
+  readable label, #573.)
 - **docker** — bumps the pinned base-image digests so base-layer CVEs surface as
   PRs instead of silently persisting.
 
@@ -107,11 +108,13 @@ Runs on push and PR to `dev` and `prod`. Jobs:
   job only fails if coverage regresses below the floor. Raise the floors as the
   suites grow.
 - **`e2e` compose-smoke** (#241) — **PRs only** (booting the full stack is
-  heavy). Boots the whole stack with `docker compose up -d --build --wait`, waits
-  for web on :3000, **seeds with `SEED_DEMO_DATA=true`** (the prod images run
-  `NODE_ENV=production`, where the seed otherwise refuses), then runs
-  `scripts/e2e-smoke.sh`. Dumps logs on failure and always tears down with
-  `down -v`.
+  heavy). Pre-builds the nine compose images with `docker/bake-action` reusing
+  deploy.yml's per-image GHA layer cache (read-only — no `cache-to`, so a
+  feature branch can't write the shared cache; #573), boots the stack with
+  `docker compose up -d --no-build --wait`, waits for web on :3000, **seeds
+  with `SEED_DEMO_DATA=true`** (the prod images run `NODE_ENV=production`,
+  where the seed otherwise refuses), then runs `scripts/e2e-smoke.sh`. Dumps
+  logs on failure and always tears down with `down -v`.
 - **`prod-compose`** (#512) — validates `docker-compose.prod.yml` (the file that
   actually ships) with `docker compose -f docker-compose.prod.yml config -q`.
   The dev/e2e jobs only ever exercise `docker-compose.yml`, so the prod file used
@@ -190,7 +193,8 @@ Lints the workflow YAML itself with actionlint (bad `runs-on`, malformed
 `${{ }}` expressions, deprecated syntax, broken `needs:`/`if:` refs). It runs
 on push + PR to `dev`/`prod` **only when a `.github/workflows/**` file changes**
 (so it never touches unrelated PRs), plus `workflow_dispatch`, pinned to the
-`rhysd/actionlint:1.7.12` image. Least-privilege `permissions` (`contents:
+`rhysd/actionlint:1.7.12` image **by digest** (#573; the mutable Docker Hub tag
+alone could be repointed by the publisher). Least-privilege `permissions` (`contents:
 read`), a 10-minute `timeout-minutes` cap, and the shared `concurrency` cancel
 group. The bundled shellcheck integration is disabled for now (`-shellcheck=`)
 because today's workflows trip only benign SC2016/SC2034 false-positives.
