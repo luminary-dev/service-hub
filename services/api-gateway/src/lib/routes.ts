@@ -146,6 +146,13 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
   if (pathname === "/api/favorites" || pathname.startsWith("/api/favorites/")) {
     return { service: "identity", path: pathname };
   }
+  // Saved searches (#516) live next to favorites on identity-service.
+  if (
+    pathname === "/api/saved-searches" ||
+    pathname.startsWith("/api/saved-searches/")
+  ) {
+    return { service: "identity", path: pathname };
+  }
 
   if (
     pathname === "/api/providers" ||

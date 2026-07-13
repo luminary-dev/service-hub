@@ -11,6 +11,7 @@ import { getSession } from "@/lib/auth";
 import ProviderCard, { ProviderCardDTO } from "@/components/ProviderCard";
 import CategoryIcon from "@/components/CategoryIcon";
 import FilterBar from "@/components/FilterBar";
+import SaveSearchButton from "@/components/SaveSearchButton";
 import InView from "@/components/InView";
 import { DISTRICTS } from "@/lib/constants";
 import Link from "next/link";
@@ -160,6 +161,18 @@ export default async function ProvidersPage({
     [t.browse.stats.districts, DISTRICTS.length],
   ];
 
+  // Saved searches (#516): customers can persist the primary filters
+  // (q/category/district) and get emailed when a new professional matches.
+  const canSaveSearch =
+    session?.role === "CUSTOMER" && Boolean(q || category || district);
+  const defaultSearchName = [
+    q,
+    category ? categoryLabelLoc(category, locale) : "",
+    district,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
     <div>
       {/* Registry header band */}
@@ -210,6 +223,17 @@ export default async function ProvidersPage({
           availableOnly={availableOnly}
           categories={categories}
         />
+
+      {canSaveSearch && (
+        <div className="mt-4">
+          <SaveSearchButton
+            query={q}
+            category={category}
+            district={district}
+            defaultName={defaultSearchName}
+          />
+        </div>
+      )}
 
       {results.length === 0 ? (
         <div className="card mt-8 flex flex-col items-center px-6 py-16 text-center">

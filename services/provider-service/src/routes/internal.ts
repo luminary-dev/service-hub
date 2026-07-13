@@ -6,6 +6,8 @@ import { Prisma } from "@prisma/client";
 import { db } from "../db";
 import { moderateContent } from "../lib/auto-report";
 import { optionalWebUrl } from "../lib/field-rules";
+import { getOrigin } from "../lib/http";
+import { notifySavedSearchMatches } from "../lib/saved-search-alerts";
 import { removeStoredFile, sweepMedia } from "../lib/storage";
 
 export const internalRoutes = new Hono();
@@ -123,6 +125,21 @@ internalRoutes.post("/internal/providers", async (c) => {
         .map((s) => `${s.title} ${s.description ?? ""}`)
         .join("\n"),
     });
+    // Saved-search alerting (#516): email customers whose saved search matches
+    // this newly published profile. Deliberately NOT awaited — this create sits
+    // on identity's registration critical path (5s s2s budget, with user
+    // rollback on timeout), so the fan-out runs after the response; it catches
+    // and logs its own failures.
+    void notifySavedSearchMatches(
+      {
+        id: provider.id,
+        userId: data.userId,
+        contactName: data.name,
+        category: data.category,
+        district: data.district,
+      },
+      getOrigin(c)
+    );
     return c.json({ id: provider.id });
   } catch (e) {
     // userId is unique: a retried/concurrent registration for the same user

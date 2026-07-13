@@ -7,6 +7,7 @@ import {
   inquiryEmail,
   jobResponseEmail,
   newJobEmail,
+  newProviderMatchEmail,
   passwordResetEmail,
   sendMail,
   verifyEmail,
@@ -44,6 +45,18 @@ const newJobSchema = z.object({
   recipients: z.array(z.string().email()).min(1).max(200),
   url: z.string().min(1),
   jobTitle: z.string().min(1),
+  district: z.string().min(1),
+  locale: z.unknown().optional(),
+});
+
+// Saved-search new-match alert (#516) — the reverse-direction fan-out:
+// provider-service resolves the matching saved searches once and hands the
+// (already capped + deduped, per-locale) recipient list here. Cap mirrors
+// provider-service's MAX_ALERT_RECIPIENTS.
+const newProviderMatchSchema = z.object({
+  recipients: z.array(z.string().email()).min(1).max(200),
+  url: z.string().min(1),
+  providerName: z.string().min(1),
   district: z.string().min(1),
   locale: z.unknown().optional(),
 });
@@ -133,6 +146,38 @@ emailRoutes.post("/new-job", async (c) => {
       }
     }
     log.info("new-job fan-out complete", {
+      context: "email",
+      accepted: unique.length,
+      delivered,
+    });
+  })();
+  return c.json({ ok: true, accepted: unique.length }, 202);
+});
+
+emailRoutes.post("/new-provider-match", async (c) => {
+  const parsed = newProviderMatchSchema.safeParse(await readBody(c));
+  if (!parsed.success) return c.json({ error: "Invalid input" }, 400);
+  const { recipients, url, providerName, district, locale } = parsed.data;
+  const { subject, html } = newProviderMatchEmail(
+    url,
+    providerName,
+    district,
+    coerceLocale(locale)
+  );
+  // Same accept-and-return contract as /new-job (#557): defensive dedupe, ack
+  // 202 immediately, fan out best-effort in the background, log the count.
+  const unique = [...new Set(recipients.map((r) => r.toLowerCase()))];
+  void (async () => {
+    let delivered = 0;
+    for (const to of unique) {
+      try {
+        const { delivered: sent } = await sendMail({ to, subject, html });
+        if (sent) delivered++;
+      } catch {
+        // best-effort — keep going for the remaining recipients
+      }
+    }
+    log.info("new-provider-match fan-out complete", {
       context: "email",
       accepted: unique.length,
       delivered,

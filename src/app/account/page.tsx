@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
-import { FaIdCard, FaInbox, FaRegHeart, FaRegStar, type IconType } from "@/components/icons";
+import { FaIdCard, FaInbox, FaMagnifyingGlass, FaRegHeart, FaRegStar, type IconType } from "@/components/icons";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { loginNext } from "@/lib/login";
+import { localizedHref } from "@/lib/links";
 import { categoryLabelLoc, dict } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
 import ProviderCard, { ProviderCardDTO } from "@/components/ProviderCard";
@@ -17,6 +18,7 @@ import StatReadout from "@/components/ui/StatReadout";
 import EmptyState from "@/components/ui/EmptyState";
 import AccountDetails from "@/components/AccountDetails";
 import CloseProviderProfile from "@/components/CloseProviderProfile";
+import SavedSearches, { SavedSearchItem } from "@/components/SavedSearches";
 
 // Caching (#57): session-gated and must reflect the user's own writes
 // immediately — stays fully dynamic (no-store).
@@ -30,6 +32,15 @@ type AccountInquiry = {
   respondedAt: string | null;
   unreadCount: number;
   provider: { id: string; name: string; category: string; suspended: boolean };
+};
+
+type SavedSearchDTO = {
+  id: string;
+  name: string;
+  query: string | null;
+  category: string | null;
+  district: string | null;
+  createdAt: string;
 };
 
 type AccountReview = {
@@ -81,10 +92,14 @@ export default async function AccountPage() {
   const session = await getSession();
   if (!session) redirect(await loginNext("/account"));
 
-  const [locale, favorites, inquiriesData, reviewsData, meData] =
+  const [locale, favorites, savedSearchData, inquiriesData, reviewsData, meData] =
     await Promise.all([
       getLocale(),
       apiJson<{ providerIds: string[] }>("/api/favorites"),
+      // Saved searches (#516) are customer-only; other roles get a 403.
+      session.role === "CUSTOMER"
+        ? apiJson<{ savedSearches: SavedSearchDTO[] }>("/api/saved-searches")
+        : null,
       apiJson<{ inquiries: AccountInquiry[] }>("/api/account/inquiries"),
       apiJson<{ reviews: AccountReview[] }>("/api/account/reviews"),
       apiJson<{
@@ -117,6 +132,29 @@ export default async function AccountPage() {
           (order.get(b.id) ?? Number.MAX_SAFE_INTEGER)
       );
   }
+
+  // Saved searches (#516): pre-localize the re-run URL and a filter summary so
+  // the client list stays dumb.
+  const savedSearchItems: SavedSearchItem[] = (
+    savedSearchData?.savedSearches ?? []
+  ).map((s) => {
+    const sp = new URLSearchParams();
+    if (s.query) sp.set("q", s.query);
+    if (s.category) sp.set("category", s.category);
+    if (s.district) sp.set("district", s.district);
+    return {
+      id: s.id,
+      name: s.name,
+      href: localizedHref(`/providers?${sp.toString()}`, locale),
+      filters: [
+        s.query ? `“${s.query}”` : "",
+        s.category ? categoryLabelLoc(s.category, locale) : "",
+        s.district ?? "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    };
+  });
 
   const inquiries = inquiriesData?.inquiries ?? [];
   const reviews = reviewsData?.reviews ?? [];
@@ -229,6 +267,18 @@ export default async function AccountPage() {
             </InView>
           )}
         </section>
+
+        {/* Saved searches (#516) — customer-only, mirroring the backend gate. */}
+        {session.role === "CUSTOMER" && (
+          <section className="mt-14">
+            <SectionHeading
+              code="SRCH"
+              icon={FaMagnifyingGlass}
+              title={t.account.searchesTitle}
+            />
+            <SavedSearches initial={savedSearchItems} />
+          </section>
+        )}
 
         <div className="mt-14 grid items-start gap-10 lg:grid-cols-2">
           <section>

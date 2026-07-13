@@ -44,6 +44,7 @@ model User {
   lockedUntil   DateTime?
   createdAt     DateTime  @default(now())
   favorites     Favorite[]
+  savedSearches SavedSearch[]
 
   passwordResetTokens     PasswordResetToken[]
   emailVerificationTokens EmailVerificationToken[]
@@ -136,6 +137,31 @@ model Favorite {
   @@unique([userId, providerId])
   @@index([userId])
   @@index([providerId])
+}
+
+// Saved searches (#516): a named snapshot of the /providers browse filters
+// (free-text query + category + district — the primary browse dimensions).
+// category references a provider-service Category slug; no FK across service
+// boundaries — validated over S2S at write time, same as Favorite.providerId.
+// Alerting: provider-service asks /internal/saved-searches/candidates for the
+// searches a newly published provider could match and emails the owners;
+// lastNotifiedAt bounds that to one alert per search per cooldown window.
+// locale is captured at save time so the alert email speaks the right language.
+model SavedSearch {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String
+  query          String?
+  category       String?
+  district       String?
+  locale         String    @default("en")
+  lastNotifiedAt DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([userId])
+  // Candidate lookup scans by the new provider's category/district.
+  @@index([category, district])
 }
 
 model PasswordResetToken {
