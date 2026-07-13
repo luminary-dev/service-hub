@@ -610,8 +610,10 @@ export default function PhotosManager({
                       {ph.delete}
                     </button>
                   )}
-                  {/* Keyboard-accessible fallback for the drag reorder. */}
-                  <div className="absolute inset-x-2 bottom-2 flex justify-between opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
+                  {/* Keyboard-accessible fallback for the drag reorder;
+                      pointer-coarse keeps it visible on touch, where
+                      group-hover never fires (#565). */}
+                  <div className="absolute inset-x-2 bottom-2 flex justify-between opacity-0 transition focus-within:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100">
                     <button
                       onClick={() => movePhoto(i, i - 1)}
                       disabled={i === 0}
