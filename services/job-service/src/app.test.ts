@@ -80,6 +80,19 @@ describe("POST /internal/users/:id/erase", () => {
     expect(dbMock.jobResponse.deleteMany).not.toHaveBeenCalled();
   });
 
+  // #551: a retry after full peer success resolves providerId as null (the
+  // Provider row is gone) — the erase must still be a clean idempotent 200.
+  it("treats an explicit null providerId as a no-op for responses", async () => {
+    dbMock.jobRequest.deleteMany.mockResolvedValue({ count: 0 });
+    const res = await req("/internal/users/u1/erase", {
+      method: "POST",
+      body: JSON.stringify({ providerId: null }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(dbMock.jobResponse.deleteMany).not.toHaveBeenCalled();
+  });
+
   it("also deletes the provider's responses when a providerId is supplied", async () => {
     dbMock.jobRequest.deleteMany.mockResolvedValue({ count: 0 });
     dbMock.jobResponse.deleteMany.mockResolvedValue({ count: 0 });

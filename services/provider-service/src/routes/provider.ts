@@ -20,6 +20,7 @@ import {
 } from "../lib/clients";
 import { getCurrentProvider } from "../lib/provider-auth";
 import { isSupportOrAdmin, s2s } from "../lib/http";
+import { normalizePagination } from "../lib/admin-list";
 import { unreadCounts } from "./messages";
 import {
   ALLOWED_IMAGE_TYPES,
@@ -35,31 +36,48 @@ export const providerDashboardRoutes = new Hono();
 const MEDIA_SERVICE_URL =
   process.env.MEDIA_SERVICE_URL ?? "http://localhost:4006";
 
+// The dashboard embeds only the first page of inquiries (#372) — deeper pages
+// come from the paginated GET /api/provider/inquiries. Counts ride along so
+// the stats/badges track the full inbox, not just the embedded slice.
+const DASHBOARD_INQUIRIES_TAKE = 20;
+
 // Everything the dashboard page needs in one payload: the provider with its
-// contact info (emailVerified fresh from identity), services, photos,
-// inquiries, a rating summary from review-service and the count of open jobs
-// matching the provider's trade — all peer reads degrade gracefully.
+// contact info (emailVerified fresh from identity), services, photos, the
+// first page of inquiries (+ totals), a rating summary from review-service and
+// the count of open jobs matching the provider's trade — all peer reads
+// degrade gracefully.
 providerDashboardRoutes.get("/api/provider/dashboard", async (c) => {
   const provider = await getCurrentProvider(c);
   if (!provider) {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  const [services, photos, inquiries, emailVerified, ratings, openJobsCount] =
-    await Promise.all([
-      db.service.findMany({ where: { providerId: provider.id }, orderBy: { price: "asc" } }),
-      db.workPhoto.findMany({
-        where: { providerId: provider.id, deletedAt: null },
-        orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
-      }),
-      db.inquiry.findMany({
-        where: { providerId: provider.id },
-        orderBy: { createdAt: "desc" },
-      }),
-      fetchEmailVerified(provider.userId),
-      fetchRatings([provider.id]),
-      fetchOpenJobsCount(provider.category, provider.district, provider.userId),
-    ]);
+  const [
+    services,
+    photos,
+    inquiries,
+    inquiriesTotal,
+    newInquiriesCount,
+    emailVerified,
+    ratings,
+    openJobsCount,
+  ] = await Promise.all([
+    db.service.findMany({ where: { providerId: provider.id }, orderBy: { price: "asc" } }),
+    db.workPhoto.findMany({
+      where: { providerId: provider.id, deletedAt: null },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+    }),
+    db.inquiry.findMany({
+      where: { providerId: provider.id },
+      orderBy: { createdAt: "desc" },
+      take: DASHBOARD_INQUIRIES_TAKE,
+    }),
+    db.inquiry.count({ where: { providerId: provider.id } }),
+    db.inquiry.count({ where: { providerId: provider.id, status: "NEW" } }),
+    fetchEmailVerified(provider.userId),
+    fetchRatings([provider.id]),
+    fetchOpenJobsCount(provider.category, provider.district, provider.userId),
+  ]);
 
   const r = ratings[provider.id];
   return c.json({
@@ -74,6 +92,8 @@ providerDashboardRoutes.get("/api/provider/dashboard", async (c) => {
       services,
       photos,
       inquiries,
+      inquiriesTotal,
+      newInquiriesCount,
       ratingSummary: { rating: r?.rating ?? null, count: r?.count ?? 0 },
     },
     openJobsCount,
@@ -380,20 +400,37 @@ providerDashboardRoutes.delete("/api/provider/photos/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+// Paginated (#372): the inbox grows unbounded otherwise. `page`/`pageSize`
+// use the shared normalization (default 20, cap 100); the envelope adds
+// `total`/`page`/`pageSize` alongside the existing `inquiries` key so older
+// callers keep working. Unread counts are computed per page, not per inbox.
 providerDashboardRoutes.get("/api/provider/inquiries", async (c) => {
   const provider = await getCurrentProvider(c);
   if (!provider) {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  const inquiries = await db.inquiry.findMany({
-    where: { providerId: provider.id },
-    orderBy: { createdAt: "desc" },
+  const { page, pageSize } = normalizePagination({
+    page: c.req.query("page") ?? null,
+    pageSize: c.req.query("pageSize") ?? null,
   });
+  const where = { providerId: provider.id };
+  const [total, inquiries] = await Promise.all([
+    db.inquiry.count({ where }),
+    db.inquiry.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+  ]);
   const unread = await unreadCounts(inquiries, "PROVIDER");
 
   return c.json({
     inquiries: inquiries.map((i) => ({ ...i, unreadCount: unread[i.id] ?? 0 })),
+    total,
+    page,
+    pageSize,
   });
 });
 

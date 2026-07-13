@@ -12,7 +12,7 @@ each service enforces the tier. **Reads and report resolve/dismiss** gate on
 |---|---|---|
 | `GET /api/admin/users` | SUPPORT+ | Search by email/name (`?q`, `?page`), newest first, page 20 → `{ users, total, page, pageSize }`. |
 | `GET /api/admin/users/:id` | SUPPORT+ | Detail + favorites hydrated with provider names/phones (degrades to null). |
-| `PATCH /api/admin/users/:id` | ADMIN | `{ action: lock\|unlock }` and/or `{ role: CUSTOMER\|PROVIDER\|ADMIN\|SUPPORT }` (a lock or an actual role change bumps `sessionVersion`, revoking existing tokens). Self → 400. |
+| `PATCH /api/admin/users/:id` | ADMIN | `{ action: lock\|unlock }` and/or `{ role: CUSTOMER\|PROVIDER\|ADMIN\|SUPPORT }` (a lock or an actual role change bumps `sessionVersion`, revoking existing tokens). Self → 400. Promoting to PROVIDER requires an existing provider profile — none → 400 (#554). |
 | `POST /api/admin/users/:id/force-logout` | ADMIN | Bumps `sessionVersion` (self → 400). |
 | `POST /api/admin/impersonate/:userId` | ADMIN | `:userId` may be id or email; can't target self or an ADMIN (400); mints a 15-min `impersonation_session` cookie → `{ ok, user, providerId, expiresInSeconds: 900 }`. |
 | `POST /api/admin/impersonate/end` | ADMIN | Clears the cookie, closes the open log row → `{ ok: true }`. |
@@ -22,7 +22,7 @@ each service enforces the tier. **Reads and report resolve/dismiss** gate on
 
 | Method + path | Auth | Summary |
 |---|---|---|
-| `GET /api/admin/providers` | SUPPORT+ | Moderation list: `q`/`category`/`city`/`status`/`suspended` filters, sort `newest`\|`mostReviews`, paginated (default 20, cap 100) → `{ providers, total, page, pageSize }`. |
+| `GET /api/admin/providers` | SUPPORT+ | Moderation list: `q`/`category`/`city`/`status`/`suspended` filters, sort `newest`\|`mostReviews`, paginated (default 20, cap 100) → `{ providers, total, page, pageSize }`. `mostReviews` ranks in memory over at most the 1000 newest matches (#372). |
 | `GET /api/admin/providers/:id` | SUPPORT+ | Detail + photos + reviews (incl. soft-deleted) + `quality` score (#229, computed live). |
 | `GET /api/admin/verifications` | SUPPORT+ | PENDING queue + docs, oldest first, paginated (default 20, cap 100) → `{ providers, total, page, pageSize }`. |
 | `PATCH /api/admin/providers/:id` | ADMIN | `{ action: verify\|unverify\|suspend\|unsuspend }`. |
@@ -60,7 +60,7 @@ each service enforces the tier. **Reads and report resolve/dismiss** gate on
 
 | Method + path | Auth | Summary |
 |---|---|---|
-| `GET /api/admin/jobs` | SUPPORT+ | Jobs list (`?status` — `OPEN`/`CLOSED`, any other value is ignored; `?category`), newest first, customer name + response count → `{ jobs }` (not paginated). |
+| `GET /api/admin/jobs` | SUPPORT+ | Jobs list (`?status` — `OPEN`/`CLOSED`, any other value is ignored; `?category`), newest first, customer name + response count, paginated (#372: `?page`/`?pageSize`, default 20, cap 50) → `{ jobs, total, page, pageSize }`. |
 | `GET /api/admin/jobs/:id` | SUPPORT+ | Job + responses with customer/provider contact hydrated. |
 
 ---
