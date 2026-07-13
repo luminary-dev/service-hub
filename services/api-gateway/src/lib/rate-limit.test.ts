@@ -1,5 +1,11 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
-import { checkRateLimit, resolveClientIp, trustedProxyHops } from "./rate-limit";
+import {
+  checkRateLimit,
+  resolveClientIp,
+  trustedProxyHops,
+  LIMITED_ROUTES,
+  RATE_LIMITS,
+} from "./rate-limit";
 
 const rule = { limit: 3, windowMs: 1000 };
 
@@ -121,6 +127,45 @@ describe("trustedProxyHops", () => {
   it("reads process.env by default", () => {
     process.env.TRUSTED_PROXY_HOPS = "3";
     expect(trustedProxyHops()).toBe(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LIMITED_ROUTES: the path→rule table the POST middleware walks. These assert
+// the regexes match the real gateway routes (see lib/routes.ts) and carry the
+// intended budget.
+// ---------------------------------------------------------------------------
+describe("LIMITED_ROUTES", () => {
+  const match = (path: string) =>
+    LIMITED_ROUTES.find((r) => r.pattern.test(path));
+
+  // #505: change-email sends a confirmation to an attacker-chosen address, so
+  // it sits on the email-sending (resend) budget.
+  it("rate-limits change-email on the resend budget", () => {
+    const route = match("/api/account/email/change");
+    expect(route?.name).toBe("account-email-change");
+    expect(route?.rule).toBe(RATE_LIMITS.resend);
+  });
+
+  // #520: the four image-upload POSTs share one CPU-protecting "upload" bucket.
+  it.each([
+    "/api/account/avatar",
+    "/api/provider/photos",
+    "/api/provider/verification",
+    "/api/admin/categories/image",
+  ])("rate-limits image upload %s on the upload budget", (path) => {
+    const route = match(path);
+    expect(route?.name).toBe("upload");
+    expect(route?.rule).toBe(RATE_LIMITS.upload);
+  });
+
+  // Near-miss paths must not be swept into the upload/email buckets.
+  it("does not match unrelated or sibling paths", () => {
+    expect(match("/api/account/email/confirm")?.name).not.toBe(
+      "account-email-change"
+    );
+    expect(match("/api/provider/photos/order")).toBeUndefined();
+    expect(match("/api/account/profile")).toBeUndefined();
   });
 });
 
