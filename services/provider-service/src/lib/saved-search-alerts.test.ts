@@ -23,6 +23,7 @@ const PROVIDER = {
   contactName: "Nimal Perera",
   category: "electrician",
   district: "Colombo",
+  serviceDistricts: ["Colombo"],
 };
 
 function jsonResponse(body: unknown, ok = true) {
@@ -43,7 +44,26 @@ describe("notifySavedSearchMatches", () => {
     expect(s2sMock).toHaveBeenCalledTimes(1);
     expect(s2sMock).toHaveBeenCalledWith(
       expect.any(String),
-      "/internal/saved-searches/candidates?category=electrician&district=Colombo&excludeUserId=owner-1"
+      "/internal/saved-searches/candidates?category=electrician&districts=Colombo&excludeUserId=owner-1"
+    );
+  });
+
+  // Multi-district service areas (#502): candidate scoping covers EVERY
+  // served district, so a provider based in Colombo serving Gampaha alerts a
+  // Gampaha saved search too.
+  it("passes the full served district set to the candidate lookup", async () => {
+    s2sMock.mockResolvedValueOnce(jsonResponse({ savedSearches: [] }));
+
+    await notifySavedSearchMatches(
+      { ...PROVIDER, serviceDistricts: ["Colombo", "Gampaha", "Nuwara Eliya"] },
+      "https://baas.lk"
+    );
+
+    expect(s2sMock).toHaveBeenCalledWith(
+      expect.any(String),
+      "/internal/saved-searches/candidates?category=electrician" +
+        `&districts=${encodeURIComponent("Colombo,Gampaha,Nuwara Eliya")}` +
+        "&excludeUserId=owner-1"
     );
   });
 

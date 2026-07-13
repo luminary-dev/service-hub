@@ -67,7 +67,7 @@ the gateway-forwarded `x-user-id` / `x-user-role` / `x-user-name` headers.
 | GET | `/internal/users/:id/session-version` | `{ v }` — the gateway's revocation check (`null` if the user is gone). |
 | GET | `/internal/users/count` | `{ count }`. |
 | PATCH | `/internal/users/:id` | `{ name?, phone? }` profile sync from provider-service. |
-| GET | `/internal/saved-searches/candidates?category&district&excludeUserId?` | Saved searches a newly published provider could match (#516): verified CUSTOMER owners only, ≥24 h since `lastNotifiedAt`, capped 500 → `{ savedSearches: [{ id, query, locale, email }] }`. |
+| GET | `/internal/saved-searches/candidates?category&districts&excludeUserId?` | Saved searches a newly published provider could match (#516; `districts` = the full served set, #502): verified CUSTOMER owners only, ≥24 h since `lastNotifiedAt`, capped 500 → `{ savedSearches: [{ id, query, locale, email }] }`. |
 | POST | `/internal/saved-searches/notified` | `{ ids }` — stamp `lastNotifiedAt` after the fan-out emailed those searches' owners. |
 
 `GET /healthz` → `{ ok: true, service: "identity-service" }` (no secret; checks Postgres).

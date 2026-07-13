@@ -20,20 +20,24 @@ beforeEach(() => {
 });
 
 describe("GET /internal/saved-searches/candidates", () => {
-  it("requires category and district", async () => {
+  it("requires category and districts", async () => {
     const res = await app.request(
       "/internal/saved-searches/candidates?category=electrician"
     );
     expect(res.status).toBe(400);
+    const res2 = await app.request(
+      "/internal/saved-searches/candidates?districts=Colombo"
+    );
+    expect(res2.status).toBe(400);
   });
 
-  it("scopes by category/district (null = any), cooldown, role and verified email", async () => {
+  it("scopes by category/districts (null = any), cooldown, role and verified email", async () => {
     db.savedSearch.findMany.mockResolvedValue([
       { id: "s1", query: "wiring", locale: "si", user: { email: "a@b.lk" } },
     ]);
 
     const res = await app.request(
-      "/internal/saved-searches/candidates?category=electrician&district=Colombo&excludeUserId=u9"
+      "/internal/saved-searches/candidates?category=electrician&districts=Colombo&excludeUserId=u9"
     );
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
@@ -43,13 +47,30 @@ describe("GET /internal/saved-searches/candidates", () => {
     const where = db.savedSearch.findMany.mock.calls[0][0].where;
     expect(where.OR).toEqual([{ category: null }, { category: "electrician" }]);
     expect(where.AND[0]).toEqual({
-      OR: [{ district: null }, { district: "Colombo" }],
+      OR: [{ district: null }, { district: { in: ["Colombo"] } }],
     });
     expect(where.AND[1].OR[0]).toEqual({ lastNotifiedAt: null });
     expect(where.NOT).toEqual({ userId: "u9" });
     expect(where.user).toEqual({
       role: "CUSTOMER",
       emailVerified: { not: null },
+    });
+  });
+
+  // Multi-district service areas (#502): the caller passes the provider's
+  // full served set, and a saved search for ANY of them qualifies.
+  it("matches on any served district (list deduped and trimmed)", async () => {
+    db.savedSearch.findMany.mockResolvedValue([]);
+
+    const res = await app.request(
+      "/internal/saved-searches/candidates?category=electrician&districts=" +
+        encodeURIComponent("Colombo, Gampaha ,Colombo")
+    );
+    expect(res.status).toBe(200);
+
+    const where = db.savedSearch.findMany.mock.calls[0][0].where;
+    expect(where.AND[0]).toEqual({
+      OR: [{ district: null }, { district: { in: ["Colombo", "Gampaha"] } }],
     });
   });
 });

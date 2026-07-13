@@ -9,6 +9,7 @@ import {
   optionalSlPhone,
   optionalWebUrl,
   priceRupees,
+  serviceDistrictsField,
   slPhone,
 } from "./field-rules";
 
@@ -51,6 +52,10 @@ export const providerSchema = baseSchema.extend({
   headline: z.string().min(5).max(120),
   bio: z.string().min(20).max(2000),
   district: districtEnum,
+  // Multi-district service area (#502): every district served, home district
+  // included (the orchestration re-adds it if omitted). Optional so pre-#502
+  // clients keep registering with just `district`.
+  serviceDistricts: serviceDistrictsField,
   city: z.string().min(1).max(60),
   experience: z.number().int().min(0).max(60),
   whatsapp: optionalSlPhone,

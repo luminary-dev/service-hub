@@ -45,7 +45,14 @@
   `rejectionReason`, `suspended` + `adminSuspended` (#550 — `suspended` alone
   drives public visibility for both ADMIN moderation and the self-service
   downgrade #403; `adminSuspended` marks it admin-owned, which only the admin
-  unsuspend action clears — the self-service reactivate refuses it). The
+  unsuspend action clears — the self-service reactivate refuses it).
+  Multi-district service area (#502):
+  `serviceDistricts String[]` is the full set of districts the provider serves
+  — it **always contains the primary `district`** (kept as the home base shown
+  on cards), is capped at 5 (`MAX_SERVICE_DISTRICTS` in `lib/field-rules.ts`,
+  deduped with the primary pinned first), was backfilled to `[district]` by
+  migration `20260714090000`, and is GIN-indexed because browse filtering, the
+  job board and the new-job fan-out all match on membership in the set. The
   free-text pitch is bilingual (#515):
   `headline`/`bio` (English, required) plus **optional nullable**
   `headlineSi`/`bioSi` (Sinhala variants) — the public payload prefers the SI

@@ -29,7 +29,11 @@ export type NewProviderAlert = {
   userId: string;
   contactName: string;
   category: string;
+  // Primary (base) district — what cards and the alert email display.
   district: string;
+  // Full served set (#502 multi-district): primary + serviceDistricts.
+  // Candidate scoping matches a saved search on ANY served district.
+  serviceDistricts: string[];
 };
 
 // Does the new provider appear in a browse for `q`? One indexed findFirst
@@ -63,8 +67,8 @@ export async function notifySavedSearchMatches(
       IDENTITY_URL,
       `/internal/saved-searches/candidates?category=${encodeURIComponent(
         provider.category
-      )}&district=${encodeURIComponent(
-        provider.district
+      )}&districts=${encodeURIComponent(
+        provider.serviceDistricts.join(",")
       )}&excludeUserId=${encodeURIComponent(provider.userId)}`
     );
     if (!res.ok) {

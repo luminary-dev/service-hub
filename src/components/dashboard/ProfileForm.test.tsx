@@ -23,6 +23,7 @@ const data: DashboardData = {
   headline: "House wiring and repairs",
   bio: "Fifteen years wiring homes across Colombo district.",
   district: "Colombo",
+  serviceDistricts: ["Colombo", "Gampaha"],
   city: "Nugegoda",
   experience: 15,
   available: true,
@@ -92,10 +93,24 @@ describe("ProfileForm", () => {
     expect(body.name).toBe("Nuwan K. Perera");
     expect(body.experience).toBe(15);
     expect(body.awayUntil).toBeNull();
+    // Served set (#502) rides along, home district pinned first.
+    expect(body.serviceDistricts).toEqual(["Colombo", "Gampaha"]);
 
     const toast = await screen.findByRole("status");
     expect(toast.textContent).toContain(p.saved);
     expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it("toggling a district chip updates the served set in the payload (#502)", () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+    const { container } = renderForm();
+    // Deselect the saved extra and pick a different one.
+    fireEvent.click(screen.getByRole("button", { name: "Gampaha" }));
+    fireEvent.click(screen.getByRole("button", { name: "Kalutara" }));
+    fireEvent.submit(container.querySelector("form")!);
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.serviceDistricts).toEqual(["Colombo", "Kalutara"]);
   });
 
   it("disables the submit button while saving", () => {

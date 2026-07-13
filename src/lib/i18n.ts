@@ -1209,6 +1209,15 @@ const en = {
     asideWorkerAlt: "A tradesperson at work in Sri Lanka",
     asideBadge: "Registry",
   },
+  // Multi-district service area (#502): shared by the registration wizard,
+  // the dashboard profile form and the public profile page.
+  serviceDistricts: {
+    label: "Districts you serve",
+    hint: "Choose up to 5 districts you cover — your home district is always included.",
+    homeBadge: "Home",
+    areasLabel: "Service areas",
+    limitReached: "You can serve at most 5 districts.",
+  },
 };
 
 export type Dict = typeof en;
@@ -2387,6 +2396,13 @@ const si: Dict = {
     errServicePrice: (n: number) => `සේවාව ${n}ට වලංගු මිලක් අවශ්‍යයි.`,
     asideWorkerAlt: "ශ්‍රී ලංකාවේ වැඩ කරමින් සිටින කාර්මිකයෙක්",
     asideBadge: "ලියාපදිංචිය",
+  },
+  serviceDistricts: {
+    label: "ඔබ සේවය සපයන දිස්ත්‍රික්ක",
+    hint: "ඔබ ආවරණය කරන දිස්ත්‍රික්ක උපරිම 5ක් තෝරන්න — ඔබේ මුල් දිස්ත්‍රික්කය සැමවිටම ඇතුළත් වේ.",
+    homeBadge: "මුල් දිස්ත්‍රික්කය",
+    areasLabel: "සේවා ප්‍රදේශ",
+    limitReached: "ඔබට උපරිම දිස්ත්‍රික්ක 5ක් දක්වා සේවය සැපයිය හැක.",
   },
 };
 

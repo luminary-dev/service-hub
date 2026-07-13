@@ -103,6 +103,9 @@ function toCardDTO(
     // variant with an English fallback. Bio is not on the card.
     headlineSi: p.headlineSi,
     district: p.district,
+    // Full served set (#502) — always contains the primary district; the card
+    // can surface "also serves" coverage without another fetch.
+    serviceDistricts: p.serviceDistricts,
     city: p.city,
     experience: p.experience,
     // Effective availability (#49): an away provider reports available=false;

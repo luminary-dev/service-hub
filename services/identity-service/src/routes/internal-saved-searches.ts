@@ -15,19 +15,33 @@ const MAX_CANDIDATES = 500;
 // not turn a saved search into a mail firehose.
 export const NOTIFY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
-// GET /internal/saved-searches/candidates?category=&district=&excludeUserId= —
-// the saved searches a newly published provider in category/district could
-// match, joined with the owner's email. A null category/district on a search
-// means "any", so it stays a candidate for every value. Only current CUSTOMER
-// accounts with a verified email are alerted: a role change ends the
-// subscription, and an unverified (possibly not-owned) address must never
-// receive marketing-adjacent mail. Free-text `query` is returned unevaluated —
-// provider-service owns the browse where-clause and decides the actual match.
+// Bound on the districts= list: providers serve at most 5 districts today
+// (#502); 25 (the full Sri Lankan district list) caps a drifted caller.
+const MAX_DISTRICTS = 25;
+
+// GET /internal/saved-searches/candidates?category=&districts=a,b&excludeUserId= —
+// the saved searches a newly published provider could match, joined with the
+// owner's email. `districts` is the provider's full served set (#502
+// multi-district: primary + serviceDistricts), so a search for ANY served
+// district qualifies — not just where the provider is based. A null
+// category/district on a search means "any", so it stays a candidate for
+// every value. Only current CUSTOMER accounts with a verified email are
+// alerted: a role change ends the subscription, and an unverified (possibly
+// not-owned) address must never receive marketing-adjacent mail. Free-text
+// `query` is returned unevaluated — provider-service owns the browse
+// where-clause and decides the actual match.
 internalSavedSearchesRoutes.get("/candidates", async (c) => {
   const category = c.req.query("category");
-  const district = c.req.query("district");
-  if (!category || !district) {
-    return c.json({ error: "category and district are required" }, 400);
+  const districts = [
+    ...new Set(
+      (c.req.query("districts") ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+    ),
+  ].slice(0, MAX_DISTRICTS);
+  if (!category || districts.length === 0) {
+    return c.json({ error: "category and districts are required" }, 400);
   }
   const excludeUserId = c.req.query("excludeUserId");
   const cutoff = new Date(Date.now() - NOTIFY_COOLDOWN_MS);
@@ -36,7 +50,7 @@ internalSavedSearchesRoutes.get("/candidates", async (c) => {
     where: {
       OR: [{ category: null }, { category }],
       AND: [
-        { OR: [{ district: null }, { district }] },
+        { OR: [{ district: null }, { district: { in: districts } }] },
         { OR: [{ lastNotifiedAt: null }, { lastNotifiedAt: { lt: cutoff } }] },
       ],
       ...(excludeUserId ? { NOT: { userId: excludeUserId } } : {}),

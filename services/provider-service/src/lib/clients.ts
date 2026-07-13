@@ -162,14 +162,18 @@ export async function sendInquiryEmail(args: {
 }
 
 // job-service GET /internal/jobs/count — matching open jobs for the dashboard
-// badge. Degrades to 0.
+// badge. Degrades to 0. `districts` is the provider's served set (#502).
 export async function fetchOpenJobsCount(
   category: string,
-  district: string,
+  districts: string[],
   excludeCustomerId: string
 ): Promise<number> {
   try {
-    const qs = new URLSearchParams({ category, district, excludeCustomerId });
+    const qs = new URLSearchParams({
+      category,
+      districts: districts.join(","),
+      excludeCustomerId,
+    });
     const res = await s2s(JOB_URL, `/internal/jobs/count?${qs.toString()}`);
     if (!res.ok) return 0;
     const data = (await res.json()) as { count?: number };

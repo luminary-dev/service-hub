@@ -31,6 +31,9 @@ type DashboardProvider = {
   headlineSi?: string | null;
   bioSi?: string | null;
   district: string;
+  // Multi-district service area (#502); may be absent from rows that raced
+  // the backfill.
+  serviceDistricts?: string[];
   city: string;
   experience: number;
   available: boolean;
@@ -177,6 +180,7 @@ export default async function DashboardPage({
           headlineSi: provider.headlineSi ?? "",
           bioSi: provider.bioSi ?? "",
           district: provider.district,
+          serviceDistricts: provider.serviceDistricts ?? [provider.district],
           city: provider.city,
           experience: provider.experience,
           available: provider.available,

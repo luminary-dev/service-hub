@@ -39,8 +39,11 @@ customer→provider upgrade — i.e. a fresh `POST /internal/providers` create;
 the idempotent duplicate path and profile *re-activation* do not re-alert),
 provider-service fans out, after responding and entirely best-effort:
 
-1. `GET identity /internal/saved-searches/candidates?category=&district=&excludeUserId=`
-   — the saved searches this provider could match. Identity applies the
+1. `GET identity /internal/saved-searches/candidates?category=&districts=a,b&excludeUserId=`
+   — the saved searches this provider could match. `districts` is the
+   provider's **full served set** (#502 multi-district: primary +
+   `serviceDistricts`), so a saved search for any served district qualifies —
+   not just where the provider is based. Identity applies the rest of the
    scoping there: a search's null category/district means "any"; only current
    CUSTOMER accounts with a **verified email**; ≥24 h since the search's
    `lastNotifiedAt` (one alert per search per day); the new provider's own
@@ -53,7 +56,9 @@ provider-service fans out, after responding and entirely best-effort:
 3. Matched owners are deduped by email, capped at 200 recipients, batched per
    locale to `POST notification /internal/email/new-provider-match` (which
    acks 202 and sends the EN/SI "new match" email in the background, linking
-   to the new provider's profile).
+   to the new provider's profile). The email names the provider's primary
+   (base) district — the same one their card shows — even when the search
+   matched a secondary served district.
 4. `POST identity /internal/saved-searches/notified` stamps `lastNotifiedAt`
    on the searches whose owners actually made a batch.
 

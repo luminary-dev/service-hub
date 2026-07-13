@@ -133,6 +133,43 @@ describe("registerSchema — PROVIDER", () => {
     ).toBe(false);
   });
 
+  // Multi-district service area (#502): optional, at most 5 valid districts;
+  // the route unions the home district in and re-checks the cap.
+  it("accepts an omitted or valid serviceDistricts list", () => {
+    expect(registerSchema.safeParse(validProvider).success).toBe(true);
+    expect(
+      registerSchema.safeParse({
+        ...validProvider,
+        serviceDistricts: ["Colombo", "Gampaha", "Kalutara"],
+      }).success
+    ).toBe(true);
+  });
+
+  it("rejects an unknown district in serviceDistricts", () => {
+    expect(
+      registerSchema.safeParse({
+        ...validProvider,
+        serviceDistricts: ["Colombo", "Atlantis"],
+      }).success
+    ).toBe(false);
+  });
+
+  it("rejects more than 5 serviceDistricts", () => {
+    expect(
+      registerSchema.safeParse({
+        ...validProvider,
+        serviceDistricts: [
+          "Colombo",
+          "Gampaha",
+          "Kalutara",
+          "Kandy",
+          "Galle",
+          "Matara",
+        ],
+      }).success
+    ).toBe(false);
+  });
+
   it("rejects out-of-range experience", () => {
     expect(
       registerSchema.safeParse({ ...validProvider, experience: 61 }).success
