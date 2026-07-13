@@ -5,6 +5,7 @@ import { fetchCategoryOptions } from "@/lib/categories-server";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
 import { languageAlternates, localizedHref } from "@/lib/links";
 import { getLocale, getUrlLocale } from "@/lib/locale";
+import { siteOpenGraph } from "@/lib/seo";
 import { normalizeSort } from "@/lib/sort-keys";
 import { getSession } from "@/lib/auth";
 import ProviderCard, { ProviderCardDTO } from "@/components/ProviderCard";
@@ -64,20 +65,26 @@ export async function generateMetadata({
     ? `?category=${encodeURIComponent(category)}`
     : "";
   const alternates = languageAlternates(`/providers${canonical}`, urlLocale);
+  // og:url mirrors the canonical (#379) — search permutations share the
+  // category listing's URL, exactly like the alternates above.
+  const openGraph = siteOpenGraph(locale, urlLocale, `/providers${canonical}`);
 
   // Default listing (no filters) keeps the generic root title/description via
   // the layout — only category/district permutations get a bespoke, keyword-
   // rich title so /providers?category=… pages stop sharing one <title> (#513).
   if (!category && !district) {
-    return { alternates };
+    return { alternates, openGraph };
   }
 
   const t = dict[locale];
   const categoryLabel = category ? categoryLabelLoc(category, locale) : null;
+  const title = t.browse.metaTitle(categoryLabel, district || null);
+  const description = t.browse.metaDesc(categoryLabel, district || null);
   return {
-    title: t.browse.metaTitle(categoryLabel, district || null),
-    description: t.browse.metaDesc(categoryLabel, district || null),
+    title,
+    description,
     alternates,
+    openGraph: { ...openGraph, title, description },
   };
 }
 
@@ -148,9 +155,9 @@ export default async function ProvidersPage({
   }
 
   const stats: [string, number][] = [
-    ["TOTAL", total],
-    ["TRADES", categories.length],
-    ["DISTRICTS", DISTRICTS.length],
+    [t.browse.stats.total, total],
+    [t.browse.stats.trades, categories.length],
+    [t.browse.stats.districts, DISTRICTS.length],
   ];
 
   return (

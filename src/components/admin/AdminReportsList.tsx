@@ -14,19 +14,30 @@ import InView from "../InView";
 import EmptyState from "../ui/EmptyState";
 import ReportActions from "./ReportActions";
 
-// The moderation queue (#50) merges two sources — provider-service owns
-// reports on providers and work photos (`GET /api/admin/reports`),
-// review-service owns reports on reviews (`GET /api/admin/review-reports`).
-// Both return OPEN first (newest first) with a hydrated target summary
-// (null when the target no longer exists).
+// The moderation queue (#50) merges three sources — provider-service owns
+// reports on providers, work photos and inquiry threads
+// (`GET /api/admin/reports`), review-service owns reports on reviews
+// (`GET /api/admin/review-reports`), job-service owns reports on job posts
+// and responses (`GET /api/admin/job-reports`, #375). All return OPEN first
+// (newest first) with a hydrated target summary (null when the target no
+// longer exists).
 type ReportBase = {
   id: string;
-  targetType: "PROVIDER" | "WORK_PHOTO" | "REVIEW";
+  targetType:
+    | "PROVIDER"
+    | "WORK_PHOTO"
+    | "INQUIRY"
+    | "REVIEW"
+    | "JOB"
+    | "JOB_RESPONSE";
   targetId: string;
   reporterId: string | null;
   reason: string;
   details: string | null;
   status: "OPEN" | "RESOLVED" | "DISMISSED";
+  // Report origin: USER = the public report flow, SYSTEM = auto-created
+  // (threshold flagging #232, write-time content filter #375).
+  source: "USER" | "SYSTEM";
   createdAt: string;
   // Resolution audit trail (#223): stamped when the report is resolved or
   // dismissed; null while OPEN (and for pre-existing rows closed before the
@@ -36,6 +47,7 @@ type ReportBase = {
 };
 
 type ProviderReport = ReportBase & {
+  targetType: "PROVIDER" | "WORK_PHOTO" | "INQUIRY";
   target: {
     providerId: string;
     providerName: string;
@@ -43,10 +55,15 @@ type ProviderReport = ReportBase & {
     photoUrl?: string;
     caption?: string | null;
     removed?: boolean;
+    // INQUIRY targets (#375): thread context — the flagged excerpt itself is
+    // in the report's `details`.
+    customerName?: string;
+    message?: string;
   } | null;
 };
 
 type ReviewReport = ReportBase & {
+  targetType: "REVIEW";
   target: {
     reviewId: string;
     rating: number;
@@ -56,17 +73,39 @@ type ReviewReport = ReportBase & {
   } | null;
 };
 
+type JobReport = ReportBase & {
+  targetType: "JOB" | "JOB_RESPONSE";
+  target: {
+    jobId: string;
+    // JOB targets
+    title?: string;
+    description?: string;
+    status?: string;
+    // JOB_RESPONSE targets
+    jobTitle?: string;
+    message?: string;
+    providerId?: string;
+  } | null;
+};
+
+// `service` names the backend queue a row came from (routing for actions);
+// the Prisma `source` above stays USER/SYSTEM.
 export type ReportRow =
-  | (ProviderReport & { source: "provider" })
-  | (ReviewReport & { source: "review" });
+  | (ProviderReport & { service: "provider" })
+  | (ReviewReport & { service: "review" })
+  | (JobReport & { service: "job" });
+
+const BATCH_ENDPOINTS: Record<ReportRow["service"], string> = {
+  provider: "/api/admin/reports",
+  review: "/api/admin/review-reports",
+  job: "/api/admin/job-reports",
+};
 
 // Reports list (#231): multi-select + bulk resolve/dismiss on top of the
-// existing per-row ReportActions. Reports come from two different backend
-// services (provider-service owns PROVIDER/WORK_PHOTO reports at
-// `/api/admin/reports`, review-service owns REVIEW reports at
-// `/api/admin/review-reports`), so the bulk action groups the selected ids
-// by source before calling each service's batch endpoint. Only OPEN reports
-// are selectable — closed ones have nothing left to bulk-act on.
+// existing per-row ReportActions. Reports come from three different backend
+// services, so the bulk action groups the selected ids by owning service
+// before calling each service's batch endpoint. Only OPEN reports are
+// selectable — closed ones have nothing left to bulk-act on.
 export default function AdminReportsList({
   rows,
   role,
@@ -90,7 +129,7 @@ export default function AdminReportsList({
   const allSelected = openRows.length > 0 && selected.size === openRows.length;
 
   function key(r: ReportRow) {
-    return `${r.source}-${r.id}`;
+    return `${r.service}-${r.id}`;
   }
 
   function toggle(r: ReportRow) {
@@ -112,31 +151,20 @@ export default function AdminReportsList({
     setPending(true);
     setError(false);
 
-    const providerIds = openRows
-      .filter((r) => r.source === "provider" && selected.has(key(r)))
-      .map((r) => r.id);
-    const reviewIds = openRows
-      .filter((r) => r.source === "review" && selected.has(key(r)))
-      .map((r) => r.id);
-
     const calls: Promise<Response | null>[] = [];
-    if (providerIds.length) {
-      calls.push(
-        fetch("/api/admin/reports", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ids: providerIds, status }),
-        }).catch(() => null)
-      );
-    }
-    if (reviewIds.length) {
-      calls.push(
-        fetch("/api/admin/review-reports", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ids: reviewIds, status }),
-        }).catch(() => null)
-      );
+    for (const service of Object.keys(BATCH_ENDPOINTS) as ReportRow["service"][]) {
+      const ids = openRows
+        .filter((r) => r.service === service && selected.has(key(r)))
+        .map((r) => r.id);
+      if (ids.length) {
+        calls.push(
+          fetch(BATCH_ENDPOINTS[service], {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ids, status }),
+          }).catch(() => null)
+        );
+      }
     }
 
     const results = await Promise.all(calls);
@@ -154,6 +182,9 @@ export default function AdminReportsList({
     PROVIDER: t.reportedProvider,
     WORK_PHOTO: t.reportedPhoto,
     REVIEW: t.reportedReview,
+    INQUIRY: t.reportedInquiry,
+    JOB: t.reportedJob,
+    JOB_RESPONSE: t.reportedJobResponse,
   } as const;
 
   const reasonLabel = (reason: string) =>
@@ -270,7 +301,9 @@ export default function AdminReportsList({
                     <span className="text-ink-300">·</span>
                     <span className="text-ink-400">{t.reportedBy}</span>
                     <span className="text-ink-600">
-                      {r.reporterId ?? t.reportAnonymous}
+                      {r.source === "SYSTEM"
+                        ? t.reportSystem
+                        : (r.reporterId ?? t.reportAnonymous)}
                     </span>
                   </p>
                   {r.status !== "OPEN" && r.resolvedBy && r.resolvedAt && (
@@ -285,11 +318,7 @@ export default function AdminReportsList({
               </div>
               {r.status === "OPEN" && (
                 <ReportActions
-                  endpoint={
-                    r.source === "provider"
-                      ? `/api/admin/reports/${r.id}`
-                      : `/api/admin/review-reports/${r.id}`
-                  }
+                  endpoint={`${BATCH_ENDPOINTS[r.service]}/${r.id}`}
                   role={role}
                 />
               )}
@@ -298,7 +327,48 @@ export default function AdminReportsList({
             <div className="mt-3 rounded-xl border border-dashed border-ink-200 bg-ink-50 p-3">
               {r.target === null ? (
                 <p className="text-sm text-ink-500">{t.reportTargetGone}</p>
-              ) : r.source === "review" ? (
+              ) : r.service === "job" ? (
+                // Job post / job response (#375): title + text excerpt, with
+                // the admin job detail as the moderation surface.
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-ink-800">
+                      {r.targetType === "JOB" ? r.target.title : r.target.jobTitle}
+                    </p>
+                    <p className="mt-1 line-clamp-3 text-sm text-ink-600">
+                      {r.targetType === "JOB"
+                        ? r.target.description
+                        : r.target.message}
+                    </p>
+                  </div>
+                  <Link
+                    href={`/admin/jobs/${r.target.jobId}`}
+                    className="shrink-0 text-sm font-semibold text-brand-700 transition-colors duration-200 ease-snap hover:text-brand-800"
+                  >
+                    {t.moderate}
+                  </Link>
+                </div>
+              ) : r.service === "provider" && r.targetType === "INQUIRY" ? (
+                // Inquiry thread (#375): who wrote to which provider, plus the
+                // original inquiry message — the flagged excerpt itself is in
+                // the report's `details` above.
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-ink-800">
+                      {r.target.customerName} → {r.target.providerName}
+                    </p>
+                    <p className="mt-1 line-clamp-3 text-sm text-ink-600">
+                      {r.target.message}
+                    </p>
+                  </div>
+                  <Link
+                    href={`/admin/providers/${r.target.providerId}`}
+                    className="shrink-0 text-sm font-semibold text-brand-700 transition-colors duration-200 ease-snap hover:text-brand-800"
+                  >
+                    {t.moderate}
+                  </Link>
+                </div>
+              ) : r.service === "review" ? (
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">

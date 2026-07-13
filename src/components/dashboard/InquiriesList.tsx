@@ -15,8 +15,22 @@ const STATUS_STYLES: Record<string, string> = {
   CLOSED: "bg-ink-100 text-ink-500 ring-ink-200",
 };
 
-export default function InquiriesList({ initial }: { initial: InquiryItem[] }) {
+// Matches DASHBOARD_INQUIRIES_TAKE in provider-service — the dashboard embeds
+// page 1, and "load more" pages through GET /api/provider/inquiries (#372).
+const PAGE_SIZE = 20;
+
+export default function InquiriesList({
+  initial,
+  total: initialTotal,
+}: {
+  initial: InquiryItem[];
+  total?: number;
+}) {
   const [inquiries, setInquiries] = useState(initial);
+  const [total, setTotal] = useState(initialTotal ?? initial.length);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const t = useT();
   const q = t.dashboard.inquiries;
   const locale = useLocale();
@@ -25,6 +39,28 @@ export default function InquiriesList({ initial }: { initial: InquiryItem[] }) {
     RESPONDED: q.statusResponded,
     CLOSED: q.statusClosed,
   };
+
+  async function loadMore() {
+    setLoading(true);
+    setLoadError(false);
+    try {
+      const res = await fetch(
+        `/api/provider/inquiries?page=${page + 1}&pageSize=${PAGE_SIZE}`
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: { inquiries: InquiryItem[]; total: number } = await res.json();
+      setInquiries((list) => {
+        const seen = new Set(list.map((i) => i.id));
+        return [...list, ...data.inquiries.filter((i) => !seen.has(i.id))];
+      });
+      setTotal(data.total);
+      setPage((p) => p + 1);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function setStatus(id: string, status: string) {
     const res = await fetch(`/api/provider/inquiries/${id}`, {
@@ -44,6 +80,7 @@ export default function InquiriesList({ initial }: { initial: InquiryItem[] }) {
   }
 
   return (
+    <>
     <ul className="space-y-4">
       {inquiries.map((i) => (
         <li key={i.id} className="card p-5">
@@ -126,5 +163,22 @@ export default function InquiriesList({ initial }: { initial: InquiryItem[] }) {
         </li>
       ))}
     </ul>
+    {inquiries.length < total && (
+      <div className="mt-6 flex flex-col items-center gap-2">
+        <button
+          onClick={loadMore}
+          disabled={loading}
+          className="btn-secondary"
+        >
+          {loading ? q.loadingMore : q.loadMore(total - inquiries.length)}
+        </button>
+        {loadError && (
+          <p role="alert" className="text-sm text-red-600">
+            {q.loadMoreError}
+          </p>
+        )}
+      </div>
+    )}
+    </>
   );
 }

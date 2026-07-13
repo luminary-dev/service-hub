@@ -10,12 +10,14 @@ import { formatDate } from "@/lib/format";
 // next request — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
 
-// The audit trail (#227) merges two sources — provider-service owns the log
-// for actions it takes (provider verify/suspend, photo delete, report
+// The audit trail (#227) merges three sources — provider-service owns the
+// log for actions it takes (provider verify/suspend, photo delete, report
 // resolve/dismiss, category create/edit) at `GET /api/admin/audit-log`;
 // review-service owns the log for the actions it takes (review delete,
-// report resolve/dismiss) at `GET /api/admin/review-audit-log`. Both accept
-// the same adminId/action/from/to filters and return newest-first.
+// report resolve/dismiss) at `GET /api/admin/review-audit-log`; job-service
+// owns the log for job-report resolve/dismiss (#375) at
+// `GET /api/admin/job-audit-log`. All accept the same adminId/action/from/to
+// filters and return newest-first.
 type AuditEntry = {
   id: string;
   adminId: string;
@@ -26,7 +28,7 @@ type AuditEntry = {
   createdAt: string;
 };
 
-type Row = AuditEntry & { source: "provider" | "review" };
+type Row = AuditEntry & { source: "provider" | "review" | "job" };
 
 const DATE_TIME_OPTS: Intl.DateTimeFormatOptions = {
   day: "numeric",
@@ -60,16 +62,18 @@ export default async function AdminAuditLogPage({
   if (to) query.set("to", /^\d{4}-\d{2}-\d{2}$/.test(to) ? `${to}T23:59:59.999` : to);
   const qs = query.toString();
 
-  const [locale, providerData, reviewData] = await Promise.all([
+  const [locale, providerData, reviewData, jobData] = await Promise.all([
     getLocale(),
     apiJson<{ entries: AuditEntry[] }>(`/api/admin/audit-log${qs ? `?${qs}` : ""}`),
     apiJson<{ entries: AuditEntry[] }>(`/api/admin/review-audit-log${qs ? `?${qs}` : ""}`),
+    apiJson<{ entries: AuditEntry[] }>(`/api/admin/job-audit-log${qs ? `?${qs}` : ""}`),
   ]);
   const t = dict[locale].admin;
 
   const rows: Row[] = [
     ...(providerData?.entries ?? []).map((e) => ({ ...e, source: "provider" }) as Row),
     ...(reviewData?.entries ?? []).map((e) => ({ ...e, source: "review" }) as Row),
+    ...(jobData?.entries ?? []).map((e) => ({ ...e, source: "job" }) as Row),
   ].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
 
   const targetLabel = (targetType: string) => {

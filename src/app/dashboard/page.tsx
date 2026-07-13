@@ -4,6 +4,7 @@ import { apiJson } from "@/lib/api";
 import { fetchCategoryOptions } from "@/lib/categories-server";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
+import { loginNext } from "@/lib/login";
 import { dict } from "@/lib/i18n";
 import { localizedHref } from "@/lib/links";
 import Link from "next/link";
@@ -58,6 +59,8 @@ type DashboardProvider = {
     priceType: string;
   }[];
   photos: { id: string; url: string; caption: string | null }[];
+  // First page of inquiries only (#372) — deeper pages load on demand from
+  // GET /api/provider/inquiries; the counts cover the full inbox.
   inquiries: {
     id: string;
     name: string;
@@ -67,6 +70,8 @@ type DashboardProvider = {
     status: string;
     createdAt: string;
   }[];
+  inquiriesTotal: number;
+  newInquiriesCount: number;
   ratingSummary: { rating: number | null; count: number };
 };
 
@@ -76,7 +81,7 @@ export default async function DashboardPage({
   searchParams: Promise<{ welcome?: string }>;
 }) {
   const [session, locale] = await Promise.all([getSession(), getLocale()]);
-  if (!session) redirect(localizedHref("/login", locale));
+  if (!session) redirect(await loginNext("/dashboard"));
   if (session.role !== "PROVIDER")
     redirect(localizedHref("/providers", locale));
 
@@ -95,6 +100,9 @@ export default async function DashboardPage({
   const t = dict[locale];
   const { welcome } = await searchParams;
   const avg = provider.ratingSummary.rating;
+  const newInquiries =
+    provider.newInquiriesCount ??
+    provider.inquiries.filter((i) => i.status === "NEW").length;
 
   // Overview instruments in the blueprint header band (mirrors the registry
   // stat readout on the providers listing): rating renders as a fixed string,
@@ -103,7 +111,7 @@ export default async function DashboardPage({
     { label: t.dashboard.stats.rating, value: avg !== null ? avg.toFixed(1) : "—" },
     { label: t.dashboard.stats.reviews, value: provider.ratingSummary.count },
     { label: t.dashboard.stats.photos, value: provider.photos.length },
-    { label: t.dashboard.stats.newInquiries, value: provider.inquiries.filter((i) => i.status === "NEW").length },
+    { label: t.dashboard.stats.newInquiries, value: newInquiries },
   ];
 
   return (
@@ -203,12 +211,12 @@ export default async function DashboardPage({
             status: i.status,
             createdAt: i.createdAt,
           })),
+          inquiriesTotal: provider.inquiriesTotal ?? provider.inquiries.length,
           stats: {
             rating: avg,
             reviewCount: provider.ratingSummary.count,
             photoCount: provider.photos.length,
-            newInquiries: provider.inquiries.filter((i) => i.status === "NEW")
-              .length,
+            newInquiries,
           },
         }}
         />

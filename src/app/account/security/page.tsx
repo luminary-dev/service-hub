@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
-import { getLocale } from "@/lib/locale";
-import { localizedHref } from "@/lib/links";
+import { loginNext } from "@/lib/login";
 import SecuritySettings from "@/components/SecuritySettings";
 
 // Caching (#57): session-gated and must reflect the user's own writes
@@ -9,8 +8,8 @@ import SecuritySettings from "@/components/SecuritySettings";
 export const dynamic = "force-dynamic";
 
 export default async function AccountSecurityPage() {
-  const [session, locale] = await Promise.all([getSession(), getLocale()]);
-  if (!session) redirect(localizedHref("/login", locale));
+  const session = await getSession();
+  if (!session) redirect(await loginNext("/account/security"));
 
   return <SecuritySettings />;
 }

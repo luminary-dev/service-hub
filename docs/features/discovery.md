@@ -55,5 +55,16 @@ from `GET /api/providers/:id/card`: Baas.lk badge, provider name, English
 category label, city/district, and a rating footer. (Satori ships a Latin font
 only, so the category label is rendered in English even on `/si`.)
 
+### Structured data
+
+The homepage embeds `WebSite` (with a `SearchAction` into `/providers?q=…`)
+and `Organization` JSON-LD (#514). Provider profiles embed a `LocalBusiness`
+node (`providerJsonLd` in `src/lib/seo.ts`, #379): name, bilingual headline as
+the description, city/district address, category, avatar image, and an
+`AggregateRating` when reviews exist (matching the hero's all-reviews figures).
+Text follows the rendered locale; `url` is the locale's canonical while `@id`
+stays pinned to the English URL so both language pages describe one entity.
+Serialization escapes `<` against JSON-LD injection (`src/components/JsonLd.tsx`).
+
 ---
 
