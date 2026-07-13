@@ -10,7 +10,7 @@ const { dbMock } = vi.hoisted(() => ({
     provider: { findUnique: vi.fn(), update: vi.fn() },
     service: { findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
     workPhoto: { findUnique: vi.fn(), findMany: vi.fn(), delete: vi.fn() },
-    inquiry: { findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn() },
+    inquiry: { findUnique: vi.fn(), findMany: vi.fn(), count: vi.fn(), update: vi.fn() },
     inquiryMessage: { groupBy: vi.fn() },
   },
 }));
@@ -94,11 +94,85 @@ describe("getCurrentProvider gate", () => {
     dbMock.service.findMany.mockResolvedValue([]);
     dbMock.workPhoto.findMany.mockResolvedValue([]);
     dbMock.inquiry.findMany.mockResolvedValue([]);
+    dbMock.inquiry.count.mockResolvedValue(0);
     const res = await req("/api/provider/dashboard", { role: "PROVIDER" });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.provider.id).toBe("prov1");
     expect(body).toHaveProperty("openJobsCount");
+  });
+
+  it("GET /api/provider/dashboard: embeds only the first inquiries page + totals (#372)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(MY_PROVIDER);
+    dbMock.service.findMany.mockResolvedValue([]);
+    dbMock.workPhoto.findMany.mockResolvedValue([]);
+    dbMock.inquiry.findMany.mockResolvedValue([]);
+    // Two counts: the whole inbox, then the NEW subset.
+    dbMock.inquiry.count.mockResolvedValueOnce(57).mockResolvedValueOnce(4);
+    const res = await req("/api/provider/dashboard", { role: "PROVIDER" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.provider.inquiriesTotal).toBe(57);
+    expect(body.provider.newInquiriesCount).toBe(4);
+    expect(dbMock.inquiry.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 20 })
+    );
+    expect(dbMock.inquiry.count).toHaveBeenCalledWith({
+      where: { providerId: "prov1", status: "NEW" },
+    });
+  });
+});
+
+describe("GET /api/provider/inquiries — pagination (#372)", () => {
+  beforeEach(() => {
+    dbMock.provider.findUnique.mockResolvedValue(MY_PROVIDER);
+    dbMock.inquiry.findMany.mockResolvedValue([]);
+    dbMock.inquiry.count.mockResolvedValue(0);
+  });
+
+  it("defaults to page 1 of 20 and returns the compat envelope", async () => {
+    dbMock.inquiry.count.mockResolvedValue(45);
+    dbMock.inquiry.findMany.mockResolvedValue([
+      {
+        id: "inq1",
+        providerId: "prov1",
+        customerLastReadAt: null,
+        providerLastReadAt: null,
+      },
+    ]);
+    dbMock.inquiryMessage.groupBy.mockResolvedValue([
+      { inquiryId: "inq1", _count: { _all: 3 } },
+    ]);
+    const res = await req("/api/provider/inquiries", { role: "PROVIDER" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.total).toBe(45);
+    expect(body.page).toBe(1);
+    expect(body.pageSize).toBe(20);
+    expect(body.inquiries[0].unreadCount).toBe(3);
+    expect(dbMock.inquiry.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 0, take: 20 })
+    );
+  });
+
+  it("honors ?page/?pageSize", async () => {
+    const res = await req("/api/provider/inquiries?page=3&pageSize=5", {
+      role: "PROVIDER",
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.inquiry.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 10, take: 5 })
+    );
+  });
+
+  it("caps pageSize at 100 and falls back on junk input", async () => {
+    const res = await req("/api/provider/inquiries?page=zero&pageSize=9999", {
+      role: "PROVIDER",
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.inquiry.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 0, take: 100 })
+    );
   });
 });
 
