@@ -6,6 +6,9 @@ import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
 import Avatar from "@/components/Avatar";
+import { FaUsers } from "@/components/icons";
+import EmptyState from "@/components/ui/EmptyState";
+import Pagination from "@/components/ui/Pagination";
 
 // Caching (#57): admin-only view; edits must be visible on the next
 // request — stays fully dynamic (no-store).
@@ -48,7 +51,6 @@ export default async function AdminUsersPage({
     }>(`/api/admin/users?${query.toString()}`),
   ]);
   const t = dict[locale].admin;
-  const tb = dict[locale].browse;
   const users = data?.users ?? [];
   const total = data?.total ?? 0;
   const pageSize = data?.pageSize ?? 20;
@@ -89,9 +91,7 @@ export default async function AdminUsersPage({
       </form>
 
       {users.length === 0 ? (
-        <div className="card mt-8 px-6 py-16 text-center text-sm text-ink-500">
-          {t.usersEmpty}
-        </div>
+        <EmptyState icon={FaUsers} title={t.usersEmpty} className="mt-8" />
       ) : (
         <ul className="mt-8 space-y-3">
           {users.map((u) => (
@@ -134,23 +134,7 @@ export default async function AdminUsersPage({
         </ul>
       )}
 
-      {totalPages > 1 && (
-        <div className="mt-10 flex items-center justify-center gap-2">
-          {page > 1 && (
-            <Link href={pageHref(page - 1)} className="btn-secondary">
-              {tb.prev}
-            </Link>
-          )}
-          <span className="px-3 text-sm text-ink-500">
-            {tb.pageOf(page, totalPages)}
-          </span>
-          {page < totalPages && (
-            <Link href={pageHref(page + 1)} className="btn-secondary">
-              {tb.next}
-            </Link>
-          )}
-        </div>
-      )}
+      <Pagination page={page} totalPages={totalPages} hrefFor={pageHref} locale={locale} />
     </div>
   );
 }

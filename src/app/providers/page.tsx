@@ -12,6 +12,7 @@ import ProviderCard, { ProviderCardDTO } from "@/components/ProviderCard";
 import CategoryIcon from "@/components/CategoryIcon";
 import FilterBar from "@/components/FilterBar";
 import InView from "@/components/InView";
+import Pagination from "@/components/ui/Pagination";
 import { DISTRICTS } from "@/lib/constants";
 import Link from "next/link";
 
@@ -264,23 +265,7 @@ export default async function ProvidersPage({
         </InView>
       )}
 
-      {totalPages > 1 && (
-        <div className="mt-10 flex items-center justify-center gap-2">
-          {page > 1 && (
-            <Link href={pageLink(page - 1)} className="btn-secondary">
-              {t.browse.prev}
-            </Link>
-          )}
-          <span className="px-3 text-sm text-ink-500">
-            {t.browse.pageOf(page, totalPages)}
-          </span>
-          {page < totalPages && (
-            <Link href={pageLink(page + 1)} className="btn-secondary">
-              {t.browse.next}
-            </Link>
-          )}
-        </div>
-      )}
+      <Pagination page={page} totalPages={totalPages} hrefFor={pageLink} locale={locale} />
       </div>
     </div>
   );

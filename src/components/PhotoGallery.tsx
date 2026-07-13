@@ -4,10 +4,9 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { FaChevronLeft, FaChevronRight, FaXmark } from "@/components/icons";
 import { isSvg } from "@/lib/image";
+import Dialog from "@/components/ui/Dialog";
 import { useT } from "./I18nProvider";
 import ReportButton from "./ReportButton";
-import { useFocusTrap } from "./useFocusTrap";
-import { useScrollLock } from "./useScrollLock";
 
 type Photo = { id: string; url: string; caption: string | null };
 
@@ -19,27 +18,10 @@ export default function PhotoGallery({ photos }: { photos: Photo[] }) {
   const [active, setActive] = useState<number | null>(null);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
+  // Tracked explicitly (not via document.activeElement) because Safari does
+  // not focus a <button> on click; Dialog restores focus here on close.
   const openerRef = useRef<HTMLElement | null>(null);
-  const wasOpen = useRef(false);
   const t = useT();
-  const isOpen = active !== null;
-  useFocusTrap(dialogRef, isOpen);
-  useScrollLock(isOpen);
-
-  // Focus management for the lightbox: focus the close button when it opens
-  // and give focus back to the thumbnail that opened it when it closes.
-  // Keyed on open/closed (not the photo index) so prev/next don't yank focus.
-  useEffect(() => {
-    if (isOpen) {
-      wasOpen.current = true;
-      closeRef.current?.focus();
-    } else if (wasOpen.current) {
-      wasOpen.current = false;
-      openerRef.current?.focus();
-      openerRef.current = null;
-    }
-  }, [isOpen]);
 
   function showPrev() {
     setActive((a) => ((a ?? 0) - 1 + photos.length) % photos.length);
@@ -66,10 +48,11 @@ export default function PhotoGallery({ photos }: { photos: Photo[] }) {
     else showPrev();
   }
 
+  // Arrow-key navigation while the lightbox is open (Escape is handled by
+  // the Dialog primitive).
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (active === null) return;
-      if (e.key === "Escape") setActive(null);
       if (e.key === "ArrowRight") setActive((a) => ((a ?? 0) + 1) % photos.length);
       if (e.key === "ArrowLeft")
         setActive((a) => ((a ?? 0) - 1 + photos.length) % photos.length);
@@ -114,15 +97,13 @@ export default function PhotoGallery({ photos }: { photos: Photo[] }) {
       </div>
 
       {active !== null && photos[active] && (
-        <div
-          ref={dialogRef}
-          role="dialog"
-          aria-modal="true"
-          aria-label={t.profile.photoViewer}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
-          onClick={() => setActive(null)}
-          onTouchStart={onTouchStart}
-          onTouchEnd={onTouchEnd}
+        <Dialog
+          onClose={() => setActive(null)}
+          label={t.profile.photoViewer}
+          overlayClassName="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
+          initialFocus={closeRef}
+          restoreFocus={openerRef}
+          overlayProps={{ onTouchStart, onTouchEnd }}
         >
           <button
             ref={closeRef}
@@ -186,7 +167,7 @@ export default function PhotoGallery({ photos }: { photos: Photo[] }) {
               />
             </div>
           </figure>
-        </div>
+        </Dialog>
       )}
     </>
   );

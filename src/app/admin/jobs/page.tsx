@@ -8,6 +8,8 @@ import { getLocale } from "@/lib/locale";
 import { dict, categoryLabelLoc, districtLabelLoc } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
 import AdminJobFilters from "@/components/admin/AdminJobFilters";
+import EmptyState from "@/components/ui/EmptyState";
+import Pagination from "@/components/ui/Pagination";
 
 // Caching (#57): admin-only moderation view; edits (new job posts/responses)
 // must be visible on the next request — stays fully dynamic (no-store).
@@ -65,7 +67,6 @@ export default async function AdminJobsPage({
   const pageSize = data?.pageSize ?? PAGE_SIZE;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const t = dict[locale].admin;
-  const tb = dict[locale].browse;
 
   function pageLink(target: number) {
     const sp = new URLSearchParams(query);
@@ -86,9 +87,7 @@ export default async function AdminJobsPage({
       </div>
 
       {jobs.length === 0 ? (
-        <div className="card mt-8 px-6 py-16 text-center text-sm text-ink-500">
-          {t.jobsEmpty}
-        </div>
+        <EmptyState icon={FaBriefcase} title={t.jobsEmpty} className="mt-8" />
       ) : (
         <ul className="mt-8 space-y-3">
           {jobs.map((j) => (
@@ -141,23 +140,7 @@ export default async function AdminJobsPage({
         </ul>
       )}
 
-      {totalPages > 1 && (
-        <div className="mt-10 flex items-center justify-center gap-2">
-          {page > 1 && (
-            <Link href={pageLink(page - 1)} className="btn-secondary">
-              {tb.prev}
-            </Link>
-          )}
-          <span className="px-3 text-sm text-ink-500">
-            {tb.pageOf(page, totalPages)}
-          </span>
-          {page < totalPages && (
-            <Link href={pageLink(page + 1)} className="btn-secondary">
-              {tb.next}
-            </Link>
-          )}
-        </div>
-      )}
+      <Pagination page={page} totalPages={totalPages} hrefFor={pageLink} locale={locale} />
     </div>
   );
 }
