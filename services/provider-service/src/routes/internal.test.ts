@@ -152,6 +152,15 @@ describe("POST /internal/providers re-upgrade", () => {
     );
   });
 
+  it("rejects a non-integer service price on the S2S create path (#371)", async () => {
+    const res = await post("/internal/providers", {
+      ...body,
+      services: [{ title: "Fix taps", price: 1000.5, priceType: "FIXED" }],
+    });
+    expect(res.status).toBe(400);
+    expect(dbMock.provider.create).not.toHaveBeenCalled();
+  });
+
   it("stores null for absent Sinhala variants (#515)", async () => {
     dbMock.provider.create.mockResolvedValue({ id: "prov10" });
     const res = await post("/internal/providers", body);

@@ -8,6 +8,7 @@ import { db } from "../db";
 import { logAudit } from "../lib/audit";
 import { isFullAdmin, isSupportOrAdmin } from "../lib/http";
 import { fetchUsers, fetchProviders } from "../lib/hydrate";
+import { moneyToNumberOrNull } from "../lib/money";
 import { normalizeListQuery } from "../lib/query";
 
 export const admin = new Hono();
@@ -61,6 +62,9 @@ admin.get("/api/admin/jobs", async (c) => {
 
   const jobs = rows.map(({ _count, ...job }) => ({
     ...job,
+    // budget is DECIMAL in the DB (#371) — a Decimal JSON-serializes as a
+    // string, so convert back to the number this payload has always carried.
+    budget: moneyToNumberOrNull(job.budget),
     customer: { name: users.get(job.customerId)?.name ?? "Unknown" },
     responseCount: _count.responses,
   }));
@@ -98,7 +102,8 @@ admin.get("/api/admin/jobs/:id", async (c) => {
       description: job.description,
       category: job.category,
       district: job.district,
-      budget: job.budget,
+      // Same Decimal → number edge conversion as the list above (#371).
+      budget: moneyToNumberOrNull(job.budget),
       status: job.status,
       hiddenAt: job.hiddenAt,
       createdAt: job.createdAt,

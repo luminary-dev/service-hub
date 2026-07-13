@@ -4,6 +4,7 @@
 // path, and the public inquiry create path (anonymous allowed). Prisma and the
 // review/notification S2S clients are mocked — deterministic, no network.
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Prisma } from "@prisma/client";
 
 const { dbMock } = vi.hoisted(() => ({
   dbMock: {
@@ -143,6 +144,30 @@ describe("GET /api/providers/:id — suspended visibility gate", () => {
     const res = await req("/api/providers/nope");
     expect(res.status).toBe(404);
   });
+
+  it("serializes Decimal service prices as JSON numbers (#371)", async () => {
+    // price is DECIMAL(12,2) in the DB, so Prisma hands the route Decimals —
+    // which would JSON-stringify as strings without the edge conversion.
+    dbMock.provider.findUnique.mockResolvedValue(
+      providerRow({
+        services: [
+          {
+            id: "s1",
+            providerId: "p1",
+            title: "Tap repair",
+            description: null,
+            price: new Prisma.Decimal("1500.00"),
+            priceType: "FIXED",
+          },
+        ],
+      })
+    );
+    const res = await req("/api/providers/p1");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.provider.services[0].price).toBe(1500);
+    expect(typeof body.provider.services[0].price).toBe("number");
+  });
 });
 
 describe("GET /api/providers/:id/full — suspended gate mirrors detail", () => {
@@ -248,6 +273,35 @@ describe("GET /api/providers?ids= (favorites)", () => {
         where: { id: { in: ["a", "b"] }, suspended: false },
       })
     );
+  });
+});
+
+describe("GET /api/providers — browse card money serialization (#371)", () => {
+  it("emits fromPrice/services[].price as numbers and price-sorts Decimal rows", async () => {
+    dbMock.provider.findMany.mockResolvedValue([
+      providerRow({
+        id: "pricey",
+        services: [
+          { id: "s2", title: "Big job", price: new Prisma.Decimal("12500.00"), priceType: "FIXED" },
+        ],
+      }),
+      providerRow({
+        id: "cheap",
+        services: [
+          { id: "s1", title: "Small job", price: new Prisma.Decimal("1500.00"), priceType: "FIXED" },
+        ],
+      }),
+    ]);
+    const res = await req("/api/providers?sort=price");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // The in-memory price sort compares plain numbers — Decimals must be
+    // converted before ranking, lowest starting price first.
+    expect(body.providers.map((p: { id: string }) => p.id)).toEqual(["cheap", "pricey"]);
+    expect(body.providers[0].fromPrice).toBe(1500);
+    expect(typeof body.providers[0].fromPrice).toBe("number");
+    expect(body.providers[0].services[0].price).toBe(1500);
+    expect(typeof body.providers[0].services[0].price).toBe("number");
   });
 });
 

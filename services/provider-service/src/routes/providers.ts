@@ -16,6 +16,7 @@ import {
 } from "../lib/clients";
 import { isEffectivelyAvailable } from "../lib/availability";
 import { slPhone } from "../lib/field-rules";
+import { moneyToNumber, moneyToNumberOrNull } from "../lib/money";
 import { normalizeListQuery } from "../lib/query";
 import { averageResponseMs } from "../lib/response-time";
 import { buildBrowseWhere } from "../lib/search";
@@ -118,8 +119,8 @@ function toCardDTO(
     photos: p.photos.slice(0, 1).map((ph) => ({ url: ph.url, caption: ph.caption })),
     services: p.services
       .slice(0, 1)
-      .map((s) => ({ id: s.id, title: s.title, price: s.price, priceType: s.priceType })),
-    fromPrice: p.services[0]?.price ?? null,
+      .map((s) => ({ id: s.id, title: s.title, price: moneyToNumber(s.price), priceType: s.priceType })),
+    fromPrice: moneyToNumberOrNull(p.services[0]?.price),
     fromPriceType: p.services[0]?.priceType ?? null,
     rating: r?.rating ?? null,
     reviewCount: r?.count ?? 0,
@@ -252,7 +253,7 @@ providersRoutes.get("/api/providers", async (c) => {
       rating,
       ratingSum: rating !== null ? rating * count : 0,
       reviewCount: count,
-      fromPrice: p.services[0]?.price ?? null,
+      fromPrice: moneyToNumberOrNull(p.services[0]?.price),
       experience: p.experience,
       createdAt: p.createdAt,
       verified: p.verificationStatus === "VERIFIED",
@@ -328,6 +329,9 @@ providersRoutes.get("/api/providers/:id", async (c) => {
   return c.json({
     provider: {
       ...pub,
+      // price is DECIMAL in the DB (#371) — a Decimal JSON-serializes as a
+      // string, so convert back to the number this payload has always carried.
+      services: provider.services.map((s) => ({ ...s, price: moneyToNumber(s.price) })),
       // Effective availability (#49) — raw awayUntil rides along.
       available: isEffectivelyAvailable(provider),
       ...contactFlags(provider),
@@ -400,6 +404,9 @@ providersRoutes.get("/api/providers/:id/full", async (c) => {
   return c.json({
     provider: {
       ...providerFields,
+      // price is DECIMAL in the DB (#371) — a Decimal JSON-serializes as a
+      // string, so convert back to the number this payload has always carried.
+      services: provider.services.map((s) => ({ ...s, price: moneyToNumber(s.price) })),
       // Effective availability (#49): away providers surface available=false;
       // the profile page renders "Away until {awayUntil}" from the raw field.
       available: isEffectivelyAvailable(provider),
