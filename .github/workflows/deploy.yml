@@ -83,6 +83,7 @@ jobs:
       - name: Deploy over SSH
         env:
           SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
           HOST: ${{ secrets.PROD_SSH_HOST }}
           SSH_USER: ${{ secrets.PROD_SSH_USER }}
           APP_DIR: ${{ secrets.PROD_APP_DIR }}
@@ -112,7 +113,17 @@ jobs:
           FACEBOOK_CLIENT_SECRET: ${{ secrets.FACEBOOK_CLIENT_SECRET }}
         run: |
           install -m 600 /dev/stdin "$HOME/deploy_key" <<< "$SSH_KEY"
-          SSH=(ssh -o StrictHostKeyChecking=accept-new -i "$HOME/deploy_key" "$SSH_USER@$HOST")
+          # Host-key pinning (#388): the runner's known_hosts is empty every
+          # run, so `accept-new` would trust whichever host answers — and the
+          # very next steps pipe the full rendered .env to it. Pin the expected
+          # key(s) from PROD_SSH_KNOWN_HOSTS (ssh-keyscan output); a mismatch
+          # fails the deploy before any secret leaves the runner.
+          if [ -z "$SSH_KNOWN_HOSTS" ]; then
+            echo "PROD_SSH_KNOWN_HOSTS is not set — refusing to connect unpinned." >&2
+            exit 1
+          fi
+          install -m 600 /dev/stdin "$HOME/known_hosts" <<< "$SSH_KNOWN_HOSTS"
+          SSH=(ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/known_hosts" -i "$HOME/deploy_key" "$SSH_USER@$HOST")
           # 0) Record the currently-deployed IMAGE_TAG from the server's .env
           #    BEFORE we overwrite it, so a failed rollout can be rolled back.
           PREV_TAG=$("${SSH[@]}" "grep -E '^IMAGE_TAG=' '$APP_DIR/.env' 2>/dev/null | tail -1 | cut -d= -f2- || true")
