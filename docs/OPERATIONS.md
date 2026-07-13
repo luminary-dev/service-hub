@@ -216,14 +216,19 @@ Work is tracked on the org-wide Service Hub board
 `.github/workflows/add-to-project.yml`. The board tracks **issues only** — one
 card per work item; pull requests are **not** separate cards.
 
-- **New issue** → added to the board (Status=Backlog, Service field set for this
-  repo) and **assigned to its opener**, so the card shows who owns it. Adding is
-  idempotent (an issue appears once).
-- **New PR** → **assigned to its author**. If it resolves an issue (a `Closes #n`
-  link), the author is mirrored onto that issue as an assignee, so the issue's
-  board card reflects who's working it and the PR links under the issue. A PR
-  that resolves no issue gets **no card** — fine for trivial chores, but
-  substantive work should have an issue first.
+- **New issue** → added to the board with Status=Backlog and the **Service
+  field resolved from the issue's `service:` label** (matched to the board
+  option by name at runtime, #388 — no label or no matching option leaves the
+  field unset with a logged warning). Adding is idempotent (an issue appears
+  once).
+- **New PR** → **assigned to its author**. If it resolves an issue in **this
+  repo** (a `Closes #n` link; cross-repo references are skipped), the author is
+  mirrored onto that issue as an assignee, so the issue's board card reflects
+  who's working it and the PR links under the issue. A PR that resolves no
+  issue gets **no card** — fine for trivial chores, but substantive work should
+  have an issue first. Fork PRs are skipped with a logged notice (their
+  `GITHUB_TOKEN` is read-only) — assign those manually; other assignment
+  failures surface as workflow warnings instead of being swallowed.
 
 GitHub's **built-in "auto-add" workflow must stay OFF** so this workflow is the
 single sync path.

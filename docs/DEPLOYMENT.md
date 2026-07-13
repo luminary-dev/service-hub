@@ -55,6 +55,13 @@ Triggered on **push to `prod`** (and `workflow_dispatch`). Three jobs:
 3. **`deploy`** — gated on the repo variable **`DEPLOY_ENABLED == 'true'`** and
    the `production` GitHub Environment; runs under a `deploy-prod` concurrency
    group (no cancel-in-progress) so two deploys never overlap. It:
+   - **connects with a pinned host key** (#388): the server's public host
+     key(s) live in the `PROD_SSH_KNOWN_HOSTS` secret, written to a
+     `known_hosts` file used with `StrictHostKeyChecking=yes`. The runner
+     starts with an empty `known_hosts` every run, so anything weaker would
+     trust whichever host answered and hand it the rendered `.env`; a key
+     mismatch (or an unset secret) fails the deploy before any secret leaves
+     the runner;
    - reads the currently-deployed `IMAGE_TAG` from the server's `.env`
      (`PREV_TAG`) **before** overwriting it, so a bad rollout can be reverted;
    - **renders `$APP_DIR/.env` from GitHub secrets**, piped over the encrypted
@@ -118,7 +125,16 @@ App secrets (set with `gh secret set <NAME>`):
   "Continue with Google" button is hidden, password auth unaffected).
 
 Deploy/SSH secrets: `PROD_SSH_HOST`, `PROD_SSH_USER`, `PROD_SSH_KEY` (a deploy
-key), `PROD_APP_DIR` (the checkout path on the host).
+key), `PROD_APP_DIR` (the checkout path on the host), and
+`PROD_SSH_KNOWN_HOSTS` — the host's public key(s) in `known_hosts` format,
+pinned by the deploy with `StrictHostKeyChecking=yes` (the job refuses to
+connect while it's unset). Capture it over a trusted network path and verify
+the fingerprint out-of-band (e.g. on the VPS console with
+`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`) before setting it:
+
+```bash
+ssh-keyscan -t ed25519 "$PROD_SSH_HOST" | gh secret set PROD_SSH_KNOWN_HOSTS
+```
 
 Repo variable: `DEPLOY_ENABLED` (`true` un-gates the `deploy` job).
 
