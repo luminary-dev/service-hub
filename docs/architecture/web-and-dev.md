@@ -12,6 +12,9 @@
   routes (matcher excludes only `/api`, `_next/*` and metadata assets) so a
   client-supplied `X-Locale` can never reach `getUrlLocale()`. The `lang` cookie
   still drives the rendered locale via `getLocale()`, which reads it directly.
+  Root metadata files (`sitemap.xml`, `robots.txt`, `manifest.webmanifest`)
+  exist only at the English root — under `/si` the proxy skips the rewrite so
+  they 404 instead of serving duplicates (#379).
 - Server components fetch the gateway directly (`src/lib/api.ts`: `GATEWAY_URL` +
   forwarded `cookie`, `cache: "no-store"`); `src/app/sitemap.ts` fetches
   `/api/providers/ids` and the active category list (`fetchCategoryOptions`,
