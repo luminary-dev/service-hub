@@ -117,7 +117,9 @@ Role transitions are also surfaced here (and in the user menu):
   not delete**: the `Provider` row is marked `suspended` (dropped from every
   public listing), role reverts to `CUSTOMER`, and the session is re-issued (no
   re-login). Reviews, inquiries and job responses are retained; becoming a
-  provider again reactivates the same profile. Audit-logged in identity-service.
+  provider again reactivates the same profile — unless it is under an ADMIN
+  suspension, which survives the downgrade and blocks the re-upgrade with 403
+  until an admin unsuspends (#550). Audit-logged in identity-service.
 
 ### Provider dashboard & profile editing
 

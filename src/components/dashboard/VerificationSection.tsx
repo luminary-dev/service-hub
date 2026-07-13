@@ -33,17 +33,23 @@ export default function VerificationSection({
     if (biz) fd.append("business", biz);
 
     setLoading(true);
-    const res = await fetch("/api/provider/verification", {
-      method: "POST",
-      body: fd,
-    });
-    setLoading(false);
-    if (res.ok) {
-      setStatus("PENDING");
-      router.refresh();
-    } else {
-      const d = await res.json().catch(() => ({}));
-      setError(d.error ?? t.error);
+    try {
+      const res = await fetch("/api/provider/verification", {
+        method: "POST",
+        body: fd,
+      });
+      if (res.ok) {
+        setStatus("PENDING");
+        router.refresh();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setError(d.error ?? t.error);
+      }
+    } catch {
+      // Network failure — recover instead of wedging the button (#363).
+      setError(t.error);
+    } finally {
+      setLoading(false);
     }
   }
 
