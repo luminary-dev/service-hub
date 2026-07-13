@@ -70,7 +70,7 @@ jobs:
     runs-on: ubuntu-latest
     # A hung rollout must not hold the (uncancellable) deploy-prod concurrency
     # group for the 6h default (#386). Two health-gated `up -d --wait`s cap at
-    # ~3min each, plus pulls; 20min is a comfortable ceiling.
+    # ~5min each, plus pulls; 20min is a comfortable ceiling.
     timeout-minutes: 20
     # Deploys over SSH with its own secrets — it needs no GITHUB_TOKEN scope.
     permissions: {}
@@ -146,17 +146,29 @@ jobs:
           #    `up -d --wait` blocks until every container with a healthcheck is
           #    healthy and none has exited, so a crash-loop or a failed
           #    `prisma migrate deploy` fails the deploy instead of silently
-          #    replacing the running stack. On failure we roll the stack back to
-          #    the previous IMAGE_TAG and exit non-zero. The old image is pruned
-          #    only AFTER a healthy rollout, so rollback stays a one-liner.
+          #    replacing the running stack. The 300s wait allows for the DB
+          #    services' 120s migration start_period plus the retry budget
+          #    (#568). On failure we roll the stack back to the previous
+          #    IMAGE_TAG and exit non-zero. Pruning happens only AFTER a healthy
+          #    rollout and keeps the previous tag, so rollback stays a one-liner.
           "${SSH[@]}" bash -s <<EOF
             set -euo pipefail
             cd "$APP_DIR"
             COMPOSE="docker compose -f docker-compose.prod.yml"
             git fetch origin prod && git reset --hard origin/prod
             \$COMPOSE pull
-            if \$COMPOSE up -d --remove-orphans --wait --wait-timeout 180; then
+            if \$COMPOSE up -d --remove-orphans --wait --wait-timeout 300; then
               echo "Deploy healthy."
+              # Prune superseded images (#567): tagged images are never
+              # "dangling", so a plain prune left every old :<sha> set on disk
+              # forever. Drop each service-hub :<sha> tag except the one just
+              # deployed and its predecessor (kept for instant rollback), then
+              # clear the now-dangling layers.
+              docker images --format '{{.Repository}}:{{.Tag}}' \
+                  --filter 'reference=ghcr.io/luminary-dev/service-hub-*' \
+                | grep -E ':[0-9a-f]{40}\$' \
+                | grep -v -e ":${TAG}\$" ${PREV_TAG:+-e ":${PREV_TAG}\$"} \
+                | xargs -r docker rmi || true
               docker image prune -f
             else
               echo "Deploy UNHEALTHY — attempting rollback to '${PREV_TAG:-<none>}'." >&2
@@ -164,7 +176,7 @@ jobs:
               if [ -n "${PREV_TAG:-}" ]; then
                 sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${PREV_TAG}/" .env
                 \$COMPOSE pull
-                \$COMPOSE up -d --remove-orphans --wait --wait-timeout 180 || true
+                \$COMPOSE up -d --remove-orphans --wait --wait-timeout 300 || true
                 echo "Rolled back to ${PREV_TAG}." >&2
               else
                 echo "No previous IMAGE_TAG recorded; cannot auto-roll back." >&2
