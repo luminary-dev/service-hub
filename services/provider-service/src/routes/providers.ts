@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { db } from "../db";
+import { moderateContent } from "../lib/auto-report";
 import { getAuth, getLocale, getOrigin } from "../lib/http";
 import {
   fetchProviderReviews,
@@ -521,6 +522,14 @@ providersRoutes.post("/api/providers/:id/inquiries", async (c) => {
       message: parsed.data.message,
       source: parsed.data.source ?? null,
     },
+  });
+
+  // Content filter (#375): AFTER the write on purpose — the inquiry is
+  // delivered as normal and a filter hit only queues a SYSTEM report for
+  // admin triage.
+  await moderateContent("INQUIRY", inquiry.id, {
+    name: parsed.data.name,
+    message: parsed.data.message,
   });
 
   // Tell the provider (denormalized contactEmail) — best-effort, never fails

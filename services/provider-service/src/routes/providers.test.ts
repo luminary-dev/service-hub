@@ -10,6 +10,9 @@ const { dbMock } = vi.hoisted(() => ({
     provider: { findMany: vi.fn(), findUnique: vi.fn(), count: vi.fn() },
     category: { findMany: vi.fn() },
     inquiry: { create: vi.fn(), findMany: vi.fn() },
+    // Content filter (#375): the auto-report path files a SYSTEM report on
+    // the inquiry when its text matches the denylist.
+    report: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
   },
 }));
 
@@ -366,5 +369,65 @@ describe("POST /api/providers/:id/inquiries", () => {
     expect(await res.json()).toEqual({ inquiry: null });
     expect(dbMock.inquiry.create).not.toHaveBeenCalled();
     expect(sendInquiryEmail).not.toHaveBeenCalled();
+  });
+
+  // Write-time content filter (#375): a denylist hit auto-files a SYSTEM
+  // report on the inquiry; the inquiry is still delivered (decision:
+  // auto-report and keep visible, never hard-block).
+  it("auto-files a SYSTEM INQUIRY report on a denylist hit, inquiry still created", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({ id: "p1", contactEmail: "n@baas.lk" });
+    dbMock.inquiry.create.mockResolvedValue({ id: "inq1" });
+    dbMock.report.findFirst.mockResolvedValue(null);
+    const res = await req("/api/providers/p1/inquiries", {
+      method: "POST",
+      body: { ...valid, message: "open the door you fucking crook, now" },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ inquiry: { id: "inq1" } });
+    expect(sendInquiryEmail).toHaveBeenCalled();
+    expect(dbMock.report.create).toHaveBeenCalledWith({
+      data: {
+        targetType: "INQUIRY",
+        targetId: "inq1",
+        reporterId: null,
+        reason: "auto-flag: content filter",
+        details: expect.stringContaining('matched "fucking" in message'),
+        source: "SYSTEM",
+      },
+    });
+  });
+
+  it("flags Singlish inquiry text too, without blocking the write", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({ id: "p1", contactEmail: "n@baas.lk" });
+    dbMock.inquiry.create.mockResolvedValue({ id: "inq1" });
+    dbMock.report.findFirst.mockResolvedValue(null);
+    const res = await req("/api/providers/p1/inquiries", {
+      method: "POST",
+      body: { ...valid, message: "mu hari ponnaya, wada karanne na kiyala kiyanna" },
+    });
+    expect(res.status).toBe(200);
+    const arg = dbMock.report.create.mock.calls[0][0] as { data: { details: string } };
+    expect(arg.data.details).toContain("ponnaya");
+  });
+
+  it("leaves the reports table untouched for a clean inquiry", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({ id: "p1", contactEmail: "n@baas.lk" });
+    dbMock.inquiry.create.mockResolvedValue({ id: "inq1" });
+    const res = await req("/api/providers/p1/inquiries", { method: "POST", body: valid });
+    expect(res.status).toBe(200);
+    expect(dbMock.report.findFirst).not.toHaveBeenCalled();
+    expect(dbMock.report.create).not.toHaveBeenCalled();
+  });
+
+  it("never fails the inquiry when the auto-report path throws (best-effort)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({ id: "p1", contactEmail: "n@baas.lk" });
+    dbMock.inquiry.create.mockResolvedValue({ id: "inq1" });
+    dbMock.report.findFirst.mockRejectedValue(new Error("db down"));
+    const res = await req("/api/providers/p1/inquiries", {
+      method: "POST",
+      body: { ...valid, message: "open the door you fucking crook, now" },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ inquiry: { id: "inq1" } });
   });
 });

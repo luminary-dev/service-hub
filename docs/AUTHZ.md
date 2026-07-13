@@ -253,7 +253,7 @@ plus report resolve/dismiss).
 Backend admin routes live in:
 `services/provider-service/src/routes/admin.ts`,
 `services/identity-service/src/routes/{admin.ts,admin-users.ts,admin-impersonation.ts}`,
-`services/job-service/src/routes/admin.ts`,
+`services/job-service/src/routes/{admin.ts,reports.ts}`,
 `services/review-service/src/routes/reports.ts`.
 
 ## Audit log
@@ -274,9 +274,9 @@ action names as their single-item counterparts.
   `adminId`, `action`, and a `from`/`to` date range).
 - **Report closures** additionally stamp `resolvedBy` / `resolvedAt` on the
   report row itself.
-- review-service keeps its **own** audit log for the review actions it owns
-  (exposed at `GET /api/admin/review-audit-log`); the admin frontend merges the
-  two.
+- review-service and job-service keep their **own** audit logs for the
+  actions they own (exposed at `GET /api/admin/review-audit-log` and
+  `GET /api/admin/job-audit-log`); the admin frontend merges the three.
 
 ## Impersonation ("view as")
 

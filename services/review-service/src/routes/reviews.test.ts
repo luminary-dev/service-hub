@@ -13,16 +13,24 @@ vi.mock("../lib/http", async (importActual) => {
 // outcome before (or instead of) any write. `$transaction` runs the callback
 // against a stub tx so the happy path can complete without Postgres. Defined
 // via vi.hoisted so the (hoisted) vi.mock factory below can reference them.
-const { upsert, createMany } = vi.hoisted(() => ({
-  upsert: vi.fn(async (_args: unknown) => ({ id: "rev_1" })),
-  createMany: vi.fn(async (_args: unknown) => ({ count: 0 })),
-}));
+const { upsert, createMany, reportFindFirst, reportCreate, reportUpdate } = vi.hoisted(
+  () => ({
+    upsert: vi.fn(async (_args: unknown) => ({ id: "rev_1" })),
+    createMany: vi.fn(async (_args: unknown) => ({ count: 0 })),
+    // Content filter (#375): the auto-report path checks for an existing OPEN
+    // SYSTEM report before filing one. Default: none exists.
+    reportFindFirst: vi.fn(async (_args: unknown): Promise<unknown> => null),
+    reportCreate: vi.fn(async (_args: unknown) => ({ id: "rep_1" })),
+    reportUpdate: vi.fn(async (_args: unknown) => ({ id: "rep_1" })),
+  })
+);
 vi.mock("../db", () => ({
   db: {
     $transaction: (fn: (tx: unknown) => unknown) =>
       fn({ review: { upsert }, reviewPhoto: { createMany } }),
     review: { upsert, findUnique: vi.fn() },
     reviewPhoto: { createMany },
+    report: { findFirst: reportFindFirst, create: reportCreate, update: reportUpdate },
   },
 }));
 
@@ -85,6 +93,9 @@ beforeEach(() => {
   s2sMock.mockReset();
   upsert.mockClear();
   createMany.mockClear();
+  reportFindFirst.mockClear();
+  reportCreate.mockClear();
+  reportUpdate.mockClear();
 });
 
 describe("POST /api/providers/:id/reviews — interaction gate (#25)", () => {
@@ -184,5 +195,64 @@ describe("POST /api/providers/:id/reviews — optional dimensions (#528)", () =>
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe("Invalid input");
     expect(upsert).not.toHaveBeenCalled();
+  });
+});
+
+// Write-time content filter (#375): a denylist hit on the comment auto-files
+// a SYSTEM report on the review; the write itself always succeeds (decision:
+// auto-report and keep visible, never hard-block).
+describe("POST /api/providers/:id/reviews — content filter (#375)", () => {
+  it("auto-files a SYSTEM report on a denylist hit without blocking the write", async () => {
+    wireS2s({ interaction: "exists" });
+    const res = await postReviewWith({ comment: "This guy is a fucking scammer" });
+    expect(res.status).toBe(200);
+    expect(upsert).toHaveBeenCalledTimes(1);
+    expect(reportCreate).toHaveBeenCalledWith({
+      data: {
+        targetType: "REVIEW",
+        targetId: "rev_1",
+        reporterId: null,
+        reason: "auto-flag: content filter",
+        details: expect.stringContaining('matched "fucking" in comment'),
+        source: "SYSTEM",
+      },
+    });
+  });
+
+  it("flags Sinhala-script comments too", async () => {
+    wireS2s({ interaction: "exists" });
+    const res = await postReviewWith({ comment: "මූ පට්ට පකයා, එපා වෙලා ගියා" });
+    expect(res.status).toBe(200);
+    expect(reportCreate).toHaveBeenCalledTimes(1);
+    const arg = reportCreate.mock.calls[0][0] as { data: { details: string } };
+    expect(arg.data.details).toContain("පකයා");
+  });
+
+  it("refreshes the existing OPEN SYSTEM report instead of stacking duplicates", async () => {
+    wireS2s({ interaction: "exists" });
+    reportFindFirst.mockResolvedValueOnce({ id: "rep_existing" });
+    const res = await postReviewWith({ comment: "still absolute bullshit work" });
+    expect(res.status).toBe(200);
+    expect(reportCreate).not.toHaveBeenCalled();
+    expect(reportUpdate).toHaveBeenCalledWith({
+      where: { id: "rep_existing" },
+      data: { details: expect.stringContaining('matched "bullshit"') },
+    });
+  });
+
+  it("leaves the reports table untouched for a clean comment", async () => {
+    wireS2s({ interaction: "exists" });
+    const res = await postReviewWith({ comment: "Excellent, punctual and tidy work." });
+    expect(res.status).toBe(200);
+    expect(reportFindFirst).not.toHaveBeenCalled();
+    expect(reportCreate).not.toHaveBeenCalled();
+  });
+
+  it("never fails the write when the auto-report path throws (best-effort)", async () => {
+    wireS2s({ interaction: "exists" });
+    reportFindFirst.mockRejectedValueOnce(new Error("db down"));
+    const res = await postReviewWith({ comment: "utter bullshit" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
   });
 });

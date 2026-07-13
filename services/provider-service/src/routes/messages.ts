@@ -5,6 +5,7 @@
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { db } from "../db";
+import { moderateContent } from "../lib/auto-report";
 import { getAuth } from "../lib/http";
 import {
   lastReadField,
@@ -114,6 +115,11 @@ messagesRoutes.post("/api/inquiries/:id/messages", async (c) => {
     });
     return m;
   });
+
+  // Content filter (#375): AFTER the write on purpose — the message is
+  // delivered as normal and a filter hit only queues a SYSTEM report (on the
+  // thread's inquiry — the report's details carry the offending excerpt).
+  await moderateContent("INQUIRY", inquiry.id, { message: parsed.data.body });
 
   return c.json({
     message: {

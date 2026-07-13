@@ -413,16 +413,20 @@ adminRoutes.patch("/api/admin/photos/:id/restore", async (c) => {
 // ---------------------------------------------------------------------------
 
 const REPORT_STATUSES = ["OPEN", "RESOLVED", "DISMISSED"] as const;
-// This queue only ever holds PROVIDER/WORK_PHOTO reports — REVIEW reports
-// live at review-service. A REVIEW filter is valid overall (the admin
-// frontend offers it as one dropdown across both services) but never
-// matches here, so it short-circuits to an empty list below.
-const LOCAL_TARGET_TYPES = ["PROVIDER", "WORK_PHOTO"] as const;
+// This queue only ever holds PROVIDER/WORK_PHOTO/INQUIRY reports — REVIEW
+// reports live at review-service, JOB/JOB_RESPONSE at job-service. Filters
+// for a type another service owns are valid overall (the admin frontend
+// offers one dropdown across all sources) but never match here, so they
+// short-circuit to an empty list below. INQUIRY reports (#375) are only ever
+// SYSTEM-created by the write-time content filter — there is no public
+// report-an-inquiry flow.
+const LOCAL_TARGET_TYPES = ["PROVIDER", "WORK_PHOTO", "INQUIRY"] as const;
 
 // OPEN reports first (newest first), then closed ones (newest first). Every
 // report carries a hydrated target summary from local tables — provider name
-// for PROVIDER targets, photo url + owner for WORK_PHOTO targets — and
-// `target` is null when the target has since been hard-deleted.
+// for PROVIDER targets, photo url + owner for WORK_PHOTO targets, thread
+// context for INQUIRY targets — and `target` is null when the target has
+// since been hard-deleted.
 //
 // Filtering (#223): optional `status` and `targetType` query params, passed
 // straight through from the admin frontend's filter dropdowns. Unrecognized
@@ -512,7 +516,10 @@ adminRoutes.get("/api/admin/reports", async (c) => {
   const photoIds = rows
     .filter((r) => r.targetType === "WORK_PHOTO")
     .map((r) => r.targetId);
-  const [providers, photos] = await Promise.all([
+  const inquiryIds = rows
+    .filter((r) => r.targetType === "INQUIRY")
+    .map((r) => r.targetId);
+  const [providers, photos, inquiries] = await Promise.all([
     providerIds.length
       ? db.provider.findMany({
           where: { id: { in: providerIds } },
@@ -532,9 +539,22 @@ adminRoutes.get("/api/admin/reports", async (c) => {
           },
         })
       : [],
+    inquiryIds.length
+      ? db.inquiry.findMany({
+          where: { id: { in: inquiryIds } },
+          select: {
+            id: true,
+            name: true,
+            message: true,
+            providerId: true,
+            provider: { select: { contactName: true } },
+          },
+        })
+      : [],
   ]);
   const providerById = new Map(providers.map((p) => [p.id, p]));
   const photoById = new Map(photos.map((p) => [p.id, p]));
+  const inquiryById = new Map(inquiries.map((i) => [i.id, i]));
 
   const reports = rows.map((r) => {
     let target = null;
@@ -545,6 +565,20 @@ adminRoutes.get("/api/admin/reports", async (c) => {
           providerId: p.id,
           providerName: p.contactName,
           suspended: p.suspended,
+        };
+      }
+    } else if (r.targetType === "INQUIRY") {
+      // Thread context for a content-filter flag (#375): the customer name,
+      // the original inquiry message and the provider whose thread it is. The
+      // flagged text itself is in the report's `details` (a thread can hold
+      // many messages; details pins the offending one).
+      const i = inquiryById.get(r.targetId);
+      if (i) {
+        target = {
+          providerId: i.providerId,
+          providerName: i.provider.contactName,
+          customerName: i.name,
+          message: i.message,
         };
       }
     } else {

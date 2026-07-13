@@ -36,6 +36,10 @@ review-service.
 - Each review can be reported (`POST /api/reviews/{id}/report`). Admins moderate
   reviews from the [reports queue](../admin/moderation.md#reports-queue) and provider detail
   view (soft delete + restore).
+- Every submitted comment also passes the write-time
+  [content filter](../admin/moderation.md#content-filter-write-time-auto-reports)
+  (#375): a denylist hit never blocks the write — it auto-files a
+  `SYSTEM`-sourced report so the review surfaces in the moderation queue.
 
 Review creation and responses are rate-limited (see
 [RATE_LIMITING.md](../RATE_LIMITING.md)).

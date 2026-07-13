@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { db } from "../db";
 import { logAudit } from "../lib/audit";
+import { moderateContent } from "../lib/auto-report";
 import { getAuth, s2s } from "../lib/http";
 import {
   listProviderReviews,
@@ -207,7 +208,7 @@ reviews.post("/api/providers/:id/reviews", async (c) => {
     }
   }
 
-  await db.$transaction(async (tx) => {
+  const reviewId = await db.$transaction(async (tx) => {
     const review = await tx.review.upsert({
       where: { providerId_userId: { providerId: id, userId: auth.userId } },
       // Reaching here means the interaction gate passed, so every review we
@@ -223,7 +224,12 @@ reviews.post("/api/providers/:id/reviews", async (c) => {
         data: photoUrls.map((url) => ({ reviewId: review.id, url })),
       });
     }
+    return review.id;
   });
+
+  // Content filter (#375): AFTER the write on purpose — the review stays
+  // visible and a filter hit only queues a SYSTEM report for admin triage.
+  await moderateContent("REVIEW", reviewId, { comment: parsed.data.comment });
 
   return c.json({ ok: true });
 });

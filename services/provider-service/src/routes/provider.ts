@@ -4,6 +4,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
+import { moderateContent } from "../lib/auto-report";
 import {
   districtEnum,
   optionalSlPhone,
@@ -171,6 +172,15 @@ providerDashboardRoutes.put("/api/provider/profile", async (c) => {
   // denormalized copy is the write we own.
   await syncIdentityProfile(provider.userId, { name, phone });
 
+  // Content filter (#375): AFTER the write on purpose — the profile stays
+  // visible and a filter hit only queues a SYSTEM report for admin triage.
+  await moderateContent("PROVIDER", provider.id, {
+    headline: profile.headline,
+    bio: profile.bio,
+    headlineSi: profile.headlineSi,
+    bioSi: profile.bioSi,
+  });
+
   return c.json({ provider: updated });
 });
 
@@ -203,6 +213,13 @@ providerDashboardRoutes.post("/api/provider/services", async (c) => {
     },
   });
 
+  // Content filter (#375): service text is profile content, so a hit flags
+  // the provider (auto-report only — the write is never blocked).
+  await moderateContent("PROVIDER", provider.id, {
+    title: parsed.data.title,
+    description: parsed.data.description,
+  });
+
   return c.json({ service });
 });
 
@@ -232,6 +249,12 @@ providerDashboardRoutes.put("/api/provider/services/:id", async (c) => {
       price: parsed.data.price,
       priceType: parsed.data.priceType,
     },
+  });
+
+  // Content filter (#375): same PROVIDER-target flag as the create path.
+  await moderateContent("PROVIDER", provider.id, {
+    title: parsed.data.title,
+    description: parsed.data.description,
   });
 
   return c.json({ service: updated });

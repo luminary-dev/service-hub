@@ -40,6 +40,12 @@ district (403 "This job is outside your category or district"), or to a job that
 is not OPEN (400) all fail. One response per provider per job. The customer gets
 a best-effort email.
 
+Job titles/descriptions and response messages also pass the write-time
+[content filter](../admin/moderation.md#content-filter-write-time-auto-reports)
+(#375): a denylist hit never blocks the post — it auto-files a `SYSTEM`-sourced
+`JOB` / `JOB_RESPONSE` report into the admin moderation queue
+(`GET /api/admin/job-reports`).
+
 ### Managing your jobs
 
 The same page shows a customer their own jobs (`GET /api/jobs/mine`) with the

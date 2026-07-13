@@ -29,6 +29,9 @@ const { dbMock } = vi.hoisted(() => ({
       findUnique: vi.fn(),
       create: vi.fn(),
     },
+    // Content filter (#375): the auto-report path files a SYSTEM report on
+    // the job / response when its text matches the denylist.
+    report: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
     $queryRaw: vi.fn(),
   },
 }));
@@ -541,5 +544,123 @@ describe("POST /api/jobs/:id/responses (provider responds)", () => {
     );
     expect(res.status).toBe(400);
     expect((await res.json()).error).toMatch(/already responded/i);
+  });
+});
+
+// Write-time content filter (#375): a denylist hit on job / response text
+// auto-files a SYSTEM report; the write itself always succeeds (decision:
+// auto-report and keep visible, never hard-block).
+describe("content filter on job posts and responses (#375)", () => {
+  const openJob = {
+    id: "job_1",
+    customerId: CUSTOMER_ID,
+    category: "plumbing",
+    district: "Colombo",
+    status: "OPEN",
+    title: "Fix a leaking tap",
+  };
+
+  it("POST /api/jobs: flags a denylist hit in the description (JOB target)", async () => {
+    dbMock.jobRequest.create.mockResolvedValue({ id: "job_1", ...validJob });
+    dbMock.report.findFirst.mockResolvedValue(null);
+    const res = await req(
+      "/api/jobs",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...validJob,
+          description: "Last plumber was a fucking crook, need a real one.",
+        }),
+      },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: "job_1" });
+    expect(dbMock.report.create).toHaveBeenCalledWith({
+      data: {
+        targetType: "JOB",
+        targetId: "job_1",
+        reporterId: null,
+        reason: "auto-flag: content filter",
+        details: expect.stringContaining('matched "fucking" in description'),
+        source: "SYSTEM",
+      },
+    });
+  });
+
+  it("POST /api/jobs: flags Sinhala job text too", async () => {
+    dbMock.jobRequest.create.mockResolvedValue({ id: "job_1", ...validJob });
+    dbMock.report.findFirst.mockResolvedValue(null);
+    const res = await req(
+      "/api/jobs",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...validJob,
+          description: "කලින් ආපු කැරියා වැඩේ කලේ නැහැ, හොඳ කෙනෙක් ඕන.",
+        }),
+      },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(200);
+    const arg = dbMock.report.create.mock.calls[0][0] as { data: { details: string } };
+    expect(arg.data.details).toContain("කැරියා");
+  });
+
+  it("POST /api/jobs: clean text never touches the reports table", async () => {
+    dbMock.jobRequest.create.mockResolvedValue({ id: "job_1", ...validJob });
+    const res = await req(
+      "/api/jobs",
+      { method: "POST", body: JSON.stringify(validJob) },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(200);
+    expect(dbMock.report.findFirst).not.toHaveBeenCalled();
+    expect(dbMock.report.create).not.toHaveBeenCalled();
+  });
+
+  it("POST /api/jobs/:id/responses: flags a hit in the message (JOB_RESPONSE target)", async () => {
+    dbMock.jobRequest.findUnique.mockResolvedValue(openJob);
+    dbMock.jobResponse.findUnique.mockResolvedValue(null);
+    dbMock.jobResponse.create.mockResolvedValue({ id: "resp_1" });
+    dbMock.report.findFirst.mockResolvedValue(null);
+    wireS2s({
+      users: [{ id: CUSTOMER_ID, name: "Cus Tomer", email: "cust@example.com" }],
+    });
+    const res = await req(
+      "/api/jobs/job_1/responses",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          message: "mata deela thibba job eka hariyata karala nathi hutta mama nemei",
+        }),
+      },
+      { "x-user-id": PROVIDER_USER_ID }
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(dbMock.report.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        targetType: "JOB_RESPONSE",
+        targetId: "resp_1",
+        source: "SYSTEM",
+        details: expect.stringContaining('matched "hutta" in message'),
+      }),
+    });
+  });
+
+  it("never fails the write when the auto-report path throws (best-effort)", async () => {
+    dbMock.jobRequest.create.mockResolvedValue({ id: "job_1", ...validJob });
+    dbMock.report.findFirst.mockRejectedValue(new Error("db down"));
+    const res = await req(
+      "/api/jobs",
+      {
+        method: "POST",
+        body: JSON.stringify({ ...validJob, description: "utter bullshit service" }),
+      },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: "job_1" });
   });
 });

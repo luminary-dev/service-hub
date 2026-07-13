@@ -31,7 +31,7 @@ each service enforces the tier. **Reads and report resolve/dismiss** gate on
 | `PATCH /api/admin/verifications` | ADMIN | Bulk approve/reject `{ ids, action, reason? }` (only PENDING touched) → `{ status, count }`. |
 | `DELETE /api/admin/photos/:id` | ADMIN | Soft-delete a work photo. |
 | `PATCH /api/admin/photos/:id/restore` | ADMIN | Restore a soft-deleted photo. |
-| `GET /api/admin/reports` | SUPPORT+ | Provider/work-photo report queue (OPEN first), `status`/`targetType` filters, paginated (default 20, cap 100) → `{ reports, total, page, pageSize }` with hydrated target. |
+| `GET /api/admin/reports` | SUPPORT+ | Provider/work-photo/inquiry report queue (OPEN first), `status`/`targetType` filters (`PROVIDER`\|`WORK_PHOTO`\|`INQUIRY` — inquiry rows are content-filter flags, #375), paginated (default 20, cap 100) → `{ reports, total, page, pageSize }` with hydrated target. |
 | `PATCH /api/admin/reports/:id` | SUPPORT+ | `{ status: RESOLVED\|DISMISSED }` (stamps `resolvedBy`/`resolvedAt`). |
 | `PATCH /api/admin/reports` | SUPPORT+ | Bulk resolve/dismiss `{ ids, status }` → `{ ok, count }`. |
 | `GET /api/admin/notifications/counts` | SUPPORT+ | `{ pendingVerifications, openReports }` (nav badges). |
@@ -62,6 +62,11 @@ each service enforces the tier. **Reads and report resolve/dismiss** gate on
 |---|---|---|
 | `GET /api/admin/jobs` | SUPPORT+ | Jobs list (`?status` — `OPEN`/`CLOSED`, any other value is ignored; `?category`), newest first, customer name + response count → `{ jobs }` (not paginated). |
 | `GET /api/admin/jobs/:id` | SUPPORT+ | Job + responses with customer/provider contact hydrated. |
+| `GET /api/admin/job-reports` | SUPPORT+ | Job/job-response report queue (#375 — every row is a SYSTEM content-filter flag), `status`/`targetType` filters (`JOB`\|`JOB_RESPONSE`), paginated (default 20, cap 100) → `{ reports, total, page, pageSize }` with hydrated target. |
+| `GET /api/admin/job-reports/count` | SUPPORT+ | `{ openReports }` (nav badge; summed with provider + review counts client-side). |
+| `PATCH /api/admin/job-reports/:id` | SUPPORT+ | `{ status: RESOLVED\|DISMISSED }` (stamps `resolvedBy`/`resolvedAt`, audited). |
+| `PATCH /api/admin/job-reports` | SUPPORT+ | Bulk resolve/dismiss `{ ids, status }` → `{ ok, count }`. |
+| `GET /api/admin/job-audit-log` | SUPPORT+ | This service's moderation log (filters + take 200; merged with the provider + review logs in the UI). |
 
 ---
 
