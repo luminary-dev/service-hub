@@ -130,7 +130,31 @@ const en = {
       "Create a free profile with your photos, rates and contact details. Customers across Sri Lanka search Baas.lk every day for someone exactly like you.",
     ctaCreate: "Create your profile",
     ctaSee: "See who's on it",
-    heroWorkerAlt: "A builder in safety gear holding a hammer",
+    // Hero slider (#447): alt + plate caption per slide, paired 1:1 with the
+    // image paths in HeroSlider.tsx.
+    heroSlides: [
+      {
+        alt: "A builder in safety gear holding a hammer",
+        caption: "Certified builder · LK",
+      },
+      {
+        alt: "A mechanic repairing a car engine at a roadside garage",
+        caption: "Vehicle mechanic · LK",
+      },
+      {
+        alt: "An electrician wiring a breaker panel at a house",
+        caption: "Licensed electrician · LK",
+      },
+      {
+        alt: "A plumber tightening the drain pipes under a kitchen sink",
+        caption: "Master plumber · LK",
+      },
+    ],
+    heroCarouselLabel: "Photos of trades on Baas.lk",
+    heroSlideOf: (n: number, total: number) => `Slide ${n} of ${total}`,
+    heroPrev: "Previous slide",
+    heroNext: "Next slide",
+    heroGoTo: (n: number) => `Go to slide ${n}`,
     heroTeaAlt: "Tea pluckers working on a Sri Lankan estate",
   },
   search: {
@@ -1173,7 +1197,29 @@ const si: Dict = {
       "ඡායාරූප, ගාස්තු සහ සම්බන්ධතා විස්තර සමඟ නොමිලේ ගිණුමක් හදන්න. ලංකාව පුරා පාරිභෝගිකයන් හැමදාම ඔබ වගේ කෙනෙක්ව සොයනවා.",
     ctaCreate: "ඔබේ ගිණුම හදන්න",
     ctaSee: "කවුද ඉන්නේ බලන්න",
-    heroWorkerAlt: "ආරක්ෂිත උපකරණ පැළඳ මිටියක් අතැතිව සිටින ගොඩනැගිලි කම්කරුවෙක්",
+    heroSlides: [
+      {
+        alt: "ආරක්ෂිත උපකරණ පැළඳ මිටියක් අතැතිව සිටින ගොඩනැගිලි කම්කරුවෙක්",
+        caption: "සහතික ගොඩනැගිලි ශිල්පී · LK",
+      },
+      {
+        alt: "පාර අයිනේ ගරාජයක වාහන එන්ජිමක් අලුත්වැඩියා කරන රථ කාර්මිකයෙක්",
+        caption: "රථ කාර්මික · LK",
+      },
+      {
+        alt: "නිවසක විදුලි පුවරුවක වයරින් සකසන විදුලි කාර්මිකයෙක්",
+        caption: "බලපත්‍රලාභී විදුලි කාර්මික · LK",
+      },
+      {
+        alt: "මුළුතැන්ගෙයි සින්ක් එකක් යට ජල නළ තද කරන ජලනල කාර්මිකයෙක්",
+        caption: "ප්‍රවීණ ජලනල කාර්මික · LK",
+      },
+    ],
+    heroCarouselLabel: "Baas.lk හි ක්ෂේත්‍රවල ඡායාරූප",
+    heroSlideOf: (n: number, total: number) => `රූප ${total}න් ${n} වැන්න`,
+    heroPrev: "පෙර රූපය",
+    heroNext: "ඊළඟ රූපය",
+    heroGoTo: (n: number) => `රූපය ${n} වෙත යන්න`,
     heroTeaAlt: "ශ්‍රී ලාංකික තේ වතුයායක වැඩ කරන තේ දළු නෙළන්නන්",
   },
   search: {

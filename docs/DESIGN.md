@@ -102,6 +102,16 @@ FM-Bindumathi has no Sinhala Unicode glyphs.
   `InView` component), plus the home-hero set (`.roll-word`, `.orbit-ring`,
   `.orbit-chip`, `.ticker-track`, `.floaty`, `.pulse-dot`) and photo effects
   (`.kenburns`, `.scan-line`).
+- **Home hero slider** (`HeroSlider`, `src/components/HeroSlider.tsx`, #447):
+  the hero's photo plate crossfades through four worker photos from
+  `public/images/workers/` (5 s per slide, Ken Burns drift on the active
+  slide), with a localized caption plus keyboard-accessible prev/next and dot
+  controls in the figcaption bar. Rotation pauses on hover/focus-within and is
+  disabled under `prefers-reduced-motion`; only the active slide is exposed to
+  assistive tech (`aria-roledescription="carousel"` / `"slide"`, the caption
+  announced politely only while rotation is stopped). The first slide uses
+  `next/image`'s `preload` so the LCP image behaves like the old static photo;
+  the rest lazy-load.
 - Everything is guarded by `prefers-reduced-motion: reduce`, which cancels the
   animations and transitions.
 

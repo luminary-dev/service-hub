@@ -9,6 +9,7 @@ import { languageAlternates, localizedHref } from "@/lib/links";
 import { getLocale, getUrlLocale } from "@/lib/locale";
 import { getSession } from "@/lib/auth";
 import { SITE_NAME, SITE_URL } from "@/lib/site";
+import HeroSlider from "@/components/HeroSlider";
 import ProviderCard, { ProviderCardDTO } from "@/components/ProviderCard";
 import SearchBar from "@/components/SearchBar";
 import InView from "@/components/InView";
@@ -170,27 +171,8 @@ export default async function HomePage() {
             </p>
           </div>
 
-          {/* Worker photo, framed as a technical plate */}
-          <figure className="relative">
-            <div className="tech-corners relative aspect-[4/5] overflow-hidden border border-ink-300 bg-ink-100">
-              <Image
-                src="/images/workers/hero-worker2.jpg"
-                alt={t.home.heroWorkerAlt}
-                fill
-                priority
-                sizes="(min-width: 1024px) 460px, 100vw"
-                className="kenburns object-cover object-center"
-              />
-              <div className="blueprint-grid pointer-events-none absolute inset-0 opacity-30 mix-blend-overlay" />
-              <span className="absolute left-3 top-3 rounded-sm bg-brand-700 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-white dark:text-ink-50">
-                Verified trade
-              </span>
-            </div>
-            <figcaption className="flex items-center justify-between border border-t-0 border-ink-300 bg-ink-100 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-500">
-              <span>Fig.01</span>
-              <span>Certified builder · LK</span>
-            </figcaption>
-          </figure>
+          {/* Worker photo slider, framed as a technical plate (#447) */}
+          <HeroSlider />
         </div>
       </section>
 
