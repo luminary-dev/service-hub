@@ -77,7 +77,11 @@ describe("POST /internal/providers/by-user/:userId/deactivate", () => {
 
 describe("POST /internal/providers/by-user/:userId/reactivate", () => {
   it("clears suspended on a self-deactivated profile (re-upgrade)", async () => {
-    dbMock.provider.findUnique.mockResolvedValue({ id: "prov1", suspended: true });
+    dbMock.provider.findUnique.mockResolvedValue({
+      id: "prov1",
+      suspended: true,
+      adminSuspended: false,
+    });
     dbMock.provider.update.mockResolvedValue({ id: "prov1", suspended: false });
 
     const res = await post("/internal/providers/by-user/owner-1/reactivate");
@@ -90,9 +94,27 @@ describe("POST /internal/providers/by-user/:userId/reactivate", () => {
   });
 
   it("is a no-op when already active", async () => {
-    dbMock.provider.findUnique.mockResolvedValue({ id: "prov1", suspended: false });
+    dbMock.provider.findUnique.mockResolvedValue({
+      id: "prov1",
+      suspended: false,
+      adminSuspended: false,
+    });
     const res = await post("/internal/providers/by-user/owner-1/reactivate");
     expect(res.status).toBe(200);
+    expect(dbMock.provider.update).not.toHaveBeenCalled();
+  });
+
+  // #550: leave-provider → complete-provider must not lift an ADMIN
+  // suspension — the reactivate path refuses it outright, with no write.
+  it("refuses an ADMIN suspension with 409 and no write", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({
+      id: "prov1",
+      suspended: true,
+      adminSuspended: true,
+    });
+    const res = await post("/internal/providers/by-user/owner-1/reactivate");
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "Suspended by admin" });
     expect(dbMock.provider.update).not.toHaveBeenCalled();
   });
 });

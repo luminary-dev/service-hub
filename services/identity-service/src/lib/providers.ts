@@ -118,6 +118,15 @@ export async function deactivateProviderProfile(userId: string): Promise<void> {
   }
 }
 
+// Distinguishes provider-service's 409 refusal — the profile is under an
+// active ADMIN suspension (#550) — from a transport/5xx failure, so
+// complete-provider can answer 403 instead of the generic 502.
+export class ProviderAdminSuspendedError extends Error {
+  constructor() {
+    super("provider profile is admin-suspended");
+  }
+}
+
 // Re-upgrade (#403): a customer who previously closed their provider profile
 // becomes a provider again. complete-provider reuses the existing (suspended)
 // profile rather than recreating it, so it must explicitly reactivate it here.
@@ -125,7 +134,8 @@ export async function deactivateProviderProfile(userId: string): Promise<void> {
 // than flipping the role to PROVIDER while the profile stays hidden. Returns
 // whether a profile actually existed (provider-service no-ops with
 // `reactivated: false` otherwise) so the admin promotion path can refuse to
-// promote a user who has no profile at all (#554).
+// promote a user who has no profile at all (#554). A 409 means the suspension
+// is admin-owned and must not be self-lifted (#550).
 export async function reactivateProviderProfile(
   userId: string
 ): Promise<boolean> {
@@ -134,6 +144,9 @@ export async function reactivateProviderProfile(
     `/internal/providers/by-user/${encodeURIComponent(userId)}/reactivate`,
     { method: "POST" }
   );
+  if (res.status === 409) {
+    throw new ProviderAdminSuspendedError();
+  }
   if (!res.ok) {
     throw new Error(`provider-service responded ${res.status}`);
   }

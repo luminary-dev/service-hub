@@ -26,8 +26,8 @@ using the shared `s2s()` helper (one bounded retry on idempotent GETs).
 | `GET /internal/categories` | Full category list (incl. inactive) for peers' validation caches. |
 | `POST /internal/providers` | Registration orchestration (called by identity); idempotent on the unique userId → `{ id }`. |
 | `GET /internal/providers/by-user/:userId` | Provider owned by a user (login / job-board gate). |
-| `POST /internal/providers/by-user/:userId/deactivate` | Self-downgrade (#403, called by identity `leave-provider`): hide the user's provider profile (`suspended = true`). Idempotent. |
-| `POST /internal/providers/by-user/:userId/reactivate` | Re-upgrade (#403, called by identity `complete-provider` and the admin CUSTOMER→PROVIDER promotion): clear `suspended`. Idempotent — answers `{ reactivated: false }` when no profile exists, which the admin promotion treats as a 400 (#554). |
+| `POST /internal/providers/by-user/:userId/deactivate` | Self-downgrade (#403, called by identity `leave-provider`): hide the user's provider profile (`suspended = true`; `adminSuspended` untouched, so an active ADMIN suspension survives, #550). Idempotent. |
+| `POST /internal/providers/by-user/:userId/reactivate` | Re-upgrade (#403, called by identity `complete-provider` and the admin CUSTOMER→PROVIDER promotion): clear `suspended`. Refuses an ADMIN suspension with 409 (#550) — only the admin unsuspend action clears `adminSuspended`. Idempotent otherwise — answers `{ reactivated: false }` when no profile exists, which the admin promotion treats as a 400 (#554). |
 | `POST /internal/providers/avatar` | Denormalized avatar sync from identity (#434), `{ userId, avatarUrl }` — updates the provider's cached `avatarUrl`. No-op if the user has no provider. |
 | `POST /internal/providers/contact` | Denormalized contact sync from identity (#553), `{ userId, name?, email?, phone? }` — mirrors account name/phone edits and email changes onto the cached `contactName`/`contactEmail`/`contactPhone`. Only provided fields are written; no-op if the user has no provider. |
 | `GET /internal/providers?ids=` | Batch provider hydration (≤500). |

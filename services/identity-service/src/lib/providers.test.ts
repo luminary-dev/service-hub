@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   eraseProviderProfile,
+  ProviderAdminSuspendedError,
   providerExists,
   reactivateProviderProfile,
   resolveProviderIdForErase,
@@ -96,6 +97,24 @@ describe("reactivateProviderProfile", () => {
   it("throws on a 5xx so the caller 502s instead of guessing", async () => {
     stubFetch(500, { error: "boom" });
     await expect(reactivateProviderProfile("u1")).rejects.toThrow(/500/);
+  });
+
+  // #550: provider-service refuses to reactivate a profile under an ADMIN
+  // suspension (409). That refusal must surface as the typed error so
+  // complete-provider answers 403 (and the admin promotion 409) instead of
+  // the generic 502 — and never lifts the suspension.
+  it("throws ProviderAdminSuspendedError on 409 (admin suspension)", async () => {
+    stubFetch(409, { error: "Suspended by admin" });
+    await expect(reactivateProviderProfile("u1")).rejects.toBeInstanceOf(
+      ProviderAdminSuspendedError
+    );
+  });
+
+  it("does not classify other non-ok statuses as admin suspensions", async () => {
+    stubFetch(500, { error: "boom" });
+    const err = await reactivateProviderProfile("u1").catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(ProviderAdminSuspendedError);
   });
 });
 
