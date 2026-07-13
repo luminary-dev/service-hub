@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useT } from "@/components/I18nProvider";
 import { formatDate } from "@/lib/format";
+import ReportButton from "@/components/ReportButton";
 
 type Message = {
   id: string;
@@ -172,7 +173,7 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
         {thread.messages.map((m) => {
           const mine = m.sender === thread.party;
           return (
-            <div key={m.id} className={mine ? "flex justify-end" : "flex justify-start"}>
+            <div key={m.id} className={mine ? "flex justify-end" : "flex items-end justify-start gap-1.5"}>
               <div
                 className={
                   mine
@@ -193,6 +194,15 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
                   })}
                 </p>
               </div>
+              {/* Abuse reporting (#376): only the counterpart's messages are
+                  reportable — reporting your own makes no sense. */}
+              {!mine && (
+                <ReportButton
+                  endpoint={`/api/messages/${m.id}/report`}
+                  label={t.report.reportMessage}
+                  showLabel={false}
+                />
+              )}
             </div>
           );
         })}

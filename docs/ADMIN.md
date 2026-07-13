@@ -23,8 +23,8 @@ It is split into focused pages:
   images, activate/deactivate.
 - **[Users](admin/users.md)** — account search, lock/unlock, role change,
   force-logout.
-- **[Jobs](admin/jobs.md)** — the read-only jobs oversight (and the v0.2
-  monetization deferral).
+- **[Jobs](admin/jobs.md)** — jobs oversight and the reported-job takedown
+  (#376), plus the v0.2 monetization deferral.
 - **[Audit log](admin/audit-log.md)** — the merged moderation audit trail.
 - **[Impersonation](admin/impersonation.md)** — the "view as" support tool.
 - **[Notifications & bootstrapping the first admin](admin/notifications-and-bootstrap.md)**

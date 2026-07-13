@@ -19,6 +19,11 @@ model JobRequest {
   description String
   budget      Int? // optional, LKR
   status      String        @default("OPEN") // OPEN | CLOSED
+  // Admin takedown (#376): set when a full admin hides a reported job, cleared
+  // on unhide. Hidden jobs disappear from the provider board and stop
+  // accepting responses; the row survives so the action is reversible and the
+  // admin view can still show what was taken down.
+  hiddenAt    DateTime?
   createdAt   DateTime      @default(now())
   // Last-transition timestamp (#370): auto-stamped on every write (edit, the
   // OPEN→CLOSED transition) so listings can reason about recency of the last
@@ -68,9 +73,9 @@ model Report {
   details    String?
   // "OPEN" | "RESOLVED" | "DISMISSED"
   status     String   @default("OPEN")
-  // "USER" | "SYSTEM" — only "SYSTEM" is produced today (content filter #375);
-  // the USER default matches the sibling models for when a public
-  // report-a-job flow lands.
+  // "USER" | "SYSTEM" (#375/#376): USER reports come from the public
+  // report-a-job flow (POST /api/jobs/:id/report); SYSTEM reports are
+  // auto-created by the write-time content filter.
   source     String   @default("USER")
   createdAt  DateTime @default(now())
   // Last-transition timestamp (#370): auto-stamped on every write (status

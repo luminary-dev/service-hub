@@ -28,14 +28,14 @@ them. Only `POST` requests are checked.
 | `POST /api/providers/[id]/reviews` | `review` | 10 / hour |
 | `POST /api/reviews/[id]/response` | `review` | 10 / hour (own `review-response` bucket) |
 | `POST /api/inquiries/[id]/messages` | `message` | 30 / 10 min |
-| `POST /api/providers/[id]/report`, `POST /api/photos/[id]/report`, `POST /api/reviews/[id]/report` | `review` | 10 / hour (shared `report` bucket) |
+| `POST /api/providers/[id]/report`, `POST /api/photos/[id]/report`, `POST /api/reviews/[id]/report`, `POST /api/jobs/[id]/report`, `POST /api/messages/[id]/report` | `review` | 10 / hour (shared `report` bucket) |
 | `POST /api/account/avatar`, `POST /api/provider/photos`, `POST /api/provider/verification`, `POST /api/admin/categories/image` | `upload` | 20 / 15 min (shared `upload` bucket) |
 
 `change-password` and `delete-account` sit on the strict login budget because
 each verifies the current password and is therefore a guessing oracle for a
-hijacked session. The three abuse-report endpoints share a single `report`
-bucket keyed per IP, since anonymous submissions are allowed and the IP budget
-is the main spam control. The phone-number reveal (`contactReveal`, #64) sits
+hijacked session. The five abuse-report endpoints (#50, #376) share a single
+`report` bucket keyed per IP, since (message reports excepted) anonymous
+submissions are allowed and the IP budget is the main spam control. The phone-number reveal (`contactReveal`, #64) sits
 on its own per-IP budget: provider phone/WhatsApp numbers are withheld from the
 public directory payloads and fetched only on an explicit tap, so this limit is
 the main defence against a crawler harvesting the whole directory's numbers.

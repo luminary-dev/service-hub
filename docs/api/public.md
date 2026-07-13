@@ -111,6 +111,8 @@ Every route requires a provider owned by the authenticated user (else
 | `POST /api/providers/:id/report` | optional session | provider | Report a provider `{ reason, details? }`; signed-in re-report updates the OPEN report → `{ ok: true }`. |
 | `POST /api/photos/:id/report` | optional session | provider | Report a work photo (same shape). |
 | `POST /api/reviews/:id/report` | optional session | review | Report a review; soft-deleted/missing → 404 → `{ ok: true }`. |
+| `POST /api/jobs/:id/report` | optional session | job | Report a job post (#376); hidden (taken-down)/missing → 404 → `{ ok: true }`. |
+| `POST /api/messages/:id/report` | authenticated (thread party) | provider | Report an inquiry thread message (#376). Threads are private, so only the two thread parties may report; anyone else (or a removed message) gets the same 404 as a missing id. |
 
 Reasons enum: `spam`, `scam`, `offensive`, `fake`, `other`.
 
@@ -120,8 +122,8 @@ Reasons enum: `spam`, `scam`, `offensive`, `fake`, `other`.
 |---|---|---|
 | `POST /api/jobs` | authenticated (verified email) | Post a job `{ category, district, title, description, budget? }` (category checked S2S) → `{ id }`. Unverified email → 403; over 10 posts per account per rolling 24 h → 429 (#556). |
 | `PATCH /api/jobs/:id` | authenticated (owner) | `{ status: OPEN\|CLOSED }`; non-owner → 404. |
-| `POST /api/jobs/:id/responses` | authenticated (PROVIDER) | Respond `{ message }`; provider gate + same category/district scope as the board; open + dup checks; emails the customer best-effort → `{ ok: true }`. |
-| `GET /api/jobs/board` | authenticated (PROVIDER) | OPEN jobs matching the provider's category+district, excluding own, with customer names + `responded`. Paginated → `{ jobs, total, page, pageSize }`. |
+| `POST /api/jobs/:id/responses` | authenticated (PROVIDER) | Respond `{ message }`; provider gate + same category/district scope as the board; open + dup checks; a job hidden by admin takedown (#376) → 404; emails the customer best-effort → `{ ok: true }`. |
+| `GET /api/jobs/board` | authenticated (PROVIDER) | OPEN jobs matching the provider's category+district, excluding own and admin-hidden (#376), with customer names + `responded`. Paginated → `{ jobs, total, page, pageSize }`. |
 | `GET /api/jobs/mine` | authenticated | Own jobs with responses hydrated with provider `{ name, phone }`. Paginated → `{ jobs, total, page, pageSize }`. |
 
 Board/mine pagination: `page` ≥ 1, `pageSize`/`take` default 20, capped **50**.

@@ -13,6 +13,7 @@ import {
 import { categoryOptionLabel, type CategoryOption } from "@/lib/categories";
 import { districtLabelLoc, priceTypeLabelLoc } from "@/lib/i18n";
 import { useLocale, useT } from "@/components/I18nProvider";
+import { ConsentCheckbox } from "@/components/LegalConsent";
 import PasswordInput from "@/components/PasswordInput";
 import CategoryIcon from "@/components/CategoryIcon";
 import {
@@ -97,6 +98,7 @@ export default function ProviderRegisterForm({
   const [services, setServices] = useState<ServiceInput[]>([
     { ...emptyService },
   ]);
+  const [agree, setAgree] = useState(false);
 
   function set(field: string, value: string) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -136,6 +138,7 @@ export default function ProviderRegisterForm({
         if (!s.price || Number(s.price) <= 0)
           errs[`pr-service-${i}-price`] = r.errServicePrice(i + 1);
       });
+      if (!agree) errs["pr-agree"] = t.legal.errAgree;
     }
     return errs;
   }
@@ -751,6 +754,12 @@ export default function ProviderRegisterForm({
                 {r.addAnother}
               </button>
             )}
+            <ConsentCheckbox
+              id="pr-agree"
+              checked={agree}
+              onChange={setAgree}
+              {...errorProps("pr-agree")}
+            />
           </div>
         )}
 

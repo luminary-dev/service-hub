@@ -229,6 +229,8 @@ owning service applies. The two agree.
 | Verification queue: approve / reject | ADMIN | `hasFullAdminAccess` | `isFullAdmin` (provider-service) |
 | Delete / restore work photos (soft) | ADMIN | `hasFullAdminAccess` | `isFullAdmin` (provider-service) |
 | Delete / restore reviews (soft) | ADMIN | `hasFullAdminAccess` | `isFullAdmin` (review-service) |
+| Delete / restore inquiry thread messages (soft, #376) | ADMIN | `hasFullAdminAccess` | `isFullAdmin` (provider-service) |
+| Job takedown: hide / unhide (#376) | ADMIN | `hasFullAdminAccess` | `isFullAdmin` (job-service) |
 | Auto-flagging ("Run flagging") | ADMIN | `hasFullAdminAccess` | `isFullAdmin` (provider-service) |
 | Category create / edit / deactivate | ADMIN | `hasFullAdminAccess` | `isFullAdmin` (provider-service) |
 | User management: lock / unlock, role change, force-logout | ADMIN | `role === "ADMIN"` (page) | `isFullAdmin` (identity-service) |
@@ -282,7 +284,9 @@ action names as their single-item counterparts.
   report row itself.
 - review-service and job-service keep their **own** audit logs for the
   actions they own (exposed at `GET /api/admin/review-audit-log` and
-  `GET /api/admin/job-audit-log`); the admin frontend merges the three.
+  `GET /api/admin/job-audit-log` — the latter records `hide-job`/`unhide-job`
+  takedowns (#376) alongside job-report closures); the admin frontend merges
+  the three.
 
 ## Impersonation ("view as")
 

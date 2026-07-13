@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useT } from "@/components/I18nProvider";
+import { ConsentCheckbox } from "@/components/LegalConsent";
 import PasswordInput from "@/components/PasswordInput";
 import { Field } from "@/components/ui/Field";
 import {
@@ -21,6 +22,7 @@ export default function CustomerRegisterPage() {
     phone: "",
     password: "",
   });
+  const [agree, setAgree] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const { fieldErrors, show } = useFieldErrors();
@@ -38,6 +40,7 @@ export default function CustomerRegisterPage() {
     if (form.phone.trim().length < 9) errs["reg-phone"] = t.fieldErrors.phone;
     if (form.password.length < PASSWORD_MIN_LENGTH)
       errs["reg-password"] = t.fieldErrors.passwordMin(PASSWORD_MIN_LENGTH);
+    if (!agree) errs["reg-agree"] = t.legal.errAgree;
     return errs;
   }
 
@@ -150,6 +153,12 @@ export default function CustomerRegisterPage() {
                 autoComplete="new-password"
               />
             </Field>
+            <ConsentCheckbox
+              id="reg-agree"
+              checked={agree}
+              onChange={setAgree}
+              error={fieldErrors["reg-agree"]}
+            />
             <FormError>{error}</FormError>
             <button
               type="submit"

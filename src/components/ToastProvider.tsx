@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -11,7 +12,7 @@ import {
 import { FaCircleCheck, FaCircleExclamation, FaXmark } from "@/components/icons";
 import { useT } from "./I18nProvider";
 
-const TOAST_DURATION_MS = 4000;
+export const TOAST_DURATION_MS = 4000;
 
 type ToastVariant = "success" | "error";
 
@@ -33,19 +34,49 @@ export function useToast() {
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextId = useRef(0);
+  // One auto-dismiss timer per toast so hover/focus can pause it and unmount
+  // can clear them all (#565).
+  const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
   const t = useT();
 
   const dismiss = useCallback((id: number) => {
+    const timer = timers.current.get(id);
+    if (timer !== undefined) clearTimeout(timer);
+    timers.current.delete(id);
     setToasts((ts) => ts.filter((toast) => toast.id !== id));
+  }, []);
+
+  // Pause auto-dismiss while the pointer or keyboard focus is on the toast —
+  // 4s is short for longer Sinhala strings and for magnification users.
+  const pauseDismiss = useCallback((id: number) => {
+    const timer = timers.current.get(id);
+    if (timer !== undefined) clearTimeout(timer);
+    timers.current.delete(id);
+  }, []);
+
+  const scheduleDismiss = useCallback(
+    (id: number) => {
+      pauseDismiss(id);
+      timers.current.set(
+        id,
+        setTimeout(() => dismiss(id), TOAST_DURATION_MS)
+      );
+    },
+    [dismiss, pauseDismiss]
+  );
+
+  useEffect(() => {
+    const pending = timers.current;
+    return () => pending.forEach((timer) => clearTimeout(timer));
   }, []);
 
   const push = useCallback(
     (message: string, variant: ToastVariant) => {
       const id = ++nextId.current;
       setToasts((ts) => [...ts, { id, message, variant }]);
-      setTimeout(() => dismiss(id), TOAST_DURATION_MS);
+      scheduleDismiss(id);
     },
-    [dismiss]
+    [scheduleDismiss]
   );
 
   const api = useMemo<ToastApi>(
@@ -64,6 +95,16 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         // Errors interrupt (assertive) so failure feedback isn't missed;
         // success/info wait their turn (polite).
         role={isError ? "alert" : "status"}
+        onMouseEnter={() => pauseDismiss(toast.id)}
+        onMouseLeave={() => scheduleDismiss(toast.id)}
+        onFocus={() => pauseDismiss(toast.id)}
+        onBlur={(e) => {
+          // Resume only when focus leaves the toast entirely (e.g. moving
+          // from the message to the dismiss button keeps it paused).
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+            scheduleDismiss(toast.id);
+          }
+        }}
         className="rise pointer-events-auto flex max-w-full items-center gap-2.5 rounded-full bg-ink-900 py-2.5 pl-4 pr-2.5 text-sm font-medium text-white shadow-lg dark:text-ink-50"
       >
         {isError ? (

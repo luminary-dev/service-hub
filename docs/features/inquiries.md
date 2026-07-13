@@ -27,7 +27,11 @@ Both render `MessageThread`, which:
 - loads the full thread from `GET /api/inquiries/{id}/messages` on mount;
 - **polls every 5 s** (`POLL_MS = 5000`) using `?after={lastSeen}` and dedupes
   by message id (no websockets);
-- sends with `POST /api/inquiries/{id}/messages` (body up to 2000 chars).
+- sends with `POST /api/inquiries/{id}/messages` (body up to 2000 chars);
+- each counterpart message carries a **Report** action
+  (`POST /api/messages/{id}/report`, #376, thread parties only) feeding the
+  [admin reports queue](../admin/moderation.md#reports-queue); a message an
+  admin takes down disappears from the thread for both parties.
 
 Provider-side inquiry statuses are **NEW / RESPONDED / CLOSED**, with
 mark-responded / close / reopen actions
