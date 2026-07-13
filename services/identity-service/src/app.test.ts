@@ -4,7 +4,7 @@
 // live DB test.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { dbMock } = vi.hoisted(() => ({
+const { dbMock, storageMock } = vi.hoisted(() => ({
   dbMock: {
     user: {
       findMany: vi.fn(),
@@ -14,9 +14,14 @@ const { dbMock } = vi.hoisted(() => ({
     },
     $queryRaw: vi.fn(),
   },
+  storageMock: {
+    removeStoredFile: vi.fn(),
+    sweepMedia: vi.fn(),
+  },
 }));
 
 vi.mock("./db", () => ({ db: dbMock }));
+vi.mock("./lib/storage", () => storageMock);
 
 import { app } from "./app";
 
@@ -103,6 +108,36 @@ describe("GET /internal/users/count", () => {
     const res = await req("/internal/users/count");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ count: 42 });
+  });
+});
+
+describe("POST /internal/maintenance/sweep-orphans", () => {
+  // #555: the user-namespace sweep must keep every live avatar — the route
+  // supplies the referenced set from User.avatarUrl.
+  it("sweeps the user namespace with live avatars referenced", async () => {
+    dbMock.user.findMany.mockResolvedValue([
+      { avatarUrl: "/api/files/user/avatars/live.jpg" },
+    ]);
+    storageMock.sweepMedia.mockResolvedValue({ scanned: 2, removed: 1 });
+
+    const res = await req("/internal/maintenance/sweep-orphans", {
+      method: "POST",
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ scanned: 2, removed: 1 });
+    expect(storageMock.sweepMedia).toHaveBeenCalledWith("user", [
+      "/api/files/user/avatars/live.jpg",
+    ]);
+  });
+
+  it("rejects a request without the secret", async () => {
+    const res = await req(
+      "/internal/maintenance/sweep-orphans",
+      { method: "POST" },
+      false
+    );
+    expect(res.status).toBe(403);
+    expect(storageMock.sweepMedia).not.toHaveBeenCalled();
   });
 });
 
