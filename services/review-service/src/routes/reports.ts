@@ -275,14 +275,23 @@ reports.patch("/api/admin/review-reports", async (c) => {
     return c.json({ error: "Invalid input" }, 400);
   }
 
+  const where = { id: { in: parsed.data.ids } };
+  // Capture the ids actually matched before the write so the audit log records
+  // real targets (unknown ids in the request list are skipped by updateMany).
+  const affected = await db.report.findMany({ where, select: { id: true } });
   const { count } = await db.report.updateMany({
-    where: { id: { in: parsed.data.ids } },
+    where,
     data: {
       status: parsed.data.status,
       resolvedBy: auth?.userId ?? null,
       resolvedAt: new Date(),
     },
   });
+  // Audit trail (#227): one entry per affected report, mirroring the
+  // single-report PATCH above so bulk actions leave the same trail.
+  const action =
+    parsed.data.status === "RESOLVED" ? "resolve-report" : "dismiss-report";
+  await Promise.all(affected.map((r) => logAudit(c, action, "REPORT", r.id)));
   return c.json({ ok: true, count });
 });
 
