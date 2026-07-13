@@ -53,7 +53,11 @@ for pair in identity_db:User provider_db:Provider review_db:Review job_db:JobReq
     exit 1
   fi
   docker exec "$NAME" createdb -U postgres "$db"
-  docker exec -i "$NAME" pg_restore -U postgres --dbname "$db" < "$dump"
+  # --no-owner/--no-acl: prod dumps carry per-service role ownership (#387);
+  # those roles don't exist in this scratch cluster, and pg_restore exits
+  # non-zero on the failed ALTER ... OWNER statements. Ownership is irrelevant
+  # to row-counting, so restore everything as the scratch superuser.
+  docker exec -i "$NAME" pg_restore -U postgres --no-owner --no-acl --dbname "$db" < "$dump"
   count=$(docker exec "$NAME" psql -U postgres -d "$db" -Atc "SELECT count(*) FROM \"$table\";")
   echo "    $db: \"$table\" has $count rows"
   # An empty User table means the dump captured nothing real — prod always has

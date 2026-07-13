@@ -39,7 +39,7 @@ Each nightly run appends a few KB to `backups/backup.log`; truncate it whenever 
 1. Identify the snapshot: `ls backups/` (UTC timestamps; each contains one `.dump` per database). If the host itself is gone, pull it from the offsite bucket first (any S3 tool works — e.g. `rclone copy R2:<bucket>/<stamp> backups/<stamp>` with the `.backup.env` credentials).
 2. Restore the affected database(s):
    `./scripts/restore-db.sh provider_db backups/<stamp>/provider_db.dump --yes`
-   (`--clean --if-exists` under the hood — the target database's objects are replaced).
+   (`--clean --if-exists` under the hood — the target database's objects are replaced). Per-service DB roles (#387): all dump/restore tooling keeps running as the `postgres` **superuser** (which bypasses the per-database `REVOKE CONNECT`), but on prod the script also passes `--no-owner --role=<service role>`, so every restored object ends up owned by the owning service's role — works for pre-#387 superuser-owned dumps too. On a dev stack (no such role) it falls back to a plain superuser restore.
 3. Restart the owning service so Prisma reconnects cleanly:
    `docker compose -f docker-compose.prod.yml restart provider-service`
    (on prod the stack runs under `docker-compose.prod.yml` — a bare `docker compose` resolves the default dev file and finds nothing; for a local dev restore use `docker compose restart provider-service`).
