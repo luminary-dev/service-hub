@@ -62,3 +62,7 @@
 - [Dependency maintenance](DEPENDENCIES.md)
 - [Email setup](EMAIL_SETUP.md)
 - [Security policy](https://github.com/luminary-dev/service-hub/blob/dev/SECURITY.md)
+
+## RFCs
+
+- [Stateful notification service](rfcs/stateful-notification-service.md)
