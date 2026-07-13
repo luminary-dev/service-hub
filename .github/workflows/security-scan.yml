@@ -94,7 +94,7 @@ jobs:
 
       - name: Scan image (base-image / OS packages)
         # vuln-type os: npm packages are already covered by the lockfile scan
-        # above; this job exists for the node:22-alpine layer (musl, openssl,
+        # above; this job exists for the node:26-alpine layer (musl, openssl,
         # busybox, ...). Gating (#238): fail the build on HIGH/CRITICAL OS-package
         # vulns that have a fix available (ignore-unfixed keeps the gate
         # actionable — no failing on advisories we can't remediate). The SARIF is

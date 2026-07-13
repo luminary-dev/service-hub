@@ -32,6 +32,8 @@ export type ReviewDTO = {
   createdAt: Date;
   user: { name: string };
   photos: { id: string; url: string; createdAt: Date }[];
+  // Provider's public reply (#395) — at most one per review, null when none.
+  response: { text: string; createdAt: Date; updatedAt: Date } | null;
 };
 
 // PUBLIC-safe shape: only the fields the public review UI renders. `userId` and
@@ -57,6 +59,13 @@ export function toPublicReview(r: ReviewDTO): PublicReviewDTO {
     createdAt: r.createdAt,
     user: { name: r.user.name },
     photos: r.photos.map((p) => ({ id: p.id, url: p.url, createdAt: p.createdAt })),
+    response: r.response
+      ? {
+          text: r.response.text,
+          createdAt: r.response.createdAt,
+          updatedAt: r.response.updatedAt,
+        }
+      : null,
   };
 }
 
@@ -71,7 +80,7 @@ export async function listProviderReviews(
   // several reviews share a timestamp (seed data does).
   const rows = await db.review.findMany({
     where: { providerId, ...(opts.includeDeleted ? {} : { deletedAt: null }) },
-    include: { photos: { orderBy: { createdAt: "asc" } } },
+    include: { photos: { orderBy: { createdAt: "asc" } }, response: true },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: take + 1,
     ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
@@ -108,6 +117,13 @@ export async function listProviderReviews(
       createdAt: r.createdAt,
       user: { name: names.get(r.userId) ?? "Unknown" },
       photos: r.photos.map((p) => ({ id: p.id, url: p.url, createdAt: p.createdAt })),
+      response: r.response
+        ? {
+            text: r.response.text,
+            createdAt: r.response.createdAt,
+            updatedAt: r.response.updatedAt,
+          }
+        : null,
     })),
     nextCursor,
   };

@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { CATEGORIES } from "@/lib/constants";
+import { fetchCategoryOptions } from "@/lib/categories-server";
 import { localizedHref } from "@/lib/links";
 import { SITE_URL } from "@/lib/site";
 
@@ -47,6 +47,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // gateway down — fall through with static entries only
   }
 
+  // Admin-managed categories (#561): emit the active list so new categories
+  // get crawled and deactivated ones drop out. Degrades to the static
+  // constants inside fetchCategoryOptions when the gateway is unreachable
+  // (e.g. the build-time prerender).
+  const categories = await fetchCategoryOptions({ revalidate: 3600 });
+
   const now = new Date();
 
   const staticPages: MetadataRoute.Sitemap = [
@@ -62,7 +68,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // indexable value.
   ];
 
-  const categoryPages: MetadataRoute.Sitemap = CATEGORIES.flatMap((c) =>
+  const categoryPages: MetadataRoute.Sitemap = categories.flatMap((c) =>
     bilingual(`/providers?category=${c.slug}`, {
       lastModified: now,
       changeFrequency: "weekly",

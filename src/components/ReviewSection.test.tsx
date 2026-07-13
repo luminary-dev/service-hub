@@ -18,8 +18,10 @@ type Props = React.ComponentProps<typeof ReviewSection>;
 function renderSection(overrides: Partial<Props> = {}) {
   const props: Props = {
     providerId: "prov_1",
+    providerName: "Nimal",
     reviews: [],
     canReview: true,
+    canRespond: false,
     signedIn: true,
     myReview: null,
     summary: null,
@@ -174,6 +176,114 @@ describe("ReviewSection", () => {
     renderSection({ summary: null });
     expect(screen.queryByText(t.breakdown)).toBeNull();
     expect(screen.queryByText(t.distribution)).toBeNull();
+  });
+
+  // Provider responses (#395): the reply renders for everyone; only the
+  // profiled provider (canRespond) gets the respond/edit/delete controls.
+  const REVIEW = {
+    id: "rev_1",
+    rating: 5,
+    comment: "Great work.",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    userName: "Kasun",
+    photos: [],
+    response: null,
+  };
+
+  it("renders the provider's response under the review for all visitors", () => {
+    renderSection({
+      canReview: false,
+      signedIn: false,
+      reviews: [
+        {
+          ...REVIEW,
+          response: { text: "Thank you!", createdAt: "2026-01-02T00:00:00.000Z" },
+        },
+      ],
+    });
+    expect(screen.getByText(t.responseFrom("Nimal"))).toBeTruthy();
+    expect(screen.getByText("Thank you!")).toBeTruthy();
+    // No owner controls for a visitor.
+    expect(screen.queryByRole("button", { name: t.respond })).toBeNull();
+    expect(screen.queryByRole("button", { name: t.deleteResponse })).toBeNull();
+  });
+
+  it("lets the profile owner post a response as JSON", async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+    renderSection({ canReview: false, canRespond: true, reviews: [REVIEW] });
+
+    fireEvent.click(screen.getByRole("button", { name: t.respond }));
+    fireEvent.change(screen.getByLabelText(t.yourResponse), {
+      target: { value: "Thanks for the feedback!" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: t.postResponse }));
+
+    await screen.findByRole("status");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("/api/reviews/rev_1/response");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({
+      text: "Thanks for the feedback!",
+    });
+    expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it("pre-fills the form when editing and offers delete for an existing response", async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+    renderSection({
+      canReview: false,
+      canRespond: true,
+      reviews: [
+        {
+          ...REVIEW,
+          response: { text: "Old reply", createdAt: "2026-01-02T00:00:00.000Z" },
+        },
+      ],
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: t.editResponse }));
+    const textarea = screen.getByLabelText(t.yourResponse) as HTMLTextAreaElement;
+    expect(textarea.value).toBe("Old reply");
+  });
+
+  it("deletes the response and refreshes", async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+    renderSection({
+      canReview: false,
+      canRespond: true,
+      reviews: [
+        {
+          ...REVIEW,
+          response: { text: "Old reply", createdAt: "2026-01-02T00:00:00.000Z" },
+        },
+      ],
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: t.deleteResponse }));
+    await screen.findByRole("status");
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("/api/reviews/rev_1/response");
+    expect(init.method).toBe("DELETE");
+    expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it("surfaces a response error via role=alert", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      json: async () => ({ error: "Only the reviewed provider can respond" }),
+    });
+    renderSection({ canReview: false, canRespond: true, reviews: [REVIEW] });
+
+    fireEvent.click(screen.getByRole("button", { name: t.respond }));
+    fireEvent.change(screen.getByLabelText(t.yourResponse), {
+      target: { value: "Thanks!" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: t.postResponse }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Only the reviewed provider can respond");
+    expect(refresh).not.toHaveBeenCalled();
   });
 
   it("disables the submit button while saving", async () => {
