@@ -163,7 +163,11 @@ export default function VerificationQueue({
           </div>
         )}
 
-        {error && <p className="w-full text-sm text-red-600">{t.bulkActionError}</p>}
+        {error && (
+          <p role="alert" className="w-full text-sm text-red-600">
+            {t.bulkActionError}
+          </p>
+        )}
       </div>
 
       <InView as="ul" stagger className="mt-4 space-y-4">

@@ -70,6 +70,9 @@ export default function UserMenu({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
+        // Below sm the name span is hidden and the avatar alt is empty, so the
+        // trigger needs an explicit accessible name (#565).
+        aria-label={name}
         className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors duration-200 ease-snap hover:bg-ink-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
       >
         {avatarUrl ? (
@@ -113,7 +116,7 @@ export default function UserMenu({
               {name}
             </div>
             <div className="mt-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-brand-700">
-              {role}
+              {t.roles[role] ?? role}
             </div>
           </div>
           <div className="py-1">

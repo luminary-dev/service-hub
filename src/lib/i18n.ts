@@ -31,6 +31,13 @@ const en = {
     themeLight: "Light theme",
     themeDark: "Dark theme",
   },
+  // Localized display names for the role enum (#565).
+  roles: {
+    CUSTOMER: "Customer",
+    PROVIDER: "Provider",
+    ADMIN: "Admin",
+    SUPPORT: "Support",
+  } as Record<string, string>,
   a11y: {
     skipToContent: "Skip to main content",
     rated: (rating: string) => `Rated ${rating} out of 5`,
@@ -917,6 +924,7 @@ const en = {
       titlePh: "Service title",
       descPh: "Short description (optional)",
       pricePh: "Price (Rs.)",
+      priceType: "Price type",
       save: "Save",
       saving: "Saving…",
       cancel: "Cancel",
@@ -1074,6 +1082,12 @@ const si: Dict = {
     language: "භාෂාව",
     themeLight: "ලා තේමාව",
     themeDark: "අඳුරු තේමාව",
+  },
+  roles: {
+    CUSTOMER: "පාරිභෝගික",
+    PROVIDER: "සේවා සපයන්නා",
+    ADMIN: "පරිපාලක",
+    SUPPORT: "සහාය",
   },
   a11y: {
     skipToContent: "ප්‍රධාන අන්තර්ගතයට යන්න",
@@ -1948,6 +1962,7 @@ const si: Dict = {
       titlePh: "සේවා නාමය",
       descPh: "කෙටි විස්තරයක් (අත්‍යවශ්‍ය නොවේ)",
       pricePh: "මිල (රු.)",
+      priceType: "මිල වර්ගය",
       save: "සුරකින්න",
       saving: "සුරකිමින්…",
       cancel: "අවලංගු කරන්න",
