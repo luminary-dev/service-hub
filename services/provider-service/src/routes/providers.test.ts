@@ -22,6 +22,7 @@ vi.mock("../lib/clients", () => ({
 }));
 
 import { app } from "../app";
+import { __resetCategoryImageCache } from "./providers";
 import { sendInquiryEmail } from "../lib/clients";
 
 const SECRET = "dev-internal-secret";
@@ -76,6 +77,7 @@ function providerRow(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  __resetCategoryImageCache();
   dbMock.category.findMany.mockResolvedValue([]);
   dbMock.provider.findMany.mockResolvedValue([]);
   dbMock.provider.count.mockResolvedValue(0);
@@ -101,6 +103,16 @@ describe("GET /api/providers/:id — suspended visibility gate", () => {
     expect(body.provider).not.toHaveProperty("phone2");
     // The provider HAS a phone, so the UI shows a reveal affordance.
     expect(body.provider.hasPhone).toBe(true);
+  });
+
+  it("never leaks admin rejectionReason to the public payload (#506)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(
+      providerRow({ verificationStatus: "REJECTED", rejectionReason: "blurry NIC" })
+    );
+    const res = await req("/api/providers/p1");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.provider).not.toHaveProperty("rejectionReason");
   });
 
   it("hides a suspended provider from an anonymous visitor (404)", async () => {
@@ -153,6 +165,20 @@ describe("GET /api/providers/:id/full — suspended gate mirrors detail", () => 
     expect(body.provider).not.toHaveProperty("phone2");
     expect(body.provider.user).not.toHaveProperty("phone");
     expect(body.provider.hasPhone).toBe(true);
+  });
+
+  it("never leaks admin rejectionReason to the public profile payload (#506)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(
+      providerRow({
+        verificationStatus: "REJECTED",
+        rejectionReason: "blurry NIC",
+        _count: { photos: 0 },
+      })
+    );
+    const res = await req("/api/providers/p1/full");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.provider).not.toHaveProperty("rejectionReason");
   });
 });
 
@@ -207,6 +233,22 @@ describe("GET /api/providers?ids= (favorites)", () => {
         where: { id: { in: ["a", "b"] }, suspended: false },
       })
     );
+  });
+});
+
+describe("category cover map caching (#523)", () => {
+  const imageSelect = { select: { slug: true, imageUrl: true } };
+
+  it("memoizes the slug→imageUrl map across browse requests (one DB read)", async () => {
+    await req("/api/providers");
+    await req("/api/providers");
+    // Two browse requests, but the cover-image map is fetched from the DB only
+    // once within the TTL — the second request is served from the cache.
+    const imageMapCalls = dbMock.category.findMany.mock.calls.filter(
+      ([arg]) => arg?.select?.imageUrl === true
+    );
+    expect(imageMapCalls).toHaveLength(1);
+    expect(dbMock.category.findMany).toHaveBeenCalledWith(imageSelect);
   });
 });
 
