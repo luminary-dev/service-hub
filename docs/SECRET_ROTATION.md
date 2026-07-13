@@ -12,7 +12,10 @@ public, so nothing sensitive lives in the tree. On every deploy, the `deploy`
 job in `.github/workflows/deploy.yml`:
 
 1. renders `$PROD_APP_DIR/.env` on the server **from the GitHub secrets**, piped
-   over the encrypted SSH channel (never printed to the log);
+   over the encrypted SSH channel (never printed to the log). Values are
+   double-quoted and escaped for Compose's dotenv parser, so a rotated secret
+   containing `$`, `#`, quotes, or whitespace lands verbatim (#572) — no
+   charset restrictions on new values;
 2. `git reset --hard origin/prod`, `docker compose -f docker-compose.prod.yml
    pull`, then a **health-gated** `up -d --wait` that recreates any container
    whose environment changed;
@@ -167,13 +170,21 @@ the same way, but they carry no exposure risk.
 
 ## Deploy / SSH secrets
 
-`PROD_SSH_KEY` (the deploy key), `PROD_SSH_HOST`, `PROD_SSH_USER` and
-`PROD_APP_DIR` authenticate the CD job to the prod host. To rotate `PROD_SSH_KEY`:
+`PROD_SSH_KEY` (the deploy key), `PROD_SSH_HOST`, `PROD_SSH_USER`,
+`PROD_APP_DIR` and `PROD_SSH_KNOWN_HOSTS` (the pinned host key, #388)
+authenticate the CD job to the prod host. To rotate `PROD_SSH_KEY`:
 generate a new keypair, add the **public** key to the host's
 `~/.ssh/authorized_keys` for `PROD_SSH_USER`, `gh secret set PROD_SSH_KEY` with
 the new **private** key, run a deploy to confirm it connects, then remove the old
 public key from the host. These do not touch the app `.env`, so no session or
 S2S impact.
+
+`PROD_SSH_KNOWN_HOSTS` must be refreshed whenever the host is rebuilt, its IP
+changes, or its SSH host keys are regenerated — the deploy fails closed on a
+mismatch (that failure is the pin doing its job; investigate before updating).
+Re-capture with `ssh-keyscan -t ed25519 "$PROD_SSH_HOST" | gh secret set
+PROD_SSH_KNOWN_HOSTS`, verifying the fingerprint out-of-band (e.g.
+`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the VPS console).
 
 ---
 

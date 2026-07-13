@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { db } from "../db";
 import { logAudit } from "../lib/audit";
+import { moderateContent } from "../lib/auto-report";
 import { getAuth, s2s } from "../lib/http";
 import {
   listProviderReviews,
@@ -14,7 +15,12 @@ import {
   validateImage,
 } from "../lib/storage";
 import { fetchRatingSummary } from "../lib/rating-summary";
-import { MAX_REVIEW_PHOTOS, REVIEW_DIMENSIONS, reviewSchema } from "../lib/validation";
+import {
+  MAX_REVIEW_PHOTOS,
+  REVIEW_DIMENSIONS,
+  reviewResponseSchema,
+  reviewSchema,
+} from "../lib/validation";
 
 const PROVIDER_SERVICE_URL = process.env.PROVIDER_SERVICE_URL ?? "http://localhost:4002";
 
@@ -207,7 +213,7 @@ reviews.post("/api/providers/:id/reviews", async (c) => {
     }
   }
 
-  await db.$transaction(async (tx) => {
+  const reviewId = await db.$transaction(async (tx) => {
     const review = await tx.review.upsert({
       where: { providerId_userId: { providerId: id, userId: auth.userId } },
       // Reaching here means the interaction gate passed, so every review we
@@ -223,8 +229,108 @@ reviews.post("/api/providers/:id/reviews", async (c) => {
         data: photoUrls.map((url) => ({ reviewId: review.id, url })),
       });
     }
+    return review.id;
   });
 
+  // Content filter (#375): AFTER the write on purpose — the review stays
+  // visible and a filter hit only queues a SYSTEM report for admin triage.
+  await moderateContent("REVIEW", reviewId, { comment: parsed.data.comment });
+
+  return c.json({ ok: true });
+});
+
+// Provider responses to reviews (#395): the reviewed profile's OWNER may keep
+// one public reply per review. Shared gate for the upsert + delete routes:
+// load the (non-moderated) review, then verify over S2S that the caller owns
+// the reviewed provider profile. Ownership decides whether a write is allowed,
+// so an upstream failure fails loudly (502) — mirroring the review-create gate.
+async function gateReviewResponse(
+  reviewId: string,
+  userId: string
+): Promise<
+  | { ok: true; review: { id: string } }
+  | { ok: false; status: 403 | 404 | 502; error: string }
+> {
+  const review = await db.review.findUnique({
+    where: { id: reviewId },
+    select: { id: true, providerId: true, deletedAt: true },
+  });
+  // Soft-deleted reviews 404 like missing ones — the public page hides them,
+  // and a response to a moderated review would be invisible anyway.
+  if (!review || review.deletedAt) {
+    return { ok: false, status: 404, error: "Review not found" };
+  }
+
+  let provider: ProviderSummary | null = null;
+  try {
+    const res = await s2s(
+      PROVIDER_SERVICE_URL,
+      `/internal/providers/${review.providerId}/summary`
+    );
+    if (res.status === 404) {
+      provider = null;
+    } else if (!res.ok) {
+      return { ok: false, status: 502, error: "Upstream service unavailable" };
+    } else {
+      const data = (await res.json()) as { provider: ProviderSummary | null };
+      provider = data.provider ?? null;
+    }
+  } catch {
+    return { ok: false, status: 502, error: "Upstream service unavailable" };
+  }
+  // A suspended provider's profile (and its reviews) 404s publicly; it must
+  // not keep posting replies either.
+  if (!provider || provider.suspended || provider.userId !== userId) {
+    return {
+      ok: false,
+      status: 403,
+      error: "Only the reviewed provider can respond",
+    };
+  }
+  return { ok: true, review: { id: review.id } };
+}
+
+// Create-or-edit (upsert — one response per review, so posting again replaces
+// the text). Rate limiting lives in the gateway, same as review creation.
+reviews.post("/api/reviews/:id/response", async (c) => {
+  const auth = getAuth(c);
+  if (!auth) {
+    return c.json({ error: "Sign in to respond" }, 401);
+  }
+
+  const gate = await gateReviewResponse(c.req.param("id"), auth.userId);
+  if (!gate.ok) {
+    return c.json({ error: gate.error }, gate.status);
+  }
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = reviewResponseSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid input" }, 400);
+  }
+
+  await db.reviewResponse.upsert({
+    where: { reviewId: gate.review.id },
+    create: { reviewId: gate.review.id, text: parsed.data.text },
+    update: { text: parsed.data.text },
+  });
+  return c.json({ ok: true });
+});
+
+// Remove the response. Idempotent: deleting a review with no response is a
+// no-op 200 (deleteMany), matching the service's other best-effort removals.
+reviews.delete("/api/reviews/:id/response", async (c) => {
+  const auth = getAuth(c);
+  if (!auth) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const gate = await gateReviewResponse(c.req.param("id"), auth.userId);
+  if (!gate.ok) {
+    return c.json({ error: gate.error }, gate.status);
+  }
+
+  await db.reviewResponse.deleteMany({ where: { reviewId: gate.review.id } });
   return c.json({ ok: true });
 });
 

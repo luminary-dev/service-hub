@@ -14,7 +14,9 @@ by status (open/closed) and category. The detail view
 (`GET /api/admin/jobs/{id}`) shows the job, budget, customer, description, and
 the full response list (provider name/phone, message, link to the public
 profile). There are no moderation actions on jobs — this section is for
-visibility only.
+visibility only. Content-filter flags on job posts/responses (#375) land in
+the shared [reports queue](moderation.md#reports-queue), whose rows deep-link
+back to the job detail here.
 
 ---
 

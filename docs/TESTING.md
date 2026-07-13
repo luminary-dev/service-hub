@@ -94,7 +94,10 @@ What's automated and what still needs a human (#66):
   The modal tests additionally assert focus and scroll behavior directly:
   focus moves into the dialog on open, background scrolling locks
   (`useScrollLock`), `Escape` closes it, and focus + scrolling return to the
-  trigger. Add new interactive components to this file as they're built.
+  trigger. The provider-registration wizard test likewise asserts real form
+  semantics (Enter submits each step) and that focus moves to the step
+  heading on step change. Add new interactive components to this file as
+  they're built.
 - **Not automatable here — needs a browser.** axe's `color-contrast` rule is
   disabled because jsdom has no layout engine; contrast must be re-verified
   in a real browser (both light and dark themes — the token ramps in
