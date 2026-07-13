@@ -40,6 +40,7 @@ describe("internal secret enforcement", () => {
     "/internal/email/email-change-attempt",
     "/internal/email/job-response",
     "/internal/email/new-job",
+    "/internal/email/new-provider-match",
     "/internal/email/inquiry",
   ])("rejects %s without x-internal-secret", async (path) => {
     const res = await post(path, { to: "a@b.lk", url: "https://baas.lk" });
@@ -107,6 +108,25 @@ describe("input validation", () => {
       recipients: ["not-an-email"],
       url: "https://baas.lk/jobs",
       jobTitle: "Fix a leaking tap",
+      district: "Colombo",
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Invalid input" });
+  });
+
+  it("returns 400 when new-provider-match is missing recipients/providerName/district", async () => {
+    const res = await postWithSecret("/internal/email/new-provider-match", {
+      url: "https://baas.lk/providers/prov1",
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Invalid input" });
+  });
+
+  it("returns 400 when a new-provider-match recipient is not a valid email", async () => {
+    const res = await postWithSecret("/internal/email/new-provider-match", {
+      recipients: ["not-an-email"],
+      url: "https://baas.lk/providers/prov1",
+      providerName: "Nimal Perera",
       district: "Colombo",
     });
     expect(res.status).toBe(400);
@@ -216,6 +236,18 @@ describe("happy paths (no RESEND_API_KEY → console fallback)", () => {
     });
     expect(res.status).toBe(202);
     expect(await res.json()).toEqual({ ok: true, accepted: 1 });
+  });
+
+  it("POST /internal/email/new-provider-match acks 202 with the deduped count (#516)", async () => {
+    const res = await postWithSecret("/internal/email/new-provider-match", {
+      recipients: ["jane@example.com", "JANE@example.com", "sam@example.com"],
+      url: "https://baas.lk/providers/prov1",
+      providerName: "Nimal Perera",
+      district: "Colombo",
+      locale: "si",
+    });
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ ok: true, accepted: 2 });
   });
 
   it("POST /internal/email/inquiry", async () => {

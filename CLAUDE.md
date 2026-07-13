@@ -14,6 +14,23 @@ This file is the contract for anyone doing engineering work here — especially 
 
 Start with `docs/README.md` (the docs index) and `docs/ARCHITECTURE.md`.
 
+## Repo layout & commands
+
+The web app lives at the **repo root** (`src/`, root `package.json`); each backend service is its **own npm package** with its own `package.json` and `node_modules` under `services/<dir>`. Directory names carry a `-service` suffix except the gateway: `services/api-gateway`, `services/identity-service`, `services/provider-service`, `services/review-service`, `services/job-service`, `services/notification-service`, `services/media-service`, `services/chat-service`.
+
+Run commands **from the package you're touching** (repo root for web, `services/<dir>` for a service):
+
+```bash
+npm run typecheck && npm test && npm run build   # every package; web also: npm run lint
+npm test -- src/lib/format.test.ts               # single test file (vitest filter; same in services)
+npm run test:watch                               # watch mode
+```
+
+- Tests are **colocated** `*.test.ts(x)` files next to the source they cover (no `__tests__/` tree). Web tests use jsdom via `vitest.config.web.mts` at the root; services use their own `vitest.config.ts`. See `docs/TESTING.md` for what belongs at which layer.
+- The **4 stateful services** — identity, provider, review, job — each have a `prisma/` dir (schema + hand-written migrations + seed). Notification, media, chat and the gateway have no DB. Prisma-service extras: `npm run db:migrate:dev`, `npm run db:seed`.
+- Web app anatomy: `src/proxy.ts` is Next 16's rename of middleware — it does the runtime `/api/*` → gateway rewrite and the `/si` Sinhala locale prefix (it *owns* the trusted `x-locale` header). Server components skip the proxy and call the gateway directly via `src/lib/api.ts`. Shared helpers in `src/lib/` (i18n, roles, links, locale), UI primitives in `src/components/ui/`.
+- Gateway anatomy: `services/api-gateway/src/lib/routes.ts` is the routing table (the source for `docs/API.md`), plus `session.ts` (JWT), `rate-limit.ts` (Redis sliding window), `csrf.ts`, `proxy.ts` (forwarding + identity headers).
+
 ## Product constraints (read first)
 
 - **NO pricing, payments, transactions, commission, or billing until v0.2.** We are attracting an audience first; monetization is deliberately out of scope. Do not add payment/commission code, a payments service, price-agreement flows, or transaction records. If you find leftover billing code, it should be removed, not extended.

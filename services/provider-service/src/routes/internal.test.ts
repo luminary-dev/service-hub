@@ -31,8 +31,13 @@ const { dbMock, storageMock } = vi.hoisted(() => ({
 
 vi.mock("../db", () => ({ db: dbMock }));
 vi.mock("../lib/storage", () => storageMock);
+// Saved-search alert fan-out (#516) — fired (not awaited) from the create path.
+vi.mock("../lib/saved-search-alerts", () => ({
+  notifySavedSearchMatches: vi.fn(() => Promise.resolve()),
+}));
 
 import { app } from "../app";
+import { notifySavedSearchMatches } from "../lib/saved-search-alerts";
 
 const SECRET = "dev-internal-secret";
 
@@ -265,6 +270,58 @@ describe("POST /internal/providers re-upgrade", () => {
     expect(res.status).toBe(200);
     expect(dbMock.report.findFirst).not.toHaveBeenCalled();
     expect(dbMock.report.create).not.toHaveBeenCalled();
+  });
+
+  // Saved-search alerting (#516): a fresh publish fires the fan-out with the
+  // fields identity's candidate scoping + the email template need.
+  it("fires the saved-search alert fan-out on a fresh create", async () => {
+    dbMock.provider.create.mockResolvedValue({ id: "prov10" });
+    const res = await post("/internal/providers", body);
+    expect(res.status).toBe(200);
+    expect(notifySavedSearchMatches).toHaveBeenCalledWith(
+      {
+        id: "prov10",
+        userId: "owner-1",
+        contactName: "Ann",
+        category: "plumbing",
+        district: "Colombo",
+        serviceDistricts: ["Colombo"],
+      },
+      expect.any(String)
+    );
+  });
+
+  // Multi-district service areas (#502): the fan-out receives the full
+  // normalized served set (primary pinned first), so a saved search for any
+  // served district — not just the base one — can be alerted.
+  it("hands the full served set to the saved-search fan-out", async () => {
+    dbMock.provider.create.mockResolvedValue({ id: "prov11" });
+    const res = await post("/internal/providers", {
+      ...body,
+      serviceDistricts: ["Gampaha", "Kalutara"],
+    });
+    expect(res.status).toBe(200);
+    expect(notifySavedSearchMatches).toHaveBeenCalledWith(
+      expect.objectContaining({
+        district: "Colombo",
+        serviceDistricts: ["Colombo", "Gampaha", "Kalutara"],
+      }),
+      expect.any(String)
+    );
+  });
+
+  it("does not re-alert on the idempotent duplicate-create path", async () => {
+    dbMock.provider.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("unique", {
+        code: "P2002",
+        clientVersion: "7",
+      })
+    );
+    dbMock.provider.findUnique.mockResolvedValue({ id: "prov1" });
+
+    const res = await post("/internal/providers", body);
+    expect(res.status).toBe(200);
+    expect(notifySavedSearchMatches).not.toHaveBeenCalled();
   });
 });
 

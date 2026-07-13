@@ -30,6 +30,7 @@
   - [Jobs (reverse-marketplace)](features/jobs.md)
   - [Reviews](features/reviews.md)
   - [Favorites](features/favorites.md)
+  - [Saved searches & alerts](features/saved-searches.md)
   - [AI chat assistant](features/chat.md)
   - [Bilingual EN/SI & theme](features/i18n-and-theme.md)
   - [Media & uploads](features/media.md)

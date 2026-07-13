@@ -216,6 +216,12 @@ const en = {
       trades: "Trades",
       districts: "Districts",
     },
+    // Saved searches (#516)
+    saveSearch: "Save this search",
+    saveSearchNameLabel: "Search name",
+    saveSearchSave: "Save",
+    saveSearchSaving: "Saving…",
+    saveSearchHint: "We'll email you when a new professional matches.",
   },
   card: {
     available: "Available",
@@ -232,6 +238,14 @@ const en = {
     savedTitle: "Saved professionals",
     empty: "You haven't saved any professionals yet.",
     emptyCta: "Browse professionals",
+    // Saved searches (#516)
+    searchesTitle: "Saved searches",
+    searchesEmpty:
+      "No saved searches yet. Save one from the professionals page and we'll email you when a new professional matches.",
+    searchesHint:
+      "We email you when a newly joined professional matches one of these searches.",
+    searchesView: "View results",
+    searchesDelete: "Remove",
     inquiriesTitle: "My inquiries",
     inquiriesEmpty:
       "You haven't sent any inquiries yet. Contact a professional from their profile and it will show up here.",
@@ -706,6 +720,13 @@ const en = {
     favAdded: "Saved to your list.",
     favRemoved: "Removed from your saved list.",
     favError: "Could not update your saved professionals.",
+    // Saved searches (#516)
+    searchSaved: "Search saved — we'll email you when a new professional matches.",
+    searchSaveError: "Could not save this search.",
+    searchLimit:
+      "Saved search limit reached. Remove one from your account page first.",
+    searchRemoved: "Saved search removed.",
+    searchRemoveError: "Could not remove the saved search.",
     reviewSaved: "Your review has been saved.",
     responseSaved: "Your response has been posted.",
     responseDeleted: "Your response has been removed.",
@@ -1411,6 +1432,12 @@ const si: Dict = {
       trades: "ක්ෂේත්‍ර",
       districts: "දිස්ත්‍රික්ක",
     },
+    // Saved searches (#516)
+    saveSearch: "මෙම සෙවුම සුරකින්න",
+    saveSearchNameLabel: "සෙවුමේ නම",
+    saveSearchSave: "සුරකින්න",
+    saveSearchSaving: "සුරකිමින්…",
+    saveSearchHint: "නව වෘත්තිකයෙක් ගැලපෙන විට අපි ඔබට විද්‍යුත් තැපෑලෙන් දන්වන්නෙමු.",
   },
   card: {
     available: "සූදානම්",
@@ -1427,6 +1454,14 @@ const si: Dict = {
     savedTitle: "සුරකින ලද වෘත්තිකයන්",
     empty: "ඔබ තවම කිසිම වෘත්තිකයෙක් සුරකා නැත.",
     emptyCta: "වෘත්තිකයන් බලන්න",
+    // Saved searches (#516)
+    searchesTitle: "සුරැකි සෙවුම්",
+    searchesEmpty:
+      "තවම සුරැකි සෙවුම් නැත. වෘත්තිකයන් පිටුවෙන් සෙවුමක් සුරකින්න — නව වෘත්තිකයෙක් ගැලපෙන විට අපි විද්‍යුත් තැපෑලෙන් දන්වන්නෙමු.",
+    searchesHint:
+      "මෙම සෙවුම්වලට ගැලපෙන නව වෘත්තිකයෙක් එක් වූ විට අපි ඔබට විද්‍යුත් තැපෑලෙන් දන්වන්නෙමු.",
+    searchesView: "ප්‍රතිඵල බලන්න",
+    searchesDelete: "ඉවත් කරන්න",
     inquiriesTitle: "මගේ විමසීම්",
     inquiriesEmpty:
       "ඔබ තවම විමසුමක් යවා නැත. වෘත්තිකයෙකුගේ පැතිකඩෙන් සම්බන්ධ වූ විට එය මෙහි දිස්වේ.",
@@ -1884,6 +1919,13 @@ const si: Dict = {
     favAdded: "ඔබේ ලැයිස්තුවට සුරකින ලදී.",
     favRemoved: "සුරකින ලද ලැයිස්තුවෙන් ඉවත් කරන ලදී.",
     favError: "සුරකින ලද වෘත්තිකයන් යාවත්කාලීන කළ නොහැකි විය.",
+    // Saved searches (#516)
+    searchSaved:
+      "සෙවුම සුරකින ලදී — නව වෘත්තිකයෙක් ගැලපෙන විට අපි විද්‍යුත් තැපෑලෙන් දන්වන්නෙමු.",
+    searchSaveError: "මෙම සෙවුම සුරැකිය නොහැකි විය.",
+    searchLimit: "සුරැකි සෙවුම් සීමාවට ළඟා වී ඇත. පළමුව ගිණුම් පිටුවෙන් එකක් ඉවත් කරන්න.",
+    searchRemoved: "සුරැකි සෙවුම ඉවත් කරන ලදී.",
+    searchRemoveError: "සුරැකි සෙවුම ඉවත් කළ නොහැකි විය.",
     reviewSaved: "ඔබේ සමාලෝචනය සුරකින ලදී.",
     responseSaved: "ඔබේ පිළිතුර පළ කරන ලදී.",
     responseDeleted: "ඔබේ පිළිතුර ඉවත් කරන ලදී.",

@@ -43,6 +43,21 @@ JSON edge, so consumers never see a string-typed amount.
 | `POST /api/favorites/:id` | authenticated | Favorite a provider (S2S existence check; 404 if unknown, 502 on peer outage) → `{ favorited: true }`. |
 | `DELETE /api/favorites/:id` | authenticated | Unfavorite → `{ favorited: false }`. |
 
+### Saved searches — identity-service
+
+Customer-only (#516) — non-CUSTOMER roles get 403 on every route. A saved
+search snapshots the primary `/providers` browse filters (`query`, `category`,
+`district`; advanced filters like price/rating are not persisted) plus the
+locale it was saved under. Newly published providers that match trigger an
+alert email, at most one per search per 24 h — see
+`docs/features/saved-searches.md`.
+
+| Method + path | Auth | Summary |
+|---|---|---|
+| `GET /api/saved-searches` | CUSTOMER | The caller's saved searches, newest first → `{ savedSearches: [{ id, name, query, category, district, createdAt }] }`. |
+| `POST /api/saved-searches` | CUSTOMER | `{ name (≤60), query? (≤100), category?, district? }` — at least one filter required; category validated against the S2S category cache, district against the fixed list. → `201 { savedSearch }`. Duplicate filters return the existing row (`200`, no slot burned); over the 20-per-user cap → 429. |
+| `DELETE /api/saved-searches/:id` | CUSTOMER | Delete an own saved search (idempotent) → `{ deleted: true }`. |
+
 ### Providers & search — provider-service
 
 | Method + path | Auth | Summary |
