@@ -118,7 +118,7 @@ Reasons enum: `spam`, `scam`, `offensive`, `fake`, `other`.
 
 | Method + path | Auth | Summary |
 |---|---|---|
-| `POST /api/jobs` | authenticated | Post a job `{ category, district, title, description, budget? }` (category checked S2S) → `{ id }`. |
+| `POST /api/jobs` | authenticated (verified email) | Post a job `{ category, district, title, description, budget? }` (category checked S2S) → `{ id }`. Unverified email → 403; over 10 posts per account per rolling 24 h → 429 (#556). |
 | `PATCH /api/jobs/:id` | authenticated (owner) | `{ status: OPEN\|CLOSED }`; non-owner → 404. |
 | `POST /api/jobs/:id/responses` | authenticated (PROVIDER) | Respond `{ message }`; provider gate + same category/district scope as the board; open + dup checks; emails the customer best-effort → `{ ok: true }`. |
 | `GET /api/jobs/board` | authenticated (PROVIDER) | OPEN jobs matching the provider's category+district, excluding own, with customer names + `responded`. Paginated → `{ jobs, total, page, pageSize }`. |

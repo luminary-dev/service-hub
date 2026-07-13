@@ -9,12 +9,35 @@ import { categoryValidator } from "../lib/categories";
 import { fetchUsers, fetchProviders } from "../lib/hydrate";
 import { normalizeListQuery } from "../lib/query";
 
+const IDENTITY_URL = process.env.IDENTITY_SERVICE_URL ?? "http://localhost:4001";
 const PROVIDER_URL = process.env.PROVIDER_SERVICE_URL ?? "http://localhost:4002";
 const NOTIFICATION_URL = process.env.NOTIFICATION_SERVICE_URL ?? "http://localhost:4005";
+
+// Per-account daily posting cap (#556): the per-IP gateway rule alone lets one
+// rotating attacker trigger the provider fan-out repeatedly; this bounds what a
+// single account can amplify per day.
+const MAX_JOBS_PER_DAY = 10;
 
 const statusSchema = z.object({ status: z.enum(["OPEN", "CLOSED"]) });
 
 type ProviderByUser = { id: string; category: string; district: string };
+
+// Verified-email gate (#556): a throwaway account with an unconfirmed address
+// must not be able to trigger the 200-recipient provider fan-out. Fails loudly
+// (write-path gate), like the provider gate below.
+async function isEmailVerified(userId: string): Promise<boolean> {
+  const res = await s2s(
+    IDENTITY_URL,
+    `/internal/users?ids=${encodeURIComponent(userId)}`
+  );
+  if (!res.ok) {
+    throw new Error(`user lookup failed: ${res.status}`);
+  }
+  const data = (await res.json()) as {
+    users: { id: string; emailVerified: string | null }[];
+  };
+  return Boolean(data.users.find((u) => u.id === userId)?.emailVerified);
+}
 
 // Provider gate: the monolith's getCurrentProvider(), now an S2S lookup.
 async function getProviderByUser(userId: string): Promise<ProviderByUser | null> {
@@ -49,6 +72,32 @@ jobs.post("/", async (c) => {
     return c.json({ error: "Invalid category" }, 400);
   }
 
+  // #556: verified email + per-account daily cap, both checked before the
+  // write so a blocked post never reaches the fan-out below.
+  let verified: boolean;
+  try {
+    verified = await isEmailVerified(auth.userId);
+  } catch (e) {
+    log.error("email-verification gate failed", { context: "jobs", err: e });
+    return c.json({ error: "Upstream service unavailable" }, 502);
+  }
+  if (!verified) {
+    return c.json({ error: "Verify your email address to post a job" }, 403);
+  }
+
+  const postedToday = await db.jobRequest.count({
+    where: {
+      customerId: auth.userId,
+      createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+    },
+  });
+  if (postedToday >= MAX_JOBS_PER_DAY) {
+    return c.json(
+      { error: "You've reached the daily job posting limit. Try again tomorrow." },
+      429
+    );
+  }
+
   const job = await db.jobRequest.create({
     data: {
       customerId: auth.userId,
@@ -65,9 +114,10 @@ jobs.post("/", async (c) => {
   // forward direction of the existing job-response notification below. Ask
   // provider-service for the matching contact emails (it mirrors the board's
   // scoping + suspended gate, caps + dedupes), then hand the whole list to
-  // notification-service in one batched call. Best-effort: a provider-lookup or
-  // notification failure is logged and never fails the post (mirrors the
-  // response flow's block).
+  // notification-service in one batched call — which acks immediately (202)
+  // and sends in the background (#557), so this await stays well inside the
+  // s2s budget. Best-effort: a provider-lookup or notification failure is
+  // logged and never fails the post (mirrors the response flow's block).
   try {
     const res = await s2s(
       PROVIDER_URL,

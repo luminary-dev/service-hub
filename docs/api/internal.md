@@ -54,8 +54,9 @@ using the shared `s2s()` helper (one bounded retry on idempotent GETs).
 
 ### notification-service
 
-All return `{ ok, delivered }` (`delivered:false` when `RESEND_API_KEY` is
-unset — console fallback). Bodies carry `{ to, url, locale, ... }`.
+Single-recipient sends return `{ ok, delivered }` (`delivered:false` when
+`RESEND_API_KEY` is unset — console fallback). Bodies carry
+`{ to, url, locale, ... }`.
 
 | Method + path | Purpose |
 |---|---|
@@ -66,6 +67,7 @@ unset — console fallback). Bodies carry `{ to, url, locale, ... }`.
 | `POST /internal/email/email-change-attempt` | "Someone tried to move an account to your email" notice (#503), sent to the real owner when a change-email targets their (taken) address. |
 | `POST /internal/email/inquiry` | New-inquiry notification (`customerName`). |
 | `POST /internal/email/job-response` | Job-response notification (`providerName`, `jobTitle`). |
+| `POST /internal/email/new-job` | New-matching-job fan-out (#501): `{ recipients[] (≤200), url, jobTitle, district, locale? }`. Acks `202 { ok, accepted }` immediately and sends in the background (#557); the delivered count is logged, not returned. |
 
 ### media-service
 

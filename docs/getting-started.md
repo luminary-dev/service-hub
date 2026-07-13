@@ -44,7 +44,9 @@ Postgres binds host port 5433 because many dev machines already run a local Post
 
 > Local development only — the seed refuses to run with `NODE_ENV=production`.
 > Production admins come from `npm run create-admin` (see the
-> [admin bootstrap](admin/notifications-and-bootstrap.md)).
+> [admin bootstrap](admin/notifications-and-bootstrap.md)). All seeded accounts
+> are email-verified (there is no real inbox to confirm from, and job posting
+> requires it — #556).
 
 | Role | Email | Notes |
 | --- | --- | --- |
