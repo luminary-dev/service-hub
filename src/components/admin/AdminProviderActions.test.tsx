@@ -80,7 +80,7 @@ describe("AdminProviderActions", () => {
     renderActions();
     fireEvent.click(screen.getByRole("button", { name: t.admin.suspend }));
 
-    const toast = await screen.findByRole("status");
+    const toast = await screen.findByRole("alert");
     expect(toast.textContent).toContain(t.toast.adminSuspendError);
     expect(refresh).not.toHaveBeenCalled();
   });
