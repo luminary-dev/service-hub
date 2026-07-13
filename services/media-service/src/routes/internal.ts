@@ -9,6 +9,7 @@ import {
   InvalidNamespaceError,
   InvalidPrefixError,
   MAX_UPLOAD_SIZE,
+  readStoredFile,
   sweep,
   storeFile,
 } from "../lib/media";
@@ -58,6 +59,25 @@ internalRoutes.post("/internal/media/store", async (c) => {
     }
     throw e;
   }
+});
+
+// GET /internal/media/raw?url=/api/files/<ns>/<subpath> — streams a stored
+// file's raw bytes for admin-gated callers that must NOT expose it on the
+// public /files path (verification documents, #500). Behind the internal
+// secret like everything here; the calling service enforces per-request authz
+// (provider-service only lets ADMIN/SUPPORT reach this). PII, so it is marked
+// private/no-store rather than the public immutable cache the /files route uses.
+internalRoutes.get("/internal/media/raw", async (c) => {
+  const url = c.req.query("url");
+  if (!url) return c.json({ error: "Invalid input" }, 400);
+  const file = await readStoredFile(url);
+  if (!file) return c.json({ error: "Not found" }, 404);
+  return c.body(file.data, 200, {
+    "content-type": file.contentType,
+    "cache-control": "private, no-store",
+    "x-content-type-options": "nosniff",
+    "content-disposition": "inline",
+  });
 });
 
 const deleteSchema = z.object({ url: z.string().min(1) });
