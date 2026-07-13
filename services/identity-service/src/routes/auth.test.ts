@@ -20,6 +20,7 @@ import {
   sendPasswordResetEmail,
 } from "../lib/verification";
 import { eraseUserData } from "../lib/erase";
+import { removeStoredFile } from "../lib/storage";
 import {
   createProviderProfile,
   deactivateProviderProfile,
@@ -62,6 +63,7 @@ vi.mock("../lib/verification", () => ({
   sendAccountExistsEmail: vi.fn(),
 }));
 vi.mock("../lib/erase", () => ({ eraseUserData: vi.fn() }));
+vi.mock("../lib/storage", () => ({ removeStoredFile: vi.fn() }));
 vi.mock("../lib/providers", () => ({
   getProviderIdByUser: vi.fn(async () => null),
   createProviderProfile: vi.fn(),
@@ -1083,6 +1085,43 @@ describe("POST /api/auth/delete-account", () => {
       data: { userId: "u1", email: "a@b.lk", role: "CUSTOMER" },
     });
     expect(db.user.delete).toHaveBeenCalledWith({ where: { id: "u1" } });
+  });
+
+  // #555: the avatar file (PII) lives in media-service; deleting the account
+  // must also erase it, after the local rows are gone.
+  it("removes the stored avatar file after a successful deletion", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "a@b.lk",
+      role: "CUSTOMER",
+      passwordHash: currentHash,
+      avatarUrl: "/api/files/user/avatars/u1.jpg",
+    });
+    const res = await post(
+      "/api/auth/delete-account",
+      { password: CURRENT_PASSWORD },
+      AUTH_HEADERS
+    );
+    expect(res.status).toBe(200);
+    expect(removeStoredFile).toHaveBeenCalledWith("/api/files/user/avatars/u1.jpg");
+  });
+
+  it("keeps the avatar file when the deletion aborts on a failed peer erase", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "a@b.lk",
+      role: "CUSTOMER",
+      passwordHash: currentHash,
+      avatarUrl: "/api/files/user/avatars/u1.jpg",
+    });
+    vi.mocked(eraseUserData).mockRejectedValue(new Error("peer down"));
+    const res = await post(
+      "/api/auth/delete-account",
+      { password: CURRENT_PASSWORD },
+      AUTH_HEADERS
+    );
+    expect(res.status).toBe(502);
+    expect(removeStoredFile).not.toHaveBeenCalled();
   });
 
   // #360: a provider's JobResponses (their written message — PII) are keyed by

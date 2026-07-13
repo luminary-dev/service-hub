@@ -193,6 +193,7 @@ describe("ServicesManager", () => {
     expect(refresh).not.toHaveBeenCalled();
   });
 
+  // A dropped connection must not fail silently (#363).
   it("shows a generic error when the delete request throws", async () => {
     fetchMock.mockRejectedValue(new TypeError("network down"));
     renderManager();

@@ -73,35 +73,41 @@ export default function ServicesManager({
       price: Number(draft.price),
       priceType: draft.priceType,
     };
-    const res =
-      editing === "new"
-        ? await fetch("/api/provider/services", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          })
-        : await fetch(`/api/provider/services/${editing}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-    setLoading(false);
-    if (res.ok) {
-      const { service } = await res.json();
-      setServices((list) =>
+    try {
+      const res =
         editing === "new"
-          ? [...list, { ...service, description: service.description ?? "" }]
-          : list.map((s) =>
-              s.id === editing
-                ? { ...service, description: service.description ?? "" }
-                : s,
-            ),
-      );
-      setEditing(null);
-      router.refresh();
-    } else {
-      const d = await res.json().catch(() => ({}));
-      setError(d.error ?? s2.saveError);
+          ? await fetch("/api/provider/services", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            })
+          : await fetch(`/api/provider/services/${editing}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+      if (res.ok) {
+        const { service } = await res.json();
+        setServices((list) =>
+          editing === "new"
+            ? [...list, { ...service, description: service.description ?? "" }]
+            : list.map((s) =>
+                s.id === editing
+                  ? { ...service, description: service.description ?? "" }
+                  : s,
+              ),
+        );
+        setEditing(null);
+        router.refresh();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setError(d.error ?? s2.saveError);
+      }
+    } catch {
+      // Network failure — recover instead of wedging the button (#363).
+      setError(s2.saveError);
+    } finally {
+      setLoading(false);
     }
   }
 
