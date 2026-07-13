@@ -14,6 +14,19 @@ const TTL_MS = 60_000;
 
 type CacheEntry = { v: number; exp: number };
 const cache = new Map<string, CacheEntry>();
+let lastSweep = 0;
+
+// Evict expired entries so the map can't grow one permanent entry per distinct
+// user over the process lifetime (#377). Throttled to at most once per TTL so
+// a burst of requests doesn't rescan the whole map on every check (mirrors the
+// chat rate limiter's sweep()).
+function sweep(now: number) {
+  if (now - lastSweep < TTL_MS) return;
+  lastSweep = now;
+  for (const [userId, entry] of cache) {
+    if (entry.exp <= now) cache.delete(userId);
+  }
+}
 
 const IDENTITY_SERVICE_URL =
   process.env.IDENTITY_SERVICE_URL ?? "http://localhost:4001";
@@ -55,6 +68,7 @@ export async function sessionVersionOk(
   sv: number
 ): Promise<boolean> {
   const now = Date.now();
+  sweep(now);
   const hit = cache.get(userId);
   if (hit && hit.exp > now) {
     if (sv > hit.v) {
@@ -69,4 +83,9 @@ export async function sessionVersionOk(
   if (v === null) return false; // user deleted — token is dead
   cache.set(userId, { v: Math.max(v, sv), exp: now + TTL_MS });
   return sv >= v;
+}
+
+// Test-only: number of users currently cached.
+export function cachedUserCount(): number {
+  return cache.size;
 }

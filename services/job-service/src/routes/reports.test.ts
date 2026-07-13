@@ -1,8 +1,10 @@
-// Route tests for the job-reports moderation queue (#375): the SUPPORT/ADMIN
-// authorization gate, target hydration (JOB and JOB_RESPONSE, plus the
-// hard-deleted-target null), the foreign-targetType short-circuit, and the
-// resolve/dismiss paths with their audit trail. Prisma is mocked — this is
-// the HTTP + authz contract, not a live DB test.
+// Route tests for job abuse reporting: the public report-a-job endpoint
+// (#376 — session optional, signed-in dedupe, hidden-job 404) and the
+// job-reports moderation queue (#375): the SUPPORT/ADMIN authorization gate,
+// target hydration (JOB and JOB_RESPONSE, plus the hard-deleted-target null),
+// the foreign-targetType short-circuit, and the resolve/dismiss paths with
+// their audit trail. Prisma is mocked — this is the HTTP + authz contract,
+// not a live DB test.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { dbMock } = vi.hoisted(() => ({
@@ -12,6 +14,9 @@ const { dbMock } = vi.hoisted(() => ({
     report: {
       count: vi.fn(),
       findMany: vi.fn(),
+      findFirst: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
       updateMany: vi.fn(),
     },
     adminAuditLog: { create: vi.fn(), findMany: vi.fn() },
@@ -65,6 +70,9 @@ beforeEach(() => {
   dbMock.report.count.mockResolvedValue(0);
   dbMock.report.findMany.mockResolvedValue([]);
   dbMock.report.updateMany.mockResolvedValue({ count: 1 });
+  dbMock.report.findFirst.mockResolvedValue(null);
+  dbMock.report.create.mockResolvedValue({ id: "rep1" });
+  dbMock.report.update.mockResolvedValue({ id: "rep1" });
   dbMock.jobRequest.findMany.mockResolvedValue([]);
   dbMock.jobResponse.findMany.mockResolvedValue([]);
   dbMock.adminAuditLog.create.mockResolvedValue({});
@@ -125,6 +133,7 @@ describe("GET /api/admin/job-reports", () => {
         title: "Fix a leaking tap",
         description: "Kitchen tap leaking.",
         status: "OPEN",
+        hiddenAt: null,
       },
     ]);
     const res = await req("/api/admin/job-reports?status=OPEN", { role: "SUPPORT" });
@@ -135,7 +144,25 @@ describe("GET /api/admin/job-reports", () => {
       title: "Fix a leaking tap",
       description: "Kitchen tap leaking.",
       status: "OPEN",
+      removed: false,
     });
+  });
+
+  it("flags a taken-down job's target as removed (#376)", async () => {
+    dbMock.report.count.mockResolvedValue(1);
+    dbMock.report.findMany.mockResolvedValue([reportRow()]);
+    dbMock.jobRequest.findMany.mockResolvedValue([
+      {
+        id: "job_1",
+        title: "Fix a leaking tap",
+        description: "Kitchen tap leaking.",
+        status: "OPEN",
+        hiddenAt: new Date(),
+      },
+    ]);
+    const res = await req("/api/admin/job-reports?status=OPEN", { role: "SUPPORT" });
+    const body = await res.json();
+    expect(body.reports[0].target.removed).toBe(true);
   });
 
   it("hydrates JOB_RESPONSE targets with the message and its job", async () => {
@@ -295,5 +322,82 @@ describe("GET /api/admin/job-audit-log", () => {
         orderBy: { createdAt: "desc" },
       })
     );
+  });
+});
+
+// Public report-a-job flow (#376) — mirrors the provider/photo/review report
+// endpoints: session optional, signed-in dedupe refresh, hidden job 404.
+describe("POST /api/jobs/:id/report", () => {
+  const valid = { reason: "scam", details: "asks for a deposit up front" };
+
+  function reportReq(path: string, opts: { body?: unknown; userId?: string } = {}) {
+    const headers: Record<string, string> = {
+      "content-type": "application/json",
+      "x-internal-secret": SECRET,
+    };
+    if (opts.userId) {
+      headers["x-user-id"] = opts.userId;
+      headers["x-user-role"] = "CUSTOMER";
+      headers["x-user-name"] = "Reporter";
+    }
+    return app.request(path, {
+      method: "POST",
+      headers,
+      ...(opts.body !== undefined ? { body: JSON.stringify(opts.body) } : {}),
+    });
+  }
+
+  it("404 when the job is unknown (no report filed)", async () => {
+    dbMock.jobRequest.findUnique.mockResolvedValue(null);
+    const res = await reportReq("/api/jobs/nope/report", { body: valid });
+    expect(res.status).toBe(404);
+    expect(dbMock.report.create).not.toHaveBeenCalled();
+  });
+
+  it("404 when the job was already taken down (hidden)", async () => {
+    dbMock.jobRequest.findUnique.mockResolvedValue({ id: "job1", hiddenAt: new Date() });
+    const res = await reportReq("/api/jobs/job1/report", { body: valid });
+    expect(res.status).toBe(404);
+    expect(dbMock.report.create).not.toHaveBeenCalled();
+  });
+
+  it("400 for an invalid reason", async () => {
+    dbMock.jobRequest.findUnique.mockResolvedValue({ id: "job1", hiddenAt: null });
+    const res = await reportReq("/api/jobs/job1/report", { body: { reason: "because" } });
+    expect(res.status).toBe(400);
+    expect(dbMock.report.create).not.toHaveBeenCalled();
+  });
+
+  it("anonymous visitor creates a fresh report (no dedupe lookup)", async () => {
+    dbMock.jobRequest.findUnique.mockResolvedValue({ id: "job1", hiddenAt: null });
+    const res = await reportReq("/api/jobs/job1/report", { body: valid });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(dbMock.report.findFirst).not.toHaveBeenCalled();
+    expect(dbMock.report.create.mock.calls[0][0].data.reporterId).toBeNull();
+  });
+
+  it("signed-in first report creates a row keyed to the reporter", async () => {
+    dbMock.jobRequest.findUnique.mockResolvedValue({ id: "job1", hiddenAt: null });
+    dbMock.report.findFirst.mockResolvedValue(null);
+    const res = await reportReq("/api/jobs/job1/report", { body: valid, userId: "u1" });
+    expect(res.status).toBe(200);
+    expect(dbMock.report.create.mock.calls[0][0].data).toMatchObject({
+      targetType: "JOB",
+      targetId: "job1",
+      reporterId: "u1",
+    });
+  });
+
+  it("signed-in re-report refreshes the existing OPEN report instead of duplicating", async () => {
+    dbMock.jobRequest.findUnique.mockResolvedValue({ id: "job1", hiddenAt: null });
+    dbMock.report.findFirst.mockResolvedValue({ id: "existing" });
+    const res = await reportReq("/api/jobs/job1/report", { body: valid, userId: "u1" });
+    expect(res.status).toBe(200);
+    expect(dbMock.report.update).toHaveBeenCalledWith({
+      where: { id: "existing" },
+      data: { reason: "scam", details: "asks for a deposit up front" },
+    });
+    expect(dbMock.report.create).not.toHaveBeenCalled();
   });
 });

@@ -5,8 +5,11 @@
 // only changed their import path. className/size/color pass straight through.
 import type { ReactElement, SVGProps } from "react";
 
-// title is allowed for parity with react-icons (renders as an SVG tooltip).
-type IconProps = SVGProps<SVGSVGElement> & { title?: string };
+// Icons are decorative (aria-hidden, innerHTML-injected), so a `title` prop
+// would emit an inert attribute, never a <title> child — no tooltip and no
+// accessible name. Name the wrapping element (aria-label / visually-hidden
+// text) instead; `title` is deliberately not accepted here.
+type IconProps = SVGProps<SVGSVGElement>;
 
 // Drop-in replacement for react-icons' IconType (callers that store an icon
 // component in a typed field / map, e.g. category → icon).

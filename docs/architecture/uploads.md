@@ -4,11 +4,15 @@
 Image processing and storage are owned by **media-service**:
 `POST /internal/media/store` (multipart — decodes/re-encodes with sharp, strips
 EXIF, returns the URL to persist), `POST /internal/media/delete`,
-`POST /internal/media/sweep`. provider- and review-service call it over S2S via
-a thin identical `lib/storage.ts` client (`storeImage(namespace, file,
-prefix)`); the photo **rows** stay with them. Namespaces (`provider`, `review`,
-`category` — admin trade cover images #436, `user` — per-user avatars #434)
-preserve the `/api/files/<namespace>/...` URL shape.
+`POST /internal/media/sweep`. identity-, provider- and review-service call it
+over S2S via a thin identical `lib/storage.ts` client (`storeImage(namespace,
+file, prefix)`); the photo **rows** stay with them. Namespaces (`provider`,
+`review`, `category` — admin trade cover images #436, `user` — per-user avatars
+#434) preserve the `/api/files/<namespace>/...` URL shape. Every namespace has
+an orphan-sweep owner (#555): each row-owning service exposes a
+`POST /internal/maintenance/sweep-orphans` that passes its still-referenced URL
+set to media — provider-service covers `provider` + `category` (category rows
+live in its DB), review-service covers `review`, identity-service covers `user`.
 
 **Backend precedence: Cloudflare R2 > local disk.** R2 (S3-compatible,
 **private** bucket) is used when all four `R2_*` vars are set — the S3 client

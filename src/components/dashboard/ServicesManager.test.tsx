@@ -64,6 +64,13 @@ describe("ServicesManager", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("labels the price-type select distinctly from the price input (#565)", () => {
+    renderManager();
+    fireEvent.click(screen.getByRole("button", { name: s.add }));
+    const select = screen.getByRole("combobox", { name: s.priceType });
+    expect(select.tagName).toBe("SELECT");
+  });
+
   it("POSTs a new service and appends it to the list on success", async () => {
     fetchMock.mockResolvedValue({
       ok: true,
@@ -186,6 +193,7 @@ describe("ServicesManager", () => {
     expect(refresh).not.toHaveBeenCalled();
   });
 
+  // A dropped connection must not fail silently (#363).
   it("shows a generic error when the delete request throws", async () => {
     fetchMock.mockRejectedValue(new TypeError("network down"));
     renderManager();

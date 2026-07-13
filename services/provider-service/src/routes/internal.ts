@@ -130,14 +130,12 @@ internalRoutes.post("/internal/providers", async (c) => {
   } catch (e) {
     // userId is unique: a retried/concurrent registration for the same user
     // must be idempotent, not an unhandled 500. Return the existing id WITHOUT
-    // touching `suspended`. The schema has a single `suspended` flag that can't
-    // distinguish a self-service downgrade (#403) from an ADMIN suspension, so
-    // clearing it here would silently lift an admin suspension if a
-    // re-registration ever raced through this path. Un-suspension is owned
-    // solely by the dedicated /reactivate endpoint below — invoked by
-    // complete-provider only for a self-downgraded CUSTOMER whose profile
-    // already exists — which keeps the invariant "re-registration must never
-    // lift an ADMIN suspension" intact even if this create path is reached.
+    // touching `suspended` — clearing it here could silently lift an admin
+    // suspension if a re-registration ever raced through this path.
+    // Un-suspension is owned solely by the dedicated /reactivate endpoint
+    // below (which itself refuses ADMIN suspensions, #550), keeping the
+    // invariant "re-registration must never lift an ADMIN suspension" intact
+    // even if this create path is reached.
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
       const existing = await db.provider.findUnique({
         where: { userId: data.userId },
@@ -153,9 +151,10 @@ internalRoutes.post("/internal/providers", async (c) => {
 
 // Self-service downgrade (#403): a provider closing their own profile. Hides
 // it from every public listing (the `suspended` flag the admin path already
-// uses). Idempotent — a missing profile is a no-op { ok: true } so identity's
-// role flip can proceed. Reversible: becoming a provider again unsuspends it
-// via the /internal/providers create path below.
+// uses; `adminSuspended` is deliberately untouched so an active ADMIN
+// suspension survives the downgrade, #550). Idempotent — a missing profile is
+// a no-op { ok: true } so identity's role flip can proceed. Reversible:
+// becoming a provider again unsuspends it via the /reactivate endpoint below.
 internalRoutes.post("/internal/providers/by-user/:userId/deactivate", async (c) => {
   const userId = c.req.param("userId");
   const provider = await db.provider.findUnique({
@@ -174,13 +173,19 @@ internalRoutes.post("/internal/providers/by-user/:userId/deactivate", async (c) 
 // reuses an existing profile via getProviderIdByUser and never hits the create
 // path, so becoming a provider again must explicitly clear `suspended` here.
 // Idempotent — a missing or already-active profile is a no-op { ok: true }.
+// An ADMIN suspension is refused (409, #550): only the admin unsuspend action
+// may clear it, otherwise leave-provider → complete-provider would let a
+// suspended provider lift their own moderation suspension.
 internalRoutes.post("/internal/providers/by-user/:userId/reactivate", async (c) => {
   const userId = c.req.param("userId");
   const provider = await db.provider.findUnique({
     where: { userId },
-    select: { id: true, suspended: true },
+    select: { id: true, suspended: true, adminSuspended: true },
   });
   if (!provider) return c.json({ ok: true, reactivated: false });
+  if (provider.adminSuspended) {
+    return c.json({ error: "Suspended by admin" }, 409);
+  }
   if (provider.suspended) {
     await db.provider.update({
       where: { id: provider.id },
@@ -378,7 +383,7 @@ internalRoutes.post("/internal/users/:id/erase", async (c) => {
 // references any more. Grace window protects in-flight uploads; run it from
 // ops tooling (cron/curl with the internal secret).
 internalRoutes.post("/internal/maintenance/sweep-orphans", async (c) => {
-  const [photos, docs, avatars, covers] = await Promise.all([
+  const [photos, docs, avatars, covers, categories] = await Promise.all([
     db.workPhoto.findMany({ select: { url: true } }),
     db.verificationDocument.findMany({ select: { url: true } }),
     db.provider.findMany({
@@ -389,6 +394,10 @@ internalRoutes.post("/internal/maintenance/sweep-orphans", async (c) => {
       where: { coverPhoto: { not: null } },
       select: { coverPhoto: true },
     }),
+    db.category.findMany({
+      where: { imageUrl: { not: null } },
+      select: { imageUrl: true },
+    }),
   ]);
   const referenced = new Set<string>([
     ...photos.map((p) => p.url),
@@ -396,8 +405,18 @@ internalRoutes.post("/internal/maintenance/sweep-orphans", async (c) => {
     ...avatars.map((a) => a.avatarUrl as string),
     ...covers.map((c) => c.coverPhoto as string),
   ]);
-  const result = await sweepMedia("provider", [...referenced]);
-  return c.json(result);
+  const provider = await sweepMedia("provider", [...referenced]);
+  // Category cover images (#436) live in their own namespace; sweep it against
+  // the saved imageUrls so an abandoned or replaced admin upload doesn't
+  // orphan the object forever (#555).
+  const category = await sweepMedia(
+    "category",
+    categories.map((cat) => cat.imageUrl as string)
+  );
+  return c.json({
+    scanned: provider.scanned + category.scanned,
+    removed: provider.removed + category.removed,
+  });
 });
 
 // Existence/suspended check (favorites, reviews). Always 200 — the caller

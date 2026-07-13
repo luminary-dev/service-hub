@@ -24,6 +24,19 @@
   the profile goes live immediately. Signup is rate-limited (see
   [RATE_LIMITING.md](../RATE_LIMITING.md)).
 
+### Legal pages & registration consent (#62)
+
+- **`/terms`** and **`/privacy`** (localized under `/si/*` too) render the
+  Terms of Service and the PDPA-aware Privacy Policy from `src/lib/legal.ts`
+  via the shared `LegalArticle` component. English is the authoritative text;
+  the Sinhala version must mirror its structure (`src/lib/legal.test.ts`).
+  Both pages are linked from the footer and listed in the sitemap.
+- **Consent.** Both email registration forms require an "I agree to the Terms
+  of Service and Privacy Policy" checkbox (`ConsentCheckbox` — native
+  `required` on the customer form, wizard validation on the provider form's
+  final step), and the social sign-in buttons on `/login` and `/register`
+  carry a "by continuing, you agree" notice (`ConsentNotice`).
+
 ### Social login (#398)
 
 Both `/login` and `/register` show a **Continue with Google** button
@@ -91,7 +104,11 @@ signed-in user:
 - **Change email** — `POST /api/account/email/change` emails a 1h confirmation
   link **to the new address**; clicking it (`/verify-email-change`) posts
   `POST /api/account/email/confirm`, which switches the address and marks it
-  verified. The current session stays valid (email isn't in the JWT).
+  verified. The current session stays valid (email isn't in the JWT). Changing
+  the sign-in email is a sensitive op (#504): password accounts must confirm
+  their **current password** in the form (the field is shown when
+  `GET /api/auth/me` reports `hasPassword`); social-only accounts (#398) have
+  none, so for them the valid session alone is the re-auth.
 
 Role transitions are also surfaced here (and in the user menu):
 
@@ -104,7 +121,9 @@ Role transitions are also surfaced here (and in the user menu):
   not delete**: the `Provider` row is marked `suspended` (dropped from every
   public listing), role reverts to `CUSTOMER`, and the session is re-issued (no
   re-login). Reviews, inquiries and job responses are retained; becoming a
-  provider again reactivates the same profile. Audit-logged in identity-service.
+  provider again reactivates the same profile — unless it is under an ADMIN
+  suspension, which survives the downgrade and blocks the re-upgrade with 403
+  until an admin unsuspends (#550). Audit-logged in identity-service.
 
 ### Provider dashboard & profile editing
 

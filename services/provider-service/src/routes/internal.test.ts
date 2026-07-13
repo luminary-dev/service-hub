@@ -18,6 +18,7 @@ const { dbMock, storageMock } = vi.hoisted(() => ({
     },
     workPhoto: { findMany: vi.fn() },
     verificationDocument: { findMany: vi.fn() },
+    category: { findMany: vi.fn() },
     inquiry: { deleteMany: vi.fn() },
     // Content filter (#375) on the registration create path.
     report: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
@@ -76,7 +77,11 @@ describe("POST /internal/providers/by-user/:userId/deactivate", () => {
 
 describe("POST /internal/providers/by-user/:userId/reactivate", () => {
   it("clears suspended on a self-deactivated profile (re-upgrade)", async () => {
-    dbMock.provider.findUnique.mockResolvedValue({ id: "prov1", suspended: true });
+    dbMock.provider.findUnique.mockResolvedValue({
+      id: "prov1",
+      suspended: true,
+      adminSuspended: false,
+    });
     dbMock.provider.update.mockResolvedValue({ id: "prov1", suspended: false });
 
     const res = await post("/internal/providers/by-user/owner-1/reactivate");
@@ -89,9 +94,27 @@ describe("POST /internal/providers/by-user/:userId/reactivate", () => {
   });
 
   it("is a no-op when already active", async () => {
-    dbMock.provider.findUnique.mockResolvedValue({ id: "prov1", suspended: false });
+    dbMock.provider.findUnique.mockResolvedValue({
+      id: "prov1",
+      suspended: false,
+      adminSuspended: false,
+    });
     const res = await post("/internal/providers/by-user/owner-1/reactivate");
     expect(res.status).toBe(200);
+    expect(dbMock.provider.update).not.toHaveBeenCalled();
+  });
+
+  // #550: leave-provider → complete-provider must not lift an ADMIN
+  // suspension — the reactivate path refuses it outright, with no write.
+  it("refuses an ADMIN suspension with 409 and no write", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({
+      id: "prov1",
+      suspended: true,
+      adminSuspended: true,
+    });
+    const res = await post("/internal/providers/by-user/owner-1/reactivate");
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "Suspended by admin" });
     expect(dbMock.provider.update).not.toHaveBeenCalled();
   });
 });
@@ -368,6 +391,7 @@ describe("POST /internal/maintenance/sweep-orphans", () => {
     dbMock.verificationDocument.findMany.mockResolvedValue([
       { url: "provider/doc.pdf" },
     ]);
+    dbMock.category.findMany.mockResolvedValue([]);
     // avatar query then cover-photo query, in Promise.all order.
     dbMock.provider.findMany
       .mockResolvedValueOnce([{ avatarUrl: "provider/avatar.jpg" }])
@@ -375,7 +399,6 @@ describe("POST /internal/maintenance/sweep-orphans", () => {
 
     const res = await post("/internal/maintenance/sweep-orphans");
     expect(res.status).toBe(200);
-    expect(storageMock.sweepMedia).toHaveBeenCalledTimes(1);
 
     const [namespace, referenced] = storageMock.sweepMedia.mock.calls[0];
     expect(namespace).toBe("provider");
@@ -385,6 +408,25 @@ describe("POST /internal/maintenance/sweep-orphans", () => {
     expect(referenced).toContain("provider/avatar.jpg");
     expect(referenced).toContain("provider/photo.jpg");
     expect(referenced).toContain("provider/doc.pdf");
+  });
+
+  // #555: category cover images share this DB, so the same maintenance call
+  // sweeps their namespace, keeping the saved imageUrls.
+  it("also sweeps the category namespace with saved covers referenced", async () => {
+    dbMock.workPhoto.findMany.mockResolvedValue([]);
+    dbMock.verificationDocument.findMany.mockResolvedValue([]);
+    dbMock.category.findMany.mockResolvedValue([
+      { imageUrl: "/api/files/category/covers/live.jpg" },
+    ]);
+    dbMock.provider.findMany.mockResolvedValue([]);
+
+    const res = await post("/internal/maintenance/sweep-orphans");
+    expect(res.status).toBe(200);
+    expect(storageMock.sweepMedia).toHaveBeenCalledTimes(2);
+
+    const [namespace, referenced] = storageMock.sweepMedia.mock.calls[1];
+    expect(namespace).toBe("category");
+    expect(referenced).toContain("/api/files/category/covers/live.jpg");
   });
 });
 

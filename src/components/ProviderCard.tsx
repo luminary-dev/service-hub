@@ -137,10 +137,16 @@ export default function ProviderCard({
               <h3 className="flex items-center gap-1.5 truncate font-display text-base font-semibold text-ink-900 transition-colors duration-200 group-hover:text-brand-700">
                 <span className="truncate">{p.name}</span>
                 {verified && (
-                  <FaCircleCheck
-                    className="h-4 w-4 shrink-0 text-brand-600"
+                  // The icon itself is decorative (aria-hidden); the wrapper
+                  // carries the accessible name + a real tooltip (#559).
+                  <span
+                    role="img"
+                    aria-label={t.card.verified}
                     title={t.card.verified}
-                  />
+                    className="flex shrink-0 items-center"
+                  >
+                    <FaCircleCheck className="h-4 w-4 text-brand-600" />
+                  </span>
                 )}
               </h3>
               <p className="mt-0.5 truncate font-mono text-[11px] uppercase tracking-wider text-ink-500">

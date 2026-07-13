@@ -2,9 +2,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { dict } from "@/lib/i18n";
+import { ToastProvider } from "./ToastProvider";
 import MessageThread from "./MessageThread";
 
 const t = dict.en.messages;
+const tr = dict.en.report;
+
+// The per-message ReportButton (#376) needs the toast context.
+function renderThread(inquiryId = "inq_1") {
+  return render(
+    <ToastProvider>
+      <MessageThread inquiryId={inquiryId} />
+    </ToastProvider>
+  );
+}
 const fetchMock = vi.fn();
 
 const threadFixture = {
@@ -42,7 +53,7 @@ afterEach(() => {
 describe("MessageThread", () => {
   it("loads the conversation and renders the counterpart heading + messages", async () => {
     fetchMock.mockResolvedValue({ ok: true, json: async () => threadFixture });
-    render(<MessageThread inquiryId="inq_1" />);
+    renderThread();
 
     expect(
       await screen.findByRole("heading", {
@@ -50,12 +61,14 @@ describe("MessageThread", () => {
       })
     ).toBeTruthy();
     expect(screen.getByText("Yes, I can come on Monday.")).toBeTruthy();
-    expect(fetchMock).toHaveBeenCalledWith("/api/inquiries/inq_1/messages");
+    expect(fetchMock).toHaveBeenCalledWith("/api/inquiries/inq_1/messages", {
+      signal: expect.any(AbortSignal),
+    });
   });
 
   it("shows a load-failure alert when the initial fetch fails", async () => {
     fetchMock.mockResolvedValue({ ok: false, json: async () => ({}) });
-    render(<MessageThread inquiryId="inq_1" />);
+    renderThread();
 
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain(t.loadFailed);
@@ -63,7 +76,7 @@ describe("MessageThread", () => {
 
   it("keeps the send button disabled until a message is typed", async () => {
     fetchMock.mockResolvedValue({ ok: true, json: async () => threadFixture });
-    render(<MessageThread inquiryId="inq_1" />);
+    renderThread();
     await screen.findByRole("heading", { name: t.threadWith("Sunil Perera") });
 
     const button = screen.getByRole("button", {
@@ -82,7 +95,7 @@ describe("MessageThread", () => {
       ok: true,
       json: async () => threadFixture,
     });
-    const { container } = render(<MessageThread inquiryId="inq_1" />);
+    const { container } = renderThread();
     await screen.findByRole("heading", { name: t.threadWith("Sunil Perera") });
 
     fetchMock.mockResolvedValueOnce({
@@ -109,12 +122,74 @@ describe("MessageThread", () => {
     expect(await screen.findByText("See you Monday")).toBeTruthy();
   });
 
+  it("offers a report action on the counterpart's messages only (#376)", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ...threadFixture,
+        messages: [
+          ...threadFixture.messages,
+          {
+            id: "msg_mine",
+            sender: "CUSTOMER" as const,
+            body: "Thanks!",
+            createdAt: "2025-06-01T10:30:00.000Z",
+          },
+        ],
+      }),
+    });
+    renderThread();
+    await screen.findByRole("heading", { name: t.threadWith("Sunil Perera") });
+
+    // One report trigger for the provider's message, none for the caller's own.
+    expect(screen.getAllByRole("button", { name: tr.reportMessage })).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: tr.reportMessage }));
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) });
+    fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
+    expect(fetchMock).toHaveBeenLastCalledWith("/api/messages/msg_1/report", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: "spam", details: undefined }),
+    });
+  });
+
+  it("shows the load-failure alert when the initial fetch rejects (#377)", async () => {
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    renderThread();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(t.loadFailed);
+  });
+
+  it("recovers from a rejected send with an alert and a re-enabled button (#363)", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => threadFixture,
+    });
+    const { container } = renderThread();
+    await screen.findByRole("heading", { name: t.threadWith("Sunil Perera") });
+
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    fireEvent.change(screen.getByLabelText(t.placeholder), {
+      target: { value: "See you Monday" },
+    });
+    fireEvent.submit(container.querySelector("form")!);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(t.sendFailed);
+    const button = screen.getByRole("button", {
+      name: t.send,
+    }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+  });
+
   it("shows a send-failure alert when the POST fails", async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => threadFixture,
     });
-    const { container } = render(<MessageThread inquiryId="inq_1" />);
+    const { container } = renderThread();
     await screen.findByRole("heading", { name: t.threadWith("Sunil Perera") });
 
     fetchMock.mockResolvedValueOnce({ ok: false, json: async () => ({}) });

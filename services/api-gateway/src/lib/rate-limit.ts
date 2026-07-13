@@ -346,12 +346,15 @@ export const LIMITED_ROUTES: { pattern: RegExp; name: string; rule: RateRule }[]
   { pattern: /^\/api\/reviews\/[^/]+\/response$/, name: "review-response", rule: RATE_LIMITS.review },
   // Thread messages (#13) are conversational - wider budget than one-shot forms.
   { pattern: /^\/api\/inquiries\/[^/]+\/messages$/, name: "message", rule: RATE_LIMITS.message },
-  // Abuse reports (#50) accept anonymous submissions, so the IP budget is the
-  // main spam control. One shared "report" bucket across the three target
-  // types, on the review budget.
+  // Abuse reports (#50, #376) accept anonymous submissions (messages
+  // excepted — thread-party only), so the IP budget is the main spam
+  // control. One shared "report" bucket across the five target types, on the
+  // review budget.
   { pattern: /^\/api\/providers\/[^/]+\/report$/, name: "report", rule: RATE_LIMITS.review },
   { pattern: /^\/api\/photos\/[^/]+\/report$/, name: "report", rule: RATE_LIMITS.review },
   { pattern: /^\/api\/reviews\/[^/]+\/report$/, name: "report", rule: RATE_LIMITS.review },
+  { pattern: /^\/api\/jobs\/[^/]+\/report$/, name: "report", rule: RATE_LIMITS.review },
+  { pattern: /^\/api\/messages\/[^/]+\/report$/, name: "report", rule: RATE_LIMITS.review },
   // Image uploads (#520): each runs a CPU-expensive sharp re-encode, so they
   // share one per-IP "upload" bucket across the four upload POST endpoints.
   { pattern: /^\/api\/account\/avatar$/, name: "upload", rule: RATE_LIMITS.upload },

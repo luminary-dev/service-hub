@@ -12,7 +12,9 @@ import {
 } from "@/lib/constants";
 import { categoryOptionLabel, type CategoryOption } from "@/lib/categories";
 import { districtLabelLoc, priceTypeLabelLoc } from "@/lib/i18n";
+import { localizedHref } from "@/lib/links";
 import { useLocale, useT } from "@/components/I18nProvider";
+import { ConsentCheckbox } from "@/components/LegalConsent";
 import PasswordInput from "@/components/PasswordInput";
 import CategoryIcon from "@/components/CategoryIcon";
 
@@ -48,7 +50,8 @@ export default function ProviderRegisterForm({
   const [error, setError] = useState("");
   const router = useRouter();
   const locale = useLocale();
-  const r = useT().providerReg;
+  const t = useT();
+  const r = t.providerReg;
   const STEPS = r.steps;
 
   // On step change (not initial mount) move focus to the panel heading so
@@ -85,6 +88,7 @@ export default function ProviderRegisterForm({
   const [services, setServices] = useState<ServiceInput[]>([
     { ...emptyService },
   ]);
+  const [agree, setAgree] = useState(false);
 
   function set(field: string, value: string) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -119,6 +123,7 @@ export default function ProviderRegisterForm({
         if (s.title.trim().length < 2) return r.errServiceTitle;
         if (!s.price || Number(s.price) <= 0) return r.errServicePrice;
       }
+      if (!agree) return t.legal.errAgree;
     }
     return "";
   }
@@ -191,7 +196,7 @@ export default function ProviderRegisterForm({
         },
       );
       if (res.ok) {
-        router.push("/dashboard?welcome=1");
+        router.push(localizedHref("/dashboard?welcome=1", locale));
         router.refresh();
       } else {
         const data = await res.json().catch(() => ({}));
@@ -690,7 +695,7 @@ export default function ProviderRegisterForm({
                     </div>
                     <select
                       className="input w-36"
-                      aria-label={r.serviceN(i + 1)}
+                      aria-label={r.priceType}
                       value={s.priceType}
                       onChange={(e) =>
                         setService(i, "priceType", e.target.value)
@@ -717,6 +722,11 @@ export default function ProviderRegisterForm({
                 {r.addAnother}
               </button>
             )}
+            <ConsentCheckbox
+              id="pr-agree"
+              checked={agree}
+              onChange={setAgree}
+            />
           </div>
         )}
 
@@ -757,7 +767,7 @@ export default function ProviderRegisterForm({
           <p className="mt-6 text-center text-sm text-ink-500">
             {r.alreadyHave}{" "}
             <Link
-              href="/login"
+              href={localizedHref("/login", locale)}
               className="font-semibold text-brand-600 hover:text-brand-700"
             >
               {r.signIn}

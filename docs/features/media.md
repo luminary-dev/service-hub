@@ -32,7 +32,10 @@ documents) go through **media-service** (internal-only).
   is served. Only the original's URL is persisted in the DB; variants are
   addressed off it.
 - **Cleanup.** Orphaned files (no DB row references them) are removed by a sweep
-  with a 24-hour grace period. A variant is kept or removed **on the basis of
+  with a 24-hour grace period. Every namespace is covered (#555): the service
+  owning the referencing rows exposes the sweep — provider-service for
+  `provider` + `category`, review-service for `review`, identity-service for
+  `user`. A variant is kept or removed **on the basis of
   its base original**: while the original is referenced its variants survive,
   and when the original is swept its variants go with it (and `delete` removes
   all of them together).
