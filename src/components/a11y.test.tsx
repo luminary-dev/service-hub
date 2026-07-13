@@ -12,6 +12,8 @@ import { dict } from "@/lib/i18n";
 import { I18nProvider } from "./I18nProvider";
 import { ToastProvider, useToast } from "./ToastProvider";
 import MobileMenu from "./MobileMenu";
+import UserMenu from "./UserMenu";
+import EmailVerifyBanner from "./EmailVerifyBanner";
 import ProviderCard, { type ProviderCardDTO } from "./ProviderCard";
 import FilterBar from "./FilterBar";
 import SearchBar from "./SearchBar";
@@ -24,6 +26,8 @@ import PhotoGallery from "./PhotoGallery";
 import ReviewSection from "./ReviewSection";
 import LoginPage from "@/app/login/page";
 import CustomerRegisterPage from "@/app/register/customer/page";
+import LegalArticle from "./LegalArticle";
+import { legal } from "@/lib/legal";
 import ProviderRegisterForm from "@/app/register/provider/ProviderRegisterForm";
 
 vi.mock("next/navigation", () => ({
@@ -136,6 +140,24 @@ describe("axe: navigation", () => {
     expect(screen.getByRole("navigation")).toBeDefined();
     await expectNoAxeViolations(container);
   }, AXE_TIMEOUT);
+
+  it("UserMenu trigger keeps an accessible name with an avatar set (#565)", async () => {
+    // With an avatar the image alt is empty and the name span is hidden below
+    // sm, so the trigger must carry an explicit aria-label.
+    const { container } = render(
+      <I18nProvider locale="en">
+        <UserMenu name="Sunil Perera" role="PROVIDER" avatarUrl="/uploads/a.jpg" />
+      </I18nProvider>
+    );
+    const trigger = screen.getByRole("button", { name: "Sunil Perera" });
+    await expectNoAxeViolations(container);
+
+    // The signed-in header shows the localized role, not the raw enum.
+    fireEvent.click(trigger);
+    expect(screen.getByText(t.roles.PROVIDER)).toBeDefined();
+    expect(screen.queryByText("PROVIDER")).toBeNull();
+    await expectNoAxeViolations(container);
+  }, AXE_TIMEOUT);
 });
 
 describe("axe: browse & search", () => {
@@ -179,6 +201,27 @@ describe("axe: feedback", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "fire toast" }));
     expect((await screen.findByRole("status")).textContent).toContain("Saved!");
+    await expectNoAxeViolations(container);
+  }, AXE_TIMEOUT);
+
+  it("email-verify banner announces a resend failure (#565)", async () => {
+    fetchMock.mockRejectedValue(new Error("offline"));
+    const { container } = render(
+      <I18nProvider locale="en">
+        <EmailVerifyBanner />
+      </I18nProvider>
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: t.verify.bannerResend })
+    );
+    // The failure surfaces as an alert while the resend button keeps its label
+    // for a retry.
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      t.verify.bannerError
+    );
+    expect(
+      screen.getByRole("button", { name: t.verify.bannerResend })
+    ).toBeDefined();
     await expectNoAxeViolations(container);
   }, AXE_TIMEOUT);
 });
@@ -328,6 +371,20 @@ describe("axe: forms", () => {
   }, AXE_TIMEOUT);
 });
 
+describe("axe: legal pages", () => {
+  it("terms document has no violations", async () => {
+    const { container } = render(<LegalArticle doc={legal.en.terms} tag="TERMS" />);
+    await expectNoAxeViolations(container);
+  }, AXE_TIMEOUT);
+
+  it("privacy document (Sinhala) has no violations", async () => {
+    const { container } = render(
+      <LegalArticle doc={legal.si.privacy} tag="PRIVACY" />
+    );
+    await expectNoAxeViolations(container);
+  }, AXE_TIMEOUT);
+});
+
 describe("axe: messaging", () => {
   it("message thread has no violations", async () => {
     fetchMock.mockResolvedValue({
@@ -374,11 +431,14 @@ describe("axe: modals", () => {
     expect(dialog.getAttribute("aria-modal")).toBe("true");
     // Focus moves into the modal on open…
     expect(document.activeElement?.id).toBe("report-reason");
+    // …the page behind is scroll-locked (#565)…
+    expect(document.body.style.overflow).toBe("hidden");
     await expectNoAxeViolations(container);
 
-    // …Escape closes it and hands focus back to the trigger.
+    // …Escape closes it, unlocks scrolling and hands focus back to the trigger.
     fireEvent.keyDown(dialog, { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.body.style.overflow).toBe("");
     expect(document.activeElement).toBe(trigger);
   }, AXE_TIMEOUT);
 
@@ -400,11 +460,15 @@ describe("axe: modals", () => {
     // Close button is focused on open…
     const close = screen.getByRole("button", { name: t.profile.closePhoto });
     expect(document.activeElement).toBe(close);
+    // …and the page behind is scroll-locked (#565).
+    expect(document.body.style.overflow).toBe("hidden");
     await expectNoAxeViolations(container);
 
-    // …Escape closes and returns focus to the thumbnail that opened it.
+    // …Escape closes, unlocks scrolling and returns focus to the thumbnail
+    // that opened it.
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.body.style.overflow).toBe("");
     expect(document.activeElement).toBe(thumb);
   }, AXE_TIMEOUT);
 });

@@ -31,6 +31,13 @@ const en = {
     themeLight: "Light theme",
     themeDark: "Dark theme",
   },
+  // Localized display names for the role enum (#565).
+  roles: {
+    CUSTOMER: "Customer",
+    PROVIDER: "Provider",
+    ADMIN: "Admin",
+    SUPPORT: "Support",
+  } as Record<string, string>,
   a11y: {
     skipToContent: "Skip to main content",
     rated: (rating: string) => `Rated ${rating} out of 5`,
@@ -945,8 +952,23 @@ const en = {
     dashboard: "Dashboard",
     browse: "Browse Professionals",
     createAccount: "Create an Account",
+    terms: "Terms of Service",
+    privacy: "Privacy Policy",
     made1: "Made with",
     made2: "for Sri Lanka",
+  },
+  // Registration consent + legal-page links (#62). The agree/continue
+  // sentences are split around the two links so each locale keeps natural
+  // word order.
+  legal: {
+    terms: "Terms of Service",
+    privacy: "Privacy Policy",
+    agreePrefix: "I agree to the ",
+    agreeJoin: " and ",
+    agreeSuffix: ".",
+    continuePrefix: "By continuing, you agree to the ",
+    continueSuffix: ".",
+    errAgree: "Please agree to the Terms of Service and Privacy Policy.",
   },
   dashboard: {
     title: "Dashboard",
@@ -1004,6 +1026,7 @@ const en = {
       titlePh: "Service title",
       descPh: "Short description (optional)",
       pricePh: "Price (Rs.)",
+      priceType: "Price type",
       save: "Save",
       saving: "Saving…",
       cancel: "Cancel",
@@ -1127,6 +1150,7 @@ const en = {
     serviceTitlePh: "Service title, e.g. Full house wiring",
     serviceDescPh: "Short description (optional)",
     pricePh: "Price (Rs.)",
+    priceType: "Price type",
     addAnother: "+ Add another service",
     errName: "Please enter your full name.",
     errEmail: "Please enter a valid email.",
@@ -1176,6 +1200,12 @@ const si: Dict = {
     language: "භාෂාව",
     themeLight: "ලා තේමාව",
     themeDark: "අඳුරු තේමාව",
+  },
+  roles: {
+    CUSTOMER: "පාරිභෝගික",
+    PROVIDER: "සේවා සපයන්නා",
+    ADMIN: "පරිපාලක",
+    SUPPORT: "සහාය",
   },
   a11y: {
     skipToContent: "ප්‍රධාන අන්තර්ගතයට යන්න",
@@ -2071,8 +2101,20 @@ const si: Dict = {
     dashboard: "පාලක පුවරුව",
     browse: "වෘත්තිකයන් බලන්න",
     createAccount: "ගිණුමක් හදන්න",
+    terms: "සේවා කොන්දේසි",
+    privacy: "රහස්‍යතා ප්‍රතිපත්තිය",
     made1: "හදන ලද්දේ",
     made2: "ලංකාවට ආදරයෙන්",
+  },
+  legal: {
+    terms: "සේවා කොන්දේසි",
+    privacy: "රහස්‍යතා ප්‍රතිපත්තිය",
+    agreePrefix: "මම ",
+    agreeJoin: " සහ ",
+    agreeSuffix: " පිළිගනිමි.",
+    continuePrefix: "ඉදිරියට යාමෙන්, ඔබ ",
+    continueSuffix: " පිළිගනී.",
+    errAgree: "කරුණාකර සේවා කොන්දේසි සහ රහස්‍යතා ප්‍රතිපත්තිය පිළිගන්න.",
   },
   dashboard: {
     title: "පාලක පුවරුව",
@@ -2130,6 +2172,7 @@ const si: Dict = {
       titlePh: "සේවා නාමය",
       descPh: "කෙටි විස්තරයක් (අත්‍යවශ්‍ය නොවේ)",
       pricePh: "මිල (රු.)",
+      priceType: "මිල වර්ගය",
       save: "සුරකින්න",
       saving: "සුරකිමින්…",
       cancel: "අවලංගු කරන්න",
@@ -2248,6 +2291,7 @@ const si: Dict = {
     serviceTitlePh: "සේවා නාමය, උදා: සම්පූර්ණ ගෙදර වයරින්",
     serviceDescPh: "කෙටි විස්තරයක් (අත්‍යවශ්‍ය නොවේ)",
     pricePh: "මිල (රු.)",
+    priceType: "මිල වර්ගය",
     addAnother: "+ තවත් සේවාවක් එක් කරන්න",
     errName: "කරුණාකර ඔබේ සම්පූර්ණ නම ඇතුළත් කරන්න.",
     errEmail: "කරුණාකර වලංගු විද්‍යුත් තැපෑලක් ඇතුළත් කරන්න.",
