@@ -448,6 +448,90 @@ describe("PUT /api/provider/profile — multi-district service area (#502)", () 
   });
 });
 
+// Geo capture (#48, search & discovery RFC phase 1): the optional map pin.
+// Coordinates travel as a pair, bounded to the Sri Lanka box; absent leaves
+// the stored pin untouched (the awayUntil contract) and explicit nulls clear.
+describe("PUT /api/provider/profile — map pin (#48)", () => {
+  const baseBody = {
+    name: "Ann Silva",
+    phone: "0771234567",
+    category: "plumber",
+    headline: "Reliable plumber",
+    bio: "Twenty-plus characters of provider bio text here.",
+    district: "Colombo",
+    city: "Colombo",
+    experience: 5,
+    available: true,
+  };
+
+  it("persists an in-bounds coordinate pair", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(MY_PROVIDER);
+    dbMock.provider.update.mockResolvedValue({ id: "prov1" });
+    const res = await req("/api/provider/profile", {
+      method: "PUT",
+      role: "PROVIDER",
+      body: { ...baseBody, latitude: 6.9271, longitude: 79.8612 },
+    });
+    expect(res.status).toBe(200);
+    const arg = dbMock.provider.update.mock.calls[0][0];
+    expect(arg.data.latitude).toBe(6.9271);
+    expect(arg.data.longitude).toBe(79.8612);
+  });
+
+  it("clears the pin on explicit nulls", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(MY_PROVIDER);
+    dbMock.provider.update.mockResolvedValue({ id: "prov1" });
+    const res = await req("/api/provider/profile", {
+      method: "PUT",
+      role: "PROVIDER",
+      body: { ...baseBody, latitude: null, longitude: null },
+    });
+    expect(res.status).toBe(200);
+    const arg = dbMock.provider.update.mock.calls[0][0];
+    expect(arg.data.latitude).toBeNull();
+    expect(arg.data.longitude).toBeNull();
+  });
+
+  it("leaves the stored pin untouched when both are absent", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(MY_PROVIDER);
+    dbMock.provider.update.mockResolvedValue({ id: "prov1" });
+    const res = await req("/api/provider/profile", {
+      method: "PUT",
+      role: "PROVIDER",
+      body: baseBody,
+    });
+    expect(res.status).toBe(200);
+    const arg = dbMock.provider.update.mock.calls[0][0];
+    expect(arg.data.latitude).toBeUndefined();
+    expect(arg.data.longitude).toBeUndefined();
+  });
+
+  it("400s a lone latitude (half a pair)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(MY_PROVIDER);
+    const res = await req("/api/provider/profile", {
+      method: "PUT",
+      role: "PROVIDER",
+      body: { ...baseBody, latitude: 6.9271 },
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/both latitude and longitude/i);
+    expect(dbMock.provider.update).not.toHaveBeenCalled();
+  });
+
+  it("400s coordinates outside the Sri Lanka bounding box", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(MY_PROVIDER);
+    const res = await req("/api/provider/profile", {
+      method: "PUT",
+      role: "PROVIDER",
+      // London — nowhere near the box.
+      body: { ...baseBody, latitude: 51.5072, longitude: -0.1276 },
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/within Sri Lanka/i);
+    expect(dbMock.provider.update).not.toHaveBeenCalled();
+  });
+});
+
 // Write-time content filter (#375): a denylist hit on profile or service text
 // auto-files a SYSTEM report on the provider; the write itself always
 // succeeds (decision: auto-report and keep visible, never hard-block).

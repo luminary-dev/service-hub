@@ -45,6 +45,9 @@ export type DashboardData = {
   // Full served set (#502) — always includes `district`.
   serviceDistricts: string[];
   city: string;
+  // Optional map pin (#48); both set or both null.
+  latitude: number | null;
+  longitude: number | null;
   experience: number;
   available: boolean;
   // ISO string while the provider is away (#49); null when not set.

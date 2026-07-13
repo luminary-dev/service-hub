@@ -24,6 +24,7 @@ import ContactLinks from "@/components/ContactLinks";
 import FavoriteButton from "@/components/FavoriteButton";
 import ReportButton from "@/components/ReportButton";
 import ShareButton from "@/components/ShareButton";
+import StaticLocationMap from "@/components/StaticLocationMap";
 import VerifiedBadge from "@/components/VerifiedBadge";
 import InView from "@/components/InView";
 import JsonLd from "@/components/JsonLd";
@@ -87,6 +88,10 @@ type FullProvider = {
   // on the type so cached pre-#502 payloads need no churn.
   serviceDistricts?: string[];
   city: string;
+  // Optional map pin (#48): the API includes the pair only when the provider
+  // set one, so presence of both means "show the mini-map".
+  latitude?: number;
+  longitude?: number;
   experience: number;
   // `available` is the EFFECTIVE availability (the service folds the away
   // window in); `awayUntil` is set while the provider is on leave (#49).
@@ -427,6 +432,24 @@ export default async function ProviderProfilePage({
               <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-ink-600">
                 {bilingualText(provider.bio, provider.bioSi, locale)}
               </p>
+              {/* Map pin (#48): a static OSM mini-map, only when the provider
+                  dropped a pin — never a substituted district centroid. */}
+              {provider.latitude !== undefined &&
+                provider.longitude !== undefined && (
+                  <div className="mt-5">
+                    <h3 className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-500">
+                      {t.location.profileLocation}
+                    </h3>
+                    <div className="mt-2">
+                      <StaticLocationMap
+                        latitude={provider.latitude}
+                        longitude={provider.longitude}
+                        alt={t.location.mapImageAlt(provider.user.name)}
+                        linkLabel={t.location.viewOnOsm}
+                      />
+                    </div>
+                  </div>
+                )}
             </SpecSection>
 
             <SpecSection code="02" title={t.profile.services}>

@@ -170,6 +170,29 @@ describe("registerSchema — PROVIDER", () => {
     ).toBe(false);
   });
 
+  // Geo capture (#48): the optional map pin must sit inside the Sri Lanka
+  // bounding box; the both-or-neither pair rule lives in the route.
+  it("accepts an omitted or in-bounds map pin", () => {
+    expect(registerSchema.safeParse(validProvider).success).toBe(true);
+    expect(
+      registerSchema.safeParse({
+        ...validProvider,
+        latitude: 6.9271,
+        longitude: 79.8612,
+      }).success
+    ).toBe(true);
+  });
+
+  it("rejects coordinates outside the Sri Lanka bounding box", () => {
+    expect(
+      registerSchema.safeParse({
+        ...validProvider,
+        latitude: 51.5072,
+        longitude: -0.1276,
+      }).success
+    ).toBe(false);
+  });
+
   it("rejects out-of-range experience", () => {
     expect(
       registerSchema.safeParse({ ...validProvider, experience: 61 }).success

@@ -65,6 +65,8 @@ function providerRow(overrides: Record<string, unknown> = {}) {
     headline: "Experienced plumber",
     district: "Colombo",
     city: "Colombo",
+    latitude: null,
+    longitude: null,
     experience: 20,
     available: true,
     awayUntil: null,
@@ -145,6 +147,28 @@ describe("GET /api/providers/:id — suspended visibility gate", () => {
     expect(res.status).toBe(404);
   });
 
+  // Geo capture (#48): the map pin is public display data, but only when the
+  // provider actually set one — unpinned profiles carry no coordinate keys.
+  it("includes the map pin only when set (#48)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(
+      providerRow({ latitude: 6.9271, longitude: 79.8612 })
+    );
+    const res = await req("/api/providers/p1");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.provider.latitude).toBe(6.9271);
+    expect(body.provider.longitude).toBe(79.8612);
+  });
+
+  it("omits the coordinate keys entirely for an unpinned provider (#48)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(providerRow());
+    const res = await req("/api/providers/p1");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.provider).not.toHaveProperty("latitude");
+    expect(body.provider).not.toHaveProperty("longitude");
+  });
+
   it("serializes Decimal service prices as JSON numbers (#371)", async () => {
     // price is DECIMAL(12,2) in the DB, so Prisma hands the route Decimals —
     // which would JSON-stringify as strings without the edge conversion.
@@ -219,6 +243,22 @@ describe("GET /api/providers/:id/full — suspended gate mirrors detail", () => 
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.provider).not.toHaveProperty("rejectionReason");
+  });
+
+  it("includes the map pin only when set, like the detail route (#48)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(
+      providerRow({ latitude: 7.2906, longitude: 80.6337, _count: { photos: 0 } })
+    );
+    const pinned = await (await req("/api/providers/p1/full")).json();
+    expect(pinned.provider.latitude).toBe(7.2906);
+    expect(pinned.provider.longitude).toBe(80.6337);
+
+    dbMock.provider.findUnique.mockResolvedValue(
+      providerRow({ _count: { photos: 0 } })
+    );
+    const unpinned = await (await req("/api/providers/p1/full")).json();
+    expect(unpinned.provider).not.toHaveProperty("latitude");
+    expect(unpinned.provider).not.toHaveProperty("longitude");
   });
 });
 

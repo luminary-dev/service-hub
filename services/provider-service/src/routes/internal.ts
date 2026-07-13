@@ -6,6 +6,9 @@ import { Prisma } from "@prisma/client";
 import { db } from "../db";
 import { moderateContent } from "../lib/auto-report";
 import {
+  geoPairState,
+  latitudeField,
+  longitudeField,
   normalizeServiceDistricts,
   optionalWebUrl,
   serviceDistrictsField,
@@ -48,6 +51,12 @@ const createSchema = z.object({
   // working; the create below always persists at least [district].
   serviceDistricts: serviceDistrictsField.nullish(),
   city: z.string().min(1).max(60),
+  // Optional map pin (#48, geo-capture phase of the search RFC). Bounds are
+  // re-checked here so a drifted caller can't persist an off-island point;
+  // identity-service pre-validates the pair, so the geoPairState 400 below
+  // only catches a drifted/hostile caller.
+  latitude: latitudeField,
+  longitude: longitudeField,
   experience: z.number().int().min(0).max(60),
   whatsapp: optionalText(15),
   phone2: optionalText(15),
@@ -103,6 +112,12 @@ internalRoutes.post("/internal/providers", async (c) => {
     return c.json({ error: "Invalid input" }, 400);
   }
 
+  // Map pin (#48): the coordinates are a pair — refuse a lone latitude (or a
+  // number/null mix) rather than persisting half a location.
+  if (geoPairState(data.latitude, data.longitude) === "invalid") {
+    return c.json({ error: "Invalid input" }, 400);
+  }
+
   try {
     const provider = await db.provider.create({
       data: {
@@ -118,6 +133,8 @@ internalRoutes.post("/internal/providers", async (c) => {
         district: data.district,
         serviceDistricts,
         city: data.city,
+        latitude: data.latitude ?? null,
+        longitude: data.longitude ?? null,
         experience: data.experience,
         whatsapp: data.whatsapp || null,
         phone2: data.phone2 || null,
