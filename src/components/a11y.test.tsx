@@ -59,6 +59,14 @@ vi.mock("@/lib/locale", () => ({
   getUrlLocale: async () => "en",
 }));
 
+// Leaflet manipulates the real DOM/window and can't run under jsdom — stub
+// the map half of the location picker (#48). The picker's own labels, manual
+// coordinate inputs and live status stay real and are axe-checked below;
+// LocationPicker.test.tsx covers the wiring.
+vi.mock("@/components/LocationPickerMap", () => ({
+  default: () => <div data-testid="location-picker-map" />,
+}));
+
 const t = dict.en;
 
 // Axe walks the whole rule set per run; give the first (cold) run headroom.

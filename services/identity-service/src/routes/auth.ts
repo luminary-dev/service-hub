@@ -12,6 +12,8 @@ import { isLockedOut, lockUntilFor } from "../lib/lockout";
 import { passwordSchema, providerSchema, registerSchema } from "../lib/register-schema";
 import {
   emailAddress,
+  GEO_PAIR_MESSAGE,
+  geoPairState,
   MAX_SERVICE_DISTRICTS,
   normalizeServiceDistricts,
 } from "../lib/field-rules";
@@ -66,6 +68,16 @@ authRoutes.post("/register", async (c) => {
       },
       400
     );
+  }
+
+  // Map pin (#48): the coordinates are a pair — a lone latitude (or a
+  // number/null mix) is a friendly 400 here, before the user row exists,
+  // mirroring the served-set pre-flight above.
+  if (
+    data.role === "PROVIDER" &&
+    geoPairState(data.latitude, data.longitude) === "invalid"
+  ) {
+    return c.json({ error: GEO_PAIR_MESSAGE }, 400);
   }
 
   // Category is data now, not code: check it against provider-service's list
@@ -144,6 +156,8 @@ authRoutes.post("/register", async (c) => {
         district: data.district,
         serviceDistricts: serviceDistricts ?? [data.district],
         city: data.city,
+        latitude: data.latitude ?? null,
+        longitude: data.longitude ?? null,
         experience: data.experience,
         whatsapp: data.whatsapp || null,
         phone2: data.phone2 || null,
@@ -252,6 +266,11 @@ authRoutes.post("/complete-provider", async (c) => {
     );
   }
 
+  // Map pin (#48) — same pair pre-flight as /register.
+  if (geoPairState(data.latitude, data.longitude) === "invalid") {
+    return c.json({ error: GEO_PAIR_MESSAGE }, 400);
+  }
+
   if (!(await categoryValidator.isValidCategory(data.category))) {
     return c.json({ error: "Invalid category" }, 400);
   }
@@ -284,6 +303,8 @@ authRoutes.post("/complete-provider", async (c) => {
         district: data.district,
         serviceDistricts,
         city: data.city,
+        latitude: data.latitude ?? null,
+        longitude: data.longitude ?? null,
         experience: data.experience,
         whatsapp: data.whatsapp || null,
         phone2: data.phone2 || null,

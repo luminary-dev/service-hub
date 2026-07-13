@@ -831,6 +831,61 @@ describe("POST /api/auth/register (provider compensation)", () => {
     expect(await res.json()).toEqual({ error: "Upstream service unavailable" });
     expect(db.user.delete).toHaveBeenCalledWith({ where: { id: "u1" } });
   });
+
+  // Geo capture (#48): the pin pre-flight is a friendly 400 BEFORE the user
+  // row exists (mirrors the served-set check), and a full pair passes through
+  // to the provider-create payload.
+  it("400s a half-set map pin before creating the user", async () => {
+    db.user.findUnique.mockResolvedValue(null);
+    const res = await post("/api/auth/register", {
+      ...registerBody,
+      latitude: 6.9271,
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/both latitude and longitude/i);
+    expect(db.user.create).not.toHaveBeenCalled();
+    expect(createProviderProfile).not.toHaveBeenCalled();
+  });
+
+  it("passes a complete map pin through to the provider-create payload", async () => {
+    db.user.findUnique.mockResolvedValue(null);
+    db.user.create.mockResolvedValue({
+      id: "u1",
+      email: "ann@b.lk",
+      name: "Ann Provider",
+      role: "PROVIDER",
+      sessionVersion: 0,
+    });
+    vi.mocked(createProviderProfile).mockResolvedValue("prov1");
+
+    const res = await post("/api/auth/register", {
+      ...registerBody,
+      latitude: 6.9271,
+      longitude: 79.8612,
+    });
+    expect(res.status).toBe(200);
+    expect(createProviderProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ latitude: 6.9271, longitude: 79.8612 })
+    );
+  });
+
+  it("sends explicit nulls for an unpinned registration", async () => {
+    db.user.findUnique.mockResolvedValue(null);
+    db.user.create.mockResolvedValue({
+      id: "u1",
+      email: "ann@b.lk",
+      name: "Ann Provider",
+      role: "PROVIDER",
+      sessionVersion: 0,
+    });
+    vi.mocked(createProviderProfile).mockResolvedValue("prov1");
+
+    const res = await post("/api/auth/register", registerBody);
+    expect(res.status).toBe(200);
+    expect(createProviderProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ latitude: null, longitude: null })
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------

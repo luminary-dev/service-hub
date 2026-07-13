@@ -37,6 +37,46 @@ export function normalizeServiceDistricts(
   return set.length > MAX_SERVICE_DISTRICTS ? null : set;
 }
 
+// Geo capture (#48, search & discovery RFC phase 1): optional map-pin
+// coordinates. The bounding box loosely covers Sri Lanka (island + territorial
+// margin) — anything outside is a mis-drop or a hostile payload, not a valid
+// service location.
+export const SL_LAT_MIN = 5.7;
+export const SL_LAT_MAX = 10.1;
+export const SL_LNG_MIN = 79.4;
+export const SL_LNG_MAX = 82.1;
+
+export const GEO_BOUNDS_MESSAGE = "Location must be within Sri Lanka";
+export const GEO_PAIR_MESSAGE =
+  "Provide both latitude and longitude, or neither";
+
+export const latitudeField = z
+  .number()
+  .min(SL_LAT_MIN, GEO_BOUNDS_MESSAGE)
+  .max(SL_LAT_MAX, GEO_BOUNDS_MESSAGE)
+  .nullish();
+
+export const longitudeField = z
+  .number()
+  .min(SL_LNG_MIN, GEO_BOUNDS_MESSAGE)
+  .max(SL_LNG_MAX, GEO_BOUNDS_MESSAGE)
+  .nullish();
+
+// The pin is a pair: a lone latitude (or longitude) is meaningless and must
+// never persist. Distinguishes "absent" (leave stored value untouched) from
+// "clear" (explicit nulls) so PUT profile can keep the awayUntil-style
+// absent-means-unchanged contract.
+export function geoPairState(
+  latitude: number | null | undefined,
+  longitude: number | null | undefined
+): "unset" | "clear" | "set" | "invalid" {
+  if (latitude === undefined && longitude === undefined) return "unset";
+  if (latitude === null && longitude === null) return "clear";
+  if (typeof latitude === "number" && typeof longitude === "number")
+    return "set";
+  return "invalid";
+}
+
 // Sri Lankan phone numbers (0771234567, 0112345678, +94/0094/94 variants,
 // spaces/dashes/parens tolerated), normalized to E.164 (+94XXXXXXXXX) for
 // storage so rendering and WhatsApp links stay consistent.

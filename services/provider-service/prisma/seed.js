@@ -52,6 +52,10 @@ const PROVIDERS = [
     district: "Colombo",
     serviceDistricts: ["Colombo", "Gampaha", "Kalutara"],
     city: "Nugegoda",
+    // Map pin (#48): a couple of demo providers carry one so the profile
+    // mini-map and (later) map search are demoable; the rest stay unpinned.
+    latitude: 6.8649,
+    longitude: 79.8997,
     experience: 12,
     whatsapp: "94771234501",
     facebook: "facebook.com/nuwanautocare",
@@ -74,6 +78,8 @@ const PROVIDERS = [
     district: "Gampaha",
     serviceDistricts: ["Gampaha", "Colombo"],
     city: "Kadawatha",
+    latitude: 7.0012,
+    longitude: 79.95,
     experience: 15,
     whatsapp: "94712345602",
     youtube: "youtube.com/@sampathelectrical",
@@ -210,6 +216,10 @@ async function main() {
         // to just the home district for single-district providers.
         serviceDistricts: p.serviceDistricts ?? [p.district],
         city: p.city,
+        // Optional map pin (#48); most demo providers stay unpinned so both
+        // states show up in dev.
+        latitude: p.latitude ?? null,
+        longitude: p.longitude ?? null,
         experience: p.experience,
         whatsapp: p.whatsapp ?? null,
         facebook: p.facebook ?? null,

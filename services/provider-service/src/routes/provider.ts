@@ -7,6 +7,10 @@ import { db } from "../db";
 import { moderateContent } from "../lib/auto-report";
 import {
   districtEnum,
+  GEO_PAIR_MESSAGE,
+  geoPairState,
+  latitudeField,
+  longitudeField,
   MAX_SERVICE_DISTRICTS,
   normalizeServiceDistricts,
   optionalSlPhone,
@@ -160,6 +164,12 @@ const profileSchema = z.object({
   // (re)added by normalizeServiceDistricts below.
   serviceDistricts: serviceDistrictsField,
   city: z.string().min(1).max(60),
+  // Optional map pin (#48, geo-capture phase of the search RFC). Bounds-checked
+  // against the Sri Lanka box; the both-or-neither pair rule is enforced after
+  // parsing (geoPairState below). Absent leaves the stored pin untouched;
+  // explicit nulls clear it — the awayUntil contract.
+  latitude: latitudeField,
+  longitude: longitudeField,
   experience: z.number().int().min(0).max(60),
   available: z.boolean(),
   awayUntil: awayUntilField,
@@ -185,6 +195,13 @@ providerDashboardRoutes.put("/api/provider/profile", async (c) => {
   }
   if (!(await categoryValidator.isValidCategory(parsed.data.category))) {
     return c.json({ error: "Invalid category" }, 400);
+  }
+  // Map pin (#48): the coordinates are a pair — a lone latitude (or a
+  // number/null mix) must never persist. "unset" (both absent) leaves the
+  // stored pin untouched via the undefined spread below; "clear" (both null)
+  // clears it.
+  if (geoPairState(parsed.data.latitude, parsed.data.longitude) === "invalid") {
+    return c.json({ error: GEO_PAIR_MESSAGE }, 400);
   }
   const { name, phone, ...profile } = parsed.data;
 

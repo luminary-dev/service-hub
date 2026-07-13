@@ -9,7 +9,9 @@ import {
   type CategoryOption,
 } from "@/lib/categories";
 import { districtLabelLoc } from "@/lib/i18n";
+import type { GeoPoint } from "@/lib/geo";
 import { Field, FormRow } from "@/components/ui/Field";
+import LocationPicker from "@/components/LocationPicker";
 import ServiceDistrictsPicker from "@/components/ServiceDistrictsPicker";
 import { useLocale, useT } from "../I18nProvider";
 import { useToast } from "../ToastProvider";
@@ -64,6 +66,13 @@ export default function ProfileForm({
   const [serviceDistricts, setServiceDistricts] = useState<string[]>(
     data.serviceDistricts.filter((d) => d !== data.district),
   );
+  // Optional map pin (#48): null = no pin; save sends explicit nulls so the
+  // API clears a removed pin (absent would leave it untouched).
+  const [location, setLocation] = useState<GeoPoint | null>(
+    data.latitude !== null && data.longitude !== null
+      ? { latitude: data.latitude, longitude: data.longitude }
+      : null,
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const toast = useToast();
@@ -91,6 +100,10 @@ export default function ProfileForm({
           experience: Number(form.experience) || 0,
           // Empty input means "not away" — send an explicit null to clear it.
           awayUntil: form.awayUntil || null,
+          // Map pin (#48): explicit nulls clear a removed pin (absent would
+          // leave the stored pin untouched).
+          latitude: location?.latitude ?? null,
+          longitude: location?.longitude ?? null,
         }),
       });
       if (res.ok) {
@@ -237,6 +250,15 @@ export default function ProfileForm({
         primary={form.district}
         value={serviceDistricts}
         onChange={setServiceDistricts}
+      />
+
+      {/* Optional map pin (#48): pre-centered on the provider's district when
+          unset; the dashboard nudge to backfill pins. */}
+      <LocationPicker
+        id="pf-location"
+        value={location}
+        onChange={setLocation}
+        district={form.district}
       />
 
       <Field label={p.headline} htmlFor="pf-headline">

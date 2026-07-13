@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
+  geoPairState,
+  latitudeField,
+  longitudeField,
   normalizeSlPhone,
   normalizeWebUrl,
   optionalSlPhone,
@@ -100,5 +103,45 @@ describe("priceRupees", () => {
 
   it.each([[49], [10_000_001], [99.5], [0], [-100]])("rejects %s", (v) => {
     expect(priceRupees.safeParse(v).success).toBe(false);
+  });
+});
+
+// Geo capture (#48, search & discovery RFC phase 1): the pin must sit inside
+// the Sri Lanka bounding box, and always travel as a complete pair.
+describe("latitudeField / longitudeField", () => {
+  it("accepts in-bounds coordinates, null and undefined", () => {
+    expect(latitudeField.parse(6.9271)).toBe(6.9271);
+    expect(longitudeField.parse(79.8612)).toBe(79.8612);
+    expect(latitudeField.parse(null)).toBeNull();
+    expect(longitudeField.parse(undefined)).toBeUndefined();
+  });
+
+  it.each([[5.69], [10.11], [-6.9], [51.5]])(
+    "rejects out-of-bounds latitude %s",
+    (v) => {
+      expect(latitudeField.safeParse(v).success).toBe(false);
+    }
+  );
+
+  it.each([[79.39], [82.11], [-79.8], [0]])(
+    "rejects out-of-bounds longitude %s",
+    (v) => {
+      expect(longitudeField.safeParse(v).success).toBe(false);
+    }
+  );
+});
+
+describe("geoPairState", () => {
+  it("classifies the valid states", () => {
+    expect(geoPairState(undefined, undefined)).toBe("unset");
+    expect(geoPairState(null, null)).toBe("clear");
+    expect(geoPairState(6.9271, 79.8612)).toBe("set");
+  });
+
+  it("flags every half-set pair as invalid", () => {
+    expect(geoPairState(6.9271, undefined)).toBe("invalid");
+    expect(geoPairState(undefined, 79.8612)).toBe("invalid");
+    expect(geoPairState(6.9271, null)).toBe("invalid");
+    expect(geoPairState(null, 79.8612)).toBe("invalid");
   });
 });

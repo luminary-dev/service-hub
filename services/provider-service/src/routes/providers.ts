@@ -327,11 +327,14 @@ providersRoutes.get("/api/providers/:id", async (c) => {
   // booleans; the digits are fetched on demand via POST /:id/contact. Also drop
   // rejectionReason (#506): it's admin-authored moderation text and must never
   // reach a public caller (a REJECTED-but-live provider would otherwise leak
-  // it). It stays only on the owner-gated dashboard.
-  const { contactPhone, whatsapp, phone2, rejectionReason, ...pub } = provider;
+  // it). It stays only on the owner-gated dashboard. The map pin (#48) is
+  // included only when set — unpinned profiles carry no coordinate keys.
+  const { contactPhone, whatsapp, phone2, rejectionReason, latitude, longitude, ...pub } =
+    provider;
   return c.json({
     provider: {
       ...pub,
+      ...(latitude !== null && longitude !== null ? { latitude, longitude } : {}),
       // price is DECIMAL in the DB (#371) — a Decimal JSON-serializes as a
       // string, so convert back to the number this payload has always carried.
       services: provider.services.map((s) => ({ ...s, price: moneyToNumber(s.price) })),
@@ -402,11 +405,21 @@ providersRoutes.get("/api/providers/:id/full", async (c) => {
   // Drop _count (internal), the raw phone columns (#64) — the profile page
   // reveals the digits on demand via POST /:id/contact — and rejectionReason
   // (#506), which is admin-only moderation text kept off every public payload.
-  const { _count, contactPhone, whatsapp, phone2, rejectionReason, ...providerFields } =
-    provider;
+  // The map pin (#48) is included only when set.
+  const {
+    _count,
+    contactPhone,
+    whatsapp,
+    phone2,
+    rejectionReason,
+    latitude,
+    longitude,
+    ...providerFields
+  } = provider;
   return c.json({
     provider: {
       ...providerFields,
+      ...(latitude !== null && longitude !== null ? { latitude, longitude } : {}),
       // price is DECIMAL in the DB (#371) — a Decimal JSON-serializes as a
       // string, so convert back to the number this payload has always carried.
       services: provider.services.map((s) => ({ ...s, price: moneyToNumber(s.price) })),

@@ -13,6 +13,12 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
 
+// Leaflet can't run under jsdom — stub the map half of the location picker
+// (#48); LocationPicker.test.tsx covers its wiring.
+vi.mock("@/components/LocationPickerMap", () => ({
+  default: () => <div data-testid="location-picker-map" />,
+}));
+
 const t = dict.en.providerReg;
 const fetchMock = vi.fn();
 

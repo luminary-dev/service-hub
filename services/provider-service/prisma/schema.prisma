@@ -54,6 +54,14 @@ model Provider {
   // job board/fan-out match on membership in this set.
   serviceDistricts String[] @default([])
   city       String
+  // Optional map-pin coordinates (#48, search & discovery RFC phase 1),
+  // captured via the web's Leaflet picker. Both set or both null — the routes
+  // enforce the pair plus a Sri Lanka bounding box (lib/field-rules.ts). Plain
+  // floats for now; the RFC's search index (phase 2) derives a PostGIS
+  // geography column from them. District centroids are never substituted —
+  // an unpinned provider simply has no coordinates.
+  latitude  Float?
+  longitude Float?
   experience Int     @default(0)
   whatsapp   String?
   phone2     String?

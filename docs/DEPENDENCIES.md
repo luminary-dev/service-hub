@@ -88,3 +88,20 @@ reaches LTS.
 `eslint` 9 (vs 10) and `typescript` 6 (vs 7) are dev-only and gated by
 `eslint-config-next` (see the Dependabot ignore rule for eslint majors).
 Unblock when `eslint-config-next` supports them.
+
+## Leaflet (web map picker, #48)
+
+**Chosen 2026-07 per the [search & discovery RFC](rfcs/search-discovery-service.md)
+§3.3 (owner-approved).** `leaflet@^1.9.4` (BSD-2-Clause) plus `@types/leaflet`
+(dev) are the **only** map dependencies — plain Leaflet with a thin React
+wrapper (`src/components/LocationPickerMap.tsx`), deliberately **no
+react-leaflet** (an extra dependency and render layer for two small picker
+mounts is not worth it). Facts: ~148 KB min / ~43 KB gzip JS + ~12 KB / ~2.7 KB
+gzip CSS, no API key, works with any tile source. It is dynamically imported
+client-side only, so the cost is a lazy chunk loaded exactly when the picker
+renders (register wizard profile step, dashboard profile form) — public pages
+ship none of it; the profile mini-map is server-rendered `<img>` tiles
+(`StaticLocationMap`, zero JS). Tiles come from the OSM standard tile host
+(attribution required, host allowed in the CSP `img-src`); if traffic ever
+outgrows the OSM tile-usage policy, the URL lives in one place
+(`src/lib/geo.ts`) — switch it to MapTiler or self-hosted tiles.
