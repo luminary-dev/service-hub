@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { fetchCategoryOptions } from "@/lib/categories-server";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
+import { localizedHref } from "@/lib/links";
 import PageHeader from "@/components/ui/PageHeader";
 import JobPostForm from "@/components/jobs/JobPostForm";
 
@@ -11,9 +12,8 @@ import JobPostForm from "@/components/jobs/JobPostForm";
 export const dynamic = "force-dynamic";
 
 export default async function NewJobPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  const locale = await getLocale();
+  const [session, locale] = await Promise.all([getSession(), getLocale()]);
+  if (!session) redirect(localizedHref("/login", locale));
   const t = dict[locale].jobs;
   const nav = dict[locale].nav;
   const categories = await fetchCategoryOptions();

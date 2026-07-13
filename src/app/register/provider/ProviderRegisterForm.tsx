@@ -12,6 +12,7 @@ import {
 } from "@/lib/constants";
 import { categoryOptionLabel, type CategoryOption } from "@/lib/categories";
 import { districtLabelLoc, priceTypeLabelLoc } from "@/lib/i18n";
+import { localizedHref } from "@/lib/links";
 import { useLocale, useT } from "@/components/I18nProvider";
 import PasswordInput from "@/components/PasswordInput";
 import CategoryIcon from "@/components/CategoryIcon";
@@ -177,7 +178,7 @@ export default function ProviderRegisterForm({
         },
       );
       if (res.ok) {
-        router.push("/dashboard?welcome=1");
+        router.push(localizedHref("/dashboard?welcome=1", locale));
         router.refresh();
       } else {
         const data = await res.json().catch(() => ({}));
@@ -702,7 +703,7 @@ export default function ProviderRegisterForm({
           <p className="mt-6 text-center text-sm text-ink-500">
             {r.alreadyHave}{" "}
             <Link
-              href="/login"
+              href={localizedHref("/login", locale)}
               className="font-semibold text-brand-600 hover:text-brand-700"
             >
               {r.signIn}

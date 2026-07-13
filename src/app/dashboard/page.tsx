@@ -5,6 +5,7 @@ import { fetchCategoryOptions } from "@/lib/categories-server";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
+import { localizedHref } from "@/lib/links";
 import Link from "next/link";
 import { FaBriefcase } from "@/components/icons";
 import DashboardTabs from "@/components/dashboard/DashboardTabs";
@@ -74,9 +75,10 @@ export default async function DashboardPage({
 }: {
   searchParams: Promise<{ welcome?: string }>;
 }) {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  if (session.role !== "PROVIDER") redirect("/providers");
+  const [session, locale] = await Promise.all([getSession(), getLocale()]);
+  if (!session) redirect(localizedHref("/login", locale));
+  if (session.role !== "PROVIDER")
+    redirect(localizedHref("/providers", locale));
 
   const [dashboard, categories] = await Promise.all([
     apiJson<{
@@ -86,11 +88,10 @@ export default async function DashboardPage({
     fetchCategoryOptions(),
   ]);
   const provider = dashboard?.provider ?? null;
-  if (!provider) redirect("/register/provider");
+  if (!provider) redirect(localizedHref("/register/provider", locale));
 
   const matchingJobs = dashboard?.openJobsCount ?? 0;
 
-  const locale = await getLocale();
   const t = dict[locale];
   const { welcome } = await searchParams;
   const avg = provider.ratingSummary.rating;
@@ -115,7 +116,7 @@ export default async function DashboardPage({
       >
         <div className="flex w-full flex-col items-start gap-5 sm:w-auto sm:items-end">
           <a
-            href={`/providers/${provider.id}`}
+            href={localizedHref(`/providers/${provider.id}`, locale)}
             className="btn-secondary"
             target="_blank"
           >
@@ -131,7 +132,7 @@ export default async function DashboardPage({
         <VerificationSection status={provider.verificationStatus} />
         {matchingJobs > 0 && (
           <Link
-            href="/jobs"
+            href={localizedHref("/jobs", locale)}
             className="tech-corners mb-6 flex items-center justify-between gap-3 rounded-lg border border-brand-200 bg-brand-50 p-4 transition-colors duration-200 ease-snap hover:border-brand-400"
           >
             <span className="flex items-center gap-2 text-sm font-medium text-brand-900">

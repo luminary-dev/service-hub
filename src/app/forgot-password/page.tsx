@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import { FaCircleCheck } from "@/components/icons";
-import { useT } from "@/components/I18nProvider";
+import { useLocale, useT } from "@/components/I18nProvider";
+import { localizedHref } from "@/lib/links";
 import { Field } from "@/components/ui/Field";
 
 export default function ForgotPasswordPage() {
@@ -11,6 +12,7 @@ export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const t = useT();
+  const locale = useLocale();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -36,7 +38,7 @@ export default function ForgotPasswordPage() {
             <p className="mt-2 text-sm leading-relaxed text-ink-600">
               {t.forgot.sentBody}
             </p>
-            <Link href="/login" className="btn-secondary mt-6">
+            <Link href={localizedHref("/login", locale)} className="btn-secondary mt-6">
               {t.forgot.backToLogin}
             </Link>
           </div>
@@ -88,7 +90,7 @@ export default function ForgotPasswordPage() {
 
         <p className="mt-6 text-center text-sm text-ink-500">
           <Link
-            href="/login"
+            href={localizedHref("/login", locale)}
             className="font-semibold text-brand-600 hover:text-brand-700"
           >
             {t.forgot.backToLogin}

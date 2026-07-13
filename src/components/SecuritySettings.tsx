@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useT } from "@/components/I18nProvider";
+import { useLocale, useT } from "@/components/I18nProvider";
+import { localizedHref } from "@/lib/links";
 import PasswordInput from "@/components/PasswordInput";
 import { useToast } from "@/components/ToastProvider";
 import { Field } from "@/components/ui/Field";
@@ -16,6 +17,7 @@ export default function SecuritySettings() {
   const t = useT();
   const toast = useToast();
   const router = useRouter();
+  const locale = useLocale();
 
   // Change password
   const [current, setCurrent] = useState("");
@@ -81,7 +83,7 @@ export default function SecuritySettings() {
       body: JSON.stringify({ password: deletePassword }),
     });
     if (res.ok) {
-      router.push("/");
+      router.push(localizedHref("/", locale));
       router.refresh();
       return;
     }

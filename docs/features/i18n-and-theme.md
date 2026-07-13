@@ -15,9 +15,15 @@ district, and price-type labels.
 - **Language toggle** — writes the `lang` cookie (1-year) and navigates to the
   localized URL. `generateMetadata` emits hreflang alternates (`en`, `si`,
   `x-default`).
-- **Locale-preserving links.** Internal nav, auth, and error-boundary links (and
-  their `router.push` redirects) route through `localizedHref(path, locale)`, so
-  a visitor under `/si/*` stays in the `/si` URL space as they navigate.
+- **Locale-preserving links.** Every internal `href`, server `redirect()`, and
+  client `router.push` on the user-facing surface routes through
+  `localizedHref(path, locale)` (locale from `getLocale()` on the server,
+  `useLocale()` in client components), so a visitor under `/si/*` stays in the
+  `/si` URL space as they navigate — including login redirects and post-auth
+  pushes. The admin console is the deliberate exception: navigation within
+  `/admin/*` stays unlocalized. A guard test
+  (`src/lib/links-guard.test.ts`) scans the sources and fails on any literal
+  root-path navigation outside `/admin`, so regressions can't land.
 
 ### Theme
 

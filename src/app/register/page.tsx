@@ -4,6 +4,7 @@ import GoogleSignInButton from "@/components/GoogleSignInButton";
 import FacebookSignInButton from "@/components/FacebookSignInButton";
 import { dict } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
+import { localizedHref } from "@/lib/links";
 
 export const metadata = { title: "Join Baas.lk" };
 
@@ -27,7 +28,7 @@ export default async function RegisterChoicePage() {
 
         <div className="mt-10 grid gap-6 sm:grid-cols-2">
           <Link
-            href="/register/provider"
+            href={localizedHref("/register/provider", locale)}
             className="group relative overflow-hidden rounded-lg bg-brand-700 p-8 transition-[background-color,transform] duration-200 ease-snap hover:bg-brand-800 dark:bg-brand-50 dark:hover:bg-brand-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 active:scale-[0.99]"
           >
             <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-white/70 dark:text-brand-900/70">
@@ -48,7 +49,7 @@ export default async function RegisterChoicePage() {
           </Link>
 
           <Link
-            href="/register/customer"
+            href={localizedHref("/register/customer", locale)}
             className="tech-corners card group relative p-8 transition-[border-color,transform] duration-200 ease-snap hover:border-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 active:scale-[0.99]"
           >
             <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-400">
@@ -85,7 +86,7 @@ export default async function RegisterChoicePage() {
         <p className="mt-8 text-center text-sm text-ink-500">
           {t.choose.already}{" "}
           <Link
-            href="/login"
+            href={localizedHref("/login", locale)}
             className="font-semibold text-brand-600 hover:text-brand-700"
           >
             {t.choose.signIn}

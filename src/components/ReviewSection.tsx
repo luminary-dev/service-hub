@@ -8,6 +8,7 @@ import { FaStar, FaXmark } from "@/components/icons";
 import Stars from "./Stars";
 import Avatar from "./Avatar";
 import { isSvg } from "@/lib/image";
+import { localizedHref } from "@/lib/links";
 import { useLocale, useT } from "./I18nProvider";
 import { useToast } from "./ToastProvider";
 import { formatDate } from "@/lib/format";
@@ -145,7 +146,7 @@ export default function ReviewSection({
         )}
         {!signedIn && (
           <Link
-            href="/login"
+            href={localizedHref("/login", locale)}
             className="text-sm font-medium text-brand-600 hover:text-brand-700"
           >
             {t.reviews.signIn}

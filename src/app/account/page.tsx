@@ -6,6 +6,7 @@ import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { categoryLabelLoc, dict } from "@/lib/i18n";
+import { localizedHref } from "@/lib/links";
 import { formatDate } from "@/lib/format";
 import ProviderCard, { ProviderCardDTO } from "@/components/ProviderCard";
 import Stars from "@/components/Stars";
@@ -77,12 +78,11 @@ function SectionHeading({
 }
 
 export default async function AccountPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  const [session, locale] = await Promise.all([getSession(), getLocale()]);
+  if (!session) redirect(localizedHref("/login", locale));
 
-  const [locale, favorites, inquiriesData, reviewsData, meData] =
+  const [favorites, inquiriesData, reviewsData, meData] =
     await Promise.all([
-      getLocale(),
       apiJson<{ providerIds: string[] }>("/api/favorites"),
       apiJson<{ inquiries: AccountInquiry[] }>("/api/account/inquiries"),
       apiJson<{ reviews: AccountReview[] }>("/api/account/reviews"),
@@ -141,7 +141,10 @@ export default async function AccountPage() {
               { label: "REVIEWS", value: reviews.length },
             ]}
           />
-          <Link href="/account/security" className="btn-secondary">
+          <Link
+            href={localizedHref("/account/security", locale)}
+            className="btn-secondary"
+          >
             {t.security.link}
           </Link>
         </div>
@@ -180,7 +183,10 @@ export default async function AccountPage() {
                     {t.account.becomeProviderBody}
                   </p>
                 </div>
-                <Link href="/welcome/provider" className="btn-primary shrink-0">
+                <Link
+                  href={localizedHref("/welcome/provider", locale)}
+                  className="btn-primary shrink-0"
+                >
                   {t.account.becomeProviderCta}
                 </Link>
               </div>
@@ -206,7 +212,10 @@ export default async function AccountPage() {
               icon={FaRegHeart}
               title={t.account.empty}
               action={
-                <Link href="/providers" className="btn-primary">
+                <Link
+                  href={localizedHref("/providers", locale)}
+                  className="btn-primary"
+                >
                   {t.account.emptyCta}
                 </Link>
               }
@@ -254,7 +263,10 @@ export default async function AccountPage() {
                           </span>
                         ) : (
                           <Link
-                            href={`/providers/${i.provider.id}`}
+                            href={localizedHref(
+                              `/providers/${i.provider.id}`,
+                              locale
+                            )}
                             className="font-semibold text-ink-900 hover:text-brand-700"
                           >
                             {i.provider.name}
@@ -280,7 +292,7 @@ export default async function AccountPage() {
                     </p>
                     <div className="mt-4 flex items-center gap-2 border-t border-dashed border-ink-200 pt-3">
                       <Link
-                        href={`/account/inquiries/${i.id}`}
+                        href={localizedHref(`/account/inquiries/${i.id}`, locale)}
                         className="text-sm font-medium text-brand-600 hover:text-brand-700"
                       >
                         {t.messages.open}
@@ -316,7 +328,10 @@ export default async function AccountPage() {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <Link
-                          href={`/providers/${r.provider.id}`}
+                          href={localizedHref(
+                            `/providers/${r.provider.id}`,
+                            locale
+                          )}
                           className="font-semibold text-ink-900 hover:text-brand-700"
                         >
                           {r.provider.name}

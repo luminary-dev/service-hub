@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
+import { localizedHref } from "@/lib/links";
 import MessageThread from "@/components/MessageThread";
 import PageHeader from "@/components/ui/PageHeader";
 
@@ -15,9 +16,9 @@ export default async function AccountInquiryThreadPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  const [{ id }, locale] = await Promise.all([params, getLocale()]);
+  const [session, locale] = await Promise.all([getSession(), getLocale()]);
+  if (!session) redirect(localizedHref("/login", locale));
+  const { id } = await params;
   const t = dict[locale];
 
   return (
@@ -25,7 +26,10 @@ export default async function AccountInquiryThreadPage({
       <PageHeader
         tag="MSG"
         eyebrow={
-          <Link href="/account" className="hover:text-brand-700">
+          <Link
+            href={localizedHref("/account", locale)}
+            className="hover:text-brand-700"
+          >
             ← {t.account.title}
           </Link>
         }

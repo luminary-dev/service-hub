@@ -52,7 +52,7 @@ export default async function Footer() {
             <ul className="mt-3 space-y-2">
               <li>
                 <Link
-                  href="/register/provider"
+                  href={localizedHref("/register/provider", locale)}
                   className="text-sm text-ink-600 transition-colors duration-200 hover:text-brand-700"
                 >
                   {t.footer.joinPro}
@@ -60,7 +60,7 @@ export default async function Footer() {
               </li>
               <li>
                 <Link
-                  href="/login"
+                  href={localizedHref("/login", locale)}
                   className="text-sm text-ink-600 transition-colors duration-200 hover:text-brand-700"
                 >
                   {t.footer.signIn}
@@ -68,7 +68,7 @@ export default async function Footer() {
               </li>
               <li>
                 <Link
-                  href="/dashboard"
+                  href={localizedHref("/dashboard", locale)}
                   className="text-sm text-ink-600 transition-colors duration-200 hover:text-brand-700"
                 >
                   {t.footer.dashboard}
@@ -92,7 +92,7 @@ export default async function Footer() {
               </li>
               <li>
                 <Link
-                  href="/register/customer"
+                  href={localizedHref("/register/customer", locale)}
                   className="text-sm text-ink-600 transition-colors duration-200 hover:text-brand-700"
                 >
                   {t.footer.createAccount}

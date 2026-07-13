@@ -6,6 +6,7 @@ import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { formatDate, formatNumber } from "@/lib/format";
 import { dict, categoryLabelLoc, districtLabelLoc } from "@/lib/i18n";
+import { localizedHref } from "@/lib/links";
 import InView from "@/components/InView";
 import PageHeader from "@/components/ui/PageHeader";
 import StatReadout from "@/components/ui/StatReadout";
@@ -59,8 +60,8 @@ export default async function JobsPage({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  const [session, locale] = await Promise.all([getSession(), getLocale()]);
+  if (!session) redirect(localizedHref("/login", locale));
 
   const params = await searchParams;
   const boardPage = Math.max(1, Number(params.boardPage) || 1);
@@ -69,14 +70,12 @@ export default async function JobsPage({
   // The board subtitle needs the caller's provider category/district, which
   // the dashboard endpoint carries (it also confirms a provider profile
   // exists — role alone isn't enough, matching the old getCurrentProvider()).
-  const [locale, dashboard] = await Promise.all([
-    getLocale(),
+  const dashboard =
     session.role === "PROVIDER"
-      ? apiJson<{ provider: { category: string; district: string } }>(
+      ? await apiJson<{ provider: { category: string; district: string } }>(
           "/api/provider/dashboard"
         )
-      : Promise.resolve(null),
-  ]);
+      : null;
   const t = dict[locale].jobs;
   const nav = dict[locale].nav;
   const provider = dashboard?.provider ?? null;
@@ -107,7 +106,7 @@ export default async function JobsPage({
     if (boardPage > 1) sp.set("boardPage", String(boardPage));
     if (minePage > 1) sp.set("minePage", String(minePage));
     sp.set(key, String(value));
-    return `/jobs?${sp.toString()}`;
+    return localizedHref(`/jobs?${sp.toString()}`, locale);
   }
 
   function pager(key: "boardPage" | "minePage", current: number, totalPages: number) {
@@ -162,7 +161,7 @@ export default async function JobsPage({
       >
         <div className="flex flex-col items-start gap-4 sm:items-end">
           <StatReadout stats={stats} />
-          <Link href="/jobs/new" className="btn-primary">
+          <Link href={localizedHref("/jobs/new", locale)} className="btn-primary">
             <FaPlus className="h-3.5 w-3.5" />
             {t.postCta}
           </Link>
@@ -239,7 +238,10 @@ export default async function JobsPage({
                 icon={FaBriefcase}
                 title={t.myEmpty}
                 action={
-                  <Link href="/jobs/new" className="btn-primary">
+                  <Link
+                    href={localizedHref("/jobs/new", locale)}
+                    className="btn-primary"
+                  >
                     {t.postCta}
                   </Link>
                 }
@@ -287,7 +289,10 @@ export default async function JobsPage({
                           <li key={r.id} className="py-3">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <Link
-                                href={`/providers/${r.provider.id}`}
+                                href={localizedHref(
+                                  `/providers/${r.provider.id}`,
+                                  locale
+                                )}
                                 className="text-sm font-medium text-ink-800 hover:text-brand-700"
                               >
                                 {r.provider.name}

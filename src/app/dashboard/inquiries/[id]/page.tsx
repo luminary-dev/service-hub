@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
+import { localizedHref } from "@/lib/links";
 import MessageThread from "@/components/MessageThread";
 
 // Caching (#57): session-gated and must reflect the user's own writes
@@ -14,15 +15,15 @@ export default async function DashboardInquiryThreadPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  const [{ id }, locale] = await Promise.all([params, getLocale()]);
+  const [session, locale] = await Promise.all([getSession(), getLocale()]);
+  if (!session) redirect(localizedHref("/login", locale));
+  const { id } = await params;
   const t = dict[locale];
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
       <Link
-        href="/dashboard"
+        href={localizedHref("/dashboard", locale)}
         className="inline-flex items-center gap-1.5 font-mono text-xs font-semibold uppercase tracking-[0.12em] text-brand-700 hover:text-brand-800"
       >
         ← {t.nav.dashboard}
