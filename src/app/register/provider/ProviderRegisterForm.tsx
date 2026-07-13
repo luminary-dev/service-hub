@@ -17,6 +17,13 @@ import { useLocale, useT } from "@/components/I18nProvider";
 import { ConsentCheckbox } from "@/components/LegalConsent";
 import PasswordInput from "@/components/PasswordInput";
 import CategoryIcon from "@/components/CategoryIcon";
+import {
+  ErrorSummary,
+  FormError,
+  isValidEmail,
+  useFieldErrors,
+  type FieldErrors,
+} from "@/components/ui/FormError";
 
 type ServiceInput = {
   title: string;
@@ -48,6 +55,10 @@ export default function ProviderRegisterForm({
   const [step, setStep] = useState(minStep);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // Per-step validation errors keyed by field id, rendered as a focus-managed
+  // summary with in-page links and mirrored onto the offending fields via
+  // aria-invalid/aria-describedby (#378).
+  const { fieldErrors, setFieldErrors, errorProps } = useFieldErrors();
   const router = useRouter();
   const locale = useLocale();
   const t = useT();
@@ -100,51 +111,52 @@ export default function ProviderRegisterForm({
     );
   }
 
-  function validateStep(): string {
+  function validateStep(): FieldErrors {
+    const errs: FieldErrors = {};
     if (step === 0) {
-      if (form.name.trim().length < 2) return r.errName;
-      if (!/^\S+@\S+\.\S+$/.test(form.email)) return r.errEmail;
-      if (form.phone.trim().length < 9) return r.errPhone;
-      if (form.password.length < PASSWORD_MIN_LENGTH) return r.errPassword;
+      if (form.name.trim().length < 2) errs["pr-name"] = r.errName;
+      if (!isValidEmail(form.email)) errs["pr-email"] = r.errEmail;
+      if (form.phone.trim().length < 9) errs["pr-phone"] = r.errPhone;
+      if (form.password.length < PASSWORD_MIN_LENGTH)
+        errs["pr-password"] = r.errPassword;
     }
     if (step === 1) {
       // Authed mode skips step 0, so the (required) phone is collected and
       // validated here instead (#552).
-      if (authed && form.phone.trim().length < 9) return r.errPhone;
-      if (!form.category) return r.errCategory;
-      if (form.headline.trim().length < 5) return r.errHeadline;
-      if (form.bio.trim().length < 20) return r.errBio;
-      if (!form.district) return r.errDistrict;
-      if (!form.city.trim()) return r.errCity;
+      if (authed && form.phone.trim().length < 9)
+        errs["pr-phone"] = r.errPhone;
+      if (!form.category) errs["pr-category"] = r.errCategory;
+      if (form.headline.trim().length < 5) errs["pr-headline"] = r.errHeadline;
+      if (form.bio.trim().length < 20) errs["pr-bio"] = r.errBio;
+      if (!form.district) errs["pr-district"] = r.errDistrict;
+      if (!form.city.trim()) errs["pr-city"] = r.errCity;
     }
     if (step === 3) {
-      if (services.length === 0) return r.errServiceCount;
-      for (const s of services) {
-        if (s.title.trim().length < 2) return r.errServiceTitle;
-        if (!s.price || Number(s.price) <= 0) return r.errServicePrice;
-      }
-      if (!agree) return t.legal.errAgree;
+      if (services.length === 0) errs["pr-services"] = r.errServiceCount;
+      services.forEach((s, i) => {
+        if (s.title.trim().length < 2)
+          errs[`pr-service-${i}-title`] = r.errServiceTitle(i + 1);
+        if (!s.price || Number(s.price) <= 0)
+          errs[`pr-service-${i}-price`] = r.errServicePrice(i + 1);
+      });
+      if (!agree) errs["pr-agree"] = t.legal.errAgree;
     }
-    return "";
+    return errs;
   }
 
   function next() {
-    const err = validateStep();
-    if (err) {
-      setError(err);
-      return;
-    }
+    const errs = validateStep();
+    setFieldErrors(errs);
+    if (Object.keys(errs).length > 0) return;
     setError("");
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   }
 
   async function submit() {
     if (loading) return;
-    const err = validateStep();
-    if (err) {
-      setError(err);
-      return;
-    }
+    const errs = validateStep();
+    setFieldErrors(errs);
+    if (Object.keys(errs).length > 0) return;
     setLoading(true);
     setError("");
     // Shared profile fields. In authed mode name/email/password/role are
@@ -343,6 +355,7 @@ export default function ProviderRegisterForm({
                 value={form.name}
                 onChange={(e) => set("name", e.target.value)}
                 placeholder={r.fullNamePh}
+                {...errorProps("pr-name")}
               />
             </div>
             <div>
@@ -356,6 +369,7 @@ export default function ProviderRegisterForm({
                 value={form.email}
                 onChange={(e) => set("email", e.target.value)}
                 autoComplete="email"
+                {...errorProps("pr-email")}
               />
             </div>
             <div>
@@ -369,6 +383,7 @@ export default function ProviderRegisterForm({
                 placeholder="07X XXX XXXX"
                 value={form.phone}
                 onChange={(e) => set("phone", e.target.value)}
+                {...errorProps("pr-phone")}
               />
               <p className="mt-1 text-xs text-ink-500">{r.phoneHint}</p>
             </div>
@@ -383,6 +398,7 @@ export default function ProviderRegisterForm({
                 minLength={PASSWORD_MIN_LENGTH}
                 maxLength={PASSWORD_MAX_LENGTH}
                 autoComplete="new-password"
+                {...errorProps("pr-password")}
               />
             </div>
           </div>
@@ -402,6 +418,7 @@ export default function ProviderRegisterForm({
                   placeholder="07X XXX XXXX"
                   value={form.phone}
                   onChange={(e) => set("phone", e.target.value)}
+                  {...errorProps("pr-phone")}
                 />
                 <p className="mt-1 text-xs text-ink-500">{r.phoneHint}</p>
               </div>
@@ -413,10 +430,18 @@ export default function ProviderRegisterForm({
               <span className="label" id="pr-category-label">
                 {r.serviceQuestion}
               </span>
+              {/* id + tabIndex let the error-summary link land focus here;
+                  aria-invalid is not valid on `group`, so only the error text
+                  is linked via aria-describedby. */}
               <div
                 role="group"
+                id="pr-category"
+                tabIndex={-1}
                 aria-labelledby="pr-category-label"
-                className="grid grid-cols-2 gap-2 sm:grid-cols-3"
+                aria-describedby={
+                  fieldErrors["pr-category"] ? "pr-category-error" : undefined
+                }
+                className="grid grid-cols-2 gap-2 focus:outline-none sm:grid-cols-3"
               >
                 {categories.map((c) => (
                   <button
@@ -454,6 +479,7 @@ export default function ProviderRegisterForm({
                 onChange={(e) => set("headline", e.target.value)}
                 placeholder={r.headlinePh}
                 maxLength={120}
+                {...errorProps("pr-headline")}
               />
             </div>
             <div>
@@ -466,6 +492,7 @@ export default function ProviderRegisterForm({
                 value={form.bio}
                 onChange={(e) => set("bio", e.target.value)}
                 placeholder={r.aboutPh}
+                {...errorProps("pr-bio")}
               />
             </div>
             {/* Optional Sinhala variants (#515): shown to visitors browsing in
@@ -509,6 +536,7 @@ export default function ProviderRegisterForm({
                   className="input"
                   value={form.district}
                   onChange={(e) => set("district", e.target.value)}
+                  {...errorProps("pr-district")}
                 >
                   <option value="">{r.selectPlaceholder}</option>
                   {DISTRICTS.map((d) => (
@@ -528,6 +556,7 @@ export default function ProviderRegisterForm({
                   value={form.city}
                   onChange={(e) => set("city", e.target.value)}
                   placeholder={r.townCityPh}
+                  {...errorProps("pr-city")}
                 />
               </div>
               <div>
@@ -642,7 +671,7 @@ export default function ProviderRegisterForm({
         )}
 
         {step === 3 && (
-          <div className="space-y-4">
+          <div id="pr-services" tabIndex={-1} className="space-y-4">
             <p className="text-sm text-ink-500">{r.servicesIntro}</p>
             {services.map((s, i) => (
               <div key={i} className="rounded-sm border border-ink-300 bg-ink-50 p-4">
@@ -666,11 +695,13 @@ export default function ProviderRegisterForm({
                 </div>
                 <div className="mt-2 space-y-3">
                   <input
+                    id={`pr-service-${i}-title`}
                     className="input"
                     placeholder={r.serviceTitlePh}
                     aria-label={r.serviceTitlePh}
                     value={s.title}
                     onChange={(e) => setService(i, "title", e.target.value)}
+                    {...errorProps(`pr-service-${i}-title`)}
                   />
                   <input
                     className="input"
@@ -684,6 +715,7 @@ export default function ProviderRegisterForm({
                   <div className="flex gap-3">
                     <div className="flex-1">
                       <input
+                        id={`pr-service-${i}-price`}
                         className="input"
                         type="number"
                         min={1}
@@ -691,6 +723,7 @@ export default function ProviderRegisterForm({
                         aria-label={r.pricePh}
                         value={s.price}
                         onChange={(e) => setService(i, "price", e.target.value)}
+                        {...errorProps(`pr-service-${i}-price`)}
                       />
                     </div>
                     <select
@@ -726,15 +759,17 @@ export default function ProviderRegisterForm({
               id="pr-agree"
               checked={agree}
               onChange={setAgree}
+              {...errorProps("pr-agree")}
             />
           </div>
         )}
 
-        {error && (
-          <p role="alert" className="mt-4 text-sm text-red-600">
-            {error}
-          </p>
-        )}
+        <ErrorSummary
+          title={t.fieldErrors.summaryTitle}
+          errors={fieldErrors}
+          className="mt-4"
+        />
+        <FormError className="mt-4">{error}</FormError>
 
         <div className="mt-6 flex items-center justify-between">
           {step > minStep ? (
@@ -742,6 +777,7 @@ export default function ProviderRegisterForm({
               type="button"
               onClick={() => {
                 setError("");
+                setFieldErrors({});
                 setStep((s) => Math.max(s - 1, minStep));
               }}
               className="btn-ghost"

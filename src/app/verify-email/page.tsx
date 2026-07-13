@@ -2,12 +2,50 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { FaCircleCheck, FaCircleXmark } from "@/components/icons";
+import { useMoveFocusOnMount } from "@/components/FormSuccess";
 import { useLocale, useT } from "@/components/I18nProvider";
 import { localizedHref } from "@/lib/links";
 
 type State = "loading" | "success" | "fail";
+
+// Announced, focus-catching result card (#378): the loading→success/fail swap
+// used to happen silently — no live region, no focus move — so screen-reader
+// users heard nothing. role="status"/"alert" announces the outcome and focus
+// moves to the heading, mirroring the FormSuccess pattern (#510).
+function ResultCard({
+  tone,
+  icon,
+  title,
+  body,
+  children,
+}: {
+  tone: "success" | "fail";
+  icon: ReactNode;
+  title: string;
+  body: string;
+  children: ReactNode;
+}) {
+  const headingRef = useMoveFocusOnMount<HTMLHeadingElement>();
+  return (
+    <div
+      role={tone === "fail" ? "alert" : "status"}
+      className="tech-corners card flex flex-col items-center border-ink-300 p-8 text-center"
+    >
+      {icon}
+      <h1
+        ref={headingRef}
+        tabIndex={-1}
+        className="mt-4 text-xl font-semibold text-ink-900 focus:outline-none"
+      >
+        {title}
+      </h1>
+      <p className="mt-2 text-sm leading-relaxed text-ink-600">{body}</p>
+      {children}
+    </div>
+  );
+}
 
 function VerifyInner() {
   const params = useSearchParams();
@@ -31,7 +69,10 @@ function VerifyInner() {
 
   if (state === "loading") {
     return (
-      <div className="tech-corners card flex flex-col items-center border-ink-300 p-8 text-center">
+      <div
+        role="status"
+        className="tech-corners card flex flex-col items-center border-ink-300 p-8 text-center"
+      >
         <span className="pulse-dot h-2.5 w-2.5 rounded-full bg-brand-600" />
         <p className="mt-4 font-mono text-sm uppercase tracking-[0.12em] text-ink-500">
           {t.verify.verifying}
@@ -42,14 +83,12 @@ function VerifyInner() {
 
   if (state === "success") {
     return (
-      <div className="tech-corners card flex flex-col items-center border-ink-300 p-8 text-center">
-        <FaCircleCheck className="h-10 w-10 text-emerald-500" />
-        <h1 className="mt-4 text-xl font-semibold text-ink-900">
-          {t.verify.successTitle}
-        </h1>
-        <p className="mt-2 text-sm leading-relaxed text-ink-600">
-          {t.verify.successBody}
-        </p>
+      <ResultCard
+        tone="success"
+        icon={<FaCircleCheck className="h-10 w-10 text-emerald-500" />}
+        title={t.verify.successTitle}
+        body={t.verify.successBody}
+      >
         <div className="mt-6 flex gap-3">
           <Link href={localizedHref("/dashboard", locale)} className="btn-primary">
             {t.verify.goDashboard}
@@ -58,23 +97,21 @@ function VerifyInner() {
             {t.verify.goHome}
           </Link>
         </div>
-      </div>
+      </ResultCard>
     );
   }
 
   return (
-    <div className="tech-corners card flex flex-col items-center border-ink-300 p-8 text-center">
-      <FaCircleXmark className="h-10 w-10 text-red-500" />
-      <h1 className="mt-4 text-xl font-semibold text-ink-900">
-        {t.verify.failTitle}
-      </h1>
-      <p className="mt-2 text-sm leading-relaxed text-ink-600">
-        {t.verify.failBody}
-      </p>
+    <ResultCard
+      tone="fail"
+      icon={<FaCircleXmark className="h-10 w-10 text-red-500" />}
+      title={t.verify.failTitle}
+      body={t.verify.failBody}
+    >
       <Link href={localizedHref("/login", locale)} className="btn-primary mt-6">
         {t.verify.signIn}
       </Link>
-    </div>
+    </ResultCard>
   );
 }
 

@@ -58,7 +58,13 @@ describe("ProviderRegisterForm (authed mode, #552)", () => {
 
     fillProfileStep(); // everything but the phone
     fireEvent.click(screen.getByRole("button", { name: t.continue }));
-    expect(screen.getByRole("alert").textContent).toBe(t.errPhone);
+    // The error surfaces in the focus-managed summary (#378), linked to the
+    // phone field it describes.
+    expect(screen.getByRole("alert").textContent).toContain(t.errPhone);
+    expect(screen.getByRole("link", { name: t.errPhone })).toBeTruthy();
+    expect(
+      screen.getByLabelText(t.phone).getAttribute("aria-describedby")
+    ).toBe("pr-phone-error");
   });
 
   it("submits the collected phone to /api/auth/complete-provider", async () => {

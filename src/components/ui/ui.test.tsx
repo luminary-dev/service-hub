@@ -54,4 +54,41 @@ describe("Field", () => {
     expect(screen.queryByText("We never share it")).toBeNull();
     expect(screen.getByText("Email").getAttribute("for")).toBe("email");
   });
+
+  it("links help text to the control via aria-describedby (#378)", () => {
+    render(
+      <Field label="Email" htmlFor="email" help="We never share it">
+        <input id="email" className="input" />
+      </Field>
+    );
+    const input = screen.getByLabelText("Email");
+    expect(input.getAttribute("aria-describedby")).toBe("email-help");
+    expect(input.getAttribute("aria-invalid")).toBeNull();
+    expect(screen.getByText("We never share it").id).toBe("email-help");
+  });
+
+  it("marks the control invalid and links the error, merging existing aria-describedby (#378)", () => {
+    render(
+      <Field label="Email" htmlFor="email" help="We never share it" error="Required">
+        <input id="email" className="input" aria-describedby="external-hint" />
+      </Field>
+    );
+    const input = screen.getByLabelText("Email");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(input.getAttribute("aria-describedby")).toBe(
+      "external-hint email-error"
+    );
+    expect(screen.getByRole("alert").id).toBe("email-error");
+  });
+
+  it("leaves the control untouched without an htmlFor", () => {
+    render(
+      <Field label="Email" error="Required">
+        <input aria-label="Email" className="input" />
+      </Field>
+    );
+    const input = screen.getByLabelText("Email");
+    expect(input.getAttribute("aria-describedby")).toBeNull();
+    expect(input.getAttribute("aria-invalid")).toBeNull();
+  });
 });

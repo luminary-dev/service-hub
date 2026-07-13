@@ -63,6 +63,11 @@ const en = {
     post: "Post job",
     posting: "Posting…",
     postError: "Could not post the job. Please try again.",
+    errTitle: "Please enter a job title (at least 5 characters).",
+    errCategory: "Please select the service you need.",
+    errDistrict: "Please select a district.",
+    errDescription: "Please describe the job (at least 10 characters).",
+    errBudget: "Enter a budget of Rs. 100 or more, or leave it blank.",
     boardTitle: "Jobs matching your trade",
     boardSubtitle: (cat: string, district: string) =>
       `Open ${cat} jobs in ${district}.`,
@@ -1098,6 +1103,19 @@ const en = {
       loadMoreError: "Could not load more inquiries. Please try again.",
     },
   },
+  // Shared client-side validation messages (#378). Forms validate on submit
+  // (with noValidate) so errors are announced and linked to their fields via
+  // aria-describedby instead of relying on native browser bubbles.
+  fieldErrors: {
+    summaryTitle: "Please fix the following:",
+    name: "Please enter your name (at least 2 characters).",
+    email: "Please enter a valid email address.",
+    phone: "Please enter a valid phone number (at least 9 digits).",
+    passwordRequired: "Please enter your password.",
+    passwordMin: (n: number) => `Password must be at least ${n} characters.`,
+    messageMin: (n: number) =>
+      `Please enter a message of at least ${n} characters.`,
+  },
   providerReg: {
     title: "Join as a Professional",
     subtitle: "Free forever. Your profile goes live as soon as you finish.",
@@ -1165,8 +1183,8 @@ const en = {
     errDistrict: "Please select your district.",
     errCity: "Please enter your town or city.",
     errServiceCount: "Add at least one service.",
-    errServiceTitle: "Every service needs a title.",
-    errServicePrice: "Every service needs a valid price.",
+    errServiceTitle: (n: number) => `Service ${n} needs a title.`,
+    errServicePrice: (n: number) => `Service ${n} needs a valid price.`,
     asideWorkerAlt: "A tradesperson at work in Sri Lanka",
     asideBadge: "Registry",
   },
@@ -1234,6 +1252,11 @@ const si: Dict = {
     post: "රැකියාව පළ කරන්න",
     posting: "පළ කරමින්…",
     postError: "රැකියාව පළ කළ නොහැකි විය. නැවත උත්සාහ කරන්න.",
+    errTitle: "කරුණාකර රැකියා නාමයක් ඇතුළත් කරන්න (අවම අකුරු 5ක්).",
+    errCategory: "කරුණාකර අවශ්‍ය සේවාව තෝරන්න.",
+    errDistrict: "කරුණාකර දිස්ත්‍රික්කයක් තෝරන්න.",
+    errDescription: "කරුණාකර වැඩේ විස්තර කරන්න (අවම අකුරු 10ක්).",
+    errBudget: "රු. 100ක් හෝ වැඩි අයවැයක් ඇතුළත් කරන්න, නැතහොත් හිස්ව තබන්න.",
     boardTitle: "ඔබේ ක්ෂේත්‍රයට ගැලපෙන රැකියා",
     boardSubtitle: (cat: string, district: string) =>
       `${district} හි විවෘත ${cat} රැකියා.`,
@@ -2240,6 +2263,17 @@ const si: Dict = {
       loadMoreError: "තවත් විමසුම් පූරණය කළ නොහැකි විය. නැවත උත්සාහ කරන්න.",
     },
   },
+  fieldErrors: {
+    summaryTitle: "කරුණාකර පහත දෑ නිවැරදි කරන්න:",
+    name: "කරුණාකර ඔබේ නම ඇතුළත් කරන්න (අවම අකුරු 2ක්).",
+    email: "කරුණාකර වලංගු විද්‍යුත් තැපැල් ලිපිනයක් ඇතුළත් කරන්න.",
+    phone: "කරුණාකර වලංගු දුරකථන අංකයක් ඇතුළත් කරන්න (අවම ඉලක්කම් 9ක්).",
+    passwordRequired: "කරුණාකර ඔබේ මුරපදය ඇතුළත් කරන්න.",
+    passwordMin: (n: number) =>
+      `මුරපදය අවම වශයෙන් අකුරු ${n}ක් විය යුතුය.`,
+    messageMin: (n: number) =>
+      `කරුණාකර අවම අකුරු ${n}ක පණිවිඩයක් ඇතුළත් කරන්න.`,
+  },
   providerReg: {
     title: "වෘත්තිකයෙක් ලෙස එක්වන්න",
     subtitle: "සදහටම නොමිලේ. ඔබ අවසන් වූ වහාම ඔබේ පැතිකඩ සක්‍රිය වේ.",
@@ -2307,8 +2341,8 @@ const si: Dict = {
     errDistrict: "කරුණාකර ඔබේ දිස්ත්‍රික්කය තෝරන්න.",
     errCity: "කරුණාකර ඔබේ නගරය ඇතුළත් කරන්න.",
     errServiceCount: "අවම වශයෙන් එක් සේවාවක් එක් කරන්න.",
-    errServiceTitle: "සෑම සේවාවකටම නාමයක් අවශ්‍යයි.",
-    errServicePrice: "සෑම සේවාවකටම වලංගු මිලක් අවශ්‍යයි.",
+    errServiceTitle: (n: number) => `සේවාව ${n}ට නාමයක් අවශ්‍යයි.`,
+    errServicePrice: (n: number) => `සේවාව ${n}ට වලංගු මිලක් අවශ්‍යයි.`,
     asideWorkerAlt: "ශ්‍රී ලංකාවේ වැඩ කරමින් සිටින කාර්මිකයෙක්",
     asideBadge: "ලියාපදිංචිය",
   },
