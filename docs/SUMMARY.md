@@ -54,5 +54,6 @@
 - [Rate limiting](RATE_LIMITING.md)
 - [Testing](TESTING.md)
 - [CI additions (proposed)](CI_ADDITIONS.md)
+- [Dependency maintenance](DEPENDENCIES.md)
 - [Email setup](EMAIL_SETUP.md)
 - [Security policy](https://github.com/luminary-dev/service-hub/blob/dev/SECURITY.md)
