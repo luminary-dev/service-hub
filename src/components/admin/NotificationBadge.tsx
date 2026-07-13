@@ -6,9 +6,9 @@ import { getSeenCount, type NotificationQueue } from "@/lib/adminNotifications";
 
 type Counts = { verifications: number; reports: number };
 
-// Provider-service owns pending-verification and provider/photo/message
-// report counts; review-service owns the review-report count and job-service
-// the job-report count separately (same split as the reports page's
+// Provider-service owns pending-verification and provider/photo/inquiry
+// report counts; review-service and job-service own the review- and
+// job-report counts separately (same split as the reports page's
 // three-service merge). Summed here into one "reports" total for the badge.
 async function fetchCounts(): Promise<Counts> {
   const [notifRes, reviewRes, jobRes] = await Promise.all([
@@ -28,9 +28,7 @@ async function fetchCounts(): Promise<Counts> {
   return {
     verifications: notif?.pendingVerifications ?? 0,
     reports:
-      (notif?.openReports ?? 0) +
-      (review?.openReports ?? 0) +
-      (job?.openReports ?? 0),
+      (notif?.openReports ?? 0) + (review?.openReports ?? 0) + (job?.openReports ?? 0),
   };
 }
 

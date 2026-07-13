@@ -8,6 +8,7 @@ import { db } from "../db";
 import { logAudit } from "../lib/audit";
 import { isFullAdmin, isSupportOrAdmin } from "../lib/http";
 import { fetchUsers, fetchProviders } from "../lib/hydrate";
+import { normalizeListQuery } from "../lib/query";
 
 export const admin = new Hono();
 
@@ -20,7 +21,10 @@ export const admin = new Hono();
 const JOB_STATUSES = ["OPEN", "CLOSED"] as const;
 
 // Job list (#222): newest first, optionally filtered by status/category, with
-// the customer name and a response count hydrated for the row.
+// the customer name and a response count hydrated for the row. Paginated
+// (#372) like every other admin list: page/pageSize use the shared board
+// normalization (default 20, cap 50) and `total` rides along; the envelope
+// keeps the existing `jobs` key so older callers keep working.
 admin.get("/api/admin/jobs", async (c) => {
   if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
@@ -32,14 +36,25 @@ admin.get("/api/admin/jobs", async (c) => {
     : undefined;
   const category = c.req.query("category");
 
-  const rows = await db.jobRequest.findMany({
-    where: {
-      ...(status ? { status } : {}),
-      ...(category ? { category } : {}),
-    },
-    orderBy: { createdAt: "desc" },
-    include: { _count: { select: { responses: true } } },
+  const { page, pageSize } = normalizeListQuery({
+    page: c.req.query("page") ?? null,
+    pageSize: c.req.query("pageSize") ?? null,
   });
+
+  const where = {
+    ...(status ? { status } : {}),
+    ...(category ? { category } : {}),
+  };
+  const [total, rows] = await Promise.all([
+    db.jobRequest.count({ where }),
+    db.jobRequest.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      include: { _count: { select: { responses: true } } },
+    }),
+  ]);
 
   const customerIds = [...new Set(rows.map((j) => j.customerId))];
   const users = await fetchUsers(customerIds);
@@ -50,7 +65,7 @@ admin.get("/api/admin/jobs", async (c) => {
     responseCount: _count.responses,
   }));
 
-  return c.json({ jobs });
+  return c.json({ jobs, total, page, pageSize });
 });
 
 // Job detail (#222): job + its responses, with customer and provider contact

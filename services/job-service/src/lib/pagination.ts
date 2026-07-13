@@ -1,8 +1,8 @@
 // Pure page/pageSize normalization + open/closed slicing for the admin
-// job-reports queue (#376). Mirrors review-service's lib/pagination.ts and
-// provider-service's lib/admin-list.ts helpers of the same name — the report
-// queues are merged and paginated together on the admin frontend, so they
-// must bound their pages identically. Kept database-free so it's
+// job-reports queue (#375). Identical to review-service's lib/pagination.ts
+// (and provider-service's lib/admin-list.ts helpers of the same name) — the
+// report queues are merged and paginated together on the admin frontend, so
+// they must bound their pages identically. Kept database-free so it's
 // unit-testable.
 
 export const ADMIN_DEFAULT_PAGE_SIZE = 20;

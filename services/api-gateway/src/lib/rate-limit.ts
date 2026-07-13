@@ -341,6 +341,9 @@ export const LIMITED_ROUTES: { pattern: RegExp; name: string; rule: RateRule }[]
   { pattern: /^\/api\/providers\/[^/]+\/contact$/, name: "contact-reveal", rule: RATE_LIMITS.contactReveal },
   { pattern: /^\/api\/jobs\/[^/]+\/responses$/, name: "job-response", rule: RATE_LIMITS.review },
   { pattern: /^\/api\/providers\/[^/]+\/reviews$/, name: "review", rule: RATE_LIMITS.review },
+  // Provider responses to reviews (#395) — one-shot form, same budget as
+  // review submission.
+  { pattern: /^\/api\/reviews\/[^/]+\/response$/, name: "review-response", rule: RATE_LIMITS.review },
   // Thread messages (#13) are conversational - wider budget than one-shot forms.
   { pattern: /^\/api\/inquiries\/[^/]+\/messages$/, name: "message", rule: RATE_LIMITS.message },
   // Abuse reports (#50, #376) accept anonymous submissions (messages

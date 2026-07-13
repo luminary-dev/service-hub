@@ -26,7 +26,9 @@ model Category {
 
 // userId references a User owned by identity-service; no FK across service
 // boundaries. Contact fields are denormalized from the user at registration
-// and kept in sync on profile updates (S2S PATCH to identity).
+// and kept in sync both ways: provider-side profile edits PATCH identity;
+// identity-side account/email changes mirror back via
+// POST /internal/providers/contact (#553).
 model Provider {
   id           String  @id @default(cuid())
   userId       String  @unique
@@ -140,7 +142,10 @@ model WorkPhoto {
 // still see what happened.
 model Report {
   id         String  @id @default(cuid())
-  // "PROVIDER" | "WORK_PHOTO" | "MESSAGE" (inquiry thread messages, #376)
+  // "PROVIDER" | "WORK_PHOTO" | "MESSAGE" | "INQUIRY". MESSAGE rows (#376)
+  // are user reports on individual thread messages; INQUIRY rows (#375) are
+  // only ever SYSTEM-created by the write-time content filter on
+  // inquiry/thread text.
   targetType String
   targetId   String
   reporterId String?
@@ -151,7 +156,8 @@ model Report {
   status     String   @default("OPEN")
   // "USER" | "SYSTEM" (#232): USER reports come from the public report flow
   // above; SYSTEM reports are auto-created by POST /api/admin/flagging/run
-  // when a provider crosses a report-count or rating threshold.
+  // when a provider crosses a report-count or rating threshold, and by the
+  // write-time content filter (#375) on profile/service/inquiry/thread text.
   source     String   @default("USER")
   createdAt  DateTime @default(now())
   // Last-transition timestamp (#370): auto-stamped on every write (status

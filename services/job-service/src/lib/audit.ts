@@ -1,7 +1,7 @@
-// Moderation audit trail (#376): fire-and-record after every admin write in
-// this service (job hide/unhide, report resolve/dismiss). provider-service
-// and review-service keep identical AdminAuditLog tables + write paths for
-// the moderation actions they own; the logs are merged only in the admin
+// Moderation audit trail (#227 convention): fire-and-record after every admin
+// write in this service (job-report resolve/dismiss). provider-service and
+// review-service keep identical AdminAuditLog tables + write paths for the
+// moderation actions they own; the logs are merged only in the admin
 // frontend's combined view, never server-side.
 import type { Context } from "hono";
 import { db } from "../db";

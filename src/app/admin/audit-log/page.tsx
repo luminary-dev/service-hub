@@ -10,15 +10,14 @@ import { formatDate } from "@/lib/format";
 // next request — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
 
-// The audit trail (#227, #376) merges three sources — provider-service owns
-// the log for actions it takes (provider verify/suspend, photo/message
-// delete, report resolve/dismiss, category create/edit) at
-// `GET /api/admin/audit-log`; review-service owns the log for the actions it
-// takes (review delete, report resolve/dismiss) at
-// `GET /api/admin/review-audit-log`; job-service owns the log for the
-// actions it takes (job hide/unhide, report resolve/dismiss) at
-// `GET /api/admin/job-audit-log`. All accept the same adminId/action/from/to
-// filters and return newest-first.
+// The audit trail (#227) merges three sources — provider-service owns the
+// log for actions it takes (provider verify/suspend, photo delete, report
+// resolve/dismiss, category create/edit) at `GET /api/admin/audit-log`;
+// review-service owns the log for the actions it takes (review delete,
+// report resolve/dismiss) at `GET /api/admin/review-audit-log`; job-service
+// owns the log for job hide/unhide (#376) and job-report resolve/dismiss
+// (#375) at `GET /api/admin/job-audit-log`. All accept the same
+// adminId/action/from/to filters and return newest-first.
 type AuditEntry = {
   id: string;
   adminId: string;

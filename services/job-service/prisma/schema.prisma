@@ -55,35 +55,34 @@ model JobResponse {
   @@index([providerId])
 }
 
-// Abuse reports (#376) on content this service owns (job posts). Each
-// content-owning service keeps the reports on its own content —
-// provider-service and review-service carry the identical field set.
-// reporterId references a User owned by identity-service (plain string,
-// nullable — anonymous visitors can report). No FK to the target either: a
-// report must survive its target being deleted so admins can still see what
-// happened.
+// Moderation reports on content this service owns (job posts and job
+// responses). Same-shaped model as provider-service and review-service (#370
+// field set: `source`, resolution audit, `updatedAt`) so the admin frontend
+// merges the three queues uniformly. Unlike those two there is no public
+// report flow here (yet) — every row is SYSTEM-created by the write-time
+// content filter (#375), which is why reporterId is always null today. No FK
+// to the target: a report must survive its target being deleted so admins can
+// still see what happened.
 model Report {
   id         String  @id @default(cuid())
-  // "JOB"
+  // "JOB" | "JOB_RESPONSE"
   targetType String
   targetId   String
   reporterId String?
-  // "spam" | "scam" | "offensive" | "fake" | "other" (zod-validated)
   reason     String
   details    String?
   // "OPEN" | "RESOLVED" | "DISMISSED"
   status     String   @default("OPEN")
-  // "USER" | "SYSTEM": USER reports come from the public report flow; SYSTEM
-  // is reserved for auto-created reports. Jobs currently only ever produce
-  // USER reports, so this defaults to "USER" and the create path leaves it
-  // unset (mirrors review-service).
+  // "USER" | "SYSTEM" (#375/#376): USER reports come from the public
+  // report-a-job flow (POST /api/jobs/:id/report); SYSTEM reports are
+  // auto-created by the write-time content filter.
   source     String   @default("USER")
   createdAt  DateTime @default(now())
-  // Last-transition timestamp: auto-stamped on every write (status
-  // resolve/dismiss). Mirrors provider/review-service's Report.updatedAt.
+  // Last-transition timestamp (#370): auto-stamped on every write (status
+  // resolve/dismiss).
   updatedAt  DateTime @updatedAt
-  // Audit trail: admin userId + timestamp stamped when a report transitions
-  // to RESOLVED or DISMISSED. Both null while OPEN.
+  // Audit trail (#223): admin userId + timestamp stamped when a report
+  // transitions to RESOLVED or DISMISSED. Both null while OPEN.
   resolvedBy String?
   resolvedAt DateTime?
 
@@ -94,12 +93,11 @@ model Report {
   @@index([createdAt])
 }
 
-// Moderation audit trail (#376): one row per admin action taken through this
-// service's /api/admin/* routes (job hide/unhide, report resolve/dismiss).
-// adminId references a User owned by identity-service (plain string, no FK —
-// same convention as Report.reporterId). provider-service and review-service
-// keep identical models for the actions they own; the logs are merged only in
-// the admin frontend's combined view, never server-side.
+// Moderation audit trail (#227 convention): one row per admin action taken
+// through this service's /api/admin/* routes (job-report resolve/dismiss).
+// provider-service and review-service keep identical models for the actions
+// they own; the logs are merged only in the admin frontend's combined view,
+// never server-side.
 model AdminAuditLog {
   id         String   @id @default(cuid())
   adminId    String

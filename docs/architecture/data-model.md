@@ -46,13 +46,16 @@
   both SI columns join the `/api/providers` free-text search (pg_trgm-indexed).
   Per-service Sinhala titles are a deliberate follow-up. `userId` is a plain
   string.
-  `Report` fields: `targetType` (`PROVIDER`|`WORK_PHOTO`|`MESSAGE` #376),
+  `Report` fields: `targetType` (`PROVIDER`|`WORK_PHOTO`|`INQUIRY`|`MESSAGE`
+  — INQUIRY rows are auto-filed by the write-time content filter #375;
+  MESSAGE rows are user reports on individual thread messages #376),
   `targetId`,
   `reporterId` (nullable — anonymous allowed), `reason`, `details`, `status`
-  (`OPEN`|`RESOLVED`|`DISMISSED`), `source` (`USER`|`SYSTEM`, #232 — SYSTEM is
-  reserved for auto-flagging), `updatedAt` (last-transition timestamp, #370),
-  and the audit fields `resolvedBy`/`resolvedAt` (#223, stamped when a report is
-  closed). `Inquiry` and `Report` both carry `updatedAt` (#370).
+  (`OPEN`|`RESOLVED`|`DISMISSED`), `source` (`USER`|`SYSTEM`, #232 — SYSTEM
+  rows come from threshold auto-flagging and the content filter), `updatedAt`
+  (last-transition timestamp, #370), and the audit fields
+  `resolvedBy`/`resolvedAt` (#223, stamped when a report is closed). `Inquiry`
+  and `Report` both carry `updatedAt` (#370).
 - **review-service** (`review_db`): `Review` (+ `deletedAt` soft-delete,
   `verified` badge, `updatedAt` last-transition timestamp #370, and the optional
   nullable 1–5 sub-ratings `quality`/`punctuality`/`value`/`communication` #528
@@ -60,14 +63,16 @@
   `Report` (**identical shape to provider-service's**, reconciled in #370 —
   same field set including `source` (`USER`|`SYSTEM`) and `updatedAt`;
   `targetType` = `REVIEW`; same `resolvedBy`/`resolvedAt` audit fields),
-  `AdminAuditLog` (identical model; the two audit logs are merged only in the
-  admin frontend, never server-side). `providerId`/`userId` plain strings;
-  reviewer names hydrated from identity at read time.
+  `AdminAuditLog` (identical model; the per-service audit logs are merged only
+  in the admin frontend, never server-side). `providerId`/`userId` plain
+  strings; reviewer names hydrated from identity at read time.
 - **job-service** (`job_db`): `JobRequest` (`status` OPEN|CLOSED, `updatedAt`
   last-transition timestamp #370, `hiddenAt` admin-takedown soft-hide #376),
-  `JobResponse`, `Report` (**identical shape to the provider/review-service
-  models**; `targetType` = `JOB`) and `AdminAuditLog` (identical model; the
-  three audit logs are merged only in the admin frontend) — #376.
+  `JobResponse`, `Report` (**identical shape to the provider/review models**;
+  `targetType` = `JOB`|`JOB_RESPONSE`; rows come from the public
+  report-a-job flow #376 and the write-time content filter's SYSTEM flags
+  #375), `AdminAuditLog` (identical model; the three audit logs are merged
+  only in the admin frontend).
   `customerId`/`providerId` plain strings. **Monetization (pricing, commission,
   payments) is intentionally deferred to v0.2** — v0.1 is free to use, so there
   is no transaction ledger and no price/commission field on a job.

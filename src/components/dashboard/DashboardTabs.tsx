@@ -58,7 +58,10 @@ export type DashboardData = {
   website: string;
   services: ServiceItem[];
   photos: PhotoItem[];
+  // First page of the inbox (#372); inquiriesTotal covers the whole inbox so
+  // the list can load more on demand.
   inquiries: InquiryItem[];
+  inquiriesTotal: number;
   stats: {
     rating: number | null;
     reviewCount: number;
@@ -129,7 +132,9 @@ export default function DashboardTabs({
             name={data.name}
           />
         )}
-        {tab === "Inquiries" && <InquiriesList initial={data.inquiries} />}
+        {tab === "Inquiries" && (
+          <InquiriesList initial={data.inquiries} total={data.inquiriesTotal} />
+        )}
       </div>
     </div>
   );

@@ -76,7 +76,9 @@ findings (Security tab, PR comment, or log) without blocking.
 
 Lints every workflow under `.github/workflows/**` with
 [actionlint](https://github.com/rhysd/actionlint), pinned to the released
-`rhysd/actionlint:1.7.12` image. It runs on push + PR to `dev`/`prod` **only
+`rhysd/actionlint:1.7.12` image **by digest** (#573 — a mutable Docker Hub tag
+could be repointed by the publisher; matching the repo's SHA-pinned actions
+and digest-pinned base images). It runs on push + PR to `dev`/`prod` **only
 when a workflow file changes** (a `paths:` filter, so it never touches
 unrelated PRs), plus `workflow_dispatch`. Least-privilege `permissions`
 (`contents: read`), a 10-minute `timeout-minutes` cap, and the same

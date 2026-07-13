@@ -115,9 +115,11 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
     return { service: "job", path: pathname };
   }
 
-  // Job abuse reports + the job moderation audit trail (#376) — job-service
-  // owns reports on jobs and the log of the actions it takes, same split as
-  // review-service's queues above.
+  // Job moderation queue (#375/#376): reports on job posts/responses (user
+  // reports and content-filter auto-flags), plus job-service's slice of the
+  // moderation audit trail — both owned by job-service, carved out of the
+  // /api/admin/ → provider-service fallback like the review-owned queues
+  // above.
   if (
     pathname === "/api/admin/job-reports" ||
     pathname.startsWith("/api/admin/job-reports/") ||

@@ -15,6 +15,7 @@ import {
 } from "../lib/storage";
 import { fetchProviderReviews, fetchRatings, fetchRatingsResult } from "../lib/clients";
 import { computeQualityScore } from "../lib/quality-score";
+import { log } from "../lib/log";
 import {
   buildAdminProvidersWhere,
   normalizeAdminListQuery,
@@ -23,6 +24,11 @@ import {
 } from "../lib/admin-list";
 
 export const adminRoutes = new Hono();
+
+// Upper bound on providers loaded for the in-memory mostReviews ranking
+// (#372) — mirrors MAX_BROWSE_CANDIDATES on the public directory. If ever
+// hit, we log and rank the newest slice.
+const MOST_REVIEWS_CANDIDATES = 1000;
 
 // Moderation audit trail (#227): fire-and-record after every write below.
 // Best-effort — a logging failure must never roll back or block the
@@ -74,14 +80,22 @@ adminRoutes.get("/api/admin/providers", async (c) => {
 
   if (sort === "mostReviews") {
     // Review counts are derived data owned by review-service, so ranking by
-    // them means hydrating and sorting the full match set in memory rather
-    // than paginating in the database (same tradeoff the public directory
-    // makes for its rating-based sorts — see providers.ts).
+    // them means hydrating and sorting the match set in memory rather than
+    // paginating in the database (same tradeoff the public directory makes
+    // for its rating-based sorts — see providers.ts). Bounded (#372): at most
+    // MOST_REVIEWS_CANDIDATES rows (newest first) are loaded and ranked.
     const all = await db.provider.findMany({
       where,
       orderBy: { createdAt: "desc" },
+      take: MOST_REVIEWS_CANDIDATES + 1,
       include: { _count: { select: { photos: true } } },
     });
+    if (all.length > MOST_REVIEWS_CANDIDATES) {
+      all.length = MOST_REVIEWS_CANDIDATES;
+      log.warn("admin mostReviews sort hit candidate cap — ranking may be incomplete", {
+        cap: MOST_REVIEWS_CANDIDATES,
+      });
+    }
     const ratings = await fetchRatings(all.map((p) => p.id));
     const ranked = [...all].sort(
       (a, b) =>
@@ -444,25 +458,30 @@ adminRoutes.patch("/api/admin/messages/:id/restore", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// Abuse-report moderation queue (#50): reports on providers, work photos and
-// inquiry thread messages (#376) — review reports live at review-service
-// under /api/admin/review-reports, job reports at job-service under
+// Abuse-report moderation queue (#50): reports on providers, work photos,
+// inquiry threads (content-filter flags, #375) and inquiry thread messages
+// (user reports, #376) — review reports live at review-service under
+// /api/admin/review-reports, job reports at job-service under
 // /api/admin/job-reports.
 // ---------------------------------------------------------------------------
 
 const REPORT_STATUSES = ["OPEN", "RESOLVED", "DISMISSED"] as const;
-// This queue only ever holds PROVIDER/WORK_PHOTO/MESSAGE reports — REVIEW
-// reports live at review-service, JOB reports at job-service. Another filter
-// value is valid overall (the admin frontend offers it as one dropdown across
-// the three services) but never matches here, so it short-circuits to an
-// empty list below.
-const LOCAL_TARGET_TYPES = ["PROVIDER", "WORK_PHOTO", "MESSAGE"] as const;
+// This queue only ever holds PROVIDER/WORK_PHOTO/INQUIRY/MESSAGE reports —
+// REVIEW reports live at review-service, JOB/JOB_RESPONSE at job-service.
+// Filters for a type another service owns are valid overall (the admin
+// frontend offers one dropdown across all sources) but never match here, so
+// they short-circuit to an empty list below. INQUIRY reports (#375) are only
+// ever SYSTEM-created by the write-time content filter — there is no public
+// report-an-inquiry flow; MESSAGE reports (#376) are user reports on
+// individual thread messages.
+const LOCAL_TARGET_TYPES = ["PROVIDER", "WORK_PHOTO", "INQUIRY", "MESSAGE"] as const;
 
 // OPEN reports first (newest first), then closed ones (newest first). Every
 // report carries a hydrated target summary from local tables — provider name
-// for PROVIDER targets, photo url + owner for WORK_PHOTO targets, message
-// body + thread owner for MESSAGE targets — and `target` is null when the
-// target has since been hard-deleted.
+// for PROVIDER targets, photo url + owner for WORK_PHOTO targets, thread
+// context for INQUIRY targets, message body + thread owner for MESSAGE
+// targets — and `target` is null when the target has since been
+// hard-deleted.
 //
 // Filtering (#223): optional `status` and `targetType` query params, passed
 // straight through from the admin frontend's filter dropdowns. Unrecognized
@@ -552,10 +571,13 @@ adminRoutes.get("/api/admin/reports", async (c) => {
   const photoIds = rows
     .filter((r) => r.targetType === "WORK_PHOTO")
     .map((r) => r.targetId);
+  const inquiryIds = rows
+    .filter((r) => r.targetType === "INQUIRY")
+    .map((r) => r.targetId);
   const messageIds = rows
     .filter((r) => r.targetType === "MESSAGE")
     .map((r) => r.targetId);
-  const [providers, photos, messages] = await Promise.all([
+  const [providers, photos, inquiries, messages] = await Promise.all([
     providerIds.length
       ? db.provider.findMany({
           where: { id: { in: providerIds } },
@@ -570,6 +592,18 @@ adminRoutes.get("/api/admin/reports", async (c) => {
             url: true,
             caption: true,
             deletedAt: true,
+            providerId: true,
+            provider: { select: { contactName: true } },
+          },
+        })
+      : [],
+    inquiryIds.length
+      ? db.inquiry.findMany({
+          where: { id: { in: inquiryIds } },
+          select: {
+            id: true,
+            name: true,
+            message: true,
             providerId: true,
             provider: { select: { contactName: true } },
           },
@@ -595,6 +629,7 @@ adminRoutes.get("/api/admin/reports", async (c) => {
   ]);
   const providerById = new Map(providers.map((p) => [p.id, p]));
   const photoById = new Map(photos.map((p) => [p.id, p]));
+  const inquiryById = new Map(inquiries.map((i) => [i.id, i]));
   const messageById = new Map(messages.map((m) => [m.id, m]));
 
   const reports = rows.map((r) => {
@@ -608,7 +643,23 @@ adminRoutes.get("/api/admin/reports", async (c) => {
           suspended: p.suspended,
         };
       }
+    } else if (r.targetType === "INQUIRY") {
+      // Thread context for a content-filter flag (#375): the customer name,
+      // the original inquiry message and the provider whose thread it is. The
+      // flagged text itself is in the report's `details` (a thread can hold
+      // many messages; details pins the offending one).
+      const i = inquiryById.get(r.targetId);
+      if (i) {
+        target = {
+          providerId: i.providerId,
+          providerName: i.provider.contactName,
+          customerName: i.name,
+          message: i.message,
+        };
+      }
     } else if (r.targetType === "MESSAGE") {
+      // A user-reported thread message (#376): the message itself plus the
+      // provider whose thread it is, and whether an admin already removed it.
       const m = messageById.get(r.targetId);
       if (m) {
         target = {

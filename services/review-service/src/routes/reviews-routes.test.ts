@@ -35,6 +35,10 @@ const { dbMock } = vi.hoisted(() => ({
       findUnique: vi.fn(),
       delete: vi.fn(),
     },
+    reviewResponse: {
+      upsert: vi.fn(),
+      deleteMany: vi.fn(),
+    },
     report: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
@@ -197,6 +201,13 @@ describe("GET /api/providers/:id/reviews (public listing)", () => {
         photos: [
           { id: "ph1", url: "reviews/ph1.jpg", createdAt: new Date("2026-01-01T00:00:00Z") },
         ],
+        response: {
+          id: "resp1",
+          reviewId: "rev1",
+          text: "Thank you!",
+          createdAt: new Date("2026-01-02T00:00:00Z"),
+          updatedAt: new Date("2026-01-02T00:00:00Z"),
+        },
       },
     ]);
     const res = await req(`/api/providers/${PROVIDER_ID}/reviews`);
@@ -214,7 +225,11 @@ describe("GET /api/providers/:id/reviews (public listing)", () => {
       comment: "Great, tidy work.",
       verified: true,
       user: { name: "Unknown" },
+      // The provider's public reply (#395) rides along, projected to
+      // text + timestamps only.
+      response: { text: "Thank you!" },
     });
+    expect(review.response).not.toHaveProperty("id");
   });
 });
 
@@ -267,6 +282,116 @@ describe("POST /api/providers/:id/reviews (summary + photo branches)", () => {
     const res = await postReview({}, 4);
     expect(res.status).toBe(400);
     expect((await res.json()).error).toMatch(/at most 3 photos/i);
+  });
+});
+
+// Provider responses (#395): one public reply per review, gated on the caller
+// owning the reviewed provider profile (checked S2S, fail-loud on the write
+// path like review creation).
+describe("POST/DELETE /api/reviews/:id/response", () => {
+  const REVIEW_ROW = {
+    id: "rev1",
+    providerId: PROVIDER_ID,
+    deletedAt: null,
+  };
+
+  function postResponse(text: string, headers: Record<string, string> = {}) {
+    return req(
+      "/api/reviews/rev1/response",
+      { method: "POST", body: JSON.stringify({ text }) },
+      { "x-user-id": OWNER_ID, ...headers }
+    );
+  }
+
+  it("401s without a session", async () => {
+    const res = await req("/api/reviews/rev1/response", {
+      method: "POST",
+      body: JSON.stringify({ text: "Thank you!" }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("404s when the review is missing or soft-deleted", async () => {
+    dbMock.review.findUnique.mockResolvedValue(null);
+    expect((await postResponse("Thank you!")).status).toBe(404);
+
+    dbMock.review.findUnique.mockResolvedValue({
+      ...REVIEW_ROW,
+      deletedAt: new Date(),
+    });
+    expect((await postResponse("Thank you!")).status).toBe(404);
+    expect(dbMock.reviewResponse.upsert).not.toHaveBeenCalled();
+  });
+
+  it("403s a caller who does not own the reviewed profile", async () => {
+    dbMock.review.findUnique.mockResolvedValue(REVIEW_ROW);
+    const res = await postResponse("Thank you!", { "x-user-id": REVIEWER_ID });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toBe("Only the reviewed provider can respond");
+    expect(dbMock.reviewResponse.upsert).not.toHaveBeenCalled();
+  });
+
+  it("403s when the provider profile is suspended", async () => {
+    wireS2s({ summary: "suspended" });
+    dbMock.review.findUnique.mockResolvedValue(REVIEW_ROW);
+    expect((await postResponse("Thank you!")).status).toBe(403);
+  });
+
+  it("502s (fail-loud) when the ownership check is unavailable", async () => {
+    wireS2s({ summary: "throw" });
+    dbMock.review.findUnique.mockResolvedValue(REVIEW_ROW);
+    const res = await postResponse("Thank you!");
+    expect(res.status).toBe(502);
+    expect(dbMock.reviewResponse.upsert).not.toHaveBeenCalled();
+  });
+
+  it("400s on invalid text (too short / missing)", async () => {
+    dbMock.review.findUnique.mockResolvedValue(REVIEW_ROW);
+    expect((await postResponse("no")).status).toBe(400);
+    const res = await req(
+      "/api/reviews/rev1/response",
+      { method: "POST", body: "not json" },
+      { "x-user-id": OWNER_ID }
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("upserts the response for the profile owner (create-or-edit)", async () => {
+    dbMock.review.findUnique.mockResolvedValue(REVIEW_ROW);
+    const res = await postResponse("  Thank you for the kind words!  ");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    // Text is trimmed; one response per review via the reviewId upsert key.
+    expect(dbMock.reviewResponse.upsert).toHaveBeenCalledWith({
+      where: { reviewId: "rev1" },
+      create: { reviewId: "rev1", text: "Thank you for the kind words!" },
+      update: { text: "Thank you for the kind words!" },
+    });
+  });
+
+  it("DELETE removes the owner's response and is idempotent", async () => {
+    dbMock.review.findUnique.mockResolvedValue(REVIEW_ROW);
+    dbMock.reviewResponse.deleteMany.mockResolvedValue({ count: 0 });
+    const res = await req(
+      "/api/reviews/rev1/response",
+      { method: "DELETE" },
+      { "x-user-id": OWNER_ID }
+    );
+    expect(res.status).toBe(200);
+    expect(dbMock.reviewResponse.deleteMany).toHaveBeenCalledWith({
+      where: { reviewId: "rev1" },
+    });
+  });
+
+  it("DELETE 403s a non-owner", async () => {
+    dbMock.review.findUnique.mockResolvedValue(REVIEW_ROW);
+    const res = await req(
+      "/api/reviews/rev1/response",
+      { method: "DELETE" },
+      { "x-user-id": REVIEWER_ID }
+    );
+    expect(res.status).toBe(403);
+    expect(dbMock.reviewResponse.deleteMany).not.toHaveBeenCalled();
   });
 });
 

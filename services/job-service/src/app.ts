@@ -30,8 +30,8 @@ app.get("/healthz", async (c) => {
 app.use("*", requireInternalSecret);
 
 app.route("/api/jobs", jobs);
-app.route("/", reports);
 app.route("/", admin);
+app.route("/", reports);
 app.route("/internal", internal);
 
 // Fallbacks mirror the monolith's Next.js behavior.

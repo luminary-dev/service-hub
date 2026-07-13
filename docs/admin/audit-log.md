@@ -13,7 +13,7 @@ sources and re-sorts:
 - `GET /api/admin/review-audit-log` (review-service) — review delete, review-
   report resolve/dismiss.
 - `GET /api/admin/job-audit-log` (job-service) — job hide/unhide (#376),
-  job-report resolve/dismiss.
+  job-report resolve/dismiss (#375).
 
 Every admin write across the services calls a best-effort `logAudit` that
 records the **admin id, action, target type/id, timestamp, and reason** (when

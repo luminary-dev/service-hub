@@ -15,7 +15,8 @@ It is split into focused pages:
 - **[Accessing the panel & dashboard](admin/access-and-dashboard.md)** — how to
   reach `/admin`, the tier gate, and the analytics home.
 - **[Moderation](admin/moderation.md)** — the verification queue, reports queue,
-  content takedowns, restores and automated flagging.
+  content takedowns, restores, automated flagging and the write-time content
+  filter (#375).
 - **[Providers](admin/providers.md)** — the providers list (search / filter /
   sort / paginate), quality score, bulk actions.
 - **[Categories](admin/categories.md)** — the managed category list, cover

@@ -21,9 +21,10 @@ from the detail view — `PATCH /api/admin/jobs/{id}` with
 SUPPORT). Hiding stamps `hiddenAt`: the job disappears from the provider board,
 stops accepting responses, and can no longer be reported; the list and detail
 views flag it with a **Taken down** chip. The action is reversible (unhide) and
-audit-logged (`hide-job` / `unhide-job`). Job abuse reports themselves land in
-the [reports queue](moderation.md#reports-queue) via job-service's
-`/api/admin/job-reports`.
+audit-logged (`hide-job` / `unhide-job`). Job abuse reports — user-filed (#376)
+and content-filter flags on job posts/responses (#375) — land in the shared
+[reports queue](moderation.md#reports-queue) via job-service's
+`/api/admin/job-reports`, whose rows deep-link back to the job detail here.
 
 ---
 

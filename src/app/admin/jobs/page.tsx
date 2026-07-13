@@ -13,6 +13,8 @@ import AdminJobFilters from "@/components/admin/AdminJobFilters";
 // must be visible on the next request — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
 
+const PAGE_SIZE = 20;
+
 // Admin listing as served by `GET /api/admin/jobs` on the gateway (newest
 // first, with the customer name and a response count hydrated).
 type AdminJobRow = {
@@ -41,18 +43,35 @@ export default async function AdminJobsPage({
   const params = await searchParams;
   const status = typeof params.status === "string" ? params.status : "";
   const category = typeof params.category === "string" ? params.category : "";
+  const page = Math.max(1, Number(params.page) || 1);
 
+  // Pagination (#372) happens in job-service; page/pageSize pass straight
+  // through the gateway and `total` drives the pager controls.
   const query = new URLSearchParams();
   if (status) query.set("status", status);
   if (category) query.set("category", category);
+  query.set("page", String(page));
+  query.set("pageSize", String(PAGE_SIZE));
 
   const [locale, data, categories] = await Promise.all([
     getLocale(),
-    apiJson<{ jobs: AdminJobRow[] }>(`/api/admin/jobs?${query.toString()}`),
+    apiJson<{ jobs: AdminJobRow[]; total: number; page: number; pageSize: number }>(
+      `/api/admin/jobs?${query.toString()}`
+    ),
     fetchCategoryOptions(),
   ]);
   const jobs = data?.jobs ?? [];
+  const total = data?.total ?? 0;
+  const pageSize = data?.pageSize ?? PAGE_SIZE;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const t = dict[locale].admin;
+  const tb = dict[locale].browse;
+
+  function pageLink(target: number) {
+    const sp = new URLSearchParams(query);
+    sp.set("page", String(target));
+    return `/admin/jobs?${sp.toString()}`;
+  }
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
@@ -120,6 +139,24 @@ export default async function AdminJobsPage({
             </li>
           ))}
         </ul>
+      )}
+
+      {totalPages > 1 && (
+        <div className="mt-10 flex items-center justify-center gap-2">
+          {page > 1 && (
+            <Link href={pageLink(page - 1)} className="btn-secondary">
+              {tb.prev}
+            </Link>
+          )}
+          <span className="px-3 text-sm text-ink-500">
+            {tb.pageOf(page, totalPages)}
+          </span>
+          {page < totalPages && (
+            <Link href={pageLink(page + 1)} className="btn-secondary">
+              {tb.next}
+            </Link>
+          )}
+        </div>
       )}
     </div>
   );

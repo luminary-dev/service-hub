@@ -1,8 +1,11 @@
-// Abuse reporting (#376) for job posts — this service owns jobs, so it owns
-// the reports on them (providers/photos are reported at provider-service,
-// reviews at review-service). The public endpoint takes an OPTIONAL session:
-// anonymous visitors can report too; the gateway rate-limits it (the "report"
-// budget).
+// Abuse reporting for content this service owns: job posts and job
+// responses. Reports arrive two ways — the public report-a-job endpoint
+// below (#376: session OPTIONAL, anonymous visitors can report too; the
+// gateway rate-limits it on the shared "report" budget) and SYSTEM rows
+// auto-created by the write-time content filter (#375). The admin queue has
+// the same shape and semantics as provider-service's /api/admin/reports and
+// review-service's /api/admin/review-reports, under its own path so the
+// gateway can route by owner.
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
@@ -74,28 +77,19 @@ reports.post("/api/jobs/:id/report", async (c) => {
   return c.json({ ok: true });
 });
 
-// ---------------------------------------------------------------------------
-// Admin moderation queue — same shape and semantics as provider-service's
-// /api/admin/reports and review-service's /api/admin/review-reports, under
-// its own path so the gateway can route by owner.
-// ---------------------------------------------------------------------------
-
 const REPORT_STATUSES = ["OPEN", "RESOLVED", "DISMISSED"] as const;
-// This queue only ever holds JOB reports — provider/photo/message reports
-// live at provider-service, review reports at review-service. Another filter
-// value is valid overall (the admin frontend offers one dropdown across the
-// three services) but never matches here, so it short-circuits to an empty
-// list below.
-const LOCAL_TARGET_TYPE = "JOB";
+// This queue only ever holds JOB/JOB_RESPONSE reports — the other target
+// types live at provider-service / review-service. A foreign filter is valid
+// overall (the admin frontend offers one dropdown across all sources) but
+// never matches here, so it short-circuits to an empty list below.
+const LOCAL_TARGET_TYPES = ["JOB", "JOB_RESPONSE"] as const;
 
-// OPEN reports first (newest first), then closed ones (newest first). Every
-// report carries a hydrated target summary from the local JobRequest table
-// (title, status, hidden flag); `target` is null when the job has since been
-// hard-deleted (account erasure). Hidden jobs still hydrate, flagged with
-// removed=true, so an admin can see a report was already handled.
-//
-// Filtering + pagination match the sibling queues: optional `status` /
-// `targetType` query params, normalized page/pageSize window with `total`.
+// OPEN reports first (newest first), then closed ones (newest first), as one
+// page/pageSize window with `total` — identical pagination contract to the
+// sibling queues so the admin frontend can page the merged list in lockstep.
+// Every report carries a hydrated target summary from local tables (job
+// title/description for JOB, response message + its job for JOB_RESPONSE);
+// `target` is null when the target has since been hard-deleted.
 reports.get("/api/admin/job-reports", async (c) => {
   // Read access — open to the SUPPORT tier as well as full ADMIN (#226).
   if (!isSupportOrAdmin(c)) {
@@ -111,14 +105,21 @@ reports.get("/api/admin/job-reports", async (c) => {
   const statusParam = c.req.query("status");
   const status = REPORT_STATUSES.find((s) => s === statusParam);
   const targetTypeParam = c.req.query("targetType");
-  if (targetTypeParam && targetTypeParam !== LOCAL_TARGET_TYPE) {
+  if (
+    targetTypeParam &&
+    !LOCAL_TARGET_TYPES.includes(targetTypeParam as never)
+  ) {
     return c.json({ reports: [], total: 0, page, pageSize });
   }
+  const targetType = targetTypeParam as
+    | (typeof LOCAL_TARGET_TYPES)[number]
+    | undefined;
+  const targetFilter = targetType ? { targetType } : {};
 
   let total: number;
   let rows: Awaited<ReturnType<typeof db.report.findMany>>;
   if (status) {
-    const where = { status };
+    const where = { status, ...targetFilter };
     const [count, found] = await Promise.all([
       db.report.count({ where }),
       db.report.findMany({
@@ -133,9 +134,11 @@ reports.get("/api/admin/job-reports", async (c) => {
   } else {
     // No status filter: OPEN group first, then closed. Count each group so the
     // page window can be sliced across the two ordered queries.
+    const openWhere = { status: "OPEN", ...targetFilter };
+    const closedWhere = { status: { not: "OPEN" }, ...targetFilter };
     const [openTotal, closedTotal] = await Promise.all([
-      db.report.count({ where: { status: "OPEN" } }),
-      db.report.count({ where: { status: { not: "OPEN" } } }),
+      db.report.count({ where: openWhere }),
+      db.report.count({ where: closedWhere }),
     ]);
     total = openTotal + closedTotal;
     const { openSkip, openTake, closedSkip, closedTake } = sliceOpenClosed(
@@ -146,7 +149,7 @@ reports.get("/api/admin/job-reports", async (c) => {
     const [openRows, closedRows] = await Promise.all([
       openTake > 0
         ? db.report.findMany({
-            where: { status: "OPEN" },
+            where: openWhere,
             orderBy: { createdAt: "desc" },
             skip: openSkip,
             take: openTake,
@@ -154,7 +157,7 @@ reports.get("/api/admin/job-reports", async (c) => {
         : Promise.resolve([]),
       closedTake > 0
         ? db.report.findMany({
-            where: { status: { not: "OPEN" } },
+            where: closedWhere,
             orderBy: { createdAt: "desc" },
             skip: closedSkip,
             take: closedTake,
@@ -164,42 +167,72 @@ reports.get("/api/admin/job-reports", async (c) => {
     rows = [...openRows, ...closedRows];
   }
 
-  const jobIds = rows.map((r) => r.targetId);
-  const jobs = jobIds.length
-    ? await db.jobRequest.findMany({
-        where: { id: { in: jobIds } },
-        select: {
-          id: true,
-          title: true,
-          status: true,
-          hiddenAt: true,
-        },
-      })
-    : [];
-  const jobById = new Map(jobs.map((j) => [j.id, j]));
+  const jobIds = rows.filter((r) => r.targetType === "JOB").map((r) => r.targetId);
+  const responseIds = rows
+    .filter((r) => r.targetType === "JOB_RESPONSE")
+    .map((r) => r.targetId);
+  const [jobRows, responseRows] = await Promise.all([
+    jobIds.length
+      ? db.jobRequest.findMany({
+          where: { id: { in: jobIds } },
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            status: true,
+            hiddenAt: true,
+          },
+        })
+      : [],
+    responseIds.length
+      ? db.jobResponse.findMany({
+          where: { id: { in: responseIds } },
+          select: {
+            id: true,
+            message: true,
+            providerId: true,
+            jobRequestId: true,
+            jobRequest: { select: { title: true } },
+          },
+        })
+      : [],
+  ]);
+  const jobById = new Map(jobRows.map((j) => [j.id, j]));
+  const responseById = new Map(responseRows.map((r) => [r.id, r]));
 
   const result = rows.map((r) => {
-    const job = jobById.get(r.targetId);
-    return {
-      ...r,
-      target: job
-        ? {
-            jobId: job.id,
-            title: job.title,
-            status: job.status,
-            removed: job.hiddenAt !== null,
-          }
-        : null,
-    };
+    let target = null;
+    if (r.targetType === "JOB") {
+      const job = jobById.get(r.targetId);
+      if (job) {
+        target = {
+          jobId: job.id,
+          title: job.title,
+          description: job.description,
+          status: job.status,
+          // Taken down by an admin (#376) — reversible soft-hide.
+          removed: job.hiddenAt !== null,
+        };
+      }
+    } else {
+      const response = responseById.get(r.targetId);
+      if (response) {
+        target = {
+          jobId: response.jobRequestId,
+          jobTitle: response.jobRequest.title,
+          message: response.message,
+          providerId: response.providerId,
+        };
+      }
+    }
+    return { ...r, target };
   });
 
   return c.json({ reports: result, total, page, pageSize });
 });
 
-// Lightweight count for the admin hub notification badge — avoids shipping
-// the full job-reports payload just to display a number. Summed client-side
-// with provider-service's and review-service's counts into the reports badge
-// total.
+// Lightweight count for the admin hub notification badge (#233 convention) —
+// summed client-side with the provider- and review-service counts.
 reports.get("/api/admin/job-reports/count", async (c) => {
   if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
@@ -224,7 +257,7 @@ reports.patch("/api/admin/job-reports/:id", async (c) => {
   }
 
   const id = c.req.param("id");
-  // Audit trail: stamp who closed the report and when.
+  // Audit trail (#223): stamp who closed the report and when.
   const { count } = await db.report.updateMany({
     where: { id },
     data: {
@@ -250,10 +283,9 @@ const batchReportStatusSchema = z.object({
   status: z.enum(["RESOLVED", "DISMISSED"]),
 });
 
-// Bulk resolve/dismiss: batch variant of the single-report PATCH above,
-// mirroring the sibling services' batch endpoints, for the reports list's
-// multi-select toolbar. Stamps resolvedBy/resolvedAt on every affected row,
-// same as the single-report path.
+// Bulk resolve/dismiss (#231 convention): batch variant of the single-report
+// PATCH above, for the reports list's multi-select toolbar. Stamps
+// resolvedBy/resolvedAt on every affected row, same as the single path.
 reports.patch("/api/admin/job-reports", async (c) => {
   const auth = getAuth(c);
   if (!isSupportOrAdmin(c)) {
@@ -278,8 +310,7 @@ reports.patch("/api/admin/job-reports", async (c) => {
       resolvedAt: new Date(),
     },
   });
-  // Audit trail: one entry per affected report, mirroring the single-report
-  // PATCH above so bulk actions leave the same trail.
+  // Audit trail (#227 convention): one entry per affected report.
   const action =
     parsed.data.status === "RESOLVED" ? "resolve-report" : "dismiss-report";
   await Promise.all(affected.map((r) => logAudit(c, action, "REPORT", r.id)));
@@ -288,9 +319,8 @@ reports.patch("/api/admin/job-reports", async (c) => {
 
 // ---------------------------------------------------------------------------
 // Audit log: read-only history of every moderation write in this service
-// (job hide/unhide, report resolve/dismiss). provider-service and
-// review-service keep their own logs for the actions they own — the admin
-// frontend merges all three.
+// (job-report resolve/dismiss). Same contract as review-service's
+// /api/admin/review-audit-log — the admin frontend merges all three logs.
 // ---------------------------------------------------------------------------
 
 const AUDIT_LOG_TAKE = 200;

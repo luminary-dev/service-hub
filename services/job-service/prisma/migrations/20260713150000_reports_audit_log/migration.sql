@@ -1,14 +1,7 @@
--- Job abuse reports + admin takedown (#376). Idempotent-safe: guarded
--- CREATEs and ADD COLUMN IF NOT EXISTS.
-
--- Admin takedown flag: set when a full admin hides a reported job, cleared on
--- unhide. Hidden jobs disappear from the provider board and stop accepting
--- responses.
-ALTER TABLE "JobRequest" ADD COLUMN IF NOT EXISTS "hiddenAt" TIMESTAMP(3);
-
--- Reports on job posts — same shape as provider-service/review-service's
--- Report tables (each content-owning service keeps reports on its own
--- content).
+-- Moderation reports on job posts / responses + admin audit trail (#375).
+-- Mirrors the final Report/AdminAuditLog shape review-service and
+-- provider-service converged on in #370 (source, resolution audit, updatedAt)
+-- so the admin frontend can merge the three queues uniformly. Idempotent.
 CREATE TABLE IF NOT EXISTS "Report" (
     "id" TEXT NOT NULL,
     "targetType" TEXT NOT NULL,
@@ -30,9 +23,6 @@ CREATE INDEX IF NOT EXISTS "Report_status_idx" ON "Report"("status");
 CREATE INDEX IF NOT EXISTS "Report_targetType_targetId_idx" ON "Report"("targetType", "targetId");
 CREATE INDEX IF NOT EXISTS "Report_createdAt_idx" ON "Report"("createdAt");
 
--- Moderation audit trail — one row per admin action taken through this
--- service (job hide/unhide, report resolve/dismiss). Same shape as
--- provider-service/review-service's AdminAuditLog.
 CREATE TABLE IF NOT EXISTS "AdminAuditLog" (
     "id" TEXT NOT NULL,
     "adminId" TEXT NOT NULL,

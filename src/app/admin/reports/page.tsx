@@ -21,18 +21,21 @@ import ReportsFilterBar, {
 // next request — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
 
-// The moderation queue (#50, #376) merges three sources — provider-service
-// owns reports on providers, work photos and inquiry messages
+// The moderation queue (#50) merges three sources — provider-service owns
+// reports on providers, work photos, inquiry threads and thread messages
 // (`GET /api/admin/reports`), review-service owns reports on reviews
 // (`GET /api/admin/review-reports`), and job-service owns reports on job
-// posts (`GET /api/admin/job-reports`). All return OPEN first (newest first)
-// with a hydrated target summary (null when the target no longer exists).
+// posts/responses (`GET /api/admin/job-reports`, #375). All return OPEN
+// first (newest first) with a hydrated target summary (null when the target
+// no longer exists).
 const TARGET_TYPES: TargetTypeFilter[] = [
   "PROVIDER",
   "WORK_PHOTO",
   "REVIEW",
-  "JOB",
+  "INQUIRY",
   "MESSAGE",
+  "JOB",
+  "JOB_RESPONSE",
 ];
 const STATUSES: StatusFilter[] = ["OPEN", "RESOLVED", "DISMISSED"];
 
@@ -84,15 +87,15 @@ export default async function AdminReportsPage({
   ] = await Promise.all([
     getLocale(),
     apiJson<{
-      reports: Omit<Extract<ReportRow, { source: "provider" }>, "source">[];
+      reports: Omit<Extract<ReportRow, { service: "provider" }>, "service">[];
       total: number;
     }>(`/api/admin/reports?${qs}`),
     apiJson<{
-      reports: Omit<Extract<ReportRow, { source: "review" }>, "source">[];
+      reports: Omit<Extract<ReportRow, { service: "review" }>, "service">[];
       total: number;
     }>(`/api/admin/review-reports?${qs}`),
     apiJson<{
-      reports: Omit<Extract<ReportRow, { source: "job" }>, "source">[];
+      reports: Omit<Extract<ReportRow, { service: "job" }>, "service">[];
       total: number;
     }>(`/api/admin/job-reports?${qs}`),
     // Accurate open totals for the badge + stat readout — a single page no
@@ -110,13 +113,13 @@ export default async function AdminReportsPage({
   // contract: OPEN before closed, newest first within each group.
   const rows: ReportRow[] = [
     ...(providerData?.reports ?? []).map(
-      (r) => ({ ...r, source: "provider" }) as ReportRow
+      (r) => ({ ...r, service: "provider" }) as ReportRow
     ),
     ...(reviewData?.reports ?? []).map(
-      (r) => ({ ...r, source: "review" }) as ReportRow
+      (r) => ({ ...r, service: "review" }) as ReportRow
     ),
     ...(jobData?.reports ?? []).map(
-      (r) => ({ ...r, source: "job" }) as ReportRow
+      (r) => ({ ...r, service: "job" }) as ReportRow
     ),
   ].sort((a, b) => {
     const openA = a.status === "OPEN" ? 0 : 1;
@@ -163,8 +166,8 @@ export default async function AdminReportsPage({
       >
         <StatReadout
           stats={[
-            { label: "OPEN", value: openCount },
-            { label: "TOTAL", value: total },
+            { label: t.stats.open, value: openCount },
+            { label: t.stats.total, value: total },
           ]}
         />
       </PageHeader>

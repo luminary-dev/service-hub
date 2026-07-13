@@ -4,6 +4,7 @@ import { FaBriefcase, FaInbox, FaPhone, FaPlus } from "@/components/icons";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
+import { loginNext } from "@/lib/login";
 import { formatDate, formatNumber } from "@/lib/format";
 import { dict, categoryLabelLoc, districtLabelLoc } from "@/lib/i18n";
 import InView from "@/components/InView";
@@ -61,7 +62,7 @@ export default async function JobsPage({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const session = await getSession();
-  if (!session) redirect("/login");
+  if (!session) redirect(await loginNext("/jobs"));
 
   const params = await searchParams;
   const boardPage = Math.max(1, Number(params.boardPage) || 1);
@@ -134,16 +135,18 @@ export default async function JobsPage({
   }
 
   // Instrument readout in the header band — board-focused for providers,
-  // posting-focused for customers. Labels are decorative mono captions
-  // (matching the registry header), values are localized counts.
+  // posting-focused for customers. Captions and counts are both localized.
   const stats = provider
     ? [
-        { label: "MATCHING", value: boardTotal },
-        { label: "RESPONDED", value: board.filter((j) => j.responded).length },
+        { label: t.stats.matching, value: boardTotal },
+        {
+          label: t.stats.responded,
+          value: board.filter((j) => j.responded).length,
+        },
       ]
     : [
-        { label: "POSTED", value: mineTotal },
-        { label: "OPEN", value: openCount },
+        { label: t.stats.posted, value: mineTotal },
+        { label: t.stats.open, value: openCount },
       ];
 
   return (

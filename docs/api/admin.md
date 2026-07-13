@@ -12,7 +12,7 @@ each service enforces the tier. **Reads and report resolve/dismiss** gate on
 |---|---|---|
 | `GET /api/admin/users` | SUPPORT+ | Search by email/name (`?q`, `?page`), newest first, page 20 → `{ users, total, page, pageSize }`. |
 | `GET /api/admin/users/:id` | SUPPORT+ | Detail + favorites hydrated with provider names/phones (degrades to null). |
-| `PATCH /api/admin/users/:id` | ADMIN | `{ action: lock\|unlock }` and/or `{ role: CUSTOMER\|PROVIDER\|ADMIN\|SUPPORT }` (a lock or an actual role change bumps `sessionVersion`, revoking existing tokens). Self → 400. |
+| `PATCH /api/admin/users/:id` | ADMIN | `{ action: lock\|unlock }` and/or `{ role: CUSTOMER\|PROVIDER\|ADMIN\|SUPPORT }` (a lock or an actual role change bumps `sessionVersion`, revoking existing tokens). Self → 400. Promoting to PROVIDER requires an existing provider profile — none → 400 (#554). |
 | `POST /api/admin/users/:id/force-logout` | ADMIN | Bumps `sessionVersion` (self → 400). |
 | `POST /api/admin/impersonate/:userId` | ADMIN | `:userId` may be id or email; can't target self or an ADMIN (400); mints a 15-min `impersonation_session` cookie → `{ ok, user, providerId, expiresInSeconds: 900 }`. |
 | `POST /api/admin/impersonate/end` | ADMIN | Clears the cookie, closes the open log row → `{ ok: true }`. |
@@ -22,7 +22,7 @@ each service enforces the tier. **Reads and report resolve/dismiss** gate on
 
 | Method + path | Auth | Summary |
 |---|---|---|
-| `GET /api/admin/providers` | SUPPORT+ | Moderation list: `q`/`category`/`city`/`status`/`suspended` filters, sort `newest`\|`mostReviews`, paginated (default 20, cap 100) → `{ providers, total, page, pageSize }`. |
+| `GET /api/admin/providers` | SUPPORT+ | Moderation list: `q`/`category`/`city`/`status`/`suspended` filters, sort `newest`\|`mostReviews`, paginated (default 20, cap 100) → `{ providers, total, page, pageSize }`. `mostReviews` ranks in memory over at most the 1000 newest matches (#372). |
 | `GET /api/admin/providers/:id` | SUPPORT+ | Detail + photos + reviews (incl. soft-deleted) + `quality` score (#229, computed live). |
 | `GET /api/admin/verifications` | SUPPORT+ | PENDING queue + docs, oldest first, paginated (default 20, cap 100) → `{ providers, total, page, pageSize }`. |
 | `PATCH /api/admin/providers/:id` | ADMIN | `{ action: verify\|unverify\|suspend\|unsuspend }`. |
@@ -33,7 +33,7 @@ each service enforces the tier. **Reads and report resolve/dismiss** gate on
 | `PATCH /api/admin/photos/:id/restore` | ADMIN | Restore a soft-deleted photo. |
 | `DELETE /api/admin/messages/:id` | ADMIN | Soft-delete a reported inquiry thread message (#376) — vanishes from the thread for both parties; reversible. |
 | `PATCH /api/admin/messages/:id/restore` | ADMIN | Restore a soft-deleted message. |
-| `GET /api/admin/reports` | SUPPORT+ | Provider/work-photo/message report queue (OPEN first), `status`/`targetType` filters, paginated (default 20, cap 100) → `{ reports, total, page, pageSize }` with hydrated target. |
+| `GET /api/admin/reports` | SUPPORT+ | Provider/work-photo/inquiry/message report queue (OPEN first), `status`/`targetType` filters (`PROVIDER`\|`WORK_PHOTO`\|`INQUIRY`\|`MESSAGE` — inquiry rows are content-filter flags #375, message rows are user reports #376), paginated (default 20, cap 100) → `{ reports, total, page, pageSize }` with hydrated target. |
 | `PATCH /api/admin/reports/:id` | SUPPORT+ | `{ status: RESOLVED\|DISMISSED }` (stamps `resolvedBy`/`resolvedAt`). |
 | `PATCH /api/admin/reports` | SUPPORT+ | Bulk resolve/dismiss `{ ids, status }` → `{ ok, count }`. |
 | `GET /api/admin/notifications/counts` | SUPPORT+ | `{ pendingVerifications, openReports }` (nav badges). |
@@ -62,14 +62,14 @@ each service enforces the tier. **Reads and report resolve/dismiss** gate on
 
 | Method + path | Auth | Summary |
 |---|---|---|
-| `GET /api/admin/jobs` | SUPPORT+ | Jobs list (`?status` — `OPEN`/`CLOSED`, any other value is ignored; `?category`), newest first, customer name + response count → `{ jobs }` (not paginated). Rows carry `hiddenAt` (#376). |
+| `GET /api/admin/jobs` | SUPPORT+ | Jobs list (`?status` — `OPEN`/`CLOSED`, any other value is ignored; `?category`), newest first, customer name + response count, paginated (#372: `?page`/`?pageSize`, default 20, cap 50) → `{ jobs, total, page, pageSize }`. Rows carry `hiddenAt` (#376). |
 | `GET /api/admin/jobs/:id` | SUPPORT+ | Job + responses with customer/provider contact hydrated (+ `hiddenAt`). |
 | `PATCH /api/admin/jobs/:id` | ADMIN | Takedown (#376): `{ action: hide\|unhide }` — hide stamps `hiddenAt` (job vanishes from the board and stops accepting responses), unhide clears it. Audited. |
-| `GET /api/admin/job-reports` | SUPPORT+ | Job report queue (same shape as the sibling queues), `status`/`targetType` filters, paginated (default 20, cap 100) → `{ reports, total, page, pageSize }` with hydrated target `{ jobId, title, status, removed }`. |
+| `GET /api/admin/job-reports` | SUPPORT+ | Job/job-response report queue (user reports #376 + SYSTEM content-filter flags #375), `status`/`targetType` filters (`JOB`\|`JOB_RESPONSE`), paginated (default 20, cap 100) → `{ reports, total, page, pageSize }` with hydrated target (JOB targets carry `removed`, the takedown flag). |
 | `GET /api/admin/job-reports/count` | SUPPORT+ | `{ openReports }` (nav badge; summed with provider + review counts client-side). |
 | `PATCH /api/admin/job-reports/:id` | SUPPORT+ | `{ status: RESOLVED\|DISMISSED }` (stamps `resolvedBy`/`resolvedAt`, audited). |
 | `PATCH /api/admin/job-reports` | SUPPORT+ | Bulk resolve/dismiss `{ ids, status }` → `{ ok, count }`. |
-| `GET /api/admin/job-audit-log` | SUPPORT+ | This service's moderation log (filters + take 200; merged with the provider/review logs in the UI). |
+| `GET /api/admin/job-audit-log` | SUPPORT+ | This service's moderation log (filters + take 200; merged with the provider + review logs in the UI). |
 
 ---
 

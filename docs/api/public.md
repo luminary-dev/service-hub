@@ -16,7 +16,7 @@ the upstream that owns the handler.
 | `POST /api/auth/leave-provider` | authenticated (PROVIDER) | Counterpart to complete-provider (#403): hides the provider profile from listings via S2S (`suspended = true`, reversible — reviews/inquiries/responses kept), flips role → CUSTOMER, bumps `sessionVersion`, re-issues cookie, audit-logs. Profile-hide runs first: if provider-service is down → 502, role unchanged. 409 if not a provider. |
 | `POST /api/auth/logout` | public | Clears the session cookie → `{ ok: true }`. |
 | `POST /api/auth/logout-all` | authenticated | Bumps `sessionVersion` (revokes every session), re-issues this one → `{ ok: true }`. |
-| `POST /api/auth/delete-account` | authenticated | Re-auth with `{ password }` (optional for social-only accounts, which have none — the session is the re-auth); resolves the user's `providerId` (fail-loud, so the job erase always receives it and deletes their JobResponses/PII), fans out S2S erase to provider/review/job (any failure — including the `providerId` lookup — → 502, nothing deleted), then deletes the User + records `AccountDeletion`. |
+| `POST /api/auth/delete-account` | authenticated | Re-auth with `{ password }` (optional for social-only accounts, which have none — the session is the re-auth); resolves the user's `providerId` (fail-loud, so the job erase always receives it and deletes their JobResponses/PII), fans out S2S erase to review + job first and provider **last** (#551 — the provider erase deletes the Provider row the `providerId` lookup depends on, so it must not commit before the job erase succeeds or a retry would strand the JobResponses; any failure — including the `providerId` lookup — → 502 and the retry can finish), then deletes the User + records `AccountDeletion`. |
 | `GET /api/auth/me` | public | `{ user: null }` when signed out, else `{ user: { id, name, email, phone, emailVerified, role, avatarUrl, providerId } }`. |
 | `PUT /api/account/profile` | authenticated | `{ name, phone }` — edits the caller's own name/phone (phone normalized to E.164) and re-issues the cookie so the cached display name updates. Any role. |
 | `POST /api/account/avatar` | authenticated | Multipart profile-photo upload (#434, any role) → media-service `user` namespace (R2 in prod). Sets `User.avatarUrl`, syncs the denormalized copy to the caller's provider profile (if any), and re-issues the session cookie so the top-nav avatar updates without a re-login. jpeg/png/webp ≤5MB → `{ avatarUrl }`. |
@@ -46,7 +46,7 @@ the upstream that owns the handler.
 | `GET /api/providers/ids` | public | Every non-suspended provider `{ id, updatedAt }` (sitemap) → `{ providers }`. |
 | `GET /api/stats` | public | `{ providerCount, reviewCount }` (review count via S2S). |
 | `GET /api/providers/:id` | public | Legacy detail: provider + services + photos, contact as `user` (name/email only). Phone numbers are omitted (#64) — the payload carries `hasPhone`/`hasWhatsapp`/`hasPhone2` booleans instead; fetch the digits via `POST /:id/contact`. Admin moderation fields (`rejectionReason`) are never included (#506). Suspended → 404 unless caller is ADMIN. |
-| `GET /api/providers/:id/full` | public | Full profile payload: services, first 50 photos (`photosTotal`), first page of reviews (`?reviewsTake`≤100, `?reviewsCursor`; `reviewsNextCursor` returned), `avgResponseMs`, `favorited`. Contact as `user` (name/email only) + `hasPhone`/`hasWhatsapp`/`hasPhone2` booleans — raw phone numbers are withheld (#64, see `POST /:id/contact`). Admin moderation fields (`rejectionReason`) are never included (#506). Suspended → 404 unless ADMIN. |
+| `GET /api/providers/:id/full` | public | Full profile payload: services, first 50 photos (`photosTotal`), first page of reviews (`?reviewsTake`≤100, `?reviewsCursor`; `reviewsNextCursor` returned), `avgResponseMs` (over the 200 most recent answered inquiries, #372), `favorited`. Contact as `user` (name/email only) + `hasPhone`/`hasWhatsapp`/`hasPhone2` booleans — raw phone numbers are withheld (#64, see `POST /:id/contact`). Admin moderation fields (`rejectionReason`) are never included (#506). Suspended → 404 unless ADMIN. |
 | `GET /api/providers/:id/card` | public | OG-image payload (name/category/city/rating/verification). Returns the `suspended` flag rather than 404. |
 | `POST /api/providers/:id/contact` | public | Phone-number reveal (#64): returns `{ phone, whatsapp, phone2 }`. The public payloads omit these so crawlers can't harvest them; the web reveals them on an explicit "show number" tap. Rate-limited (`contactReveal`, 20/10 min per IP). Suspended → 404 unless ADMIN. |
 | `POST /api/providers/:id/inquiries` | optional session | Send an inquiry `{ name, phone, email?, message, source? }`; emails the provider best-effort → `{ inquiry }`. |
@@ -72,7 +72,7 @@ Every route requires a provider owned by the authenticated user (else
 
 | Method + path | Auth | Summary |
 |---|---|---|
-| `GET /api/provider/dashboard` | role: PROVIDER (owner) | Provider + contact + services + photos + inquiries + rating summary + `openJobsCount` (S2S). |
+| `GET /api/provider/dashboard` | role: PROVIDER (owner) | Provider + contact + services + photos + first 20 inquiries (+ `inquiriesTotal`/`newInquiriesCount`, #372) + rating summary + `openJobsCount` (S2S). |
 | `PUT /api/provider/profile` | role: PROVIDER (owner) | Update profile (tightened field rules; optional `awayUntil`, #49); category re-checked; syncs name/phone to identity via S2S. |
 | `POST /api/provider/services` | role: PROVIDER (owner) | Add a service `{ title, description?, price, priceType }` → `{ service }`. |
 | `PUT /api/provider/services/:id` | role: PROVIDER (owner) | Update own service (404 if not owned). |
@@ -81,7 +81,7 @@ Every route requires a provider owned by the authenticated user (else
 | `DELETE /api/provider/cover` | role: PROVIDER (owner) | Clears the dedicated cover (#435) → the card falls back to the first work photo / category image. |
 | `PATCH /api/provider/photos/order` | role: PROVIDER (owner) | `{ ids }` → `sortOrder`; ids not owned are ignored. |
 | `DELETE /api/provider/photos/:id` | role: PROVIDER (owner) | Hard-delete own photo + remove the file. |
-| `GET /api/provider/inquiries` | role: PROVIDER (owner) | Own inquiries with `unreadCount`. |
+| `GET /api/provider/inquiries` | role: PROVIDER (owner) | Own inquiries with `unreadCount`, paginated (#372: `?page`/`?pageSize`, default 20, cap 100) → `{ inquiries, total, page, pageSize }`. |
 | `PATCH /api/provider/inquiries/:id` | role: PROVIDER (owner) | `{ status: NEW\|RESPONDED\|CLOSED }`; first move to RESPONDED stamps `respondedAt`. |
 | `POST /api/provider/verification` | role: PROVIDER (owner) | Multipart NIC/business docs → status PENDING (400 if already VERIFIED). |
 
@@ -97,8 +97,10 @@ Every route requires a provider owned by the authenticated user (else
 
 | Method + path | Auth | Summary |
 |---|---|---|
-| `GET /api/providers/:id/reviews` | public | Paginated reviews (`?take` default 10, max 100; `?cursor`) → `{ reviews, nextCursor, summary }`. `summary` (#528) aggregates over **all** non-deleted reviews: `{ rating, count, dimensions: { quality, punctuality, value, communication } (each an avg over non-null values or null), distribution: { "1".."5": count } }`. Suspended/missing provider → 404. |
+| `GET /api/providers/:id/reviews` | public | Paginated reviews (`?take` default 10, max 100; `?cursor`) → `{ reviews, nextCursor, summary }`. Each review carries the provider's public reply as `response: { text, createdAt, updatedAt } \| null` (#395). `summary` (#528) aggregates over **all** non-deleted reviews: `{ rating, count, dimensions: { quality, punctuality, value, communication } (each an avg over non-null values or null), distribution: { "1".."5": count } }`. Suspended/missing provider → 404. |
 | `POST /api/providers/:id/reviews` | authenticated | Multipart `rating`/`comment` + optional 1–5 sub-ratings `quality`/`punctuality`/`value`/`communication` (#528, blank ⇒ omitted) + up to 3 photos. Hard interaction gate (must have inquired first, else 403); can't review own profile (400); upsert (one review per provider) → `{ ok: true }`. |
+| `POST /api/reviews/:id/response` | authenticated (profile owner) | Provider's public reply to a review (#395): JSON `{ text }` (3–1000, trimmed); upsert — one response per review, posting again replaces it. Ownership checked S2S (fail-loud → 502); non-owner/suspended → 403; missing/soft-deleted review → 404 → `{ ok: true }`. |
+| `DELETE /api/reviews/:id/response` | authenticated (profile owner) | Remove the provider's response (same ownership gate; idempotent) → `{ ok: true }`. |
 | `GET /api/account/reviews` | authenticated | The caller's reviews (cap 50, excludes soft-deleted); provider names hydrated S2S → `{ reviews }`. |
 | `DELETE /api/reviews/photos/:id` | authenticated (owner or ADMIN) | Remove a review photo. |
 
@@ -118,7 +120,7 @@ Reasons enum: `spam`, `scam`, `offensive`, `fake`, `other`.
 
 | Method + path | Auth | Summary |
 |---|---|---|
-| `POST /api/jobs` | authenticated | Post a job `{ category, district, title, description, budget? }` (category checked S2S) → `{ id }`. |
+| `POST /api/jobs` | authenticated (verified email) | Post a job `{ category, district, title, description, budget? }` (category checked S2S) → `{ id }`. Unverified email → 403; over 10 posts per account per rolling 24 h → 429 (#556). |
 | `PATCH /api/jobs/:id` | authenticated (owner) | `{ status: OPEN\|CLOSED }`; non-owner → 404. |
 | `POST /api/jobs/:id/responses` | authenticated (PROVIDER) | Respond `{ message }`; provider gate + same category/district scope as the board; open + dup checks; a job hidden by admin takedown (#376) → 404; emails the customer best-effort → `{ ok: true }`. |
 | `GET /api/jobs/board` | authenticated (PROVIDER) | OPEN jobs matching the provider's category+district, excluding own and admin-hidden (#376), with customer names + `responded`. Paginated → `{ jobs, total, page, pageSize }`. |
