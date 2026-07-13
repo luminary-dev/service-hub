@@ -44,6 +44,11 @@ unthrottled endpoint is a mail-bomb vector. The four image-upload endpoints
 share one `upload` bucket (#520): each runs a CPU-expensive `sharp` re-encode,
 so the budget is wide enough for a provider filling out a photo gallery in one
 sitting yet tight enough to blunt an attacker hammering the re-encode path.
+Job posting is additionally capped **per account** inside job-service (#556):
+each post fans out to up to 200 provider inboxes, and the per-IP rule alone is
+rotatable — so job-service requires a verified email (403 otherwise) and allows
+at most **10 posts per account per rolling 24 h** (429 beyond that), checked
+against the jobs table before the write.
 
 Over-limit requests get `429` with a JSON body
 (`{ "error": "Too many requests. Please slow down and try again shortly." }`)
