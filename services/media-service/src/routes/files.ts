@@ -7,6 +7,7 @@ import path from "node:path";
 import {
   isKnownNamespace,
   isVariantName,
+  isVerificationSubpath,
   resolveFilePath,
   variantName,
 } from "../lib/media";
@@ -33,6 +34,14 @@ filesRoutes.get("/files/:namespace/*", async (c) => {
   const ext = path.extname(rest).slice(1).toLowerCase();
   const contentType = CONTENT_TYPES[ext];
   if (!contentType) {
+    return c.json({ error: "Not found" }, 404);
+  }
+
+  // Verification documents (NIC / business-registration scans, #500) are PII
+  // and are served ONLY through provider-service's admin-gated route, never on
+  // this public path. The gateway no longer forwards this prefix; refusing it
+  // here too is defence-in-depth.
+  if (isVerificationSubpath(rest)) {
     return c.json({ error: "Not found" }, 404);
   }
 
