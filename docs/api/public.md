@@ -46,7 +46,7 @@ the upstream that owns the handler.
 | `GET /api/providers/ids` | public | Every non-suspended provider `{ id, updatedAt }` (sitemap) → `{ providers }`. |
 | `GET /api/stats` | public | `{ providerCount, reviewCount }` (review count via S2S). |
 | `GET /api/providers/:id` | public | Legacy detail: provider + services + photos, contact as `user` (name/email only). Phone numbers are omitted (#64) — the payload carries `hasPhone`/`hasWhatsapp`/`hasPhone2` booleans instead; fetch the digits via `POST /:id/contact`. Admin moderation fields (`rejectionReason`) are never included (#506). Suspended → 404 unless caller is ADMIN. |
-| `GET /api/providers/:id/full` | public | Full profile payload: services, first 50 photos (`photosTotal`), first page of reviews (`?reviewsTake`≤100, `?reviewsCursor`; `reviewsNextCursor` returned), `avgResponseMs`, `favorited`. Contact as `user` (name/email only) + `hasPhone`/`hasWhatsapp`/`hasPhone2` booleans — raw phone numbers are withheld (#64, see `POST /:id/contact`). Admin moderation fields (`rejectionReason`) are never included (#506). Suspended → 404 unless ADMIN. |
+| `GET /api/providers/:id/full` | public | Full profile payload: services, first 50 photos (`photosTotal`), first page of reviews (`?reviewsTake`≤100, `?reviewsCursor`; `reviewsNextCursor` returned), `avgResponseMs` (over the 200 most recent answered inquiries, #372), `favorited`. Contact as `user` (name/email only) + `hasPhone`/`hasWhatsapp`/`hasPhone2` booleans — raw phone numbers are withheld (#64, see `POST /:id/contact`). Admin moderation fields (`rejectionReason`) are never included (#506). Suspended → 404 unless ADMIN. |
 | `GET /api/providers/:id/card` | public | OG-image payload (name/category/city/rating/verification). Returns the `suspended` flag rather than 404. |
 | `POST /api/providers/:id/contact` | public | Phone-number reveal (#64): returns `{ phone, whatsapp, phone2 }`. The public payloads omit these so crawlers can't harvest them; the web reveals them on an explicit "show number" tap. Rate-limited (`contactReveal`, 20/10 min per IP). Suspended → 404 unless ADMIN. |
 | `POST /api/providers/:id/inquiries` | optional session | Send an inquiry `{ name, phone, email?, message, source? }`; emails the provider best-effort → `{ inquiry }`. |
@@ -72,7 +72,7 @@ Every route requires a provider owned by the authenticated user (else
 
 | Method + path | Auth | Summary |
 |---|---|---|
-| `GET /api/provider/dashboard` | role: PROVIDER (owner) | Provider + contact + services + photos + inquiries + rating summary + `openJobsCount` (S2S). |
+| `GET /api/provider/dashboard` | role: PROVIDER (owner) | Provider + contact + services + photos + first 20 inquiries (+ `inquiriesTotal`/`newInquiriesCount`, #372) + rating summary + `openJobsCount` (S2S). |
 | `PUT /api/provider/profile` | role: PROVIDER (owner) | Update profile (tightened field rules; optional `awayUntil`, #49); category re-checked; syncs name/phone to identity via S2S. |
 | `POST /api/provider/services` | role: PROVIDER (owner) | Add a service `{ title, description?, price, priceType }` → `{ service }`. |
 | `PUT /api/provider/services/:id` | role: PROVIDER (owner) | Update own service (404 if not owned). |
@@ -81,7 +81,7 @@ Every route requires a provider owned by the authenticated user (else
 | `DELETE /api/provider/cover` | role: PROVIDER (owner) | Clears the dedicated cover (#435) → the card falls back to the first work photo / category image. |
 | `PATCH /api/provider/photos/order` | role: PROVIDER (owner) | `{ ids }` → `sortOrder`; ids not owned are ignored. |
 | `DELETE /api/provider/photos/:id` | role: PROVIDER (owner) | Hard-delete own photo + remove the file. |
-| `GET /api/provider/inquiries` | role: PROVIDER (owner) | Own inquiries with `unreadCount`. |
+| `GET /api/provider/inquiries` | role: PROVIDER (owner) | Own inquiries with `unreadCount`, paginated (#372: `?page`/`?pageSize`, default 20, cap 100) → `{ inquiries, total, page, pageSize }`. |
 | `PATCH /api/provider/inquiries/:id` | role: PROVIDER (owner) | `{ status: NEW\|RESPONDED\|CLOSED }`; first move to RESPONDED stamps `respondedAt`. |
 | `POST /api/provider/verification` | role: PROVIDER (owner) | Multipart NIC/business docs → status PENDING (400 if already VERIFIED). |
 

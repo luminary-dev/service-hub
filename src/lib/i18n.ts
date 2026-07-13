@@ -983,6 +983,9 @@ const en = {
       statusNew: "NEW",
       statusResponded: "RESPONDED",
       statusClosed: "CLOSED",
+      loadMore: (n: number) => `Load more (${n} remaining)`,
+      loadingMore: "Loading…",
+      loadMoreError: "Could not load more inquiries. Please try again.",
     },
   },
   providerReg: {
@@ -2022,6 +2025,9 @@ const si: Dict = {
       statusNew: "නව",
       statusResponded: "පිළිතුරු දී ඇත",
       statusClosed: "වසා ඇත",
+      loadMore: (n: number) => `තවත් පෙන්වන්න (ඉතිරි ${n})`,
+      loadingMore: "පූරණය වෙමින්…",
+      loadMoreError: "තවත් විමසුම් පූරණය කළ නොහැකි විය. නැවත උත්සාහ කරන්න.",
     },
   },
   providerReg: {

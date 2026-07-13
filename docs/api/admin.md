@@ -22,7 +22,7 @@ each service enforces the tier. **Reads and report resolve/dismiss** gate on
 
 | Method + path | Auth | Summary |
 |---|---|---|
-| `GET /api/admin/providers` | SUPPORT+ | Moderation list: `q`/`category`/`city`/`status`/`suspended` filters, sort `newest`\|`mostReviews`, paginated (default 20, cap 100) → `{ providers, total, page, pageSize }`. |
+| `GET /api/admin/providers` | SUPPORT+ | Moderation list: `q`/`category`/`city`/`status`/`suspended` filters, sort `newest`\|`mostReviews`, paginated (default 20, cap 100) → `{ providers, total, page, pageSize }`. `mostReviews` ranks in memory over at most the 1000 newest matches (#372). |
 | `GET /api/admin/providers/:id` | SUPPORT+ | Detail + photos + reviews (incl. soft-deleted) + `quality` score (#229, computed live). |
 | `GET /api/admin/verifications` | SUPPORT+ | PENDING queue + docs, oldest first, paginated (default 20, cap 100) → `{ providers, total, page, pageSize }`. |
 | `PATCH /api/admin/providers/:id` | ADMIN | `{ action: verify\|unverify\|suspend\|unsuspend }`. |
@@ -60,7 +60,7 @@ each service enforces the tier. **Reads and report resolve/dismiss** gate on
 
 | Method + path | Auth | Summary |
 |---|---|---|
-| `GET /api/admin/jobs` | SUPPORT+ | Jobs list (`?status` — `OPEN`/`CLOSED`, any other value is ignored; `?category`), newest first, customer name + response count → `{ jobs }` (not paginated). |
+| `GET /api/admin/jobs` | SUPPORT+ | Jobs list (`?status` — `OPEN`/`CLOSED`, any other value is ignored; `?category`), newest first, customer name + response count, paginated (#372: `?page`/`?pageSize`, default 20, cap 50) → `{ jobs, total, page, pageSize }`. |
 | `GET /api/admin/jobs/:id` | SUPPORT+ | Job + responses with customer/provider contact hydrated. |
 
 ---
