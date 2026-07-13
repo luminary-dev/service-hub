@@ -20,6 +20,7 @@
   - [Admin API](api/admin.md)
   - [Internal S2S API](api/internal.md)
 - [Authorization & RBAC](AUTHZ.md)
+- [RFC: Trust & safety service extraction](rfcs/trust-safety-service.md)
 
 ## Product
 
