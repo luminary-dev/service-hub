@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
+import { loginNext } from "@/lib/login";
 import { dict } from "@/lib/i18n";
 import MessageThread from "@/components/MessageThread";
 import PageHeader from "@/components/ui/PageHeader";
@@ -16,7 +17,10 @@ export default async function AccountInquiryThreadPage({
   params: Promise<{ id: string }>;
 }) {
   const session = await getSession();
-  if (!session) redirect("/login");
+  if (!session) {
+    const { id } = await params;
+    redirect(await loginNext(`/account/inquiries/${encodeURIComponent(id)}`));
+  }
   const [{ id }, locale] = await Promise.all([params, getLocale()]);
   const t = dict[locale];
 

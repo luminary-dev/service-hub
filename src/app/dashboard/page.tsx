@@ -4,6 +4,7 @@ import { apiJson } from "@/lib/api";
 import { fetchCategoryOptions } from "@/lib/categories-server";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
+import { loginNext } from "@/lib/login";
 import { dict } from "@/lib/i18n";
 import Link from "next/link";
 import { FaBriefcase } from "@/components/icons";
@@ -79,7 +80,7 @@ export default async function DashboardPage({
   searchParams: Promise<{ welcome?: string }>;
 }) {
   const session = await getSession();
-  if (!session) redirect("/login");
+  if (!session) redirect(await loginNext("/dashboard"));
   if (session.role !== "PROVIDER") redirect("/providers");
 
   const [dashboard, categories] = await Promise.all([
