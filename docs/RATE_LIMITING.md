@@ -28,6 +28,8 @@ them. Only `POST` requests are checked.
 | `POST /api/providers/[id]/reviews` | `review` | 10 / hour |
 | `POST /api/reviews/[id]/response` | `review` | 10 / hour (own `review-response` bucket) |
 | `POST /api/inquiries/[id]/messages` | `message` | 30 / 10 min |
+| `POST /api/notifications/read` | `message` | 30 / 10 min (own `notification-read` bucket) |
+| `POST /api/notification-preferences` | `review` | 10 / hour (own `notification-prefs` bucket) |
 | `POST /api/providers/[id]/report`, `POST /api/photos/[id]/report`, `POST /api/reviews/[id]/report`, `POST /api/jobs/[id]/report`, `POST /api/messages/[id]/report` | `review` | 10 / hour (shared `report` bucket) |
 | `POST /api/account/avatar`, `POST /api/provider/photos`, `POST /api/provider/verification`, `POST /api/admin/categories/image` | `upload` | 20 / 15 min (shared `upload` bucket) |
 
@@ -45,6 +47,11 @@ unthrottled endpoint is a mail-bomb vector. The four image-upload endpoints
 share one `upload` bucket (#520): each runs a CPU-expensive `sharp` re-encode,
 so the budget is wide enough for a provider filling out a photo gallery in one
 sitting yet tight enough to blunt an attacker hammering the re-encode path.
+The notification-center writes (#394) reuse existing budgets: mark-read fires
+at conversational frequency (each bell open marks a page read) so it sits on
+the `message` rule, and the preference upsert is a settings form on the
+`review` rule; the notification GETs (feed, unread-count poll) stay
+unthrottled like every other read — the client controls polling frequency.
 Job posting is additionally capped **per account** inside job-service (#556):
 each post fans out to up to 200 provider inboxes, and the per-IP rule alone is
 rotatable — so job-service requires a verified email (403 otherwise) and allows

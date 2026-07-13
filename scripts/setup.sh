@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 SERVICES=(identity-service provider-service review-service job-service notification-service media-service chat-service api-gateway)
-DB_SERVICES=(identity-service provider-service review-service job-service)
+DB_SERVICES=(identity-service provider-service review-service job-service notification-service)
 
 echo "==> Installing web app dependencies"
 npm install

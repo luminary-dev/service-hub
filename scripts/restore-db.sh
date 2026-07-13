@@ -18,7 +18,7 @@ DUMP="${2:-}"
 CONFIRM="${3:-}"
 
 if [ -z "$DB" ] || [ -z "$DUMP" ]; then
-  echo "Usage: $0 <identity_db|provider_db|review_db|job_db> <dump file> --yes" >&2
+  echo "Usage: $0 <identity_db|provider_db|review_db|job_db|notification_db> <dump file> --yes" >&2
   exit 1
 fi
 if [ ! -f "$DUMP" ]; then

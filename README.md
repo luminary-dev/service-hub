@@ -6,7 +6,7 @@ The customer-facing UI is bilingual — an EN/සිං toggle in the navbar swi
 
 ## Architecture
 
-The marketplace is built as **eight Hono services — an API gateway fronting seven backend microservices — with a Next.js 16 web app as a pure frontend**, all backed by Postgres and Redis. The web app never touches a database — it rewrites `/api/*` to the gateway, which verifies the JWT session cookie, enforces CSRF + rate limits, and fans requests out to the backend services over internal HTTP secured by a shared secret. The four data-owning services (identity, provider, review, job) each own their own Postgres database, and Redis backs the gateway's distributed rate limiter. Full details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Narrative team documentation (onboarding, workflow, operations) lives on GitBook in [luminary-dev/service-hub-docs](https://github.com/luminary-dev/service-hub-docs).
+The marketplace is built as **eight Hono services — an API gateway fronting seven backend microservices — with a Next.js 16 web app as a pure frontend**, all backed by Postgres and Redis. The web app never touches a database — it rewrites `/api/*` to the gateway, which verifies the JWT session cookie, enforces CSRF + rate limits, and fans requests out to the backend services over internal HTTP secured by a shared secret. The five data-owning services (identity, provider, review, job, notification) each own their own Postgres database, and Redis backs the gateway's distributed rate limiter and the notification email queue. Full details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Narrative team documentation (onboarding, workflow, operations) lives on GitBook in [luminary-dev/service-hub-docs](https://github.com/luminary-dev/service-hub-docs).
 
 ```
 browser ── same-origin /api/* ──> Next.js web (:3000)
@@ -22,7 +22,7 @@ browser ── same-origin /api/* ──> Next.js web (:3000)
                                    gateway ── rate limits ──> Redis (:6379)
 ```
 
-- The four data-owning services (identity, provider, review, job) each own a Postgres database; notification, media and chat are stateless. Cross-service data flows over internal HTTP with a shared secret.
+- The five data-owning services (identity, provider, review, job, notification) each own a Postgres database; media and chat are stateless. Cross-service data flows over internal HTTP with a shared secret.
 - The gateway verifies the JWT session cookie, enforces CSRF + distributed (Redis-backed) rate limits, and forwards identity headers.
 - This repo is the **canonical monorepo**. Every service under `services/` is also mirrored to its own repo in the `luminary-dev` org (`npm run sync:repos`), where it builds, tests and deploys standalone.
 
@@ -46,8 +46,8 @@ docker compose up -d --build
 
 # The container images run as NODE_ENV=production, so the demo seed is an
 # explicit opt-in (unlike `npm run setup` above, which seeds for you). Seed the
-# four data services once the stack is up:
-for s in identity-service provider-service review-service job-service; do
+# five data services once the stack is up:
+for s in identity-service provider-service review-service job-service notification-service; do
   docker compose exec -e SEED_DEMO_DATA=true "$s" npm run db:seed
 done
 ```

@@ -115,7 +115,7 @@ but rotate anyway).
 
 **What it protects.** The `postgres` superuser password. Since the
 per-service DB roles landed (#387) it no longer appears in any `DATABASE_URL`
-— the four DB-owning services connect as their own roles (below). The
+— the five DB-owning services connect as their own roles (below). The
 superuser remains for cluster administration and the backup tooling
 (`scripts/backup-dbs.sh` execs `pg_dump -U postgres` over the container's
 local socket, which trusts local connections, so backups don't even read the
@@ -144,10 +144,11 @@ a wrong credential lying in `.env`. No schema or data change.
 may be exposed. Coordinate with [BACKUPS.md](BACKUPS.md) — take a fresh
 `pg_dump` before rotating.
 
-## Per-service DB passwords (`IDENTITY_DB_PASSWORD` … `JOB_DB_PASSWORD`, #387)
+## Per-service DB passwords (`IDENTITY_DB_PASSWORD` … `NOTIFICATION_DB_PASSWORD`, #387)
 
 **What they protect.** Each DB-owning service connects as its own
-least-privilege role (`identity` / `provider` / `review` / `job`), whose
+least-privilege role (`identity` / `provider` / `review` / `job` /
+`notification`), whose
 password is interpolated into that service's `DATABASE_URL` and passed to the
 `postgres` container for bootstrap/migration tooling.
 
@@ -159,8 +160,8 @@ re-run the idempotent role script with the new value(s) exported — it
 
 ```bash
 # On the prod host (only the vars you're rotating need to be exported):
-IDENTITY_DB_PASSWORD='<NEW>' PROVIDER_DB_PASSWORD='<OLD>' \
-REVIEW_DB_PASSWORD='<OLD>' JOB_DB_PASSWORD='<OLD>' ./deploy/migrate-db-roles.sh
+IDENTITY_DB_PASSWORD='<NEW>' PROVIDER_DB_PASSWORD='<OLD>' REVIEW_DB_PASSWORD='<OLD>' \
+JOB_DB_PASSWORD='<OLD>' NOTIFICATION_DB_PASSWORD='<OLD>' ./deploy/migrate-db-roles.sh
 
 gh secret set IDENTITY_DB_PASSWORD     # the same <NEW> value
 gh workflow run deploy.yml --ref prod  # re-renders DATABASE_URL, recreates the service
@@ -240,7 +241,7 @@ After any rotation, confirm the deploy went green and the stack is healthy:
    the admin dashboard). No `403 Forbidden` in
    `docker compose -f docker-compose.prod.yml logs api-gateway`.
 5. **DB connectivity** (after `POSTGRES_PASSWORD` or a `*_DB_PASSWORD`) — the
-   four DB services stay `healthy`; no `authentication failed` lines in their
+   five DB services stay `healthy`; no `authentication failed` lines in their
    logs. After `REDIS_PASSWORD`: no `NOAUTH`/`WRONGPASS` lines from the
    gateway or identity.
 6. **Feature check** (after a third-party key) — send a test email / do an

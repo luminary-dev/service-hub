@@ -102,8 +102,23 @@
   which JSON-serialize as *strings*, so each service converts back to a plain
   number at every JSON edge (`lib/money.ts` in both services) — API payloads
   carry money as JSON **numbers**, exactly as before the migration.
-- **notification-service**: stateless; owns the en/si email templates ported
-  from `src/lib/email.ts`.
+- **notification-service** (`notification_db`, RFC
+  stateful-notification-service): `Notification` (`userId` recipient — plain
+  string, no FK; `type` — the `NotificationType` enum of the ten marketplace
+  event types; `payload` Json — small, denormalized facts the web renders the
+  sentence from at read time, so an EN↔SI switch re-renders the whole feed;
+  `link` relative path; `readAt`; indexed `[userId, createdAt desc]` for the
+  list page and `[userId, readAt]` for the unread count) and
+  `NotificationPreference` (sparse per-`[userId, type]` channel overrides —
+  no row = both `emailEnabled`/`inAppEnabled` on). The transactional auth
+  emails (verify, password-reset, change-email, account-exists,
+  email-change-attempt) are deliberately NOT in the enum and can never be
+  muted. Retention is opportunistic: each ingestion sweeps the recipient's
+  READ rows older than 90 days beyond their newest 200 (no cron). The service
+  also owns the en/si email templates ported from `src/lib/email.ts` and the
+  Redis-backed email delivery queue (`notify:email` / `notify:processing`,
+  BRPOPLPUSH worker with a processing-list reclaim sweep, 3 attempts at
+  30s × 2^n backoff; Redis down → one-attempt direct sends).
 - **media-service** / **chat-service**: stateless (no DB).
 
 Cross-service uniqueness/cascades that FKs used to give us are preserved by
