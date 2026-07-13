@@ -44,6 +44,10 @@ yarn-error.log*
 !.env.example
 !.env.prod.example
 
+# database backups (#389): local snapshots + nightly log; host-local backup config
+/backups/
+.backup.env
+
 # vercel
 .vercel
 
