@@ -22,6 +22,8 @@ type AdminJobRow = {
   district: string;
   budget: number | null;
   status: "OPEN" | "CLOSED";
+  // Takedown flag (#376): set while the job is hidden by an admin.
+  hiddenAt: string | null;
   createdAt: string;
   customer: { name: string };
   responseCount: number;
@@ -90,6 +92,11 @@ export default async function AdminJobsPage({
                   ) : (
                     <span className="chip bg-ink-100 text-ink-500">
                       {t.jobStatusClosed}
+                    </span>
+                  )}
+                  {j.hiddenAt && (
+                    <span className="chip bg-red-50 text-red-700 ring-1 ring-red-200">
+                      {t.jobHiddenTag}
                     </span>
                   )}
                 </div>

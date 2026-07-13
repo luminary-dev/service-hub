@@ -29,8 +29,10 @@
 - **provider-service** (`provider_db`): `Provider`, `Service`, `WorkPhoto`
   (`sortOrder` manual order + `deletedAt` moderation soft-delete),
   `VerificationDocument`, `Inquiry` (+ `source`, per-party `customerLastReadAt`/
-  `providerLastReadAt`, `respondedAt`), `InquiryMessage` (#13 threads),
-  `Report` (abuse reports on providers and work photos), `Category` (managed
+  `providerLastReadAt`, `respondedAt`), `InquiryMessage` (#13 threads, +
+  `deletedAt` moderation soft-delete #376),
+  `Report` (abuse reports on providers, work photos and thread messages),
+  `Category` (managed
   category list: slug PK, en/si labels, icon, active flag, sortOrder — no hard
   delete), `AdminAuditLog` (#227 moderation trail for the actions this service
   owns).
@@ -44,7 +46,8 @@
   both SI columns join the `/api/providers` free-text search (pg_trgm-indexed).
   Per-service Sinhala titles are a deliberate follow-up. `userId` is a plain
   string.
-  `Report` fields: `targetType` (`PROVIDER`|`WORK_PHOTO`), `targetId`,
+  `Report` fields: `targetType` (`PROVIDER`|`WORK_PHOTO`|`MESSAGE` #376),
+  `targetId`,
   `reporterId` (nullable — anonymous allowed), `reason`, `details`, `status`
   (`OPEN`|`RESOLVED`|`DISMISSED`), `source` (`USER`|`SYSTEM`, #232 — SYSTEM is
   reserved for auto-flagging), `updatedAt` (last-transition timestamp, #370),
@@ -61,7 +64,10 @@
   admin frontend, never server-side). `providerId`/`userId` plain strings;
   reviewer names hydrated from identity at read time.
 - **job-service** (`job_db`): `JobRequest` (`status` OPEN|CLOSED, `updatedAt`
-  last-transition timestamp #370), `JobResponse`.
+  last-transition timestamp #370, `hiddenAt` admin-takedown soft-hide #376),
+  `JobResponse`, `Report` (**identical shape to the provider/review-service
+  models**; `targetType` = `JOB`) and `AdminAuditLog` (identical model; the
+  three audit logs are merged only in the admin frontend) — #376.
   `customerId`/`providerId` plain strings. **Monetization (pricing, commission,
   payments) is intentionally deferred to v0.2** — v0.1 is free to use, so there
   is no transaction ledger and no price/commission field on a job.

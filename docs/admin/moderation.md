@@ -36,33 +36,46 @@ Route: **`/admin/reports`** (`src/app/admin/reports/page.tsx`,
 `AdminReportsList.tsx`, `ReportsFilterBar.tsx`, `ReportActions.tsx`,
 `RunFlaggingButton.tsx`).
 
-Merges two backends into one queue, sorted **open first, then newest first**:
-`GET /api/admin/reports` (provider-service — `PROVIDER` and `WORK_PHOTO`
-targets) and `GET /api/admin/review-reports` (review-service — `REVIEW`
-targets). Header stats: open / total.
+Merges three backends into one queue, sorted **open first, then newest
+first**: `GET /api/admin/reports` (provider-service — `PROVIDER`, `WORK_PHOTO`
+and `MESSAGE` targets, #376), `GET /api/admin/review-reports` (review-service —
+`REVIEW` targets) and `GET /api/admin/job-reports` (job-service — `JOB`
+targets, #376). Header stats: open / total.
 
-- **Filters** (URL-backed): target type (all / provider / photo / review) and
-  status (all / open / resolved / dismissed).
-- **Pagination.** Both backends are paginated 20 per page (#255); the page
+- **Filters** (URL-backed): target type (all / provider / photo / review /
+  job / message) and status (all / open / resolved / dismissed).
+- **Pagination.** All backends are paginated 20 per page (#255); the page
   requests the same page N from each and merges the results, so a page can hold
-  up to 20 rows from each source. Prev/next controls span the deeper source's
+  up to 20 rows from each source. Prev/next controls span the deepest source's
   page count. The open-count stat and hub badge come from the dedicated count
   endpoints (accurate across the whole queue, not just the current page).
 - **Per-row actions** — gated by `hasSupportAccess`: *Resolve* and *Dismiss*
-  send `PATCH` to the matching endpoint (`/api/admin/reports/{id}` or
-  `/api/admin/review-reports/{id}`) with `{ status: "RESOLVED" | "DISMISSED" }`.
+  send `PATCH` to the matching endpoint (`/api/admin/reports/{id}`,
+  `/api/admin/review-reports/{id}` or `/api/admin/job-reports/{id}`) with
+  `{ status: "RESOLVED" | "DISMISSED" }`.
 - **Bulk actions** — also support-gated; only open rows are selectable. Selected
-  ids are grouped by source and sent as `PATCH /api/admin/reports` and/or
-  `PATCH /api/admin/review-reports` with `{ ids, status }`.
+  ids are grouped by source and sent as `PATCH /api/admin/reports`,
+  `PATCH /api/admin/review-reports` and/or `PATCH /api/admin/job-reports` with
+  `{ ids, status }`.
 - **Audit stamp.** A closed report shows *who* closed it and *when*
   (`resolvedBy` / `resolvedAt`).
-- Each row shows the target (review preview, or provider/photo with suspended /
-  content-removed chips) with a **Moderate** deep link, the reason and details,
+- Each row shows the target (review preview, provider/photo with suspended /
+  content-removed chips, job title with a taken-down chip, or the reported
+  thread message body) with a **Moderate** deep link, the reason and details,
   the reporter (or "anonymous"), and the created date.
+- **Takedown from the queue (#376).** A reported job row links to the admin
+  job detail, where a full admin can take it down (see
+  [Jobs](jobs.md)). A reported thread message has no separate admin surface,
+  so its row carries the ADMIN-only *Delete*/*Restore* control inline —
+  `DELETE /api/admin/messages/{id}` soft-deletes the message (it vanishes from
+  the thread for both parties), `PATCH /api/admin/messages/{id}/restore`
+  reverses it. Both are audit-logged.
 
 Report reasons are `spam | scam | offensive | fake | other` (plus free-text
-details, max 500 chars). Reports can be filed anonymously; the gateway rate-
-limits the report endpoints (see [RATE_LIMITING.md](../RATE_LIMITING.md)).
+details, max 500 chars). Reports on public content can be filed anonymously
+(thread messages are private, so only the two thread parties can report one);
+the gateway rate-limits the report endpoints (see
+[RATE_LIMITING.md](../RATE_LIMITING.md)).
 
 #### Auto-flagging ("Run flagging")
 

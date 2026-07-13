@@ -115,6 +115,17 @@ describe("GET /api/inquiries/:id/messages — thread party gate", () => {
     expect((await res.json()).party).toBe("PROVIDER");
     expect(dbMock.inquiry.update.mock.calls[0][0].data).toHaveProperty("providerLastReadAt");
   });
+
+  it("excludes messages removed by admin takedown (#376)", async () => {
+    dbMock.inquiry.findUnique.mockResolvedValue(inquiryRow());
+    const res = await req("/api/inquiries/inq1/messages", { role: "CUSTOMER", userId: "cust-1" });
+    expect(res.status).toBe(200);
+    expect(dbMock.inquiryMessage.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ deletedAt: null }),
+      })
+    );
+  });
 });
 
 describe("POST /api/inquiries/:id/messages", () => {

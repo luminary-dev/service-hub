@@ -274,7 +274,12 @@ describe("axe: messaging", () => {
       ok: true,
       json: async () => threadFixture,
     });
-    const { container } = render(<MessageThread inquiryId="inq_1" />);
+    // The per-message ReportButton (#376) needs the toast context.
+    const { container } = render(
+      <ToastProvider>
+        <MessageThread inquiryId="inq_1" />
+      </ToastProvider>
+    );
     await screen.findByRole("heading", {
       name: t.messages.threadWith("Sunil Perera"),
     });

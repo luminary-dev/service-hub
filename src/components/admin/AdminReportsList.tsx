@@ -12,16 +12,19 @@ import { hasSupportAccess } from "@/lib/roles";
 import Stars from "../Stars";
 import InView from "../InView";
 import EmptyState from "../ui/EmptyState";
+import AdminDeleteButton from "./AdminDeleteButton";
+import AdminRestoreButton from "./AdminRestoreButton";
 import ReportActions from "./ReportActions";
 
-// The moderation queue (#50) merges two sources — provider-service owns
-// reports on providers and work photos (`GET /api/admin/reports`),
-// review-service owns reports on reviews (`GET /api/admin/review-reports`).
-// Both return OPEN first (newest first) with a hydrated target summary
-// (null when the target no longer exists).
+// The moderation queue (#50, #376) merges three sources — provider-service
+// owns reports on providers, work photos and inquiry messages
+// (`GET /api/admin/reports`), review-service owns reports on reviews
+// (`GET /api/admin/review-reports`), and job-service owns reports on job
+// posts (`GET /api/admin/job-reports`). All return OPEN first (newest first)
+// with a hydrated target summary (null when the target no longer exists).
 type ReportBase = {
   id: string;
-  targetType: "PROVIDER" | "WORK_PHOTO" | "REVIEW";
+  targetType: "PROVIDER" | "WORK_PHOTO" | "REVIEW" | "JOB" | "MESSAGE";
   targetId: string;
   reporterId: string | null;
   reason: string;
@@ -42,7 +45,20 @@ type ProviderReport = ReportBase & {
     suspended?: boolean;
     photoUrl?: string;
     caption?: string | null;
+    // MESSAGE targets (#376): the reported thread message.
+    messageId?: string;
+    sender?: "CUSTOMER" | "PROVIDER";
+    body?: string;
     removed?: boolean;
+  } | null;
+};
+
+type JobReport = ReportBase & {
+  target: {
+    jobId: string;
+    title: string;
+    status: string;
+    removed: boolean;
   } | null;
 };
 
@@ -58,13 +74,15 @@ type ReviewReport = ReportBase & {
 
 export type ReportRow =
   | (ProviderReport & { source: "provider" })
-  | (ReviewReport & { source: "review" });
+  | (ReviewReport & { source: "review" })
+  | (JobReport & { source: "job" });
 
 // Reports list (#231): multi-select + bulk resolve/dismiss on top of the
-// existing per-row ReportActions. Reports come from two different backend
-// services (provider-service owns PROVIDER/WORK_PHOTO reports at
+// existing per-row ReportActions. Reports come from three different backend
+// services (provider-service owns PROVIDER/WORK_PHOTO/MESSAGE reports at
 // `/api/admin/reports`, review-service owns REVIEW reports at
-// `/api/admin/review-reports`), so the bulk action groups the selected ids
+// `/api/admin/review-reports`, job-service owns JOB reports at
+// `/api/admin/job-reports`), so the bulk action groups the selected ids
 // by source before calling each service's batch endpoint. Only OPEN reports
 // are selectable — closed ones have nothing left to bulk-act on.
 export default function AdminReportsList({
@@ -118,6 +136,9 @@ export default function AdminReportsList({
     const reviewIds = openRows
       .filter((r) => r.source === "review" && selected.has(key(r)))
       .map((r) => r.id);
+    const jobIds = openRows
+      .filter((r) => r.source === "job" && selected.has(key(r)))
+      .map((r) => r.id);
 
     const calls: Promise<Response | null>[] = [];
     if (providerIds.length) {
@@ -138,6 +159,15 @@ export default function AdminReportsList({
         }).catch(() => null)
       );
     }
+    if (jobIds.length) {
+      calls.push(
+        fetch("/api/admin/job-reports", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: jobIds, status }),
+        }).catch(() => null)
+      );
+    }
 
     const results = await Promise.all(calls);
     setPending(false);
@@ -154,6 +184,8 @@ export default function AdminReportsList({
     PROVIDER: t.reportedProvider,
     WORK_PHOTO: t.reportedPhoto,
     REVIEW: t.reportedReview,
+    JOB: t.reportedJob,
+    MESSAGE: t.reportedMessage,
   } as const;
 
   const reasonLabel = (reason: string) =>
@@ -288,7 +320,9 @@ export default function AdminReportsList({
                   endpoint={
                     r.source === "provider"
                       ? `/api/admin/reports/${r.id}`
-                      : `/api/admin/review-reports/${r.id}`
+                      : r.source === "review"
+                        ? `/api/admin/review-reports/${r.id}`
+                        : `/api/admin/job-reports/${r.id}`
                   }
                   role={role}
                 />
@@ -298,6 +332,72 @@ export default function AdminReportsList({
             <div className="mt-3 rounded-xl border border-dashed border-ink-200 bg-ink-50 p-3">
               {r.target === null ? (
                 <p className="text-sm text-ink-500">{t.reportTargetGone}</p>
+              ) : r.source === "job" ? (
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate text-sm font-medium text-ink-800">
+                        {r.target.title}
+                      </p>
+                      {r.target.removed && (
+                        <span className="chip bg-red-50 text-red-700 ring-1 ring-red-200">
+                          {t.jobHiddenTag}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <Link
+                    href={`/admin/jobs/${r.target.jobId}`}
+                    className="shrink-0 text-sm font-semibold text-brand-700 transition-colors duration-200 ease-snap hover:text-brand-800"
+                  >
+                    {t.moderate}
+                  </Link>
+                </div>
+              ) : r.source === "provider" && r.targetType === "MESSAGE" ? (
+                // Reported thread message (#376): show the body with the
+                // takedown/restore control inline — there is no separate
+                // admin surface for private threads.
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate text-sm font-medium text-ink-800">
+                        {r.target.providerName}
+                      </p>
+                      <span className="chip bg-ink-100 text-ink-500">
+                        {r.target.sender === "PROVIDER"
+                          ? t.msgSenderProvider
+                          : t.msgSenderCustomer}
+                      </span>
+                      {r.target.removed && (
+                        <span className="chip bg-red-50 text-red-700 ring-1 ring-red-200">
+                          {t.reportContentRemoved}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 line-clamp-3 text-sm text-ink-600">
+                      {r.target.body}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3">
+                    {r.target.removed ? (
+                      <AdminRestoreButton
+                        endpoint={`/api/admin/messages/${r.target.messageId}/restore`}
+                        role={role}
+                      />
+                    ) : (
+                      <AdminDeleteButton
+                        endpoint={`/api/admin/messages/${r.target.messageId}`}
+                        role={role}
+                      />
+                    )}
+                    <Link
+                      href={`/admin/providers/${r.target.providerId}`}
+                      className="text-sm font-semibold text-brand-700 transition-colors duration-200 ease-snap hover:text-brand-800"
+                    >
+                      {t.moderate}
+                    </Link>
+                  </div>
+                </div>
               ) : r.source === "review" ? (
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">

@@ -31,7 +31,9 @@ each service enforces the tier. **Reads and report resolve/dismiss** gate on
 | `PATCH /api/admin/verifications` | ADMIN | Bulk approve/reject `{ ids, action, reason? }` (only PENDING touched) → `{ status, count }`. |
 | `DELETE /api/admin/photos/:id` | ADMIN | Soft-delete a work photo. |
 | `PATCH /api/admin/photos/:id/restore` | ADMIN | Restore a soft-deleted photo. |
-| `GET /api/admin/reports` | SUPPORT+ | Provider/work-photo report queue (OPEN first), `status`/`targetType` filters, paginated (default 20, cap 100) → `{ reports, total, page, pageSize }` with hydrated target. |
+| `DELETE /api/admin/messages/:id` | ADMIN | Soft-delete a reported inquiry thread message (#376) — vanishes from the thread for both parties; reversible. |
+| `PATCH /api/admin/messages/:id/restore` | ADMIN | Restore a soft-deleted message. |
+| `GET /api/admin/reports` | SUPPORT+ | Provider/work-photo/message report queue (OPEN first), `status`/`targetType` filters, paginated (default 20, cap 100) → `{ reports, total, page, pageSize }` with hydrated target. |
 | `PATCH /api/admin/reports/:id` | SUPPORT+ | `{ status: RESOLVED\|DISMISSED }` (stamps `resolvedBy`/`resolvedAt`). |
 | `PATCH /api/admin/reports` | SUPPORT+ | Bulk resolve/dismiss `{ ids, status }` → `{ ok, count }`. |
 | `GET /api/admin/notifications/counts` | SUPPORT+ | `{ pendingVerifications, openReports }` (nav badges). |
@@ -56,12 +58,18 @@ each service enforces the tier. **Reads and report resolve/dismiss** gate on
 | `GET /api/admin/review-audit-log` | SUPPORT+ | This service's moderation log (filters + take 200; merged with provider's in the UI). |
 | `GET /api/admin/review-stats` | SUPPORT+ | `{ openReports }` (review half of the dashboard metric). |
 
-#### Jobs oversight — job-service
+#### Jobs oversight, job reports & takedown — job-service
 
 | Method + path | Auth | Summary |
 |---|---|---|
-| `GET /api/admin/jobs` | SUPPORT+ | Jobs list (`?status` — `OPEN`/`CLOSED`, any other value is ignored; `?category`), newest first, customer name + response count → `{ jobs }` (not paginated). |
-| `GET /api/admin/jobs/:id` | SUPPORT+ | Job + responses with customer/provider contact hydrated. |
+| `GET /api/admin/jobs` | SUPPORT+ | Jobs list (`?status` — `OPEN`/`CLOSED`, any other value is ignored; `?category`), newest first, customer name + response count → `{ jobs }` (not paginated). Rows carry `hiddenAt` (#376). |
+| `GET /api/admin/jobs/:id` | SUPPORT+ | Job + responses with customer/provider contact hydrated (+ `hiddenAt`). |
+| `PATCH /api/admin/jobs/:id` | ADMIN | Takedown (#376): `{ action: hide\|unhide }` — hide stamps `hiddenAt` (job vanishes from the board and stops accepting responses), unhide clears it. Audited. |
+| `GET /api/admin/job-reports` | SUPPORT+ | Job report queue (same shape as the sibling queues), `status`/`targetType` filters, paginated (default 20, cap 100) → `{ reports, total, page, pageSize }` with hydrated target `{ jobId, title, status, removed }`. |
+| `GET /api/admin/job-reports/count` | SUPPORT+ | `{ openReports }` (nav badge; summed with provider + review counts client-side). |
+| `PATCH /api/admin/job-reports/:id` | SUPPORT+ | `{ status: RESOLVED\|DISMISSED }` (stamps `resolvedBy`/`resolvedAt`, audited). |
+| `PATCH /api/admin/job-reports` | SUPPORT+ | Bulk resolve/dismiss `{ ids, status }` → `{ ok, count }`. |
+| `GET /api/admin/job-audit-log` | SUPPORT+ | This service's moderation log (filters + take 200; merged with the provider/review logs in the UI). |
 
 ---
 

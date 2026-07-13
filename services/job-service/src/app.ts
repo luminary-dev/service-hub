@@ -6,6 +6,7 @@ import { getRequestId, requestLogger } from "./lib/logging";
 import { jobs } from "./routes/jobs";
 import { admin } from "./routes/admin";
 import { internal } from "./routes/internal";
+import { reports } from "./routes/reports";
 
 export const app = new Hono();
 
@@ -29,6 +30,7 @@ app.get("/healthz", async (c) => {
 app.use("*", requireInternalSecret);
 
 app.route("/api/jobs", jobs);
+app.route("/", reports);
 app.route("/", admin);
 app.route("/internal", internal);
 

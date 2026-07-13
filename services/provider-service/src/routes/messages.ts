@@ -46,6 +46,9 @@ messagesRoutes.get("/api/inquiries/:id/messages", async (c) => {
   const messages = await db.inquiryMessage.findMany({
     where: {
       inquiryId: inquiry.id,
+      // Messages removed by admin takedown (#376) are invisible to both
+      // parties.
+      deletedAt: null,
       ...(after && !Number.isNaN(after.getTime())
         ? { createdAt: { gt: after } }
         : {}),
@@ -141,6 +144,8 @@ export async function unreadCounts(
     by: ["inquiryId"],
     where: {
       sender: otherParty(party),
+      // Removed messages (#376) can't be read, so they never count as unread.
+      deletedAt: null,
       OR: inquiries.map((i) => {
         const lastRead =
           party === "CUSTOMER" ? i.customerLastReadAt : i.providerLastReadAt;

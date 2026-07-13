@@ -6,14 +6,15 @@ import { getSeenCount, type NotificationQueue } from "@/lib/adminNotifications";
 
 type Counts = { verifications: number; reports: number };
 
-// Provider-service owns pending-verification and provider/photo report
-// counts; review-service owns the review-report count separately (same split
-// as the reports page's two-service merge). Summed here into one "reports"
-// total for the badge.
+// Provider-service owns pending-verification and provider/photo/message
+// report counts; review-service owns the review-report count and job-service
+// the job-report count separately (same split as the reports page's
+// three-service merge). Summed here into one "reports" total for the badge.
 async function fetchCounts(): Promise<Counts> {
-  const [notifRes, reviewRes] = await Promise.all([
+  const [notifRes, reviewRes, jobRes] = await Promise.all([
     fetch("/api/admin/notifications/counts", { cache: "no-store" }).catch(() => null),
     fetch("/api/admin/review-reports/count", { cache: "no-store" }).catch(() => null),
+    fetch("/api/admin/job-reports/count", { cache: "no-store" }).catch(() => null),
   ]);
   const notif =
     notifRes && notifRes.ok
@@ -21,10 +22,15 @@ async function fetchCounts(): Promise<Counts> {
       : null;
   const review =
     reviewRes && reviewRes.ok ? ((await reviewRes.json()) as { openReports: number }) : null;
+  const job =
+    jobRes && jobRes.ok ? ((await jobRes.json()) as { openReports: number }) : null;
 
   return {
     verifications: notif?.pendingVerifications ?? 0,
-    reports: (notif?.openReports ?? 0) + (review?.openReports ?? 0),
+    reports:
+      (notif?.openReports ?? 0) +
+      (review?.openReports ?? 0) +
+      (job?.openReports ?? 0),
   };
 }
 

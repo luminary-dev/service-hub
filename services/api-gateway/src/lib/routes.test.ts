@@ -66,6 +66,18 @@ describe("resolveRoute (routing table)", () => {
       service: "review",
       path: "/api/reviews/rev-1/report",
     });
+    // Job posts and inquiry thread messages are reportable too (#376).
+    expect(resolveRoute("/api/jobs/job-1/report")).toEqual({
+      service: "job",
+      path: "/api/jobs/job-1/report",
+    });
+    expect(resolveRoute("/api/messages/msg-1/report")).toEqual({
+      service: "provider",
+      path: "/api/messages/msg-1/report",
+    });
+    // Only the report action exists under /api/messages.
+    expect(resolveRoute("/api/messages/msg-1")).toBeNull();
+    expect(resolveRoute("/api/messages")).toBeNull();
     // Only the report action exists under /api/photos.
     expect(resolveRoute("/api/photos/ph-1")).toBeNull();
     expect(resolveRoute("/api/photos")).toBeNull();
@@ -88,6 +100,14 @@ describe("resolveRoute (routing table)", () => {
       service: "review",
       path: "/api/admin/review-reports/rep-1",
     });
+    expect(resolveRoute("/api/admin/job-reports")).toEqual({
+      service: "job",
+      path: "/api/admin/job-reports",
+    });
+    expect(resolveRoute("/api/admin/job-reports/rep-1")).toEqual({
+      service: "job",
+      path: "/api/admin/job-reports/rep-1",
+    });
   });
 
   it("routes the admin notification-badge counts endpoints (#233)", () => {
@@ -99,6 +119,10 @@ describe("resolveRoute (routing table)", () => {
       service: "review",
       path: "/api/admin/review-reports/count",
     });
+    expect(resolveRoute("/api/admin/job-reports/count")).toEqual({
+      service: "job",
+      path: "/api/admin/job-reports/count",
+    });
   });
 
   it("routes the admin audit logs to their owning services (#227)", () => {
@@ -109,6 +133,10 @@ describe("resolveRoute (routing table)", () => {
     expect(resolveRoute("/api/admin/review-audit-log")).toEqual({
       service: "review",
       path: "/api/admin/review-audit-log",
+    });
+    expect(resolveRoute("/api/admin/job-audit-log")).toEqual({
+      service: "job",
+      path: "/api/admin/job-audit-log",
     });
   });
 

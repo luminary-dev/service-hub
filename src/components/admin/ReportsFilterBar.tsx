@@ -6,7 +6,13 @@ import { useT } from "../I18nProvider";
 
 // Filtering (#223): target type + status, kept in the URL (shareable,
 // survives refresh) like every other admin/browse filter in the app.
-export type TargetTypeFilter = "" | "PROVIDER" | "WORK_PHOTO" | "REVIEW";
+export type TargetTypeFilter =
+  | ""
+  | "PROVIDER"
+  | "WORK_PHOTO"
+  | "REVIEW"
+  | "JOB"
+  | "MESSAGE";
 export type StatusFilter = "" | "OPEN" | "RESOLVED" | "DISMISSED";
 
 export default function ReportsFilterBar({
@@ -47,6 +53,8 @@ export default function ReportsFilterBar({
         <option value="PROVIDER">{t.reportedProvider}</option>
         <option value="WORK_PHOTO">{t.reportedPhoto}</option>
         <option value="REVIEW">{t.reportedReview}</option>
+        <option value="JOB">{t.reportedJob}</option>
+        <option value="MESSAGE">{t.reportedMessage}</option>
       </select>
       <select
         value={status}

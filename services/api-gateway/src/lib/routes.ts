@@ -115,6 +115,17 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
     return { service: "job", path: pathname };
   }
 
+  // Job abuse reports + the job moderation audit trail (#376) — job-service
+  // owns reports on jobs and the log of the actions it takes, same split as
+  // review-service's queues above.
+  if (
+    pathname === "/api/admin/job-reports" ||
+    pathname.startsWith("/api/admin/job-reports/") ||
+    pathname === "/api/admin/job-audit-log"
+  ) {
+    return { service: "job", path: pathname };
+  }
+
   // Everything else under /api/admin/, including the notification-badge
   // counts endpoint (#233, /api/admin/notifications/counts), belongs to
   // provider-service; the review-owned counterpart above
@@ -125,6 +136,12 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
 
   // Work-photo abuse reports (#50) — photos are provider-service data.
   if (/^\/api\/photos\/[^/]+\/report$/.test(pathname)) {
+    return { service: "provider", path: pathname };
+  }
+
+  // Inquiry-message abuse reports (#376) — thread messages are
+  // provider-service data (job reports ride the /api/jobs prefix below).
+  if (/^\/api\/messages\/[^/]+\/report$/.test(pathname)) {
     return { service: "provider", path: pathname };
   }
 
