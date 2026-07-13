@@ -925,6 +925,7 @@ const en = {
       titlePriceRequired: "A title and a valid price are required.",
       keepOne: "Keep at least one service on your profile.",
       saveError: "Could not save service.",
+      deleteError: "Could not delete service. Please try again.",
     },
     photos: {
       profilePicture: "Profile picture",
@@ -942,6 +943,7 @@ const en = {
       captionPh: "Caption for the next photo (optional)",
       empty: "No work photos yet. Upload your first one above.",
       uploadError: "Upload failed. Please try again.",
+      deleteError: "Could not delete photo. Please try again.",
       delete: "Delete",
       // Multi-photo upload with progress (#53)
       dropTitle: "Drag & drop photos here",
@@ -1956,6 +1958,7 @@ const si: Dict = {
       titlePriceRequired: "නාමයක් සහ වලංගු මිලක් අවශ්‍යයි.",
       keepOne: "ඔබේ පැතිකඩෙහි අවම වශයෙන් එක් සේවාවක් තබාගන්න.",
       saveError: "සේවාව සුරැකීමට නොහැකි විය.",
+      deleteError: "සේවාව මැකීමට නොහැකි විය. නැවත උත්සාහ කරන්න.",
     },
     photos: {
       profilePicture: "පැතිකඩ පින්තූරය",
@@ -1973,6 +1976,7 @@ const si: Dict = {
       captionPh: "ඊළඟ ඡායාරූපයට සිරැසියක් (අත්‍යවශ්‍ය නොවේ)",
       empty: "තවම වැඩ ඡායාරූප නැත. ඉහළින් ඔබේ පළමු එක උඩුගත කරන්න.",
       uploadError: "උඩුගත කිරීම අසාර්ථකයි. නැවත උත්සාහ කරන්න.",
+      deleteError: "ඡායාරූපය මැකීමට නොහැකි විය. නැවත උත්සාහ කරන්න.",
       delete: "මකන්න",
       dropTitle: "ඡායාරූප මෙතැනට ඇද දමන්න",
       dropOr: "හෝ",

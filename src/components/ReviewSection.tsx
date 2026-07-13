@@ -97,19 +97,25 @@ export default function ReviewSection({
     }
     if (files) for (const f of Array.from(files)) fd.append("photos", f);
 
-    const res = await fetch(`/api/providers/${providerId}/reviews`, {
-      method: "POST",
-      body: fd,
-    });
-    setLoading(false);
-    if (res.ok) {
-      setShowForm(false);
-      if (fileRef.current) fileRef.current.value = "";
-      toast.success(t.toast.reviewSaved);
-      router.refresh();
-    } else {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? t.reviews.error);
+    try {
+      const res = await fetch(`/api/providers/${providerId}/reviews`, {
+        method: "POST",
+        body: fd,
+      });
+      if (res.ok) {
+        setShowForm(false);
+        if (fileRef.current) fileRef.current.value = "";
+        toast.success(t.toast.reviewSaved);
+        router.refresh();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? t.reviews.error);
+      }
+    } catch {
+      // Network failure — recover instead of wedging the button (#363).
+      setError(t.reviews.error);
+    } finally {
+      setLoading(false);
     }
   }
 

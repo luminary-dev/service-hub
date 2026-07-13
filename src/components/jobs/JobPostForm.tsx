@@ -38,24 +38,30 @@ export default function JobPostForm({
     e.preventDefault();
     setLoading(true);
     setError("");
-    const res = await fetch("/api/jobs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        category: form.category,
-        district: form.district,
-        title: form.title.trim(),
-        description: form.description.trim(),
-        budget: form.budget ? Number(form.budget) : null,
-      }),
-    });
-    setLoading(false);
-    if (res.ok) {
-      router.push("/jobs");
-      router.refresh();
-    } else {
-      const d = await res.json().catch(() => ({}));
-      setError(d.error ?? t.postError);
+    try {
+      const res = await fetch("/api/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category: form.category,
+          district: form.district,
+          title: form.title.trim(),
+          description: form.description.trim(),
+          budget: form.budget ? Number(form.budget) : null,
+        }),
+      });
+      if (res.ok) {
+        router.push("/jobs");
+        router.refresh();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setError(d.error ?? t.postError);
+      }
+    } catch {
+      // Network failure — recover instead of wedging the button (#363).
+      setError(t.postError);
+    } finally {
+      setLoading(false);
     }
   }
 

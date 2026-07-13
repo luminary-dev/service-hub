@@ -145,4 +145,16 @@ describe("ServicesManager", () => {
       expect(screen.queryByText("Full house wiring")).toBeNull()
     );
   });
+
+  // A dropped connection must not fail silently (#363): the row stays and the
+  // error is announced.
+  it("keeps the service and shows an error when the DELETE rejects", async () => {
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    renderManager();
+    fireEvent.click(screen.getAllByRole("button", { name: s.delete })[0]);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(s.deleteError);
+    expect(screen.getByText("Full house wiring")).toBeTruthy();
+  });
 });

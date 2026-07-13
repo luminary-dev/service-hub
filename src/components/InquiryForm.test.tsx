@@ -144,4 +144,20 @@ describe("InquiryForm", () => {
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain(t.error);
   });
+
+  // A dropped connection must not wedge the form (#363): the error is
+  // announced and the submit button is enabled for a retry.
+  it("recovers from a rejected fetch with an error and a re-enabled button", async () => {
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    const { container } = renderForm();
+    fillRequired();
+    submit(container);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(t.error);
+    const button = screen.getByRole("button", {
+      name: t.send,
+    }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+  });
 });

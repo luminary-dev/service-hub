@@ -71,23 +71,29 @@ export default function ProfileForm({
     e.preventDefault();
     setLoading(true);
     setError("");
-    const res = await fetch("/api/provider/profile", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...form,
-        experience: Number(form.experience) || 0,
-        // Empty input means "not away" — send an explicit null to clear it.
-        awayUntil: form.awayUntil || null,
-      }),
-    });
-    setLoading(false);
-    if (res.ok) {
-      toast.success(p.saved);
-      router.refresh();
-    } else {
-      const d = await res.json().catch(() => ({}));
-      setError(d.error ?? p.saveError);
+    try {
+      const res = await fetch("/api/provider/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...form,
+          experience: Number(form.experience) || 0,
+          // Empty input means "not away" — send an explicit null to clear it.
+          awayUntil: form.awayUntil || null,
+        }),
+      });
+      if (res.ok) {
+        toast.success(p.saved);
+        router.refresh();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setError(d.error ?? p.saveError);
+      }
+    } catch {
+      // Network failure — recover instead of wedging the button (#363).
+      setError(p.saveError);
+    } finally {
+      setLoading(false);
     }
   }
 
