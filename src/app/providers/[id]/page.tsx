@@ -13,6 +13,7 @@ import {
 } from "@/lib/i18n";
 import { languageAlternates } from "@/lib/links";
 import { getLocale, getUrlLocale } from "@/lib/locale";
+import { providerJsonLd, siteOpenGraph } from "@/lib/seo";
 import Avatar from "@/components/Avatar";
 import CategoryIcon from "@/components/CategoryIcon";
 import Stars from "@/components/Stars";
@@ -25,6 +26,7 @@ import ReportButton from "@/components/ReportButton";
 import ShareButton from "@/components/ShareButton";
 import VerifiedBadge from "@/components/VerifiedBadge";
 import InView from "@/components/InView";
+import JsonLd from "@/components/JsonLd";
 import StatReadout, { type Stat } from "@/components/ui/StatReadout";
 import type { ReactNode } from "react";
 
@@ -157,7 +159,11 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
-  const [locale, session] = await Promise.all([getLocale(), getSession()]);
+  const [locale, urlLocale, session] = await Promise.all([
+    getLocale(),
+    getUrlLocale(),
+    getSession(),
+  ]);
   const data = await fetchProvider(id, session);
   const provider = data?.provider;
   if (!provider || provider.suspended) return {};
@@ -169,16 +175,21 @@ export async function generateMetadata({
     category,
     provider.city
   );
+  const path = `/providers/${encodeURIComponent(id)}`;
   // The opengraph-image.tsx sibling supplies the preview image automatically.
   return {
     title,
     description,
     // hreflang pair (#67): en at /providers/:id, si at /si/providers/:id.
-    alternates: languageAlternates(
-      `/providers/${encodeURIComponent(id)}`,
-      await getUrlLocale(),
-    ),
-    openGraph: { title, description, type: "profile" },
+    alternates: languageAlternates(path, urlLocale),
+    // Spread over the site defaults so og:url/og:locale/og:siteName match the
+    // canonical (#379); this page's own text and type stay on top.
+    openGraph: {
+      ...siteOpenGraph(locale, urlLocale, path),
+      title,
+      description,
+      type: "profile",
+    },
     twitter: { card: "summary_large_image", title, description },
   };
 }
@@ -189,7 +200,11 @@ export default async function ProviderProfilePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [session, locale] = await Promise.all([getSession(), getLocale()]);
+  const [session, locale, urlLocale] = await Promise.all([
+    getSession(),
+    getLocale(),
+    getUrlLocale(),
+  ]);
   const data = await fetchProvider(id, session);
   const provider = data?.provider ?? null;
 
@@ -247,6 +262,27 @@ export default async function ProviderProfilePage({
 
   return (
     <div>
+      {/* LocalBusiness structured data (#379): name, bilingual headline,
+          address, category and — when reviews exist — the aggregate rating,
+          matching the figures rendered in the hero. */}
+      <JsonLd
+        data={providerJsonLd(
+          {
+            id: provider.id,
+            name: provider.user.name,
+            category: provider.category,
+            headline: provider.headline,
+            headlineSi: provider.headlineSi,
+            district: provider.district,
+            city: provider.city,
+            avatarUrl: provider.avatarUrl,
+            rating: ratingAvg,
+            reviewCount,
+          },
+          locale,
+          urlLocale,
+        )}
+      />
       {/* -- Blueprint hero band ---------------------------------------- */}
       <section className="blueprint-grid border-b border-ink-300 bg-ink-50">
         <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">

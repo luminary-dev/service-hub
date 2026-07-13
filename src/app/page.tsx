@@ -7,6 +7,7 @@ import { CATEGORIES, DISTRICTS } from "@/lib/constants";
 import { dict, categoryLabelLoc, districtLabelLoc } from "@/lib/i18n";
 import { languageAlternates, localizedHref } from "@/lib/links";
 import { getLocale, getUrlLocale } from "@/lib/locale";
+import { siteOpenGraph } from "@/lib/seo";
 import { getSession } from "@/lib/auth";
 import { SITE_NAME, SITE_URL } from "@/lib/site";
 import ProviderCard, { ProviderCardDTO } from "@/components/ProviderCard";
@@ -15,7 +16,14 @@ import InView from "@/components/InView";
 import JsonLd from "@/components/JsonLd";
 
 export async function generateMetadata(): Promise<Metadata> {
-  return { alternates: languageAlternates("/", await getUrlLocale()) };
+  const [locale, urlLocale] = await Promise.all([getLocale(), getUrlLocale()]);
+  return {
+    alternates: languageAlternates("/", urlLocale),
+    // Defining openGraph replaces the root layout's wholesale (shallow
+    // merge), so this carries the full site block plus an og:url that
+    // matches the canonical ("/" or "/si", #379).
+    openGraph: siteOpenGraph(locale, urlLocale, "/"),
+  };
 }
 
 const TICKER_DISTRICTS = [
