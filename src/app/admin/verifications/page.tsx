@@ -74,8 +74,8 @@ export default async function AdminVerificationsPage({
       >
         <StatReadout
           stats={[
-            { label: "PENDING", value: total },
-            { label: "DOCS", value: docCount },
+            { label: t.admin.stats.pending, value: total },
+            { label: t.admin.stats.docs, value: docCount },
           ]}
         />
       </PageHeader>

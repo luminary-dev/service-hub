@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { fetchCategoryOptions } from "@/lib/categories-server";
 import { getLocale } from "@/lib/locale";
+import { loginNext } from "@/lib/login";
 import { dict } from "@/lib/i18n";
 import PageHeader from "@/components/ui/PageHeader";
 import JobPostForm from "@/components/jobs/JobPostForm";
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 export default async function NewJobPage() {
   const session = await getSession();
-  if (!session) redirect("/login");
+  if (!session) redirect(await loginNext("/jobs/new"));
   const locale = await getLocale();
   const t = dict[locale].jobs;
   const nav = dict[locale].nav;

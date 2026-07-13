@@ -84,6 +84,13 @@ const en = {
     prev: "← Previous",
     next: "Next →",
     pageOf: (p: number, t: number) => `Page ${p} of ${t}`,
+    // Captions for the jobs-header StatReadout instruments.
+    stats: {
+      matching: "Matching",
+      responded: "Responded",
+      posted: "Posted",
+      open: "Open",
+    },
   },
   home: {
     heroTitle1: "The tradespeople Sri Lanka",
@@ -132,6 +139,10 @@ const en = {
     ctaSee: "See who's on it",
     heroWorkerAlt: "A builder in safety gear holding a hammer",
     heroTeaAlt: "Tea pluckers working on a Sri Lankan estate",
+    statusOnline: "Online",
+    heroBadge: "Verified trade",
+    heroFigNo: "Fig.01",
+    heroFigCaption: "Certified builder · LK",
   },
   search: {
     placeholder: "What do you need? e.g. wiring, brake repair…",
@@ -186,6 +197,12 @@ const en = {
       price: "Lowest price",
       experience: "Most experienced",
       newest: "Newest",
+    },
+    // Captions for the registry-header StatReadout instruments.
+    stats: {
+      total: "Total",
+      trades: "Trades",
+      districts: "Districts",
     },
   },
   card: {
@@ -252,6 +269,12 @@ const en = {
     leavingProvider: "Closing…",
     leaveProviderDone: "Your provider profile has been closed.",
     cancel: "Cancel",
+    // Captions for the account-header StatReadout instruments.
+    stats: {
+      saved: "Saved",
+      sent: "Sent",
+      reviews: "Reviews",
+    },
   },
   security: {
     link: "Account security",
@@ -313,6 +336,8 @@ const en = {
     sent: "Inquiry sent. The provider will be in touch.",
     sendError: "Couldn't send the inquiry. Please try again.",
     cancelled: "Cancelled — nothing was sent.",
+    signInPrompt: "Please sign in to use the assistant.",
+    signInCta: "Sign in",
   },
   errors: {
     notFoundTitle: "Page not found",
@@ -376,6 +401,15 @@ const en = {
     statOpenReports: "Open reports",
     statActiveProviders: "Active providers",
     statSuspendedProviders: "Suspended providers",
+    // Captions for the admin-header StatReadout instruments.
+    stats: {
+      total: "Total",
+      active: "Active",
+      inactive: "Inactive",
+      open: "Open",
+      pending: "Pending",
+      docs: "Docs",
+    },
     manageTitle: "Manage",
     chartSignupsTitle: "Signups over time",
     chartCategoryTitle: "Providers by category",
@@ -450,8 +484,12 @@ const en = {
     reportedProvider: "Provider",
     reportedPhoto: "Work photo",
     reportedReview: "Review",
+    reportedInquiry: "Inquiry",
+    reportedJob: "Job post",
+    reportedJobResponse: "Job response",
     reportAnonymous: "Anonymous",
     reportedBy: "Reported by",
+    reportSystem: "System (auto-flagged)",
     reportTargetGone: "This content no longer exists.",
     reportContentRemoved: "Removed",
     viewProvider: "View provider",
@@ -630,12 +668,20 @@ const en = {
     workPhoto: "Work photo",
     photoViewer: "Photo viewer",
     closePhoto: "Close photo viewer",
+    // Captions for the profile-hero StatReadout instruments.
+    stats: {
+      expYears: "Exp · yrs",
+      rating: "Rating",
+      reviews: "Reviews",
+    },
   },
   toast: {
     favAdded: "Saved to your list.",
     favRemoved: "Removed from your saved list.",
     favError: "Could not update your saved professionals.",
     reviewSaved: "Your review has been saved.",
+    responseSaved: "Your response has been posted.",
+    responseDeleted: "Your response has been removed.",
     dismiss: "Dismiss",
     adminVerified: "Provider verified.",
     adminUnverified: "Provider unverified.",
@@ -722,6 +768,15 @@ const en = {
     notRated: "Not rated yet",
     distributionRow: (star: number, count: number) =>
       `${star} star${star === 1 ? "" : "s"}: ${count} review${count === 1 ? "" : "s"}`,
+    // Provider responses (#395).
+    respond: "Respond",
+    editResponse: "Edit response",
+    deleteResponse: "Delete response",
+    responseFrom: (name: string) => `Response from ${name}`,
+    yourResponse: "Your response",
+    responsePh: "Thank the customer or address their feedback…",
+    postResponse: "Post response",
+    responseError: "Could not save your response.",
   },
   report: {
     reportProvider: "Report this provider",
@@ -938,6 +993,10 @@ const en = {
       titlePriceRequired: "A title and a valid price are required.",
       keepOne: "Keep at least one service on your profile.",
       saveError: "Could not save service.",
+      // Delete confirmation + failure feedback (#562)
+      confirmDelete: "Delete this service?",
+      deleting: "Deleting…",
+      deleteError: "Could not delete service.",
     },
     photos: {
       profilePicture: "Profile picture",
@@ -956,6 +1015,11 @@ const en = {
       empty: "No work photos yet. Upload your first one above.",
       uploadError: "Upload failed. Please try again.",
       delete: "Delete",
+      // Delete confirmation + failure feedback (#562)
+      confirmDelete: "Delete this photo?",
+      deleting: "Deleting…",
+      deleteError: "Could not delete photo.",
+      cancel: "Cancel",
       // Multi-photo upload with progress (#53)
       dropTitle: "Drag & drop photos here",
       dropOr: "or",
@@ -985,6 +1049,9 @@ const en = {
       statusNew: "NEW",
       statusResponded: "RESPONDED",
       statusClosed: "CLOSED",
+      loadMore: (n: number) => `Load more (${n} remaining)`,
+      loadingMore: "Loading…",
+      loadMoreError: "Could not load more inquiries. Please try again.",
     },
   },
   providerReg: {
@@ -993,6 +1060,7 @@ const en = {
     steps: ["Account", "Profile", "Contact & Socials", "Services & Rates"],
     stepOf: (n: number, total: number, label: string) =>
       `Step ${n} of ${total}: ${label}`,
+    stepCompleted: "completed",
     back: "← Back",
     continue: "Continue →",
     create: "Create my profile",
@@ -1054,6 +1122,8 @@ const en = {
     errServiceCount: "Add at least one service.",
     errServiceTitle: "Every service needs a title.",
     errServicePrice: "Every service needs a valid price.",
+    asideWorkerAlt: "A tradesperson at work in Sri Lanka",
+    asideBadge: "Registry",
   },
 };
 
@@ -1140,6 +1210,12 @@ const si: Dict = {
     prev: "← පෙර",
     next: "ඊළඟ →",
     pageOf: (p: number, t: number) => `පිටුව ${p} / ${t}`,
+    stats: {
+      matching: "ගැලපෙන",
+      responded: "ප්‍රතිචාර දැක්වූ",
+      posted: "පළ කළ",
+      open: "විවෘත",
+    },
   },
   home: {
     heroTitle1: "විශ්වාසවන්ත කාර්මිකයන්,",
@@ -1188,6 +1264,10 @@ const si: Dict = {
     ctaSee: "කවුද ඉන්නේ බලන්න",
     heroWorkerAlt: "ආරක්ෂිත උපකරණ පැළඳ මිටියක් අතැතිව සිටින ගොඩනැගිලි කම්කරුවෙක්",
     heroTeaAlt: "ශ්‍රී ලාංකික තේ වතුයායක වැඩ කරන තේ දළු නෙළන්නන්",
+    statusOnline: "සබැඳියි",
+    heroBadge: "සත්‍යාපිත වෘත්තිකයෙක්",
+    heroFigNo: "රූපය 01",
+    heroFigCaption: "සහතික ලත් ඉදිකිරීම්කරු · LK",
   },
   search: {
     placeholder: "ඔබට අවශ්‍ය කුමක්ද? උදා: වයරින්, බ්‍රේක්…",
@@ -1242,6 +1322,11 @@ const si: Dict = {
       price: "අඩුම මිල",
       experience: "වැඩිම පළපුරුද්ද",
       newest: "අලුත්ම",
+    },
+    stats: {
+      total: "මුළු ගණන",
+      trades: "ක්ෂේත්‍ර",
+      districts: "දිස්ත්‍රික්ක",
     },
   },
   card: {
@@ -1308,6 +1393,11 @@ const si: Dict = {
     leavingProvider: "වසමින්…",
     leaveProviderDone: "ඔබේ වෘත්තික පැතිකඩ වසා ඇත.",
     cancel: "අවලංගු කරන්න",
+    stats: {
+      saved: "සුරකා ඇත",
+      sent: "යවා ඇත",
+      reviews: "සමාලෝචන",
+    },
   },
   security: {
     link: "ගිණුම් ආරක්ෂාව",
@@ -1369,6 +1459,8 @@ const si: Dict = {
     sent: "විමසීම යවන ලදී. වෘත්තිකයා ඔබ හා සම්බන්ධ වනු ඇත.",
     sendError: "විමසීම යැවිය නොහැකි විය. නැවත උත්සාහ කරන්න.",
     cancelled: "අවලංගු කරන ලදී — කිසිවක් යවා නැත.",
+    signInPrompt: "සහායක භාවිතයට කරුණාකර පිවිසෙන්න.",
+    signInCta: "පිවිසෙන්න",
   },
   errors: {
     notFoundTitle: "පිටුව හමු නොවීය",
@@ -1428,6 +1520,14 @@ const si: Dict = {
     statOpenReports: "විවෘත වාර්තා",
     statActiveProviders: "සක්‍රිය වෘත්තිකයන්",
     statSuspendedProviders: "අත්හිටුවූ වෘත්තිකයන්",
+    stats: {
+      total: "මුළු ගණන",
+      active: "සක්‍රිය",
+      inactive: "අක්‍රිය",
+      open: "විවෘත",
+      pending: "පොරොත්තුවෙන්",
+      docs: "ලේඛන",
+    },
     manageTitle: "කළමනාකරණය",
     chartSignupsTitle: "කාලයත් සමඟ ලියාපදිංචි වීම්",
     chartCategoryTitle: "ක්ෂේත්‍රය අනුව වෘත්තිකයන්",
@@ -1503,8 +1603,12 @@ const si: Dict = {
     reportedProvider: "වෘත්තිකයා",
     reportedPhoto: "වැඩ ඡායාරූපය",
     reportedReview: "සමාලෝචනය",
+    reportedInquiry: "විමසුම",
+    reportedJob: "රැකියා දැන්වීම",
+    reportedJobResponse: "රැකියා ප්‍රතිචාරය",
     reportAnonymous: "නිර්නාමික",
     reportedBy: "වාර්තා කළේ",
+    reportSystem: "පද්ධතිය (ස්වයංක්‍රීය)",
     reportTargetGone: "මෙම අන්තර්ගතය තවදුරටත් නොපවතී.",
     reportContentRemoved: "ඉවත් කර ඇත",
     viewProvider: "වෘත්තිකයා බලන්න",
@@ -1673,12 +1777,19 @@ const si: Dict = {
     workPhoto: "වැඩ ඡායාරූපය",
     photoViewer: "ඡායාරූප දර්ශකය",
     closePhoto: "ඡායාරූප දර්ශකය වසන්න",
+    stats: {
+      expYears: "පළපුරුද්ද · අවු.",
+      rating: "ඇගයීම",
+      reviews: "සමාලෝචන",
+    },
   },
   toast: {
     favAdded: "ඔබේ ලැයිස්තුවට සුරකින ලදී.",
     favRemoved: "සුරකින ලද ලැයිස්තුවෙන් ඉවත් කරන ලදී.",
     favError: "සුරකින ලද වෘත්තිකයන් යාවත්කාලීන කළ නොහැකි විය.",
     reviewSaved: "ඔබේ සමාලෝචනය සුරකින ලදී.",
+    responseSaved: "ඔබේ පිළිතුර පළ කරන ලදී.",
+    responseDeleted: "ඔබේ පිළිතුර ඉවත් කරන ලදී.",
     dismiss: "ඉවත් කරන්න",
     adminVerified: "සේවා සපයන්නා සත්‍යාපනය කරන ලදී.",
     adminUnverified: "සේවා සපයන්නාගේ සත්‍යාපනය ඉවත් කරන ලදී.",
@@ -1764,6 +1875,15 @@ const si: Dict = {
     notRated: "තවම ඇගයුම් නැත",
     distributionRow: (star: number, count: number) =>
       `තරු ${star}: සමාලෝචන ${count}`,
+    // Provider responses (#395).
+    respond: "පිළිතුරු දෙන්න",
+    editResponse: "පිළිතුර වෙනස් කරන්න",
+    deleteResponse: "පිළිතුර මකන්න",
+    responseFrom: (name: string) => `${name} වෙතින් පිළිතුර`,
+    yourResponse: "ඔබේ පිළිතුර",
+    responsePh: "පාරිභෝගිකයාට ස්තූති කරන්න හෝ ඔවුන්ගේ අදහසට පිළිතුරු දෙන්න…",
+    postResponse: "පිළිතුර පළ කරන්න",
+    responseError: "පිළිතුර සුරැකීමට නොහැකි විය.",
   },
   report: {
     reportProvider: "මෙම වෘත්තිකයා වාර්තා කරන්න",
@@ -1980,6 +2100,9 @@ const si: Dict = {
       titlePriceRequired: "නාමයක් සහ වලංගු මිලක් අවශ්‍යයි.",
       keepOne: "ඔබේ පැතිකඩෙහි අවම වශයෙන් එක් සේවාවක් තබාගන්න.",
       saveError: "සේවාව සුරැකීමට නොහැකි විය.",
+      confirmDelete: "මෙම සේවාව මකන්නද?",
+      deleting: "මකමින්…",
+      deleteError: "සේවාව මැකීමට නොහැකි විය.",
     },
     photos: {
       profilePicture: "පැතිකඩ පින්තූරය",
@@ -1998,6 +2121,10 @@ const si: Dict = {
       empty: "තවම වැඩ ඡායාරූප නැත. ඉහළින් ඔබේ පළමු එක උඩුගත කරන්න.",
       uploadError: "උඩුගත කිරීම අසාර්ථකයි. නැවත උත්සාහ කරන්න.",
       delete: "මකන්න",
+      confirmDelete: "මෙම ඡායාරූපය මකන්නද?",
+      deleting: "මකමින්…",
+      deleteError: "ඡායාරූපය මැකීමට නොහැකි විය.",
+      cancel: "අවලංගු කරන්න",
       dropTitle: "ඡායාරූප මෙතැනට ඇද දමන්න",
       dropOr: "හෝ",
       browse: "ඡායාරූප තෝරන්න",
@@ -2024,6 +2151,9 @@ const si: Dict = {
       statusNew: "නව",
       statusResponded: "පිළිතුරු දී ඇත",
       statusClosed: "වසා ඇත",
+      loadMore: (n: number) => `තවත් පෙන්වන්න (ඉතිරි ${n})`,
+      loadingMore: "පූරණය වෙමින්…",
+      loadMoreError: "තවත් විමසුම් පූරණය කළ නොහැකි විය. නැවත උත්සාහ කරන්න.",
     },
   },
   providerReg: {
@@ -2032,6 +2162,7 @@ const si: Dict = {
     steps: ["ගිණුම", "පැතිකඩ", "සම්බන්ධතා සහ සමාජ මාධ්‍ය", "සේවා සහ ගාස්තු"],
     stepOf: (n: number, total: number, label: string) =>
       `පියවර ${n} / ${total}: ${label}`,
+    stepCompleted: "සම්පූර්ණයි",
     back: "← ආපසු",
     continue: "ඉදිරියට →",
     create: "මගේ පැතිකඩ සාදන්න",
@@ -2093,6 +2224,8 @@ const si: Dict = {
     errServiceCount: "අවම වශයෙන් එක් සේවාවක් එක් කරන්න.",
     errServiceTitle: "සෑම සේවාවකටම නාමයක් අවශ්‍යයි.",
     errServicePrice: "සෑම සේවාවකටම වලංගු මිලක් අවශ්‍යයි.",
+    asideWorkerAlt: "ශ්‍රී ලංකාවේ වැඩ කරමින් සිටින කාර්මිකයෙක්",
+    asideBadge: "ලියාපදිංචිය",
   },
 };
 

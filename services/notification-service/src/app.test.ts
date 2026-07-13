@@ -193,7 +193,7 @@ describe("happy paths (no RESEND_API_KEY → console fallback)", () => {
     expect(await res.json()).toEqual({ ok: true, delivered: false });
   });
 
-  it("POST /internal/email/new-job (fan-out to all recipients)", async () => {
+  it("POST /internal/email/new-job acks 202 before the fan-out (#557)", async () => {
     const res = await postWithSecret("/internal/email/new-job", {
       recipients: ["jane@example.com", "sam@example.com"],
       url: "https://baas.lk/jobs",
@@ -201,9 +201,10 @@ describe("happy paths (no RESEND_API_KEY → console fallback)", () => {
       district: "Colombo",
       locale: "si",
     });
-    expect(res.status).toBe(200);
-    // Deduped recipient count; delivered is 0 with no RESEND_API_KEY.
-    expect(await res.json()).toEqual({ ok: true, sent: 2, delivered: 0 });
+    expect(res.status).toBe(202);
+    // Deduped recipient count; delivery happens in the background and is
+    // logged, not returned.
+    expect(await res.json()).toEqual({ ok: true, accepted: 2 });
   });
 
   it("POST /internal/email/new-job dedupes case-insensitive recipients", async () => {
@@ -213,8 +214,8 @@ describe("happy paths (no RESEND_API_KEY → console fallback)", () => {
       jobTitle: "Fix a leaking tap",
       district: "Colombo",
     });
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, sent: 1, delivered: 0 });
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ ok: true, accepted: 1 });
   });
 
   it("POST /internal/email/inquiry", async () => {

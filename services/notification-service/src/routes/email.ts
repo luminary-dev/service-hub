@@ -12,6 +12,7 @@ import {
   verifyEmail,
   type Locale,
 } from "../lib/email";
+import { log } from "../lib/log";
 
 export const emailRoutes = new Hono();
 
@@ -115,20 +116,29 @@ emailRoutes.post("/new-job", async (c) => {
   const { recipients, url, jobTitle, district, locale } = parsed.data;
   const { subject, html } = newJobEmail(url, jobTitle, district, coerceLocale(locale));
   // Dedupe defensively (job-service already dedupes, but the recipient list is
-  // untrusted here) and send one copy per provider. Best-effort fan-out: a
-  // single failed send must not sink the rest, so swallow per-recipient errors
-  // and report how many were delivered.
+  // untrusted here) and send one copy per provider. Accept-and-return (#557):
+  // a 200-recipient sequential send cannot finish inside the caller's 5s s2s
+  // budget, so ack immediately and fan out in the background. The fan-out stays
+  // best-effort — a single failed send must not sink the rest — and the
+  // delivered count is logged instead of returned.
   const unique = [...new Set(recipients.map((r) => r.toLowerCase()))];
-  let delivered = 0;
-  for (const to of unique) {
-    try {
-      const { delivered: sent } = await sendMail({ to, subject, html });
-      if (sent) delivered++;
-    } catch {
-      // best-effort — keep going for the remaining recipients
+  void (async () => {
+    let delivered = 0;
+    for (const to of unique) {
+      try {
+        const { delivered: sent } = await sendMail({ to, subject, html });
+        if (sent) delivered++;
+      } catch {
+        // best-effort — keep going for the remaining recipients
+      }
     }
-  }
-  return c.json({ ok: true, sent: unique.length, delivered });
+    log.info("new-job fan-out complete", {
+      context: "email",
+      accepted: unique.length,
+      delivered,
+    });
+  })();
+  return c.json({ ok: true, accepted: unique.length }, 202);
 });
 
 emailRoutes.post("/job-response", async (c) => {

@@ -214,6 +214,12 @@ rate-limit → body-limit → proxy.
   is set (shared across instances, survives restarts); otherwise an in-memory
   per-instance fallback. Redis failures fall back to in-memory rather than
   erroring. Full table in [`docs/RATE_LIMITING.md`](docs/RATE_LIMITING.md).
+- **Content moderation** (#375): every user-generated text write (review
+  comments, provider profile/service text, inquiry + thread messages, job
+  posts/responses) is checked server-side against a bilingual (EN + Sinhala +
+  romanized Sinhala) denylist. A hit never blocks the write — it auto-files a
+  `SYSTEM`-sourced report into the admin moderation queue for triage. See
+  [`docs/admin/moderation.md`](docs/admin/moderation.md).
 - **Request-size caps.** The gateway buffers request bodies before forwarding,
   so it caps them at **6MB** (`bodyLimit`, covering the 5MB image limit plus
   multipart overhead) and returns 413 before buffering. It also imposes a 30s
