@@ -21,6 +21,11 @@
   `User` also carries `sessionVersion` (revocation), `failedLogins`/`lockedUntil`
   (per-account lockout), `emailVerified`, `avatarUrl` (profile photo #434), and
   a **nullable** `passwordHash` (OAuth-only accounts have no password #398).
+  Admin hot paths are indexed (#509, migration `20260713120000`): a btree on
+  `createdAt` (newest-first users list + dashboard signups range scan) and
+  pg_trgm GIN indexes on `email`/`name` for the case-insensitive admin search
+  (`ILIKE`), the same operator-class-index pattern provider-service uses for its
+  listing search — hand-written because Prisma's DSL can't express them.
 - **provider-service** (`provider_db`): `Provider`, `Service`, `WorkPhoto`
   (`sortOrder` manual order + `deletedAt` moderation soft-delete),
   `VerificationDocument`, `Inquiry` (+ `source`, per-party `customerLastReadAt`/
@@ -40,7 +45,9 @@
   and the audit fields `resolvedBy`/`resolvedAt` (#223, stamped when a report is
   closed). `Inquiry` and `Report` both carry `updatedAt` (#370).
 - **review-service** (`review_db`): `Review` (+ `deletedAt` soft-delete,
-  `verified` badge, `updatedAt` last-transition timestamp #370), `ReviewPhoto`,
+  `verified` badge, `updatedAt` last-transition timestamp #370, and the optional
+  nullable 1–5 sub-ratings `quality`/`punctuality`/`value`/`communication` #528
+  — the overall `rating` stays authoritative for ranking), `ReviewPhoto`,
   `Report` (**identical shape to provider-service's**, reconciled in #370 —
   same field set including `source` (`USER`|`SYSTEM`) and `updatedAt`;
   `targetType` = `REVIEW`; same `resolvedBy`/`resolvedAt` audit fields),

@@ -17,6 +17,19 @@ review-service.
   gate is therefore stamped **Verified**.
 - **One review per (provider, customer)** — re-submitting replaces the rating
   and comment (1–5 stars, comment 3–1000 chars) and appends photos.
+- **Optional per-dimension sub-ratings (#528).** Alongside the mandatory
+  overall star, a reviewer can *optionally* score four aspects — **quality**,
+  **punctuality**, **value** and **communication** — each 1–5. They are
+  nullable and additive: the overall `rating` stays **authoritative** for
+  ranking/sorting (dimensions never affect it), and a review with no dimensions
+  behaves exactly as before. Omitting a dimension on an edit leaves its stored
+  value untouched.
+- **Rating breakdown + distribution.** The profile's Reviews section shows,
+  over *all* of the provider's non-deleted reviews, the per-dimension averages
+  (each over its non-null values) and a 5→1 star-count histogram, next to the
+  overall average and count. The web reads these directly from review-service's
+  public reviews endpoint (`summary` field) — see
+  [API reference](../api/public.md).
 - **Review photos** — up to **3** per review (JPEG/PNG/WebP), submitted
   multipart to `POST /api/providers/{providerId}/reviews`. Authors can remove
   their own photos (`DELETE /api/reviews/photos/{id}`, a hard delete).

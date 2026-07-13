@@ -3,11 +3,11 @@
 // that reference the URLs stay with their owning service. Namespaces map to
 // the callers so their existing /api/files/<namespace>/... URLs keep working
 // unchanged (the volumes are simply remounted here).
-import { mkdir, writeFile, unlink, readdir, stat } from "node:fs/promises";
+import { mkdir, writeFile, unlink, readdir, stat, readFile } from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import sharp from "sharp";
-import { r2Enabled, r2Put, r2Delete, r2List } from "./r2";
+import { r2Enabled, r2Put, r2Get, r2Delete, r2List } from "./r2";
 
 // Processed uploads are always one of these three formats (see processImage).
 const MIME: Record<string, string> = {
@@ -85,6 +85,31 @@ const PREFIX_RE = /^[a-zA-Z0-9_-]+$/;
 
 export function isKnownNamespace(namespace: string): boolean {
   return NAMESPACES.has(namespace);
+}
+
+// Provider verification documents (NIC / business-registration scans, #500) are
+// PII and live under this reserved prefix. They must NEVER be served on the
+// public /files path — only through provider-service's admin-gated route, which
+// pulls the bytes via the internal raw endpoint. The gateway no longer forwards
+// this prefix; refusing it here too is defence-in-depth against a
+// misconfiguration.
+export const VERIFICATION_PREFIX = "verification";
+
+export function isVerificationSubpath(subpath: string): boolean {
+  return subpath.split("/")[0] === VERIFICATION_PREFIX;
+}
+
+// The extensions we serve, mapped to their content-type (processed uploads are
+// always one of these three formats). Derives the type from a stored subpath.
+const CONTENT_TYPES: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+};
+
+export function contentTypeFor(subpath: string): string | null {
+  return CONTENT_TYPES[path.extname(subpath).slice(1).toLowerCase()] ?? null;
 }
 
 export class InvalidNamespaceError extends Error {}
@@ -223,6 +248,34 @@ export function resolveFilePath(
   );
   if (!resolved.startsWith(root + path.sep)) return null;
   return resolved;
+}
+
+// Reads a stored file's bytes by its /api/files/<namespace>/<subpath> url, for
+// the internal raw endpoint that serves admin-gated PII (verification
+// documents, #500) WITHOUT exposing it on the public /files path. Resolves
+// against R2 or local disk; returns null when the url is malformed, the
+// namespace is unknown, the extension isn't one we serve, or the object is
+// missing. The caller enforces the per-request authorization.
+export async function readStoredFile(
+  url: string
+): Promise<{ data: Uint8Array<ArrayBuffer>; contentType: string } | null> {
+  const m = /^\/api\/files\/([a-z]+)\/(.+)$/.exec(url);
+  if (!m || !NAMESPACES.has(m[1])) return null;
+  const [, namespace, subpath] = m;
+  const contentType = contentTypeFor(subpath);
+  if (!contentType) return null;
+  if (r2Enabled()) {
+    const obj = await r2Get(`${namespace}/${subpath}`);
+    if (!obj) return null;
+    return { data: new Uint8Array(obj.body), contentType: obj.contentType ?? contentType };
+  }
+  const filePath = resolveFilePath(namespace, subpath);
+  if (!filePath) return null;
+  try {
+    return { data: new Uint8Array(await readFile(filePath)), contentType };
+  } catch {
+    return null;
+  }
 }
 
 export type StoredFile = { key: string; url: string; modifiedAt: Date };

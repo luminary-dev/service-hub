@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { dict } from "@/lib/i18n";
 import { ToastProvider } from "./ToastProvider";
 import ReviewSection from "./ReviewSection";
@@ -22,6 +22,7 @@ function renderSection(overrides: Partial<Props> = {}) {
     canReview: true,
     signedIn: true,
     myReview: null,
+    summary: null,
     ...overrides,
   };
   return render(
@@ -120,6 +121,59 @@ describe("ReviewSection", () => {
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("You already reviewed this provider");
     expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("submits the optional per-dimension ratings the user set", async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+    const { container } = renderSection();
+    openForm();
+    fireEvent.change(screen.getByLabelText(t.yourReview), {
+      target: { value: "Great, punctual work." },
+    });
+    // Set Quality = 4 stars (the 4th star button within the Quality group).
+    const qualityGroup = screen.getByRole("group", { name: t.dimensions.quality });
+    fireEvent.click(
+      within(qualityGroup).getByRole("button", {
+        name: t.dimensionStarLabel(t.dimensions.quality, 4),
+      })
+    );
+    fireEvent.submit(container.querySelector("form")!);
+
+    const body = fetchMock.mock.calls[0][1].body as FormData;
+    expect(body.get("quality")).toBe("4");
+    // Untouched dimensions are omitted entirely (server leaves them unchanged).
+    expect(body.get("punctuality")).toBeNull();
+    expect(body.get("value")).toBeNull();
+  });
+
+  it("renders the dimension breakdown and the 5→1 star distribution", () => {
+    renderSection({
+      summary: {
+        rating: 4.5,
+        count: 4,
+        dimensions: {
+          quality: 4.5,
+          punctuality: null,
+          value: 4,
+          communication: 5,
+        },
+        distribution: { "5": 3, "4": 0, "3": 1, "2": 0, "1": 0 },
+      },
+    });
+    expect(screen.getByText(t.breakdown)).toBeTruthy();
+    expect(screen.getByText(t.distribution)).toBeTruthy();
+    // A scored dimension shows its average; an unscored one reads "not rated".
+    expect(screen.getByText("4.5")).toBeTruthy();
+    expect(screen.getByText(t.notRated)).toBeTruthy();
+    // Distribution rows are labelled per star with their review counts.
+    expect(screen.getByLabelText(t.distributionRow(5, 3))).toBeTruthy();
+    expect(screen.getByLabelText(t.distributionRow(3, 1))).toBeTruthy();
+  });
+
+  it("hides the breakdown when there are no reviews yet", () => {
+    renderSection({ summary: null });
+    expect(screen.queryByText(t.breakdown)).toBeNull();
+    expect(screen.queryByText(t.distribution)).toBeNull();
   });
 
   it("disables the submit button while saving", async () => {

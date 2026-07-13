@@ -66,7 +66,7 @@ describe("ReportActions", () => {
     renderActions("ADMIN");
     fireEvent.click(screen.getByRole("button", { name: t.admin.resolve }));
 
-    const toast = await screen.findByRole("status");
+    const toast = await screen.findByRole("alert");
     expect(toast.textContent).toContain(t.toast.adminReportResolveError);
     expect(refresh).not.toHaveBeenCalled();
   });

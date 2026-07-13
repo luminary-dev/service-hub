@@ -29,6 +29,7 @@ const { dbMock } = vi.hoisted(() => ({
       findUnique: vi.fn(),
       findMany: vi.fn(),
       updateMany: vi.fn(),
+      groupBy: vi.fn(),
     },
     reviewPhoto: {
       findUnique: vi.fn(),
@@ -59,6 +60,15 @@ const OWNER_ID = "user_owner";
 const REVIEWER_ID = "user_reviewer";
 
 const s2sMock = vi.mocked(s2s);
+
+// The public reviews GET now folds in a rating `summary` (#528). With no
+// review rows the two grouped queries return [] and the summary zero-fills.
+const EMPTY_SUMMARY = {
+  rating: 0,
+  count: 0,
+  dimensions: { quality: null, punctuality: null, value: null, communication: null },
+  distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+};
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -103,14 +113,54 @@ function req(path: string, init: RequestInit = {}, headers: Record<string, strin
 beforeEach(() => {
   vi.clearAllMocks();
   wireS2s();
+  // Default: no reviews → the rating-summary groupBys return nothing.
+  dbMock.review.groupBy.mockResolvedValue([]);
 });
 
 describe("GET /api/providers/:id/reviews (public listing)", () => {
-  it("serves the paginated page when the provider exists", async () => {
+  it("serves the paginated page plus a rating summary when the provider exists", async () => {
     dbMock.review.findMany.mockResolvedValue([]);
     const res = await req(`/api/providers/${PROVIDER_ID}/reviews`);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ reviews: [], nextCursor: null });
+    expect(await res.json()).toEqual({
+      reviews: [],
+      nextCursor: null,
+      summary: EMPTY_SUMMARY,
+    });
+  });
+
+  it("aggregates the rating summary over all reviews (dimensions + distribution)", async () => {
+    dbMock.review.findMany.mockResolvedValue([]);
+    dbMock.review.groupBy.mockImplementation(async (args: { by: string[] }) => {
+      if (args.by.includes("rating")) {
+        return [
+          { providerId: PROVIDER_ID, rating: 5, _count: { _all: 2 } },
+          { providerId: PROVIDER_ID, rating: 3, _count: { _all: 1 } },
+        ];
+      }
+      return [
+        {
+          providerId: PROVIDER_ID,
+          _avg: {
+            rating: 13 / 3,
+            quality: 4.5,
+            punctuality: null,
+            value: 4,
+            communication: 5,
+          },
+          _count: { _all: 3 },
+        },
+      ];
+    });
+    const res = await req(`/api/providers/${PROVIDER_ID}/reviews`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.summary).toEqual({
+      rating: 13 / 3,
+      count: 3,
+      dimensions: { quality: 4.5, punctuality: null, value: 4, communication: 5 },
+      distribution: { 1: 0, 2: 0, 3: 1, 4: 0, 5: 2 },
+    });
   });
 
   it("404s for a suspended provider", async () => {
@@ -126,7 +176,11 @@ describe("GET /api/providers/:id/reviews (public listing)", () => {
     dbMock.review.findMany.mockResolvedValue([]);
     const res = await req(`/api/providers/${PROVIDER_ID}/reviews`);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ reviews: [], nextCursor: null });
+    expect(await res.json()).toEqual({
+      reviews: [],
+      nextCursor: null,
+      summary: EMPTY_SUMMARY,
+    });
   });
 
   it("never leaks the reviewer's userId or deletedAt in the public payload (audit L6)", async () => {
@@ -522,6 +576,43 @@ describe("PATCH /api/admin/review-reports/:id (resolve / dismiss)", () => {
     );
     expect(res.status).toBe(200);
     expect(dbMock.adminAuditLog.create).toHaveBeenCalled();
+  });
+});
+
+describe("PATCH /api/admin/review-reports (bulk resolve / dismiss)", () => {
+  it("403s a plain CUSTOMER", async () => {
+    const res = await req(
+      "/api/admin/review-reports",
+      { method: "PATCH", body: JSON.stringify({ ids: ["rep1"], status: "RESOLVED" }) },
+      { "x-user-id": REVIEWER_ID }
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("400s on an invalid status", async () => {
+    const res = await req(
+      "/api/admin/review-reports",
+      { method: "PATCH", body: JSON.stringify({ ids: ["rep1"], status: "MAYBE" }) },
+      { "x-user-id": "sup_1", "x-user-role": "SUPPORT" }
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("writes one audit entry per affected report on a bulk close", async () => {
+    // updateMany silently skips unknown ids, so the audit trail keys off the
+    // ids actually matched by the pre-write findMany — here two of three.
+    dbMock.report.findMany.mockResolvedValue([{ id: "rep1" }, { id: "rep2" }]);
+    dbMock.report.updateMany.mockResolvedValue({ count: 2 });
+    const res = await req(
+      "/api/admin/review-reports",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ ids: ["rep1", "rep2", "gone"], status: "RESOLVED" }),
+      },
+      { "x-user-id": "sup_1", "x-user-role": "SUPPORT" }
+    );
+    expect(res.status).toBe(200);
+    expect(dbMock.adminAuditLog.create).toHaveBeenCalledTimes(2);
   });
 });
 

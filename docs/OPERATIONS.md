@@ -112,11 +112,31 @@ Runs on push and PR to `dev` and `prod`. Jobs:
   `NODE_ENV=production`, where the seed otherwise refuses), then runs
   `scripts/e2e-smoke.sh`. Dumps logs on failure and always tears down with
   `down -v`.
+- **`prod-compose`** (#512) — validates `docker-compose.prod.yml` (the file that
+  actually ships) with `docker compose -f docker-compose.prod.yml config -q`.
+  The dev/e2e jobs only ever exercise `docker-compose.yml`, so the prod file used
+  to be parsed for the first time during the live SSH deploy — a syntax error,
+  bad anchor, broken `${VAR:?}`, wrong image name, or malformed
+  `healthcheck`/`mem_limit` would surface only then. `config` fully
+  parses/interpolates without pulling images or starting containers, so it's a
+  fast gate; the job supplies **dummy** values for the required `${VAR:?}` secrets
+  (`AUTH_SECRET`, `INTERNAL_API_SECRET`, `POSTGRES_PASSWORD`, `WEB_ORIGIN`,
+  `DOMAIN`) so interpolation succeeds, and fails loudly if the file is invalid.
 
 A `concurrency` group (`${{ github.workflow }}-${{ github.ref }}`,
 `cancel-in-progress: true`) cancels superseded runs when a PR is pushed again,
 and every job has a `timeout-minutes` cap (15 for the matrix legs, 30 for the
-`e2e` compose job) so a hung run can't burn the 6-hour default.
+`e2e` compose job, 5 for `prod-compose`) so a hung run can't burn the 6-hour
+default.
+
+**Check-name convention.** Every check across the CI and security-scan
+workflows follows one format: a **per-package** check is `<package> / <task>`
+(e.g. `web / typecheck`, `api-gateway / build`, `web / coverage`,
+`media-service / npm-audit`, `web / trivy-image`); a **repo-wide** check is a
+single lowercase-kebab name with no slash (`e2e`, `compose-config`, `trivy-fs`,
+`actionlint`). The 28 `<package> / {typecheck,test,build}` legs are the required
+status checks in the `dev`/`prod` rulesets — keep those exact names stable, and
+if you rename one, update the ruleset's required-checks list in the same change.
 
 See [TESTING.md](TESTING.md) for the test layers behind these jobs.
 

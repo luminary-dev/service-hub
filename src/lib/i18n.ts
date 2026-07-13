@@ -140,6 +140,25 @@ const en = {
   },
   browse: {
     title: "All Professionals",
+    // Keyword-rich <title>/<description> for the category & district listing
+    // pages (#513). Passed the already-localized category label; the site name
+    // is appended by the root title template.
+    metaTitle: (category: string | null, district: string | null) =>
+      category && district
+        ? `${category} in ${district}, Sri Lanka`
+        : category
+          ? `${category} in Sri Lanka`
+          : district
+            ? `Trusted tradespeople in ${district}, Sri Lanka`
+            : "Find trusted tradespeople in Sri Lanka",
+    metaDesc: (category: string | null, district: string | null) =>
+      category && district
+        ? `Find and hire trusted ${category} in ${district}, Sri Lanka. Browse profiles, real work photos and rates, and contact your baas directly on Baas.lk.`
+        : category
+          ? `Find and hire trusted ${category} across Sri Lanka. Browse profiles, real work photos and rates, and contact your baas directly on Baas.lk.`
+          : district
+            ? `Find and hire trusted tradespeople in ${district}, Sri Lanka. Browse profiles, real work photos and rates, and contact your baas directly on Baas.lk.`
+            : "Browse trusted tradespeople across Sri Lanka on Baas.lk. See profiles, real work photos and rates, and contact your baas directly.",
     found: (n: number, district: string | null) =>
       `${n} professional${n === 1 ? "" : "s"} found ${district ? `in ${district}` : "across Sri Lanka"}`,
     searchPh: "Search by name, skill or city…",
@@ -675,6 +694,21 @@ const en = {
     tooManyPhotos: (max: number) => `A review can have at most ${max} photos.`,
     removePhoto: "Remove photo",
     starLabel: (n: number) => `${n} star${n === 1 ? "" : "s"}`,
+    // Optional per-dimension sub-ratings (#528).
+    dimensionsLabel: "Rate specific aspects (optional)",
+    dimensions: {
+      quality: "Quality of work",
+      punctuality: "Punctuality",
+      value: "Value for money",
+      communication: "Communication",
+    },
+    dimensionStarLabel: (dimension: string, n: number) =>
+      `${dimension}: ${n} star${n === 1 ? "" : "s"}`,
+    breakdown: "Rating breakdown",
+    distribution: "Rating distribution",
+    notRated: "Not rated yet",
+    distributionRow: (star: number, count: number) =>
+      `${star} star${star === 1 ? "" : "s"}: ${count} review${count === 1 ? "" : "s"}`,
   },
   report: {
     reportProvider: "Report this provider",
@@ -747,7 +781,8 @@ const en = {
     title: "Choose a new password",
     sub: "Enter a new password for your account.",
     password: "New password",
-    passwordHint: "At least 6 characters.",
+    passwordHint:
+      "At least 10 characters. Avoid common or easily guessed passwords.",
     submit: "Reset password",
     submitting: "Resetting…",
     doneTitle: "Password updated",
@@ -804,7 +839,8 @@ const en = {
     email: "Email",
     phone: "Phone number",
     password: "Password",
-    passwordHint: "At least 6 characters.",
+    passwordHint:
+      "At least 10 characters. Avoid common or easily guessed passwords.",
     create: "Create account",
     creating: "Creating account…",
     failed: "Registration failed. Please try again.",
@@ -985,7 +1021,8 @@ const en = {
     errName: "Please enter your full name.",
     errEmail: "Please enter a valid email.",
     errPhone: "Please enter a valid phone number.",
-    errPassword: "Password must be at least 6 characters.",
+    errPassword:
+      "Password must be at least 10 characters. Avoid common or easily guessed passwords.",
     errCategory: "Please choose your service category.",
     errHeadline: "Add a short headline (at least 5 characters).",
     errBio: "Tell customers about yourself (at least 20 characters).",
@@ -1136,6 +1173,22 @@ const si: Dict = {
   },
   browse: {
     title: "සියලු වෘත්තිකයන්",
+    metaTitle: (category: string | null, district: string | null) =>
+      category && district
+        ? `${district} හි ${category} — ශ්‍රී ලංකාව`
+        : category
+          ? `ශ්‍රී ලංකාවේ ${category}`
+          : district
+            ? `${district} හි විශ්වාසවන්ත කාර්මිකයන්`
+            : "ශ්‍රී ලංකාවේ විශ්වාසවන්ත කාර්මිකයන් සොයන්න",
+    metaDesc: (category: string | null, district: string | null) =>
+      category && district
+        ? `${district} හි විශ්වාසවන්ත ${category} සොයාගෙන බඳවා ගන්න. පැතිකඩ, සැබෑ වැඩ ඡායාරූප සහ ගාස්තු බලා, ඔබේ බාස් සමඟ Baas.lk හරහා සෘජුවම සම්බන්ධ වන්න.`
+        : category
+          ? `ලංකාව පුරා විශ්වාසවන්ත ${category} සොයාගෙන බඳවා ගන්න. පැතිකඩ, සැබෑ වැඩ ඡායාරූප සහ ගාස්තු බලා, ඔබේ බාස් සමඟ Baas.lk හරහා සෘජුවම සම්බන්ධ වන්න.`
+          : district
+            ? `${district} හි විශ්වාසවන්ත කාර්මිකයන් සොයාගෙන බඳවා ගන්න. පැතිකඩ, සැබෑ වැඩ ඡායාරූප සහ ගාස්තු බලා, ඔබේ බාස් සමඟ Baas.lk හරහා සෘජුවම සම්බන්ධ වන්න.`
+            : "ලංකාව පුරා විශ්වාසවන්ත කාර්මිකයන් Baas.lk හරහා සොයන්න. පැතිකඩ, සැබෑ වැඩ ඡායාරූප සහ ගාස්තු බලා, ඔබේ බාස් සමඟ සෘජුවම සම්බන්ධ වන්න.",
     found: (n: number, district: string | null) =>
       district
         ? `${district} හි වෘත්තිකයන් ${n}ක් හමු විය`
@@ -1663,6 +1716,20 @@ const si: Dict = {
     tooManyPhotos: (max: number) => `සමාලෝචනයකට උපරිම ඡායාරූප ${max}ක් තිබිය හැක.`,
     removePhoto: "ඡායාරූපය ඉවත් කරන්න",
     starLabel: (n: number) => `තරු ${n}`,
+    // Optional per-dimension sub-ratings (#528).
+    dimensionsLabel: "නිශ්චිත අංශ ඇගයීම (විකල්ප)",
+    dimensions: {
+      quality: "වැඩේ ගුණාත්මකභාවය",
+      punctuality: "වේලාවට පැමිණීම",
+      value: "මුදලට වටිනාකම",
+      communication: "සන්නිවේදනය",
+    },
+    dimensionStarLabel: (dimension: string, n: number) => `${dimension}: තරු ${n}`,
+    breakdown: "ඇගයීම් විශ්ලේෂණය",
+    distribution: "ඇගයීම් ව්‍යාප්තිය",
+    notRated: "තවම ඇගයුම් නැත",
+    distributionRow: (star: number, count: number) =>
+      `තරු ${star}: සමාලෝචන ${count}`,
   },
   report: {
     reportProvider: "මෙම වෘත්තිකයා වාර්තා කරන්න",
@@ -1735,7 +1802,8 @@ const si: Dict = {
     title: "නව මුරපදයක් තෝරන්න",
     sub: "ඔබේ ගිණුමට නව මුරපදයක් ඇතුළත් කරන්න.",
     password: "නව මුරපදය",
-    passwordHint: "අවම අකුරු 6ක්.",
+    passwordHint:
+      "අවම වශයෙන් අකුරු 10ක්. පොදු හෝ පහසුවෙන් අනුමාන කළ හැකි මුරපද වළක්වන්න.",
     submit: "මුරපදය යළි සකසන්න",
     submitting: "යළි සකසමින්…",
     doneTitle: "මුරපදය යාවත්කාලීන විය",
@@ -1792,7 +1860,8 @@ const si: Dict = {
     email: "විද්‍යුත් තැපෑල",
     phone: "දුරකථන අංකය",
     password: "මුරපදය",
-    passwordHint: "අවම අකුරු 6ක්.",
+    passwordHint:
+      "අවම වශයෙන් අකුරු 10ක්. පොදු හෝ පහසුවෙන් අනුමාන කළ හැකි මුරපද වළක්වන්න.",
     create: "ගිණුම හදන්න",
     creating: "හදමින්…",
     failed: "ලියාපදිංචිය අසාර්ථකයි. නැවත උත්සාහ කරන්න.",
@@ -1970,7 +2039,8 @@ const si: Dict = {
     errName: "කරුණාකර ඔබේ සම්පූර්ණ නම ඇතුළත් කරන්න.",
     errEmail: "කරුණාකර වලංගු විද්‍යුත් තැපෑලක් ඇතුළත් කරන්න.",
     errPhone: "කරුණාකර වලංගු දුරකථන අංකයක් ඇතුළත් කරන්න.",
-    errPassword: "මුරපදය අවම වශයෙන් අකුරු 6ක් විය යුතුය.",
+    errPassword:
+      "මුරපදය අවම වශයෙන් අකුරු 10ක් විය යුතුය. පොදු හෝ පහසුවෙන් අනුමාන කළ හැකි මුරපද වළක්වන්න.",
     errCategory: "කරුණාකර ඔබේ සේවා ක්ෂේත්‍රය තෝරන්න.",
     errHeadline: "කෙටි සිරස්තලයක් එක් කරන්න (අවම අකුරු 5ක්).",
     errBio: "පාරිභෝගිකයන්ට ඔබ ගැන කියන්න (අවම අකුරු 20ක්).",

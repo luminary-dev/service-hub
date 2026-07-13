@@ -1,27 +1,23 @@
 import { Hono } from "hono";
 import { db } from "../db";
 import { listProviderReviews, normalizeTake } from "../lib/provider-reviews";
-import { aggregateRatings } from "../lib/ratings";
+import { fetchRatingSummaries } from "../lib/rating-summary";
 import { removeStoredFile, sweepMedia } from "../lib/storage";
 
 export const internal = new Hono();
 
 // Batch rating summaries for provider cards / listings / admin lists.
 // GET /internal/ratings?providerIds=a,b,c
+// Each entry carries the overall `rating`+`count` (authoritative for ranking)
+// plus the additive per-dimension averages and 5→1 star `distribution` (#528).
+// Existing consumers keep reading `rating`/`count`; the extra fields are ignored
+// unless a caller opts in.
 internal.get("/ratings", async (c) => {
   const ids = (c.req.query("providerIds") ?? "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  const rows = ids.length
-    ? await db.review.groupBy({
-        by: ["providerId"],
-        where: { providerId: { in: ids }, deletedAt: null },
-        _avg: { rating: true },
-        _count: { _all: true },
-      })
-    : [];
-  return c.json({ ratings: aggregateRatings(rows) });
+  return c.json({ ratings: await fetchRatingSummaries(ids) });
 });
 
 // Reviews for one provider (createdAt desc, cursor-paginated), photos

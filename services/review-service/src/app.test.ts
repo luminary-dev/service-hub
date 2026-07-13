@@ -63,14 +63,41 @@ describe("internal secret enforcement", () => {
 });
 
 describe("GET /internal/ratings (batch summaries)", () => {
-  it("returns { ratings } keyed by providerId", async () => {
-    dbMock.review.groupBy.mockResolvedValue([
-      { providerId: "p1", _avg: { rating: 4.5 }, _count: { _all: 2 } },
-    ]);
+  it("returns each provider's overall average+count, dimension averages and star distribution", async () => {
+    // Two grouped queries back the summary (#528): the overall averages +
+    // per-dimension averages + count, and the per-star histogram.
+    dbMock.review.groupBy.mockImplementation(async (args: { by: string[] }) => {
+      if (args.by.includes("rating")) {
+        return [
+          { providerId: "p1", rating: 5, _count: { _all: 1 } },
+          { providerId: "p1", rating: 4, _count: { _all: 1 } },
+        ];
+      }
+      return [
+        {
+          providerId: "p1",
+          _avg: {
+            rating: 4.5,
+            quality: 5,
+            punctuality: 4,
+            value: null,
+            communication: 4.5,
+          },
+          _count: { _all: 2 },
+        },
+      ];
+    });
     const res = await req("/internal/ratings?providerIds=p1,p2");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
-      ratings: { p1: { rating: 4.5, count: 2 } },
+      ratings: {
+        p1: {
+          rating: 4.5,
+          count: 2,
+          dimensions: { quality: 5, punctuality: 4, value: null, communication: 4.5 },
+          distribution: { 1: 0, 2: 0, 3: 0, 4: 1, 5: 1 },
+        },
+      },
     });
   });
 
