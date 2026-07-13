@@ -375,7 +375,7 @@ internalRoutes.post("/internal/users/:id/erase", async (c) => {
 // references any more. Grace window protects in-flight uploads; run it from
 // ops tooling (cron/curl with the internal secret).
 internalRoutes.post("/internal/maintenance/sweep-orphans", async (c) => {
-  const [photos, docs, avatars, covers] = await Promise.all([
+  const [photos, docs, avatars, covers, categories] = await Promise.all([
     db.workPhoto.findMany({ select: { url: true } }),
     db.verificationDocument.findMany({ select: { url: true } }),
     db.provider.findMany({
@@ -386,6 +386,10 @@ internalRoutes.post("/internal/maintenance/sweep-orphans", async (c) => {
       where: { coverPhoto: { not: null } },
       select: { coverPhoto: true },
     }),
+    db.category.findMany({
+      where: { imageUrl: { not: null } },
+      select: { imageUrl: true },
+    }),
   ]);
   const referenced = new Set<string>([
     ...photos.map((p) => p.url),
@@ -393,8 +397,18 @@ internalRoutes.post("/internal/maintenance/sweep-orphans", async (c) => {
     ...avatars.map((a) => a.avatarUrl as string),
     ...covers.map((c) => c.coverPhoto as string),
   ]);
-  const result = await sweepMedia("provider", [...referenced]);
-  return c.json(result);
+  const provider = await sweepMedia("provider", [...referenced]);
+  // Category cover images (#436) live in their own namespace; sweep it against
+  // the saved imageUrls so an abandoned or replaced admin upload doesn't
+  // orphan the object forever (#555).
+  const category = await sweepMedia(
+    "category",
+    categories.map((cat) => cat.imageUrl as string)
+  );
+  return c.json({
+    scanned: provider.scanned + category.scanned,
+    removed: provider.removed + category.removed,
+  });
 });
 
 // Existence/suspended check (favorites, reviews). Always 200 — the caller

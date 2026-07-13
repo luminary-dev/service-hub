@@ -76,7 +76,11 @@ These endpoints back the layered gates:
 
 - **Compose healthchecks** — every service uses the shared node healthcheck
   (`wget -qO- http://localhost:$PORT/healthz`); Postgres uses `pg_isready`, Redis
-  `redis-cli ping`. Prod intervals are 10s with 10 retries, plus a
+  `redis-cli ping`. In prod the web app is probed the same way (its own
+  gateway-independent `/healthz` route — `/api/healthz` would be proxied to the
+  gateway) and Caddy via its admin API (`http://localhost:2019/config/`, which
+  works before DNS/ACME are in place), so the deploy gate covers the public
+  site (#385). Prod intervals are 10s with 10 retries, plus a
   `start_period` (30s; **120s for the DB-owning services**, whose boot runs
   `prisma migrate deploy` first) during which failed probes don't count against
   the retry budget — so a slow migration no longer trips the deploy gate into
