@@ -49,16 +49,25 @@ async function main() {
   await db.user.deleteMany();
 
   const passwordHash = await bcrypt.hash("password123", 10);
+  // Demo accounts are seeded email-verified so gated flows (job posting #556)
+  // work out of the box — there is no real inbox to click a link from.
+  const emailVerified = new Date();
 
   for (const u of PROVIDER_USERS) {
-    await db.user.create({ data: { ...u, passwordHash, role: "PROVIDER" } });
+    await db.user.create({
+      data: { ...u, passwordHash, emailVerified, role: "PROVIDER" },
+    });
   }
 
   for (const c of CUSTOMERS) {
-    await db.user.create({ data: { ...c, passwordHash, role: "CUSTOMER" } });
+    await db.user.create({
+      data: { ...c, passwordHash, emailVerified, role: "CUSTOMER" },
+    });
   }
 
-  await db.user.create({ data: { ...ADMIN, passwordHash, role: "ADMIN" } });
+  await db.user.create({
+    data: { ...ADMIN, passwordHash, emailVerified, role: "ADMIN" },
+  });
 
   console.log(
     `Seeded ${PROVIDER_USERS.length} provider users, ${CUSTOMERS.length} customers, 1 admin (admin@baas.lk).`
