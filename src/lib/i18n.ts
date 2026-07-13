@@ -858,8 +858,23 @@ const en = {
     dashboard: "Dashboard",
     browse: "Browse Professionals",
     createAccount: "Create an Account",
+    terms: "Terms of Service",
+    privacy: "Privacy Policy",
     made1: "Made with",
     made2: "for Sri Lanka",
+  },
+  // Registration consent + legal-page links (#62). The agree/continue
+  // sentences are split around the two links so each locale keeps natural
+  // word order.
+  legal: {
+    terms: "Terms of Service",
+    privacy: "Privacy Policy",
+    agreePrefix: "I agree to the ",
+    agreeJoin: " and ",
+    agreeSuffix: ".",
+    continuePrefix: "By continuing, you agree to the ",
+    continueSuffix: ".",
+    errAgree: "Please agree to the Terms of Service and Privacy Policy.",
   },
   dashboard: {
     title: "Dashboard",
@@ -1889,8 +1904,20 @@ const si: Dict = {
     dashboard: "පාලක පුවරුව",
     browse: "වෘත්තිකයන් බලන්න",
     createAccount: "ගිණුමක් හදන්න",
+    terms: "සේවා කොන්දේසි",
+    privacy: "රහස්‍යතා ප්‍රතිපත්තිය",
     made1: "හදන ලද්දේ",
     made2: "ලංකාවට ආදරයෙන්",
+  },
+  legal: {
+    terms: "සේවා කොන්දේසි",
+    privacy: "රහස්‍යතා ප්‍රතිපත්තිය",
+    agreePrefix: "මම ",
+    agreeJoin: " සහ ",
+    agreeSuffix: " පිළිගනිමි.",
+    continuePrefix: "ඉදිරියට යාමෙන්, ඔබ ",
+    continueSuffix: " පිළිගනී.",
+    errAgree: "කරුණාකර සේවා කොන්දේසි සහ රහස්‍යතා ප්‍රතිපත්තිය පිළිගන්න.",
   },
   dashboard: {
     title: "පාලක පුවරුව",

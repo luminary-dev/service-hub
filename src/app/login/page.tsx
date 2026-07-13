@@ -8,6 +8,7 @@ import { localizedHref } from "@/lib/links";
 import PasswordInput from "@/components/PasswordInput";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
 import FacebookSignInButton from "@/components/FacebookSignInButton";
+import { ConsentNotice } from "@/components/LegalConsent";
 import { Field } from "@/components/ui/Field";
 
 export default function LoginPage() {
@@ -142,6 +143,7 @@ export default function LoginPage() {
           <FacebookSignInButton label={t.oauth.continueWithFacebook} />
         </div>
         <p className="mt-3 text-center text-xs text-ink-500">{t.oauth.dataUse}</p>
+        <ConsentNotice />
 
         <p className="mt-6 text-center text-sm text-ink-500">
           {t.login.newTo}{" "}

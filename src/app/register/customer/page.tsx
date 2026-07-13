@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useT } from "@/components/I18nProvider";
+import { ConsentCheckbox } from "@/components/LegalConsent";
 import PasswordInput from "@/components/PasswordInput";
 import { Field } from "@/components/ui/Field";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/constants";
@@ -15,6 +16,7 @@ export default function CustomerRegisterPage() {
     phone: "",
     password: "",
   });
+  const [agree, setAgree] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
@@ -120,6 +122,7 @@ export default function CustomerRegisterPage() {
                 aria-describedby="reg-password-hint"
               />
             </Field>
+            <ConsentCheckbox id="reg-agree" checked={agree} onChange={setAgree} />
             {error && (
               <p role="alert" className="text-sm text-red-600">
                 {error}

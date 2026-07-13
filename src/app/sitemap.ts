@@ -60,6 +60,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // session/utility pages carrying only the generic default title and
     // description, so listing them dilutes crawl focus without adding any
     // indexable value.
+    ...bilingual("/terms", {
+      lastModified: now,
+      changeFrequency: "yearly",
+      priority: 0.3,
+    }),
+    ...bilingual("/privacy", {
+      lastModified: now,
+      changeFrequency: "yearly",
+      priority: 0.3,
+    }),
   ];
 
   const categoryPages: MetadataRoute.Sitemap = CATEGORIES.flatMap((c) =>
