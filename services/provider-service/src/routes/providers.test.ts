@@ -167,6 +167,18 @@ describe("GET /api/providers/:id/full — suspended gate mirrors detail", () => 
     expect(body.provider.hasPhone).toBe(true);
   });
 
+  it("bounds the avgResponseMs sample to the most recent answered inquiries (#372)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(providerRow({ _count: { photos: 0 } }));
+    const res = await req("/api/providers/p1/full");
+    expect(res.status).toBe(200);
+    expect(dbMock.inquiry.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: { respondedAt: "desc" },
+        take: 200,
+      })
+    );
+  });
+
   it("never leaks admin rejectionReason to the public profile payload (#506)", async () => {
     dbMock.provider.findUnique.mockResolvedValue(
       providerRow({

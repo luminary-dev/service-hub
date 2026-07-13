@@ -210,6 +210,41 @@ internalRoutes.post("/internal/providers/avatar", async (c) => {
   return c.json({ ok: true });
 });
 
+// Denormalized contact sync from identity (#553). Mirrors User name/phone/
+// email changes onto the provider's cached contact columns — the ones that
+// drive public cards, admin lists, contact reveal and the inquiry / new-job
+// lead emails. Only fields present in the body are written; matches suspended
+// profiles too so a hidden profile is fresh if reactivated. Always 200 — the
+// caller's own update already succeeded; this is a best-effort mirror like
+// the avatar sync above.
+const contactSyncSchema = z.object({
+  userId: z.string().min(1),
+  name: z.string().min(1).max(80).optional(),
+  email: z.string().min(1).optional(),
+  phone: z.string().max(15).nullish(),
+});
+
+internalRoutes.post("/internal/providers/contact", async (c) => {
+  const parsed = contactSyncSchema.safeParse(
+    await c.req.json().catch(() => null)
+  );
+  if (!parsed.success) {
+    return c.json({ error: "Invalid input" }, 400);
+  }
+  const { name, email, phone } = parsed.data;
+  const data: Prisma.ProviderUpdateManyMutationInput = {};
+  if (name !== undefined) data.contactName = name;
+  if (email !== undefined) data.contactEmail = email;
+  if (phone !== undefined) data.contactPhone = phone || null;
+  if (Object.keys(data).length > 0) {
+    await db.provider.updateMany({
+      where: { userId: parsed.data.userId },
+      data,
+    });
+  }
+  return c.json({ ok: true });
+});
+
 // Forward lead-gen fan-out (#501): the providers to notify when a customer
 // posts a job. Mirrors the job board's scoping exactly — a provider matches a
 // job when its `category` and `district` equal the job's AND it is not

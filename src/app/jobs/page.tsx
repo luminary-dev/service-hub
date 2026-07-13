@@ -4,6 +4,7 @@ import { FaBriefcase, FaInbox, FaPhone, FaPlus } from "@/components/icons";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
+import { loginNext } from "@/lib/login";
 import { formatDate, formatNumber } from "@/lib/format";
 import { dict, categoryLabelLoc, districtLabelLoc } from "@/lib/i18n";
 import InView from "@/components/InView";
@@ -60,7 +61,7 @@ export default async function JobsPage({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const session = await getSession();
-  if (!session) redirect("/login");
+  if (!session) redirect(await loginNext("/jobs"));
 
   const params = await searchParams;
   const boardPage = Math.max(1, Number(params.boardPage) || 1);
