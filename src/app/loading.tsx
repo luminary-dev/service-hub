@@ -1,12 +1,14 @@
 import { Skeleton } from "@/components/ui/Skeleton";
 
-// Skeleton for the account area (saved providers, inquiries, security) while
-// the session-gated payload loads.
-export default function LoadingAccount() {
+// Root route skeleton (#381): shown while the home page's request-time data
+// (featured providers, stats) streams in. It is also the fallback for any
+// top-level route without a closer loading.tsx, so it stays layout-neutral —
+// a heading block over a card grid.
+export default function Loading() {
   return (
-    <div className="mx-auto max-w-5xl animate-pulse px-4 py-10 sm:px-6">
-      <Skeleton tone="strong" className="h-8 w-48 rounded-lg" />
-      <Skeleton className="mt-3 h-4 w-64 rounded" />
+    <div className="mx-auto max-w-6xl animate-pulse px-4 py-10 sm:px-6">
+      <Skeleton tone="strong" className="h-9 w-72 max-w-full rounded-lg" />
+      <Skeleton className="mt-3 h-4 w-96 max-w-full rounded" />
 
       <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {Array.from({ length: 6 }).map((_, i) => (

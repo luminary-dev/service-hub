@@ -201,6 +201,7 @@ const en = {
     prev: "← Previous",
     next: "Next →",
     pageOf: (p: number, t: number) => `Page ${p} of ${t}`,
+    paginationLabel: "Pagination",
     sortLabel: "Sort by",
     sort: {
       recommended: "Recommended",
@@ -1418,6 +1419,7 @@ const si: Dict = {
     prev: "← පෙර",
     next: "ඊළඟ →",
     pageOf: (p: number, t: number) => `පිටුව ${p} / ${t}`,
+    paginationLabel: "පිටු සංචාලනය",
     sortLabel: "අනුපිළිවෙල",
     sort: {
       recommended: "නිර්දේශිත",

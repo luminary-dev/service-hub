@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { FaUsers } from "@/components/icons";
 import { apiJson } from "@/lib/api";
@@ -14,6 +13,7 @@ import {
 import PageHeader from "@/components/ui/PageHeader";
 import StatReadout from "@/components/ui/StatReadout";
 import EmptyState from "@/components/ui/EmptyState";
+import Pagination from "@/components/ui/Pagination";
 import AdminProvidersFilterBar from "@/components/admin/AdminProvidersFilterBar";
 import type { AdminCategory } from "@/components/admin/AdminCategoryManager";
 import AdminProvidersList, {
@@ -124,23 +124,7 @@ export default async function AdminProvidersPage({
           </div>
         )}
 
-        {totalPages > 1 && (
-          <div className="mt-10 flex items-center justify-center gap-2">
-            {page > 1 && (
-              <Link href={pageLink(page - 1)} className="btn-secondary">
-                {dict[locale].browse.prev}
-              </Link>
-            )}
-            <span className="px-3 text-sm text-ink-500">
-              {dict[locale].browse.pageOf(page, totalPages)}
-            </span>
-            {page < totalPages && (
-              <Link href={pageLink(page + 1)} className="btn-secondary">
-                {dict[locale].browse.next}
-              </Link>
-            )}
-          </div>
-        )}
+        <Pagination page={page} totalPages={totalPages} hrefFor={pageLink} locale={locale} />
       </div>
     </div>
   );
