@@ -80,6 +80,34 @@ describe("ChatAssistant", () => {
     expect(screen.getByText("I need a plumber")).toBeTruthy();
   });
 
+  // #558: a 401 (signed-out visitor) gets a sign-in prompt with a login link,
+  // not the generic retry-forever error.
+  async function submitWhile401(pathname: string) {
+    mockPathname = pathname;
+    fetchMock.mockResolvedValue({ ok: false, status: 401, body: null });
+    const { container } = render(<ChatAssistant />);
+    fireEvent.click(screen.getByRole("button", { name: t.open }));
+    fireEvent.change(screen.getByLabelText(t.placeholder), {
+      target: { value: "I need a plumber" },
+    });
+    fireEvent.submit(container.querySelector("form")!);
+    return screen.findByRole("alert");
+  }
+
+  it("shows a sign-in prompt with a login link when the request 401s", async () => {
+    const alert = await submitWhile401("/providers");
+    expect(alert.textContent).toContain(t.signInPrompt);
+    expect(alert.textContent).not.toContain(t.error);
+    const link = screen.getByRole("link", { name: t.signInCta });
+    expect(link.getAttribute("href")).toBe("/login");
+  });
+
+  it("keeps the /si prefix on the sign-in link on Sinhala URLs", async () => {
+    await submitWhile401("/si/providers");
+    const link = screen.getByRole("link", { name: t.signInCta });
+    expect(link.getAttribute("href")).toBe("/si/login");
+  });
+
   // #202: a proposal event renders a confirmation card, and NO inquiry is
   // written until the user taps Confirm — which fires the authenticated POST
   // itself. This is the out-of-band gate the model cannot bypass.

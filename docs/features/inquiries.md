@@ -27,5 +27,10 @@ Provider-side inquiry statuses are **NEW / RESPONDED / CLOSED**, with
 mark-responded / close / reopen actions
 (`PATCH /api/provider/inquiries/{id}`).
 
+The provider inbox is paginated (#372): the dashboard embeds the first 20
+inquiries (plus `inquiriesTotal` / `newInquiriesCount`), and the Inquiries tab
+loads deeper pages on demand from `GET /api/provider/inquiries?page=&pageSize=`
+(default 20, cap 100).
+
 ---
 

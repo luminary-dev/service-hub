@@ -287,6 +287,7 @@ describe("axe: forms", () => {
       <ToastProvider>
         <ReviewSection
           providerId="prov_1"
+          providerName="Nimal"
           reviews={[
             {
               id: "rev_1",
@@ -295,9 +296,14 @@ describe("axe: forms", () => {
               createdAt: "2025-05-01T00:00:00.000Z",
               userName: "Kasun",
               photos: [{ id: "rph_1", url: "/uploads/review.jpg" }],
+              response: {
+                text: "Thank you for the kind words!",
+                createdAt: "2025-05-02T00:00:00.000Z",
+              },
             },
           ]}
           canReview
+          canRespond={false}
           signedIn
           myReview={null}
           summary={{

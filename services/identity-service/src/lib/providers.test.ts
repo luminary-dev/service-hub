@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   eraseProviderProfile,
   providerExists,
+  reactivateProviderProfile,
   resolveProviderIdForErase,
 } from "./providers";
 
@@ -74,6 +75,27 @@ describe("resolveProviderIdForErase", () => {
       })
     );
     await expect(resolveProviderIdForErase("u1")).rejects.toThrow();
+  });
+});
+
+// #554: the reactivate helper reports whether a profile actually existed so
+// the admin promotion path can refuse to promote a user with no profile
+// (provider-service answers 200 `reactivated: false` on the missing-profile
+// no-op). Still a write-path gate: any non-ok status throws for a 502.
+describe("reactivateProviderProfile", () => {
+  it("returns true when a profile existed and was reactivated", async () => {
+    stubFetch(200, { ok: true, reactivated: true });
+    expect(await reactivateProviderProfile("u1")).toBe(true);
+  });
+
+  it("returns false when provider-service reports no profile", async () => {
+    stubFetch(200, { ok: true, reactivated: false });
+    expect(await reactivateProviderProfile("u1")).toBe(false);
+  });
+
+  it("throws on a 5xx so the caller 502s instead of guessing", async () => {
+    stubFetch(500, { error: "boom" });
+    await expect(reactivateProviderProfile("u1")).rejects.toThrow(/500/);
   });
 });
 

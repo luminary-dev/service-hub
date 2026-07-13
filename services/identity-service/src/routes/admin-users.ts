@@ -189,14 +189,28 @@ adminUsersRoutes.patch("/api/admin/users/:id", async (c) => {
       }
     } else if (user.role !== "PROVIDER" && newRole === "PROVIDER") {
       // Promotion: reactivate an existing (previously hidden) profile. Unlike
-      // complete-provider there is no wizard data to create one from, so
-      // reactivate-if-exists is the correct, replay-safe behavior; if no profile
-      // exists provider-service no-ops and the user completes the wizard later.
+      // complete-provider there is no wizard data to create one from, so a user
+      // with NO profile must be rejected, not promoted: complete-provider — the
+      // only profile-creating endpoint — refuses callers already holding
+      // PROVIDER, and every provider dashboard route 401s without a profile, so
+      // promoting anyway would brick the account (#554). The missing-profile
+      // reactivate is a no-op upstream, so refusing after the call leaves both
+      // services unchanged.
+      let hadProfile: boolean;
       try {
-        await reactivateProviderProfile(id);
+        hadProfile = await reactivateProviderProfile(id);
       } catch (e) {
         log.error("provider reactivate failed", { context: "admin-role-change", err: e });
         return c.json({ error: "Upstream service unavailable" }, 502);
+      }
+      if (!hadProfile) {
+        return c.json(
+          {
+            error:
+              "This user has no provider profile. They must complete provider signup themselves before they can hold the PROVIDER role.",
+          },
+          400
+        );
       }
     }
   }

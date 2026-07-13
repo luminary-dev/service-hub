@@ -104,6 +104,9 @@ export default function ProviderRegisterForm({
       if (form.password.length < PASSWORD_MIN_LENGTH) return r.errPassword;
     }
     if (step === 1) {
+      // Authed mode skips step 0, so the (required) phone is collected and
+      // validated here instead (#552).
+      if (authed && form.phone.trim().length < 9) return r.errPhone;
       if (!form.category) return r.errCategory;
       if (form.headline.trim().length < 5) return r.errHeadline;
       if (form.bio.trim().length < 20) return r.errBio;
@@ -382,6 +385,22 @@ export default function ProviderRegisterForm({
 
         {step === 1 && (
           <div className="space-y-4">
+            {authed && (
+              <div>
+                <label className="label" htmlFor="pr-phone">
+                  {r.phone}
+                </label>
+                <input
+                  id="pr-phone"
+                  className="input"
+                  type="tel"
+                  placeholder="07X XXX XXXX"
+                  value={form.phone}
+                  onChange={(e) => set("phone", e.target.value)}
+                />
+                <p className="mt-1 text-xs text-ink-500">{r.phoneHint}</p>
+              </div>
+            )}
             <div>
               {/* The category picker is a group of toggle buttons, not a
                   single field — a <label> has nothing to point at, so the

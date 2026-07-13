@@ -313,6 +313,8 @@ const en = {
     sent: "Inquiry sent. The provider will be in touch.",
     sendError: "Couldn't send the inquiry. Please try again.",
     cancelled: "Cancelled — nothing was sent.",
+    signInPrompt: "Please sign in to use the assistant.",
+    signInCta: "Sign in",
   },
   errors: {
     notFoundTitle: "Page not found",
@@ -633,6 +635,8 @@ const en = {
     favRemoved: "Removed from your saved list.",
     favError: "Could not update your saved professionals.",
     reviewSaved: "Your review has been saved.",
+    responseSaved: "Your response has been posted.",
+    responseDeleted: "Your response has been removed.",
     dismiss: "Dismiss",
     adminVerified: "Provider verified.",
     adminUnverified: "Provider unverified.",
@@ -709,6 +713,15 @@ const en = {
     notRated: "Not rated yet",
     distributionRow: (star: number, count: number) =>
       `${star} star${star === 1 ? "" : "s"}: ${count} review${count === 1 ? "" : "s"}`,
+    // Provider responses (#395).
+    respond: "Respond",
+    editResponse: "Edit response",
+    deleteResponse: "Delete response",
+    responseFrom: (name: string) => `Response from ${name}`,
+    yourResponse: "Your response",
+    responsePh: "Thank the customer or address their feedback…",
+    postResponse: "Post response",
+    responseError: "Could not save your response.",
   },
   report: {
     reportProvider: "Report this provider",
@@ -925,6 +938,10 @@ const en = {
       titlePriceRequired: "A title and a valid price are required.",
       keepOne: "Keep at least one service on your profile.",
       saveError: "Could not save service.",
+      // Delete confirmation + failure feedback (#562)
+      confirmDelete: "Delete this service?",
+      deleting: "Deleting…",
+      deleteError: "Could not delete service.",
     },
     photos: {
       profilePicture: "Profile picture",
@@ -943,6 +960,11 @@ const en = {
       empty: "No work photos yet. Upload your first one above.",
       uploadError: "Upload failed. Please try again.",
       delete: "Delete",
+      // Delete confirmation + failure feedback (#562)
+      confirmDelete: "Delete this photo?",
+      deleting: "Deleting…",
+      deleteError: "Could not delete photo.",
+      cancel: "Cancel",
       // Multi-photo upload with progress (#53)
       dropTitle: "Drag & drop photos here",
       dropOr: "or",
@@ -972,6 +994,9 @@ const en = {
       statusNew: "NEW",
       statusResponded: "RESPONDED",
       statusClosed: "CLOSED",
+      loadMore: (n: number) => `Load more (${n} remaining)`,
+      loadingMore: "Loading…",
+      loadMoreError: "Could not load more inquiries. Please try again.",
     },
   },
   providerReg: {
@@ -1357,6 +1382,8 @@ const si: Dict = {
     sent: "විමසීම යවන ලදී. වෘත්තිකයා ඔබ හා සම්බන්ධ වනු ඇත.",
     sendError: "විමසීම යැවිය නොහැකි විය. නැවත උත්සාහ කරන්න.",
     cancelled: "අවලංගු කරන ලදී — කිසිවක් යවා නැත.",
+    signInPrompt: "සහායක භාවිතයට කරුණාකර පිවිසෙන්න.",
+    signInCta: "පිවිසෙන්න",
   },
   errors: {
     notFoundTitle: "පිටුව හමු නොවීය",
@@ -1666,6 +1693,8 @@ const si: Dict = {
     favRemoved: "සුරකින ලද ලැයිස්තුවෙන් ඉවත් කරන ලදී.",
     favError: "සුරකින ලද වෘත්තිකයන් යාවත්කාලීන කළ නොහැකි විය.",
     reviewSaved: "ඔබේ සමාලෝචනය සුරකින ලදී.",
+    responseSaved: "ඔබේ පිළිතුර පළ කරන ලදී.",
+    responseDeleted: "ඔබේ පිළිතුර ඉවත් කරන ලදී.",
     dismiss: "ඉවත් කරන්න",
     adminVerified: "සේවා සපයන්නා සත්‍යාපනය කරන ලදී.",
     adminUnverified: "සේවා සපයන්නාගේ සත්‍යාපනය ඉවත් කරන ලදී.",
@@ -1741,6 +1770,15 @@ const si: Dict = {
     notRated: "තවම ඇගයුම් නැත",
     distributionRow: (star: number, count: number) =>
       `තරු ${star}: සමාලෝචන ${count}`,
+    // Provider responses (#395).
+    respond: "පිළිතුරු දෙන්න",
+    editResponse: "පිළිතුර වෙනස් කරන්න",
+    deleteResponse: "පිළිතුර මකන්න",
+    responseFrom: (name: string) => `${name} වෙතින් පිළිතුර`,
+    yourResponse: "ඔබේ පිළිතුර",
+    responsePh: "පාරිභෝගිකයාට ස්තූති කරන්න හෝ ඔවුන්ගේ අදහසට පිළිතුරු දෙන්න…",
+    postResponse: "පිළිතුර පළ කරන්න",
+    responseError: "පිළිතුර සුරැකීමට නොහැකි විය.",
   },
   report: {
     reportProvider: "මෙම වෘත්තිකයා වාර්තා කරන්න",
@@ -1957,6 +1995,9 @@ const si: Dict = {
       titlePriceRequired: "නාමයක් සහ වලංගු මිලක් අවශ්‍යයි.",
       keepOne: "ඔබේ පැතිකඩෙහි අවම වශයෙන් එක් සේවාවක් තබාගන්න.",
       saveError: "සේවාව සුරැකීමට නොහැකි විය.",
+      confirmDelete: "මෙම සේවාව මකන්නද?",
+      deleting: "මකමින්…",
+      deleteError: "සේවාව මැකීමට නොහැකි විය.",
     },
     photos: {
       profilePicture: "පැතිකඩ පින්තූරය",
@@ -1975,6 +2016,10 @@ const si: Dict = {
       empty: "තවම වැඩ ඡායාරූප නැත. ඉහළින් ඔබේ පළමු එක උඩුගත කරන්න.",
       uploadError: "උඩුගත කිරීම අසාර්ථකයි. නැවත උත්සාහ කරන්න.",
       delete: "මකන්න",
+      confirmDelete: "මෙම ඡායාරූපය මකන්නද?",
+      deleting: "මකමින්…",
+      deleteError: "ඡායාරූපය මැකීමට නොහැකි විය.",
+      cancel: "අවලංගු කරන්න",
       dropTitle: "ඡායාරූප මෙතැනට ඇද දමන්න",
       dropOr: "හෝ",
       browse: "ඡායාරූප තෝරන්න",
@@ -2001,6 +2046,9 @@ const si: Dict = {
       statusNew: "නව",
       statusResponded: "පිළිතුරු දී ඇත",
       statusClosed: "වසා ඇත",
+      loadMore: (n: number) => `තවත් පෙන්වන්න (ඉතිරි ${n})`,
+      loadingMore: "පූරණය වෙමින්…",
+      loadMoreError: "තවත් විමසුම් පූරණය කළ නොහැකි විය. නැවත උත්සාහ කරන්න.",
     },
   },
   providerReg: {

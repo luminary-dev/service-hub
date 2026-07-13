@@ -5,6 +5,7 @@ import { FaIdCard, FaInbox, FaRegHeart, FaRegStar, type IconType } from "@/compo
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
+import { loginNext } from "@/lib/login";
 import { categoryLabelLoc, dict } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
 import ProviderCard, { ProviderCardDTO } from "@/components/ProviderCard";
@@ -78,7 +79,7 @@ function SectionHeading({
 
 export default async function AccountPage() {
   const session = await getSession();
-  if (!session) redirect("/login");
+  if (!session) redirect(await loginNext("/account"));
 
   const [locale, favorites, inquiriesData, reviewsData, meData] =
     await Promise.all([
