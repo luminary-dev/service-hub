@@ -35,6 +35,15 @@ describe("formatLKR", () => {
     expect(formatLKR(60000, "en")).toBe("Rs. 60,000");
     expect(formatLKR(60000, "si")).toMatch(/^Rs\. 60.000$/);
   });
+
+  // The API contract carries money as whole-rupee JSON numbers (#371 — stored
+  // DECIMAL(12,2), converted back to numbers at the service edge). Lock the
+  // display for the values the marketplace actually emits.
+  it("renders whole-rupee amounts across the validated price range", () => {
+    expect(formatLKR(50, "en")).toBe("Rs. 50");
+    expect(formatLKR(12500, "en")).toBe("Rs. 12,500");
+    expect(formatLKR(10_000_000, "en")).toBe("Rs. 10,000,000");
+  });
 });
 
 describe("formatDate", () => {
@@ -56,6 +65,17 @@ describe("formatDate", () => {
 
   it("produces different output per locale", () => {
     expect(formatDate(date, "en")).not.toBe(formatDate(date, "si"));
+  });
+
+  // Hydration safety (#377): output is pinned to Asia/Colombo, so a UTC
+  // server and a browser in any timezone render the same calendar day.
+  it("renders the Sri Lanka calendar day regardless of process timezone", () => {
+    // 20:00 UTC is already the next day (01:30) in Colombo (+05:30). \b keeps
+    // the day assertion from matching inside "2026"; day/month order is ICU's.
+    expect(formatDate("2026-01-05T20:00:00Z", "en")).toMatch(/\b6\b/);
+    // …and just before midnight UTC stays that same Colombo day.
+    expect(formatDate("2026-01-05T23:59:00Z", "en")).toMatch(/\b6\b/);
+    expect(formatDate("2026-01-05T23:59:00Z", "en")).not.toMatch(/\b5\b/);
   });
 
   it("accepts Date objects and honours custom options", () => {

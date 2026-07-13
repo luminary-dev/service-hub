@@ -78,6 +78,18 @@ describe("resolveRoute (routing table)", () => {
       service: "review",
       path: "/api/reviews/rev-1/report",
     });
+    // Job posts and inquiry thread messages are reportable too (#376).
+    expect(resolveRoute("/api/jobs/job-1/report")).toEqual({
+      service: "job",
+      path: "/api/jobs/job-1/report",
+    });
+    expect(resolveRoute("/api/messages/msg-1/report")).toEqual({
+      service: "provider",
+      path: "/api/messages/msg-1/report",
+    });
+    // Only the report action exists under /api/messages.
+    expect(resolveRoute("/api/messages/msg-1")).toBeNull();
+    expect(resolveRoute("/api/messages")).toBeNull();
     // Only the report action exists under /api/photos.
     expect(resolveRoute("/api/photos/ph-1")).toBeNull();
     expect(resolveRoute("/api/photos")).toBeNull();

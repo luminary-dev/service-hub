@@ -4,6 +4,7 @@
 // inquiry belonging to a different provider must 404, never mutate. Prisma,
 // storage and the S2S clients are mocked.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Prisma } from "@prisma/client";
 
 const { dbMock } = vi.hoisted(() => ({
   dbMock: {
@@ -206,6 +207,28 @@ describe("service ownership", () => {
     const res = await req("/api/provider/services/s1", { method: "DELETE", role: "PROVIDER" });
     expect(res.status).toBe(200);
     expect(dbMock.service.delete).toHaveBeenCalledWith({ where: { id: "s1" } });
+  });
+
+  it("POST /api/provider/services: serializes the Decimal price as a JSON number (#371)", async () => {
+    // price is DECIMAL(12,2) in the DB, so Prisma hands the route a Decimal —
+    // which would JSON-stringify as a string without the edge conversion.
+    dbMock.service.create.mockResolvedValue({
+      id: "s1",
+      providerId: "prov1",
+      title: valid.title,
+      description: null,
+      price: new Prisma.Decimal("1500.00"),
+      priceType: "FIXED",
+    });
+    const res = await req("/api/provider/services", {
+      method: "POST",
+      body: valid,
+      role: "PROVIDER",
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.service.price).toBe(1500);
+    expect(typeof body.service.price).toBe("number");
   });
 });
 

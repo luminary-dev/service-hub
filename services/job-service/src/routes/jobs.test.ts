@@ -371,12 +371,38 @@ describe("GET /api/jobs/board", () => {
       expect.objectContaining({
         where: {
           status: "OPEN",
+          hiddenAt: null,
           category: "plumbing",
           district: "Colombo",
           NOT: { customerId: PROVIDER_USER_ID },
         },
       })
     );
+  });
+
+  it("serializes a Decimal budget as a JSON number (#371)", async () => {
+    // budget is DECIMAL(12,2) in the DB, so Prisma hands the route a Decimal —
+    // which would JSON-stringify as a string without the edge conversion.
+    dbMock.jobRequest.findMany.mockResolvedValue([
+      {
+        id: "job_1",
+        title: "t",
+        description: "d",
+        category: "plumbing",
+        district: "Colombo",
+        budget: new Prisma.Decimal("60000.00"),
+        status: "OPEN",
+        createdAt: new Date(),
+        customerId: CUSTOMER_ID,
+        responses: [],
+      },
+    ]);
+    dbMock.jobRequest.count.mockResolvedValue(1);
+    const res = await req("/api/jobs/board", {}, { "x-user-id": PROVIDER_USER_ID });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.jobs[0].budget).toBe(60000);
+    expect(typeof body.jobs[0].budget).toBe("number");
   });
 });
 
@@ -514,6 +540,17 @@ describe("POST /api/jobs/:id/responses (provider responds)", () => {
       { "x-user-id": PROVIDER_USER_ID }
     );
     expect(res.status).toBe(404);
+  });
+
+  it("404s when the job was taken down by an admin (#376)", async () => {
+    dbMock.jobRequest.findUnique.mockResolvedValue({ ...openJob, hiddenAt: new Date() });
+    const res = await req(
+      "/api/jobs/job_1/responses",
+      { method: "POST", body: JSON.stringify(message) },
+      { "x-user-id": PROVIDER_USER_ID }
+    );
+    expect(res.status).toBe(404);
+    expect(dbMock.jobResponse.create).not.toHaveBeenCalled();
   });
 
   it("400s when responding to your own job", async () => {

@@ -47,7 +47,16 @@
   (client-sent values are stripped — it's on the trusted `GATEWAY_HEADERS`
   list) and propagates it upstream so one id follows a request across services.
   Errors go through `log.error(msg, { context, err })` — no bare
-  `console.error`.
+  `console.error` or `console.log` (startup/shutdown lines in `src/index.ts`
+  included; the one deliberate exception is notification-service's dev-only
+  email dump when `RESEND_API_KEY` is unset, which is meant for human eyes).
+  Errors outside a request are the last-resort hooks' job: every
+  `src/index.ts` calls `installProcessErrorHandlers(log)` (from the same
+  canonical `logging.ts`), which logs `uncaughtException` /
+  `unhandledRejection` as one structured line and then exits 1 — Node's
+  fail-fast default, but with a parseable line first. An error-monitoring
+  backend can later hook `onError` + these handlers without touching call
+  sites.
 - **Error shape**: `{ "error": string }`. Success shapes match the monolith.
 - **Health**: `GET /healthz`. The **four DB services** (identity, provider,
   review, job) run it as a **readiness probe** — `SELECT 1` raced against a 2s

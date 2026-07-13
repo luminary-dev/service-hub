@@ -58,7 +58,13 @@ describe("ProviderRegisterForm (authed mode, #552)", () => {
 
     fillProfileStep(); // everything but the phone
     fireEvent.click(screen.getByRole("button", { name: t.continue }));
-    expect(screen.getByRole("alert").textContent).toBe(t.errPhone);
+    // The error surfaces in the focus-managed summary (#378), linked to the
+    // phone field it describes.
+    expect(screen.getByRole("alert").textContent).toContain(t.errPhone);
+    expect(screen.getByRole("link", { name: t.errPhone })).toBeTruthy();
+    expect(
+      screen.getByLabelText(t.phone).getAttribute("aria-describedby")
+    ).toBe("pr-phone-error");
   });
 
   it("submits the collected phone to /api/auth/complete-provider", async () => {
@@ -69,13 +75,19 @@ describe("ProviderRegisterForm (authed mode, #552)", () => {
     fireEvent.click(screen.getByRole("button", { name: t.continue }));
     // Contact & socials step is optional.
     fireEvent.click(screen.getByRole("button", { name: t.continue }));
-    // Services step.
+    // Services step — the price-type select carries its own label, not the
+    // service heading (#565).
+    expect(
+      screen.getByRole("combobox", { name: t.priceType }).tagName
+    ).toBe("SELECT");
     fireEvent.change(screen.getByPlaceholderText(t.serviceTitlePh), {
       target: { value: "Full house wiring" },
     });
     fireEvent.change(screen.getByPlaceholderText(t.pricePh), {
       target: { value: "5000" },
     });
+    // Registration consent (#62) gates the final step.
+    fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: t.create }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));

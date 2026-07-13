@@ -32,23 +32,33 @@
 - **provider-service** (`provider_db`): `Provider`, `Service`, `WorkPhoto`
   (`sortOrder` manual order + `deletedAt` moderation soft-delete),
   `VerificationDocument`, `Inquiry` (+ `source`, per-party `customerLastReadAt`/
-  `providerLastReadAt`, `respondedAt`), `InquiryMessage` (#13 threads),
-  `Report` (abuse reports on providers and work photos), `Category` (managed
+  `providerLastReadAt`, `respondedAt`), `InquiryMessage` (#13 threads, +
+  `deletedAt` moderation soft-delete #376),
+  `Report` (abuse reports on providers, work photos and thread messages),
+  `Category` (managed
   category list: slug PK, en/si labels, icon, active flag, sortOrder — no hard
   delete), `AdminAuditLog` (#227 moderation trail for the actions this service
   owns).
   `Provider` denormalizes `contactName`/`contactEmail`/`contactPhone` (copied
   from the user at registration; profile updates write both locally and S2S to
   identity) and carries `awayUntil` (#49), `verificationStatus`/`verifiedAt`/
-  `rejectionReason`, `suspended`. The free-text pitch is bilingual (#515):
+  `rejectionReason`, `suspended` + `adminSuspended` (#550 — `suspended` alone
+  drives public visibility for both ADMIN moderation and the self-service
+  downgrade #403; `adminSuspended` marks it admin-owned, which only the admin
+  unsuspend action clears — the self-service reactivate refuses it). The
+  free-text pitch is bilingual (#515):
   `headline`/`bio` (English, required) plus **optional nullable**
   `headlineSi`/`bioSi` (Sinhala variants) — the public payload prefers the SI
   variant under the `si` locale and falls back to the English original, and
   both SI columns join the `/api/providers` free-text search (pg_trgm-indexed).
   Per-service Sinhala titles are a deliberate follow-up. `userId` is a plain
   string.
-  `Report` fields: `targetType` (`PROVIDER`|`WORK_PHOTO`|`INQUIRY` — INQUIRY
-  rows are auto-filed by the write-time content filter #375), `targetId`,
+  `Service.price` is money: **`DECIMAL(12,2)` holding whole LKR rupees**
+  (#371) — see the money convention note under job-service.
+  `Report` fields: `targetType` (`PROVIDER`|`WORK_PHOTO`|`INQUIRY`|`MESSAGE`
+  — INQUIRY rows are auto-filed by the write-time content filter #375;
+  MESSAGE rows are user reports on individual thread messages #376),
+  `targetId`,
   `reporterId` (nullable — anonymous allowed), `reason`, `details`, `status`
   (`OPEN`|`RESOLVED`|`DISMISSED`), `source` (`USER`|`SYSTEM`, #232 — SYSTEM
   rows come from threshold auto-flagging and the content filter), `updatedAt`
@@ -66,14 +76,25 @@
   in the admin frontend, never server-side). `providerId`/`userId` plain
   strings; reviewer names hydrated from identity at read time.
 - **job-service** (`job_db`): `JobRequest` (`status` OPEN|CLOSED, `updatedAt`
-  last-transition timestamp #370), `JobResponse`, `Report` (**identical shape
-  to the provider/review models**; `targetType` = `JOB`|`JOB_RESPONSE`; every
-  row is currently SYSTEM-created by the write-time content filter #375 —
-  there is no public report-a-job flow yet), `AdminAuditLog` (identical model;
-  the three audit logs are merged only in the admin frontend).
+  last-transition timestamp #370, `hiddenAt` admin-takedown soft-hide #376),
+  `JobResponse`, `Report` (**identical shape to the provider/review models**;
+  `targetType` = `JOB`|`JOB_RESPONSE`; rows come from the public
+  report-a-job flow #376 and the write-time content filter's SYSTEM flags
+  #375), `AdminAuditLog` (identical model; the three audit logs are merged
+  only in the admin frontend).
   `customerId`/`providerId` plain strings. **Monetization (pricing, commission,
   payments) is intentionally deferred to v0.2** — v0.1 is free to use, so there
-  is no transaction ledger and no price/commission field on a job.
+  is no transaction ledger and no price/commission field on a job. Display-only
+  pricing (provider rates, price filters, and the optional customer-stated
+  `JobRequest.budget`) stays in v0.1: payment happens off-platform.
+  **Money convention (#371):** every money column — `Service.price`
+  (provider-service) and `JobRequest.budget` (job-service) — is
+  **`DECIMAL(12,2)` holding whole LKR rupees** (never a float; the API-edge
+  validators accept integers only, the two decimal places just keep the column
+  future-proof). The Prisma client surfaces these as `Decimal` instances,
+  which JSON-serialize as *strings*, so each service converts back to a plain
+  number at every JSON edge (`lib/money.ts` in both services) — API payloads
+  carry money as JSON **numbers**, exactly as before the migration.
 - **notification-service**: stateless; owns the en/si email templates ported
   from `src/lib/email.ts`.
 - **media-service** / **chat-service**: stateless (no DB).

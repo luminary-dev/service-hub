@@ -6,6 +6,7 @@ import { moderateContent } from "../lib/auto-report";
 import { getAuth, getLocale, getOrigin, s2s } from "../lib/http";
 import { log } from "../lib/log";
 import { jobSchema, jobResponseSchema } from "../lib/job-schema";
+import { moneyToNumberOrNull } from "../lib/money";
 import { categoryValidator } from "../lib/categories";
 import { fetchUsers, fetchProviders } from "../lib/hydrate";
 import { normalizeListQuery } from "../lib/query";
@@ -193,6 +194,8 @@ jobs.get("/board", async (c) => {
 
   const where = {
     status: "OPEN" as const,
+    // Admin-taken-down jobs (#376) are invisible to the board.
+    hiddenAt: null,
     category: provider.category,
     district: provider.district,
     NOT: { customerId: auth.userId },
@@ -224,7 +227,9 @@ jobs.get("/board", async (c) => {
       description: job.description,
       category: job.category,
       district: job.district,
-      budget: job.budget,
+      // budget is DECIMAL in the DB (#371) — a Decimal JSON-serializes as a
+      // string, so convert back to the number this payload has always carried.
+      budget: moneyToNumberOrNull(job.budget),
       status: job.status,
       createdAt: job.createdAt,
       customer: { name: users.get(job.customerId)?.name ?? "Unknown" },
@@ -276,7 +281,8 @@ jobs.get("/mine", async (c) => {
       description: job.description,
       category: job.category,
       district: job.district,
-      budget: job.budget,
+      // Same Decimal → number edge conversion as the board payload (#371).
+      budget: moneyToNumberOrNull(job.budget),
       status: job.status,
       createdAt: job.createdAt,
       responses: job.responses.map((r) => ({
@@ -342,7 +348,9 @@ jobs.post("/:id/responses", async (c) => {
 
   const id = c.req.param("id");
   const job = await db.jobRequest.findUnique({ where: { id } });
-  if (!job) {
+  // A job hidden by an admin takedown (#376) is gone from the board, so a
+  // response to it gets the same 404 as a job that never existed.
+  if (!job || job.hiddenAt) {
     return c.json({ error: "Job not found" }, 404);
   }
   // Enforce the same scoping the board query applies (category + district +

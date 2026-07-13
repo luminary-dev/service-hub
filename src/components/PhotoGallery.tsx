@@ -7,6 +7,7 @@ import { isSvg } from "@/lib/image";
 import { useT } from "./I18nProvider";
 import ReportButton from "./ReportButton";
 import { useFocusTrap } from "./useFocusTrap";
+import { useScrollLock } from "./useScrollLock";
 
 type Photo = { id: string; url: string; caption: string | null };
 
@@ -24,6 +25,7 @@ export default function PhotoGallery({ photos }: { photos: Photo[] }) {
   const t = useT();
   const isOpen = active !== null;
   useFocusTrap(dialogRef, isOpen);
+  useScrollLock(isOpen);
 
   // Focus management for the lightbox: focus the close button when it opens
   // and give focus back to the thumbnail that opened it when it closes.

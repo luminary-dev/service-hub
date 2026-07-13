@@ -4,6 +4,7 @@
 // locale here, keeping the ANTHROPIC_API_KEY out of the web runtime.
 import { Hono } from "hono";
 import Anthropic from "@anthropic-ai/sdk";
+import { log } from "../lib/log";
 import { PERSONAS, type PersonaContext } from "../lib/personas";
 
 export const chatRoutes = new Hono();
@@ -124,7 +125,7 @@ chatRoutes.post("/internal/chat/:persona/stream", async (c) => {
         }
         send({ type: "done" });
       } catch (e) {
-        console.error("[chat]", e);
+        log.error("stream failed", { context: "chat", err: e });
         send({ type: "error" });
       } finally {
         controller.close();

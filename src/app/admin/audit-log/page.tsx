@@ -15,9 +15,9 @@ export const dynamic = "force-dynamic";
 // resolve/dismiss, category create/edit) at `GET /api/admin/audit-log`;
 // review-service owns the log for the actions it takes (review delete,
 // report resolve/dismiss) at `GET /api/admin/review-audit-log`; job-service
-// owns the log for job-report resolve/dismiss (#375) at
-// `GET /api/admin/job-audit-log`. All accept the same adminId/action/from/to
-// filters and return newest-first.
+// owns the log for job hide/unhide (#376) and job-report resolve/dismiss
+// (#375) at `GET /api/admin/job-audit-log`. All accept the same
+// adminId/action/from/to filters and return newest-first.
 type AuditEntry = {
   id: string;
   adminId: string;
@@ -88,6 +88,10 @@ export default async function AdminAuditLogPage({
         return t.auditTargetReport;
       case "CATEGORY":
         return t.auditTargetCategory;
+      case "JOB":
+        return t.auditTargetJob;
+      case "MESSAGE":
+        return t.auditTargetMessage;
       default:
         return targetType;
     }

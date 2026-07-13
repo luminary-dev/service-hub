@@ -17,7 +17,7 @@ browser ── same-origin /api/* ──> Next.js web (:3000)
      ├── identity-service     (:4001)  identity_db   User/auth/favorites/saved-searches/admin-users/impersonation
      ├── provider-service     (:4002)  provider_db   providers/categories/inquiries/reports/admin
      ├── review-service       (:4003)  review_db     reviews/review-reports/admin
-     ├── job-service          (:4004)  job_db        jobs/responses/admin
+     ├── job-service          (:4004)  job_db        jobs/responses/job-reports/admin
      ├── notification-service (:4005)  (no db)        email templates (internal-only)
      ├── media-service        (:4006)  (no db)        upload bytes + sharp; serves /files/*
      └── chat-service         (:4007)  (no db)        streaming Claude assistant

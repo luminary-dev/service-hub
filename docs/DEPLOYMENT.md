@@ -15,7 +15,8 @@ backups, monitoring) see [OPERATIONS.md](OPERATIONS.md).
   semver-tagged images and cuts a GitHub Release. Only tags pointing at commits
   contained in `prod` are released.
 - **Compose** — `docker-compose.prod.yml` (GHCR images, `restart: unless-stopped`,
-  required-secret enforcement, internal-only network + Caddy on 80/443).
+  required-secret enforcement, edge/backend/egress network split with Caddy on
+  80/443 as the only published surface — see "Network & datastore isolation").
 
 Status: image publishing works today. The **deploy step and the server itself
 are gated on #110** (production host, domain, TLS) — until then the pipeline
@@ -74,12 +75,20 @@ Triggered on **push to `prod`** (and `workflow_dispatch`). Three jobs:
      `docker compose -f docker-compose.prod.yml pull`;
    - **health-gates the rollout**: `up -d --remove-orphans --wait
      --wait-timeout 300` blocks until every container with a healthcheck is
-     healthy and none has exited. A crash-loop or a failed `prisma migrate
-     deploy` fails the deploy instead of silently replacing the running stack.
-     The 300s wait covers the DB services' 120s healthcheck `start_period`
-     (migration allowance, #568) plus the retry budget;
-   - **auto-rolls-back on failure**: rewrites `IMAGE_TAG` back to `PREV_TAG`,
-     re-pulls, brings the previous images up, and exits non-zero;
+     healthy and none has exited. Every container has one — including `web`
+     (the app's `/healthz` route) and `caddy` (its admin API), so the gate
+     covers the user-facing site (#385). A crash-loop or a failed `prisma
+     migrate deploy` fails the deploy instead of silently replacing the
+     running stack. The 300s wait covers the DB services' 120s healthcheck
+     `start_period` (migration allowance, #568) plus the retry budget;
+   - **auto-rolls-back on failure**: rewrites `IMAGE_TAG` back to `PREV_TAG`
+     **and restores the previously-deployed `docker-compose.prod.yml` +
+     `deploy/`** (recorded as the git SHA before the `reset --hard`) — if the
+     compose change itself broke the rollout, re-running the new file against
+     the old images would fail identically (#385). It then re-pulls, brings
+     the previous state up, and exits non-zero; a rollback that still comes up
+     unhealthy is reported loudly (`ROLLBACK FAILED`) in the job log instead
+     of being swallowed;
    - **prunes only after a healthy rollout** (#567): removes every
      `ghcr.io/luminary-dev/service-hub-*:<sha>` tag **except the tag just
      deployed and its predecessor** (kept on disk so rollback needs no
@@ -116,9 +125,14 @@ once CD runs, it owns the server `.env`.
 App secrets (set with `gh secret set <NAME>`):
 
 - **Required**: `AUTH_SECRET`, `INTERNAL_API_SECRET`, `POSTGRES_PASSWORD`,
-  `WEB_ORIGIN`, `DOMAIN`. `docker-compose.prod.yml` guards each with `${VAR:?}`,
-  so the stack refuses to start if any is missing.
-- **Optional** (features degrade gracefully when unset): `ACME_EMAIL`,
+  `IDENTITY_DB_PASSWORD`, `PROVIDER_DB_PASSWORD`, `REVIEW_DB_PASSWORD`,
+  `JOB_DB_PASSWORD`, `REDIS_PASSWORD` (#387 — per-service DB roles + Redis
+  AUTH; **URL-interpolated**, so generate them with `openssl rand -hex 32`,
+  not base64), `WEB_ORIGIN`, `DOMAIN`. `docker-compose.prod.yml` guards each
+  with `${VAR:?}`, so the stack refuses to start if any is missing.
+- **Optional** (features degrade gracefully when unset): `ACME_EMAIL` (unset →
+  defaults to `admin@${DOMAIN}`; an empty Caddyfile `email` argument would
+  fail config load and crash-loop the only public entrypoint, #387),
   `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `EMAIL_FROM`, `R2_ENDPOINT`,
   `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `GOOGLE_CLIENT_ID`,
   `GOOGLE_CLIENT_SECRET` (Google social login #398 — both unset → the
@@ -151,8 +165,10 @@ runtime variables and how each degrades when unset.
    git checkout prod
    cp .env.prod.example .env      # then fill in — see the file for each var
    ```
-   Generate the secrets: `openssl rand -base64 32` for `AUTH_SECRET`,
-   `INTERNAL_API_SECRET`, and `POSTGRES_PASSWORD`.
+   Generate the secrets: `openssl rand -base64 32` for `AUTH_SECRET` and
+   `INTERNAL_API_SECRET`; `openssl rand -hex 32` for `POSTGRES_PASSWORD`, the
+   four per-service `*_DB_PASSWORD`s and `REDIS_PASSWORD` (these are
+   interpolated into connection URLs, so they must stay URL-safe — hex is).
 4. Log in to GHCR so the host can pull the images:
    ```bash
    echo "$GHCR_TOKEN" | docker login ghcr.io -u <user> --password-stdin
@@ -208,6 +224,52 @@ The read-only choices were validated by booting the pinned base images with
 mark services to revisit once their writable paths can be confirmed on a live
 stack.
 
+## Network & datastore isolation (#387)
+
+The prod compose stack replaces the flat default network with three networks,
+and gives every datastore its own credentials, so one compromised container no
+longer means the whole stack:
+
+- **Network split** —
+  - `edge`: Caddy ↔ web only. The public entry has no route to the gateway,
+    the services, or the datastores.
+  - `backend` (`internal: true`): all eight services + postgres + redis. web
+    straddles `edge` + `backend` (Caddy reaches it; it reaches the gateway /
+    chat / identity). Containers on **only** `backend` (gateway,
+    provider/review/job, postgres, redis) have **no route to the internet**.
+  - `egress`: a plain bridge granting outbound internet to the four services
+    that call external APIs — identity (OAuth token exchange), notification
+    (Resend), media (R2), chat (Anthropic). It publishes no ports.
+- **Per-service DB roles** — each DB service connects as its own LOGIN role
+  (`identity` / `provider` / `review` / `job`) that **owns only its own
+  database**; `CONNECT` is revoked from `PUBLIC` on all four, so no service
+  role can even open a connection to a peer's database. As the database owner
+  each role still runs `prisma migrate deploy` (DDL in `public`, which
+  Postgres 15+ hands to `pg_database_owner`) — including the migrations that
+  `CREATE EXTENSION pg_trgm` (trusted on PG 13+, so no superuser needed). The
+  `postgres` superuser remains for cluster admin and backups only and no
+  longer appears in any `DATABASE_URL`.
+  - **Fresh volume**: `deploy/postgres-init.sh` (mounted into
+    `/docker-entrypoint-initdb.d/`) creates the roles + databases on initdb.
+  - **Existing volume**: initdb scripts never re-run, so run
+    **`deploy/migrate-db-roles.sh` once** — it creates the roles, transfers
+    database + object ownership, and applies the grants. It is idempotent,
+    and the superuser keeps access throughout, so the safe rollout order is:
+    set the new GitHub secrets → run the script against the **running old
+    stack** (exporting the four `*_DB_PASSWORD`s in the shell) → merge/deploy
+    the compose change. Running it after a failed boot works too — the DB
+    services just crash-loop until the roles exist.
+- **Redis AUTH** — `requirepass` from `REDIS_PASSWORD`; the gateway and
+  identity carry it in `REDIS_URL` (`redis://default:<password>@redis:6379` —
+  `default` is the ACL user `requirepass` sets the password for).
+  Unauthenticated, any container on the network could `FLUSHALL` the
+  rate-limit windows and the session-revocation list (#374).
+- **ACME safe-by-default** — `ACME_EMAIL` unset/empty now defaults to
+  `admin@${DOMAIN}` in the compose file: the Caddyfile's global `email` option
+  takes the value verbatim and an empty argument fails config load, which
+  would crash-loop the only public entrypoint. CI validates the Caddyfile
+  (`caddy validate`) in the `compose-config` job.
+
 ## Edge access logs (#527)
 
 `deploy/Caddyfile`'s `{$DOMAIN}` site block emits per-request access logs as JSON
@@ -240,7 +302,10 @@ monorepo's `prod` branch so the mirrors reflect production.
 ## Rollback
 
 - **Automatic** — a failed health-gated rollout rolls itself back to the
-  previous image tag (see the CD pipeline); no action needed.
+  previous image tag **and** the previously-deployed compose/`deploy/` config
+  (see the CD pipeline); no action needed unless the job log says `ROLLBACK
+  FAILED`, in which case the stack may be down — SSH in and recover manually
+  (the two manual paths below).
 - **Manual, fast** — set `IMAGE_TAG=<previous-sha>` in the host `.env` and
   `docker compose -f docker-compose.prod.yml up -d`. The previous deploy's
   images are still on disk (post-deploy pruning keeps the current and previous
@@ -251,5 +316,8 @@ monorepo's `prod` branch so the mirrors reflect production.
 ## Still required before a public launch
 
 - **#147 / #72** — verified email domain + `RESEND_API_KEY`.
-- **#113 / #34** — uptime + error monitoring. **#61** — DB backups (`docs/BACKUPS.md`).
+- **#113 / #34** — uptime + error monitoring. **#61 / #389** — DB backups: the
+  tooling + nightly automation ship in the repo; run
+  `sudo ./scripts/install-backup-cron.sh` on the host once and fill in
+  `.backup.env` (`docs/BACKUPS.md`).
 - **#62 / #63** — Terms/Privacy pages + PDPA.

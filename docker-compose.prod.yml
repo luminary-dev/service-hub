@@ -3,7 +3,8 @@ name: service-hub-prod
 # Production stack. Pulls pre-built images from GHCR (published by
 # .github/workflows/deploy.yml on push to prod) instead of building locally.
 # Only Caddy is published to the host (80/443, auto-TLS); every service and the
-# datastores stay on the internal network. Required secrets use ${VAR:?} so the
+# datastores stay on internal networks, split edge/backend/egress (#387 — see
+# the `networks:` block at the bottom). Required secrets use ${VAR:?} so the
 # stack refuses to start rather than fall back to a dev default — this mirrors
 # the AUTH_SECRET / INTERNAL_API_SECRET guards in the app.
 #
@@ -84,9 +85,24 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      # Per-service role passwords (#387): consumed by deploy/postgres-init.sh
+      # on a FRESH data directory, and by deploy/migrate-db-roles.sh (which
+      # execs into this container) on an existing one. Generate with
+      # `openssl rand -hex 32` — they are interpolated into the DATABASE_URLs
+      # below, so they must stay URL-safe (hex is).
+      IDENTITY_DB_PASSWORD: ${IDENTITY_DB_PASSWORD:?IDENTITY_DB_PASSWORD is required}
+      PROVIDER_DB_PASSWORD: ${PROVIDER_DB_PASSWORD:?PROVIDER_DB_PASSWORD is required}
+      REVIEW_DB_PASSWORD: ${REVIEW_DB_PASSWORD:?REVIEW_DB_PASSWORD is required}
+      JOB_DB_PASSWORD: ${JOB_DB_PASSWORD:?JOB_DB_PASSWORD is required}
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+      # Least-privilege bootstrap (#387): unlike the dev scripts/init-db.sql
+      # (plain CREATE DATABASE, everything owned by the superuser), prod
+      # creates one LOGIN role per service database, owning only that database,
+      # with CONNECT revoked from PUBLIC. Runs on initdb only — an existing
+      # data volume is migrated with deploy/migrate-db-roles.sh instead.
+      - ./deploy/postgres-init.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+    networks: [backend]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -98,12 +114,23 @@ services:
     image: redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
     mem_limit: 256m
     <<: [*restart, *logging, *hardening]
+    # requirepass (#387): Redis holds the session-revocation list and the
+    # rate-limit windows — unauthenticated, any compromised container on the
+    # same network could FLUSHALL them (undoing every revocation and resetting
+    # the limits). Passing --requirepass as a flag keeps the image's default
+    # config (including the RDB snapshot save points) and only adds auth.
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"]
+    environment:
+      # Auths the healthcheck's redis-cli without the password appearing in
+      # the probe's command line.
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?}
     # Redis holds the session-revocation list (#374) as well as rate-limit
     # windows, so its default RDB snapshot in /data must survive container
     # recreation (#571) — otherwise every `revocation:<userId>` key is wiped by
     # any image bump or compose change.
     volumes:
       - redis_data:/data
+    networks: [backend]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -120,17 +147,24 @@ services:
     environment:
       <<: *service-env
       PORT: 4001
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?}@postgres:5432/identity_db
+      # Least-privilege DB role (#387): owns identity_db and nothing else, so a
+      # compromised service can no longer read or write its peers' databases.
+      DATABASE_URL: postgresql://identity:${IDENTITY_DB_PASSWORD:?}@postgres:5432/identity_db
       AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required}
       # Shared session-revocation list (#374): identity publishes each
       # sessionVersion bump here so the gateway enforces revocations even during
       # an identity outage. Same Redis the gateway uses for rate limiting.
-      REDIS_URL: redis://redis:6379
+      # `default` is the ACL user requirepass sets the password for (Redis 6+);
+      # naming it explicitly keeps secret scanners from reading the ${...}
+      # placeholder as a hardcoded ":password@" credential.
+      REDIS_URL: redis://default:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379
       # Social login (#398) — optional; unset → "Continue with Google" disabled.
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       FACEBOOK_CLIENT_ID: ${FACEBOOK_CLIENT_ID:-}
       FACEBOOK_CLIENT_SECRET: ${FACEBOOK_CLIENT_SECRET:-}
+    # egress: OAuth code exchange calls Google/Facebook token endpoints.
+    networks: [backend, egress]
     depends_on:
       postgres:
         condition: service_healthy
@@ -147,7 +181,8 @@ services:
     environment:
       <<: *service-env
       PORT: 4002
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?}@postgres:5432/provider_db
+      DATABASE_URL: postgresql://provider:${PROVIDER_DB_PASSWORD:?}@postgres:5432/provider_db
+    networks: [backend]
     depends_on:
       postgres:
         condition: service_healthy
@@ -164,7 +199,8 @@ services:
     environment:
       <<: *service-env
       PORT: 4003
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?}@postgres:5432/review_db
+      DATABASE_URL: postgresql://review:${REVIEW_DB_PASSWORD:?}@postgres:5432/review_db
+    networks: [backend]
     depends_on:
       postgres:
         condition: service_healthy
@@ -181,7 +217,8 @@ services:
     environment:
       <<: *service-env
       PORT: 4004
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?}@postgres:5432/job_db
+      DATABASE_URL: postgresql://job:${JOB_DB_PASSWORD:?}@postgres:5432/job_db
+    networks: [backend]
     depends_on:
       postgres:
         condition: service_healthy
@@ -200,6 +237,8 @@ services:
       PORT: 4005
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM:-}
+    # egress: sends transactional mail via the Resend API.
+    networks: [backend, egress]
     healthcheck: *node-healthcheck
 
   media-service:
@@ -226,6 +265,8 @@ services:
     volumes:
       - provider_uploads:/app/data/provider
       - review_uploads:/app/data/review
+    # egress: streams uploads to/from Cloudflare R2.
+    networks: [backend, egress]
     healthcheck: *node-healthcheck
 
   chat-service:
@@ -241,6 +282,8 @@ services:
       PORT: 4007
       GATEWAY_URL: http://api-gateway:4000
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    # egress: proxies to the Anthropic API.
+    networks: [backend, egress]
     healthcheck: *node-healthcheck
 
   api-gateway:
@@ -257,13 +300,17 @@ services:
       PORT: 4000
       AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required}
       WEB_ORIGIN: ${WEB_ORIGIN:?WEB_ORIGIN is required}
-      REDIS_URL: redis://redis:6379
+      # `default` is the ACL user requirepass sets the password for (Redis 6+);
+      # naming it explicitly keeps secret scanners from reading the ${...}
+      # placeholder as a hardcoded ":password@" credential.
+      REDIS_URL: redis://default:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379
       # Trusted reverse-proxy hops in front of the gateway (#201). The socket
       # peer counts as the first hop, so with the Caddy → web → gateway chain
       # this is 2: the rate limiter then reads the real client IP from
       # X-Forwarded-For (right-to-left, skipping these hops) instead of a
       # client-forgeable value. See docs/RATE_LIMITING.md.
       TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-2}
+    networks: [backend]
     depends_on:
       redis:
         condition: service_healthy
@@ -303,11 +350,18 @@ services:
       # Session-revocation check for page gating (src/lib/session-version.ts) —
       # reaches identity directly with the internal secret; fails open if unset.
       IDENTITY_SERVICE_URL: http://identity-service:4001
+    # Straddles both networks: reachable from Caddy on edge, reaches the
+    # gateway / chat / identity on backend.
+    networks: [edge, backend]
     depends_on:
       api-gateway:
         condition: service_healthy
       chat-service:
         condition: service_healthy
+    # Probes the app's own /healthz route (deliberately gateway-independent), so
+    # the deploy health-gate covers the user-facing site (#385). $PORT=3000
+    # comes from the image env (see the web Dockerfile).
+    healthcheck: *node-healthcheck
 
   # The only public surface: terminates TLS (auto Let's Encrypt) and proxies to
   # the web app, which in turn proxies /api/* to the gateway internally.
@@ -326,13 +380,45 @@ services:
       - "443:443"
     environment:
       DOMAIN: ${DOMAIN:?DOMAIN is required (the public hostname, e.g. baas.lk)}
-      ACME_EMAIL: ${ACME_EMAIL:-}
+      # Safe-by-default ACME email (#387): the Caddyfile's global `email`
+      # option takes this verbatim, and an empty argument fails config load —
+      # crash-looping the only public entrypoint. Default to a deliverable
+      # address on the site's own domain when the secret is unset.
+      ACME_EMAIL: ${ACME_EMAIL:-admin@${DOMAIN:?}}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    # Edge only (#387): the public entry can reach the web app and nothing
+    # else — no direct route to the gateway, the services, or the datastores.
+    networks: [edge]
+    # Probes Caddy's always-on admin API (localhost:2019) so the health-gate
+    # also covers the public edge (#385): it fails until the Caddyfile has
+    # loaded, and unlike a probe of :80/:443 it doesn't depend on the domain's
+    # DNS/ACME state — a fresh host must come up healthy before certs exist.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:2019/config/ > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
     depends_on:
-      - web
+      web:
+        condition: service_healthy
+
+# Network split (#387) — replaces the flat default network:
+#   edge    — Caddy ↔ web only: a compromised edge can reach nothing internal.
+#   backend — services + datastores; `internal: true`, so containers on ONLY
+#             this network (gateway, provider/review/job, postgres, redis)
+#             have no route to the internet at all.
+#   egress  — plain bridge granting outbound internet to the services that
+#             call external APIs (identity: OAuth token exchange,
+#             notification: Resend, media: R2, chat: Anthropic). Publishes
+#             no ports; nothing accepts traffic on it.
+networks:
+  edge:
+  backend:
+    internal: true
+  egress:
 
 volumes:
   pgdata:

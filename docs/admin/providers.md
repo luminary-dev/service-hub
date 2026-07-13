@@ -17,6 +17,11 @@ score badge, category/city, review and photo counts, and a Moderate link.
 - **Bulk actions:** select-all + bulk suspend / unsuspend, via
   `PATCH /api/admin/providers` with `{ ids, suspended }`.
 
+Suspend/unsuspend (single and bulk) also set/clear `adminSuspended` (#550),
+marking the suspension as admin-owned: the self-service downgrade → re-upgrade
+cycle (`leave-provider` → `complete-provider`) cannot lift it — unsuspending
+here is the only way an admin suspension ends.
+
 **Detail** — `GET /api/admin/providers/{id}`: header with avatar, contact, the
 quality badge and breakdown, and the verify/suspend actions. Two panels:
 

@@ -12,6 +12,7 @@ export type TargetTypeFilter =
   | "WORK_PHOTO"
   | "REVIEW"
   | "INQUIRY"
+  | "MESSAGE"
   | "JOB"
   | "JOB_RESPONSE";
 export type StatusFilter = "" | "OPEN" | "RESOLVED" | "DISMISSED";
@@ -55,6 +56,7 @@ export default function ReportsFilterBar({
         <option value="WORK_PHOTO">{t.reportedPhoto}</option>
         <option value="REVIEW">{t.reportedReview}</option>
         <option value="INQUIRY">{t.reportedInquiry}</option>
+        <option value="MESSAGE">{t.reportedMessage}</option>
         <option value="JOB">{t.reportedJob}</option>
         <option value="JOB_RESPONSE">{t.reportedJobResponse}</option>
       </select>

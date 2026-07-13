@@ -5,11 +5,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { dict } from "@/lib/i18n";
+import { ToastProvider } from "../ToastProvider";
 import InquiriesList from "./InquiriesList";
 import type { InquiryItem } from "./DashboardTabs";
 
 const t = dict.en.dashboard.inquiries;
 const fetchMock = vi.fn();
+
+// InquiriesList toasts on failed status updates, so it needs the provider.
+function renderList(props: React.ComponentProps<typeof InquiriesList>) {
+  return render(
+    <ToastProvider>
+      <InquiriesList {...props} />
+    </ToastProvider>
+  );
+}
 
 function inquiry(id: string, overrides: Partial<InquiryItem> = {}): InquiryItem {
   return {
@@ -36,7 +46,7 @@ afterEach(() => {
 
 describe("InquiriesList load more", () => {
   it("hides the button when everything is already listed", () => {
-    render(<InquiriesList initial={[inquiry("a")]} total={1} />);
+    renderList({ initial: [inquiry("a")], total: 1 });
     expect(screen.queryByRole("button", { name: t.loadMore(0) })).toBeNull();
   });
 
@@ -45,7 +55,7 @@ describe("InquiriesList load more", () => {
       ok: true,
       json: async () => ({ inquiries: [inquiry("a"), inquiry("b")], total: 2 }),
     });
-    render(<InquiriesList initial={[inquiry("a")]} total={2} />);
+    renderList({ initial: [inquiry("a")], total: 2 });
 
     fireEvent.click(screen.getByRole("button", { name: t.loadMore(1) }));
 
@@ -63,7 +73,7 @@ describe("InquiriesList load more", () => {
 
   it("shows an alert when the fetch fails", async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 500 });
-    render(<InquiriesList initial={[inquiry("a")]} total={5} />);
+    renderList({ initial: [inquiry("a")], total: 5 });
 
     fireEvent.click(screen.getByRole("button", { name: t.loadMore(4) }));
 

@@ -367,7 +367,10 @@ export default async function HomePage() {
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
-                <Link href="/register/provider" className="btn-primary !px-6 !py-3">
+                <Link
+                  href={localizedHref("/register/provider", locale)}
+                  className="btn-primary !px-6 !py-3"
+                >
                   {t.home.ctaCreate}
                 </Link>
                 <Link

@@ -18,7 +18,11 @@ services:
       POSTGRES_PASSWORD: postgres
     ports:
       # 5433 on the host: many dev machines already run a local Postgres on 5432.
-      - "5433:5432"
+      # Loopback-bound (#387) — like every service port below (4000-4007), so on
+      # shared wifi nobody else can reach Postgres (well-known dev password) or
+      # hit a service directly with the dev internal secret and forged x-user-*
+      # headers. Only web (:3000) stays LAN-reachable, for phone testing.
+      - "127.0.0.1:5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
@@ -48,7 +52,7 @@ services:
       FACEBOOK_CLIENT_ID: ${FACEBOOK_CLIENT_ID:-}
       FACEBOOK_CLIENT_SECRET: ${FACEBOOK_CLIENT_SECRET:-}
     ports:
-      - "4001:4001"
+      - "127.0.0.1:4001:4001"
     depends_on:
       postgres:
         condition: service_healthy
@@ -68,7 +72,7 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/provider_db
       # Uploads now go through media-service; no local upload volume here.
     ports:
-      - "4002:4002"
+      - "127.0.0.1:4002:4002"
     depends_on:
       postgres:
         condition: service_healthy
@@ -84,7 +88,7 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/review_db
       # Uploads now go through media-service; no local upload volume here.
     ports:
-      - "4003:4003"
+      - "127.0.0.1:4003:4003"
     depends_on:
       postgres:
         condition: service_healthy
@@ -99,7 +103,7 @@ services:
       PORT: 4004
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/job_db
     ports:
-      - "4004:4004"
+      - "127.0.0.1:4004:4004"
     depends_on:
       postgres:
         condition: service_healthy
@@ -113,7 +117,7 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM:-}
     ports:
-      - "4005:4005"
+      - "127.0.0.1:4005:4005"
     healthcheck: *node-healthcheck
 
   media-service:
@@ -128,7 +132,7 @@ services:
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
       R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
     ports:
-      - "4006:4006"
+      - "127.0.0.1:4006:4006"
     volumes:
       # The callers' original upload volumes, remounted under per-namespace
       # dirs so existing files and their URLs keep resolving with no migration.
@@ -145,7 +149,7 @@ services:
       # Holds the LLM credential (isolated from the web runtime); unset → 503.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     ports:
-      - "4007:4007"
+      - "127.0.0.1:4007:4007"
     healthcheck: *node-healthcheck
 
   redis:
@@ -167,7 +171,7 @@ services:
       # to the per-instance in-memory store.
       REDIS_URL: redis://redis:6379
     ports:
-      - "4000:4000"
+      - "127.0.0.1:4000:4000"
     depends_on:
       redis:
         condition: service_healthy
