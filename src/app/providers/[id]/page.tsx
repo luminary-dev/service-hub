@@ -223,6 +223,15 @@ export default async function ProviderProfilePage({
   const reviewData = await fetchReviewSummary(provider.id, session);
   const reviewSummary = reviewData?.summary ?? null;
 
+  // Headline rating/count must reflect ALL reviews, not the first page. `/full`
+  // only carries the newest FULL_REVIEWS_TAKE (50), so `provider.reviews`
+  // undercounts and skews `avg` for prolific providers (#548). Prefer the #528
+  // aggregate; fall back to the first-page values only if the summary fetch
+  // failed (so the header still shows something during a review-service blip).
+  const reviewCount = reviewSummary?.count ?? provider.reviews.length;
+  const ratingAvg =
+    reviewSummary && reviewSummary.count > 0 ? reviewSummary.rating : avg;
+
   const away =
     !!provider.awayUntil && new Date(provider.awayUntil) > new Date();
 
@@ -232,8 +241,9 @@ export default async function ProviderProfilePage({
   const stats: Stat[] = [];
   if (provider.experience > 0)
     stats.push({ label: "EXP · YRS", value: provider.experience });
-  if (avg !== null) stats.push({ label: "RATING", value: avg.toFixed(1) });
-  stats.push({ label: "REVIEWS", value: provider.reviews.length });
+  if (ratingAvg !== null)
+    stats.push({ label: "RATING", value: ratingAvg.toFixed(1) });
+  stats.push({ label: "REVIEWS", value: reviewCount });
 
   return (
     <div>
@@ -294,14 +304,14 @@ export default async function ProviderProfilePage({
                     ` · ${t.profile.exp(provider.experience)}`}
                 </p>
                 <div className="mt-2.5 flex items-center gap-2">
-                  {avg !== null ? (
+                  {ratingAvg !== null ? (
                     <>
-                      <Stars rating={avg} size="md" />
+                      <Stars rating={ratingAvg} size="md" />
                       <span className="font-semibold tabular-nums text-ink-800">
-                        {avg.toFixed(1)}
+                        {ratingAvg.toFixed(1)}
                       </span>
                       <span className="text-sm text-ink-500">
-                        {t.profile.reviewsShort(provider.reviews.length)}
+                        {t.profile.reviewsShort(reviewCount)}
                       </span>
                     </>
                   ) : (
