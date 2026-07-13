@@ -9,6 +9,12 @@ a message (10–2000 chars) and submits
 email notification. Inquiries are rate-limited (see
 [RATE_LIMITING.md](../RATE_LIMITING.md)).
 
+Inquiry text and every thread message also pass the write-time
+[content filter](../admin/moderation.md#content-filter-write-time-auto-reports)
+(#375): a denylist hit never blocks delivery — it auto-files a `SYSTEM`-sourced
+`INQUIRY` report (with the offending excerpt in its details) so the thread
+surfaces in the admin moderation queue.
+
 ### Message threads
 
 An inquiry opens a two-party thread, viewable by both sides:
@@ -26,6 +32,11 @@ Both render `MessageThread`, which:
 Provider-side inquiry statuses are **NEW / RESPONDED / CLOSED**, with
 mark-responded / close / reopen actions
 (`PATCH /api/provider/inquiries/{id}`).
+
+The provider inbox is paginated (#372): the dashboard embeds the first 20
+inquiries (plus `inquiriesTotal` / `newInquiriesCount`), and the Inquiries tab
+loads deeper pages on demand from `GET /api/provider/inquiries?page=&pageSize=`
+(default 20, cap 100).
 
 ---
 

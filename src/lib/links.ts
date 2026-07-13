@@ -38,6 +38,23 @@ export function localizedHref(path: string, locale: Locale): string {
   return (bare === "/" ? SI_PREFIX : `${SI_PREFIX}${bare}`) + suffix;
 }
 
+// Post-login return-to (#560). Only a same-origin relative path survives a
+// round-trip through ?next= — never a scheme/host, a protocol-relative
+// "//evil.com", or a backslash variant URL parsers normalize to "//".
+// Mirrors identity-service's sanitizeNext (routes/oauth.ts), plus the
+// backslash rejection because this value feeds router.push().
+export function sanitizeNext(next: string | null | undefined): string | null {
+  if (!next || !next.startsWith("/")) return null;
+  if (next.startsWith("//") || next.includes("\\")) return null;
+  return next;
+}
+
+// /login URL carrying the (already locale-prefixed) path to return to after
+// sign-in. The login page validates it with sanitizeNext before use.
+export function loginNextHref(next: string): string {
+  return `/login?next=${encodeURIComponent(next)}`;
+}
+
 // hreflang alternates for a public page, given its unprefixed path. Each
 // language version is its own canonical; x-default points at the English
 // root. Paths are relative — metadataBase (root layout) makes them absolute.

@@ -156,8 +156,41 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+      - name: Build images (warm layer cache)
+        # Pre-build the nine compose images with bake so the slowest required
+        # gate reuses deploy.yml's per-image GHA layer cache instead of
+        # cold-building every PR (#573). READ-ONLY like trivy-image in
+        # security-scan.yml: deliberately no cache-to, so a feature branch can
+        # never write the shared cache. `load` imports the images into the
+        # daemon under the exact names compose expects (service-hub-<name>),
+        # so the boot below runs with --no-build.
+        uses: docker/bake-action@d3418bd7d0e9324001bca92fa8ba175ea7e6dc9b # v7.3.0
+        with:
+          source: .
+          files: docker-compose.yml
+          load: true
+          set: |
+            web.tags=service-hub-web
+            web.cache-from=type=gha,scope=web
+            identity-service.tags=service-hub-identity-service
+            identity-service.cache-from=type=gha,scope=identity-service
+            provider-service.tags=service-hub-provider-service
+            provider-service.cache-from=type=gha,scope=provider-service
+            review-service.tags=service-hub-review-service
+            review-service.cache-from=type=gha,scope=review-service
+            job-service.tags=service-hub-job-service
+            job-service.cache-from=type=gha,scope=job-service
+            notification-service.tags=service-hub-notification-service
+            notification-service.cache-from=type=gha,scope=notification-service
+            media-service.tags=service-hub-media-service
+            media-service.cache-from=type=gha,scope=media-service
+            chat-service.tags=service-hub-chat-service
+            chat-service.cache-from=type=gha,scope=chat-service
+            api-gateway.tags=service-hub-api-gateway
+            api-gateway.cache-from=type=gha,scope=api-gateway
       - name: Boot the stack
-        run: docker compose up -d --build --wait --wait-timeout 300
+        run: docker compose up -d --no-build --wait --wait-timeout 300
       - name: Wait for web
         run: |
           for i in $(seq 1 30); do

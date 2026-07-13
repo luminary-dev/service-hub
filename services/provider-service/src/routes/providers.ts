@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { db } from "../db";
+import { moderateContent } from "../lib/auto-report";
 import { getAuth, getLocale, getOrigin } from "../lib/http";
 import {
   fetchProviderReviews,
@@ -341,6 +342,10 @@ providersRoutes.get("/api/providers/:id", async (c) => {
 // consumer yet (photosTotal tells the UI they exist).
 const FULL_PHOTOS_TAKE = 50;
 const FULL_REVIEWS_TAKE = 50;
+// avgResponseMs is computed over the most recent answered inquiries only
+// (#372) — a rolling sample keeps the query bounded and tracks the provider's
+// current responsiveness rather than their all-time history.
+const RESPONSE_TIME_SAMPLE = 200;
 
 // Full page payload for /providers/[id]: services (price asc), first
 // FULL_PHOTOS_TAKE photos (sortOrder asc then createdAt desc — the provider's
@@ -383,6 +388,8 @@ providersRoutes.get("/api/providers/:id/full", async (c) => {
     db.inquiry.findMany({
       where: { providerId: id, respondedAt: { not: null } },
       select: { createdAt: true, respondedAt: true },
+      orderBy: { respondedAt: "desc" },
+      take: RESPONSE_TIME_SAMPLE,
     }),
   ]);
   // Drop _count (internal), the raw phone columns (#64) — the profile page
@@ -521,6 +528,14 @@ providersRoutes.post("/api/providers/:id/inquiries", async (c) => {
       message: parsed.data.message,
       source: parsed.data.source ?? null,
     },
+  });
+
+  // Content filter (#375): AFTER the write on purpose — the inquiry is
+  // delivered as normal and a filter hit only queues a SYSTEM report for
+  // admin triage.
+  await moderateContent("INQUIRY", inquiry.id, {
+    name: parsed.data.name,
+    message: parsed.data.message,
   });
 
   // Tell the provider (denormalized contactEmail) — best-effort, never fails

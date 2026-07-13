@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | identity_db, provider_db, review_db, job_db | compose `postgres` (one cluster) | `scripts/backup-dbs.sh` (logical `pg_dump -Fc` per DB) |
 | Uploaded images | `provider_uploads` / `review_uploads` volumes (or Cloudflare R2 when the `R2_*` vars are set) | volume tar (below); R2 is durable managed storage |
-| Redis rate-limit windows | `redis` | deliberately NOT backed up — ephemeral by design |
+| Redis rate-limit windows + session-revocation list | `redis` (prod `redis_data` volume) | deliberately NOT backed up — rate-limit windows are ephemeral, and the revocation list (#374) mirrors identity_db's `sessionVersion` (covered above). The volume keeps it across container recreation (#571); after a total Redis loss the gateway falls back to the identity lookup until versions are re-published on the next bump |
 
 ## Policy
 
