@@ -44,6 +44,11 @@ describe("toPublicReview", () => {
     photos: [
       { id: "ph1", url: "reviews/ph1.jpg", createdAt: new Date("2026-01-01T00:00:00Z") },
     ],
+    response: {
+      text: "Thank you!",
+      createdAt: new Date("2026-01-02T00:00:00Z"),
+      updatedAt: new Date("2026-01-02T00:00:00Z"),
+    },
   };
 
   it("strips userId and deletedAt from the public shape (audit L6)", () => {
@@ -66,6 +71,12 @@ describe("toPublicReview", () => {
       photos: [
         { id: "ph1", url: "reviews/ph1.jpg", createdAt: new Date("2026-01-01T00:00:00Z") },
       ],
+      // Provider's public reply (#395) is public data and rides along.
+      response: {
+        text: "Thank you!",
+        createdAt: new Date("2026-01-02T00:00:00Z"),
+        updatedAt: new Date("2026-01-02T00:00:00Z"),
+      },
     });
   });
 });

@@ -20,15 +20,25 @@ const REVIEWS = [
   { id: "rev_7", providerId: "prov_chaminda", userId: "user_dilani", rating: 5, comment: "The pantry cupboards are stunning. Real craftsmanship you rarely see these days." },
 ];
 
+// Provider responses (#395): a couple of reviews carry a public reply from the
+// reviewed provider so the profile shows the response block in demos.
+const RESPONSES = [
+  { reviewId: "rev_1", text: "Thank you Dilani! Glad the brakes are sorted — see you at the next service." },
+  { reviewId: "rev_4", text: "It was a pleasure working on your garden. Water the ferns twice a week during the dry months!" },
+];
+
 async function main() {
   await db.reviewPhoto.deleteMany();
-  await db.review.deleteMany();
+  await db.review.deleteMany(); // responses cascade with their reviews
 
   for (const r of REVIEWS) {
     await db.review.create({ data: r });
   }
+  for (const resp of RESPONSES) {
+    await db.reviewResponse.create({ data: resp });
+  }
 
-  console.log(`Seeded ${REVIEWS.length} reviews.`);
+  console.log(`Seeded ${REVIEWS.length} reviews and ${RESPONSES.length} responses.`);
 }
 
 main()

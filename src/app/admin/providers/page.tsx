@@ -90,7 +90,7 @@ export default async function AdminProvidersPage({
         title={t.providersTitle}
         status={t.providersSubtitle}
       >
-        <StatReadout stats={[{ label: "TOTAL", value: total }]} />
+        <StatReadout stats={[{ label: t.stats.total, value: total }]} />
       </PageHeader>
 
       <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
