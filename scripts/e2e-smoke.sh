@@ -3,7 +3,7 @@
 # gateway). Requires: a running stack (scripts/dev-all.sh or docker compose),
 # curl, jq. Reseeds the databases first, so it is repeatable — but the
 # gateway's in-memory rate limits persist across runs (authStrict: 8 logins /
-# 15 min / IP; this script uses 3), so after a few back-to-back runs restart
+# 15 min / IP; this script uses 4), so after a few back-to-back runs restart
 # the gateway or wait out the window.
 set -uo pipefail
 
@@ -90,7 +90,13 @@ check "review visible" "$(curl -sS "http://localhost:4003/internal/by-provider/p
   | jq -r '.reviews[0].comment')" "E2E approved"
 
 echo "== Jobs (reverse marketplace) =="
-JOB_ID=$(req cust POST "/api/jobs" -H 'content-type: application/json' \
+# Job posting is gated on a verified email (#556): the freshly registered
+# customer must be blocked, so the job flow runs as a seeded (verified) one.
+check "unverified job post blocked" "$(req cust POST "/api/jobs" -H 'content-type: application/json' \
+  -d '{"category":"mechanic","district":"Colombo","title":"E2E gated job post","description":"An unverified account must not be able to post this job."}' | jq -r '.error')" "Verify your email"
+req jobcust POST "/api/auth/login" -H 'content-type: application/json' \
+  -d '{"email":"dilani@example.com","password":"password123"}' > /dev/null
+JOB_ID=$(req jobcust POST "/api/jobs" -H 'content-type: application/json' \
   -d '{"category":"mechanic","district":"Colombo","title":"E2E brake inspection","description":"My car needs a brake inspection as soon as possible please."}' | jq -r '.id')
 check "job created" "$(test -n "$JOB_ID" && test "$JOB_ID" != "null" && echo yes)" "yes"
 
@@ -105,11 +111,11 @@ check "duplicate respond blocked" "$(req prov POST "/api/jobs/$JOB_ID/responses"
 check "dashboard payload" "$(req prov GET "/api/provider/dashboard" | jq -r '.provider.id')" "prov_nuwan"
 check "dashboard page renders" "$(req prov GET "/dashboard")" "Baas"
 
-check "job mine shows response" "$(req cust GET "/api/jobs/mine" | jq -r '(.jobs // []) | map(select(.id=="'"$JOB_ID"'")) | .[0].responses | length')" "1"
+check "job mine shows response" "$(req jobcust GET "/api/jobs/mine" | jq -r '(.jobs // []) | map(select(.id=="'"$JOB_ID"'")) | .[0].responses | length')" "1"
 
 # Response scoping (must mirror the board query): out-of-category/district and
 # own-job responses are rejected even with a valid job id.
-OTHER_JOB=$(req cust POST "/api/jobs" -H 'content-type: application/json' \
+OTHER_JOB=$(req jobcust POST "/api/jobs" -H 'content-type: application/json' \
   -d '{"category":"plumber","district":"Kandy","title":"E2E out-of-scope job","description":"A plumbing job in Kandy that nuwan the Colombo mechanic must not answer."}' | jq -r '.id')
 check "out-of-scope respond blocked" "$(req prov POST "/api/jobs/$OTHER_JOB/responses" -H 'content-type: application/json' \
   -d '{"message":"I should not be allowed to respond to this."}' | jq -r '.error')" "outside your category or district"
@@ -118,7 +124,7 @@ NUWAN_JOB=$(req prov POST "/api/jobs" -H 'content-type: application/json' \
 check "own-job respond blocked" "$(req prov POST "/api/jobs/$NUWAN_JOB/responses" -H 'content-type: application/json' \
   -d '{"message":"Responding to my own job should fail."}' | jq -r '.error')" "You cannot respond to your own job"
 
-check "job close" "$(req cust PATCH "/api/jobs/$JOB_ID" -H 'content-type: application/json' -d '{"status":"CLOSED"}' | jq -r '.ok')" "true"
+check "job close" "$(req jobcust PATCH "/api/jobs/$JOB_ID" -H 'content-type: application/json' -d '{"status":"CLOSED"}' | jq -r '.ok')" "true"
 
 echo "== Provider registration orchestration =="
 PEMAIL="e2e-prov-$RUN_TAG@example.com"
