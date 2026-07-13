@@ -192,7 +192,7 @@ export default function ServicesManager({
               />
               <select
                 className="input w-36"
-                aria-label={s2.pricePh}
+                aria-label={s2.priceType}
                 value={draft.priceType}
                 onChange={(e) =>
                   setDraft({ ...draft, priceType: e.target.value })

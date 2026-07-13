@@ -31,6 +31,13 @@ const en = {
     themeLight: "Light theme",
     themeDark: "Dark theme",
   },
+  // Localized display names for the role enum (#565).
+  roles: {
+    CUSTOMER: "Customer",
+    PROVIDER: "Provider",
+    ADMIN: "Admin",
+    SUPPORT: "Support",
+  } as Record<string, string>,
   a11y: {
     skipToContent: "Skip to main content",
     rated: (rating: string) => `Rated ${rating} out of 5`,
@@ -1000,6 +1007,7 @@ const en = {
       titlePh: "Service title",
       descPh: "Short description (optional)",
       pricePh: "Price (Rs.)",
+      priceType: "Price type",
       save: "Save",
       saving: "Saving…",
       cancel: "Cancel",
@@ -1123,6 +1131,7 @@ const en = {
     serviceTitlePh: "Service title, e.g. Full house wiring",
     serviceDescPh: "Short description (optional)",
     pricePh: "Price (Rs.)",
+    priceType: "Price type",
     addAnother: "+ Add another service",
     errName: "Please enter your full name.",
     errEmail: "Please enter a valid email.",
@@ -1172,6 +1181,12 @@ const si: Dict = {
     language: "භාෂාව",
     themeLight: "ලා තේමාව",
     themeDark: "අඳුරු තේමාව",
+  },
+  roles: {
+    CUSTOMER: "පාරිභෝගික",
+    PROVIDER: "සේවා සපයන්නා",
+    ADMIN: "පරිපාලක",
+    SUPPORT: "සහාය",
   },
   a11y: {
     skipToContent: "ප්‍රධාන අන්තර්ගතයට යන්න",
@@ -2119,6 +2134,7 @@ const si: Dict = {
       titlePh: "සේවා නාමය",
       descPh: "කෙටි විස්තරයක් (අත්‍යවශ්‍ය නොවේ)",
       pricePh: "මිල (රු.)",
+      priceType: "මිල වර්ගය",
       save: "සුරකින්න",
       saving: "සුරකිමින්…",
       cancel: "අවලංගු කරන්න",
@@ -2237,6 +2253,7 @@ const si: Dict = {
     serviceTitlePh: "සේවා නාමය, උදා: සම්පූර්ණ ගෙදර වයරින්",
     serviceDescPh: "කෙටි විස්තරයක් (අත්‍යවශ්‍ය නොවේ)",
     pricePh: "මිල (රු.)",
+    priceType: "මිල වර්ගය",
     addAnother: "+ තවත් සේවාවක් එක් කරන්න",
     errName: "කරුණාකර ඔබේ සම්පූර්ණ නම ඇතුළත් කරන්න.",
     errEmail: "කරුණාකර වලංගු විද්‍යුත් තැපෑලක් ඇතුළත් කරන්න.",

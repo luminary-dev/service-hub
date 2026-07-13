@@ -5,6 +5,7 @@ import { FaFlag, FaXmark } from "@/components/icons";
 import { useT } from "./I18nProvider";
 import { useToast } from "./ToastProvider";
 import { useFocusTrap } from "./useFocusTrap";
+import { useScrollLock } from "./useScrollLock";
 
 // Report abusive content (#50): a small trigger that opens a modal with a
 // reason select and optional details, then POSTs to the given report endpoint
@@ -38,6 +39,7 @@ export default function ReportButton({
   const [open, setOpen] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   useFocusTrap(dialogRef, open);
+  useScrollLock(open);
   const [reason, setReason] = useState<(typeof REASONS)[number]>("spam");
   const [details, setDetails] = useState("");
   const [loading, setLoading] = useState(false);
