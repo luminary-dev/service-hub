@@ -43,33 +43,44 @@ export default function SecuritySettings() {
       return;
     }
     setChanging(true);
-    const res = await fetch("/api/auth/change-password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ currentPassword: current, newPassword: next }),
-    });
-    setChanging(false);
-    if (res.ok) {
-      setCurrent("");
-      setNext("");
-      setConfirm("");
-      toast.success(t.security.changed);
-    } else {
-      const data = await res.json().catch(() => ({}));
-      setChangeError(data.error ?? t.security.genericError);
+    try {
+      const res = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword: current, newPassword: next }),
+      });
+      if (res.ok) {
+        setCurrent("");
+        setNext("");
+        setConfirm("");
+        toast.success(t.security.changed);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setChangeError(data.error ?? t.security.genericError);
+      }
+    } catch {
+      // Network failure — recover instead of wedging the button (#363).
+      setChangeError(t.security.genericError);
+    } finally {
+      setChanging(false);
     }
   }
 
   async function logoutAll() {
     setLoggingOut(true);
     setLogoutError("");
-    const res = await fetch("/api/auth/logout-all", { method: "POST" });
-    setLoggingOut(false);
-    if (res.ok) {
-      toast.success(t.security.logoutAllDone);
-    } else {
-      const data = await res.json().catch(() => ({}));
-      setLogoutError(data.error ?? t.security.genericError);
+    try {
+      const res = await fetch("/api/auth/logout-all", { method: "POST" });
+      if (res.ok) {
+        toast.success(t.security.logoutAllDone);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setLogoutError(data.error ?? t.security.genericError);
+      }
+    } catch {
+      setLogoutError(t.security.genericError);
+    } finally {
+      setLoggingOut(false);
     }
   }
 
@@ -77,19 +88,24 @@ export default function SecuritySettings() {
     e.preventDefault();
     setDeleting(true);
     setDeleteError("");
-    const res = await fetch("/api/auth/delete-account", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: deletePassword }),
-    });
-    if (res.ok) {
-      router.push(localizedHref("/", locale));
-      router.refresh();
-      return;
+    try {
+      const res = await fetch("/api/auth/delete-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: deletePassword }),
+      });
+      if (res.ok) {
+        // Keep the button disabled while we navigate away.
+        router.push(localizedHref("/", locale));
+        router.refresh();
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      setDeleteError(data.error ?? t.security.genericError);
+    } catch {
+      setDeleteError(t.security.genericError);
     }
     setDeleting(false);
-    const data = await res.json().catch(() => ({}));
-    setDeleteError(data.error ?? t.security.genericError);
   }
 
   return (

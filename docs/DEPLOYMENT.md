@@ -74,12 +74,20 @@ Triggered on **push to `prod`** (and `workflow_dispatch`). Three jobs:
      `docker compose -f docker-compose.prod.yml pull`;
    - **health-gates the rollout**: `up -d --remove-orphans --wait
      --wait-timeout 300` blocks until every container with a healthcheck is
-     healthy and none has exited. A crash-loop or a failed `prisma migrate
-     deploy` fails the deploy instead of silently replacing the running stack.
-     The 300s wait covers the DB services' 120s healthcheck `start_period`
-     (migration allowance, #568) plus the retry budget;
-   - **auto-rolls-back on failure**: rewrites `IMAGE_TAG` back to `PREV_TAG`,
-     re-pulls, brings the previous images up, and exits non-zero;
+     healthy and none has exited. Every container has one — including `web`
+     (the app's `/healthz` route) and `caddy` (its admin API), so the gate
+     covers the user-facing site (#385). A crash-loop or a failed `prisma
+     migrate deploy` fails the deploy instead of silently replacing the
+     running stack. The 300s wait covers the DB services' 120s healthcheck
+     `start_period` (migration allowance, #568) plus the retry budget;
+   - **auto-rolls-back on failure**: rewrites `IMAGE_TAG` back to `PREV_TAG`
+     **and restores the previously-deployed `docker-compose.prod.yml` +
+     `deploy/`** (recorded as the git SHA before the `reset --hard`) — if the
+     compose change itself broke the rollout, re-running the new file against
+     the old images would fail identically (#385). It then re-pulls, brings
+     the previous state up, and exits non-zero; a rollback that still comes up
+     unhealthy is reported loudly (`ROLLBACK FAILED`) in the job log instead
+     of being swallowed;
    - **prunes only after a healthy rollout** (#567): removes every
      `ghcr.io/luminary-dev/service-hub-*:<sha>` tag **except the tag just
      deployed and its predecessor** (kept on disk so rollback needs no
@@ -240,7 +248,10 @@ monorepo's `prod` branch so the mirrors reflect production.
 ## Rollback
 
 - **Automatic** — a failed health-gated rollout rolls itself back to the
-  previous image tag (see the CD pipeline); no action needed.
+  previous image tag **and** the previously-deployed compose/`deploy/` config
+  (see the CD pipeline); no action needed unless the job log says `ROLLBACK
+  FAILED`, in which case the stack may be down — SSH in and recover manually
+  (the two manual paths below).
 - **Manual, fast** — set `IMAGE_TAG=<previous-sha>` in the host `.env` and
   `docker compose -f docker-compose.prod.yml up -d`. The previous deploy's
   images are still on disk (post-deploy pruning keeps the current and previous
@@ -251,5 +262,8 @@ monorepo's `prod` branch so the mirrors reflect production.
 ## Still required before a public launch
 
 - **#147 / #72** — verified email domain + `RESEND_API_KEY`.
-- **#113 / #34** — uptime + error monitoring. **#61** — DB backups (`docs/BACKUPS.md`).
+- **#113 / #34** — uptime + error monitoring. **#61 / #389** — DB backups: the
+  tooling + nightly automation ship in the repo; run
+  `sudo ./scripts/install-backup-cron.sh` on the host once and fill in
+  `.backup.env` (`docs/BACKUPS.md`).
 - **#62 / #63** — Terms/Privacy pages + PDPA.

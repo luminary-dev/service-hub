@@ -58,6 +58,17 @@ describe("formatDate", () => {
     expect(formatDate(date, "en")).not.toBe(formatDate(date, "si"));
   });
 
+  // Hydration safety (#377): output is pinned to Asia/Colombo, so a UTC
+  // server and a browser in any timezone render the same calendar day.
+  it("renders the Sri Lanka calendar day regardless of process timezone", () => {
+    // 20:00 UTC is already the next day (01:30) in Colombo (+05:30). \b keeps
+    // the day assertion from matching inside "2026"; day/month order is ICU's.
+    expect(formatDate("2026-01-05T20:00:00Z", "en")).toMatch(/\b6\b/);
+    // …and just before midnight UTC stays that same Colombo day.
+    expect(formatDate("2026-01-05T23:59:00Z", "en")).toMatch(/\b6\b/);
+    expect(formatDate("2026-01-05T23:59:00Z", "en")).not.toMatch(/\b5\b/);
+  });
+
   it("accepts Date objects and honours custom options", () => {
     const out = formatDate(new Date("2026-07-04T12:00:00Z"), "en", {
       month: "long",
