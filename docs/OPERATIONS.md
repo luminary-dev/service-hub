@@ -110,8 +110,10 @@ Runs on push and PR to `dev` and `prod`. Jobs:
   heavy). Boots the whole stack with `docker compose up -d --build --wait`, waits
   for web on :3000, **seeds with `SEED_DEMO_DATA=true`** (the prod images run
   `NODE_ENV=production`, where the seed otherwise refuses), then runs
-  `scripts/e2e-smoke.sh`. Dumps logs on failure and always tears down with
-  `down -v`.
+  `scripts/e2e-smoke.sh` and the **backup → restore-verify path** (#389:
+  `backup-dbs.sh` dumps the seeded DBs, `verify-backup.sh` restores them into a
+  scratch container and row-counts the main tables). Dumps logs on failure and
+  always tears down with `down -v`.
 - **`prod-compose`** (#512) — validates `docker-compose.prod.yml` (the file that
   actually ships) with `docker compose -f docker-compose.prod.yml config -q`.
   The dev/e2e jobs only ever exercise `docker-compose.yml`, so the prod file used
@@ -223,10 +225,14 @@ single sync path.
 ## Backups
 
 Database and upload backup/restore procedures live in
-[BACKUPS.md](BACKUPS.md): logical `pg_dump -Fc` per database via
-`scripts/backup-dbs.sh` (daily cron on the prod host, 14-snapshot retention),
-upload volumes tarred alongside — or Cloudflare R2 when the `R2_*` vars are set
-(durable managed storage, no self-managed backup needed). Restore with
+[BACKUPS.md](BACKUPS.md): a nightly cron on the prod host (#389, installed once
+with `sudo ./scripts/install-backup-cron.sh`) runs `scripts/backup-cron.sh` —
+logical `pg_dump -Fc` per database (`scripts/backup-dbs.sh`; 14 local / 30
+offsite snapshot retention), an offsite copy to a dedicated R2 bucket, a
+restore-verification into a scratch Postgres (`scripts/verify-backup.sh`), and
+a success ping to a heartbeat monitor (a missed ping alerts). Upload volumes
+are tarred alongside — or Cloudflare R2 when the `R2_*` vars are set (durable
+managed storage, no self-managed backup needed). Restore with
 `scripts/restore-db.sh`. Redis rate-limit windows are intentionally **not**
 backed up (ephemeral by design).
 
@@ -317,5 +323,6 @@ the json-file driver (rotated, see above).
 
 **Uptime and error monitoring are still pending** — tracked by **#113 / #34** and
 listed among the pre-launch requirements in DEPLOYMENT.md. There is currently no
-external uptime probe, metrics/APM, or alerting; log inspection is manual
-(`docker compose logs`) until those land.
+external uptime probe, metrics/APM, or alerting (the one exception: backup
+freshness has a dead-man's-switch heartbeat, see [BACKUPS.md](BACKUPS.md));
+log inspection is manual (`docker compose logs`) until those land.
