@@ -17,6 +17,11 @@ export const RATE_LIMITS = {
   // Phone-number reveal (#64): generous enough for a human browsing several
   // profiles, tight enough to blunt a crawler harvesting the whole directory.
   contactReveal: { limit: 20, windowMs: 10 * 60_000 },
+  // Image uploads (#520): every upload POST runs a CPU-expensive sharp
+  // re-encode, so throttle them. Shared budget wide enough for a provider
+  // filling out a photo gallery in one sitting, tight enough to blunt an
+  // attacker hammering the re-encode path.
+  upload: { limit: 20, windowMs: 15 * 60_000 },
 } as const;
 
 // In-memory sliding-window store. This state is per-instance and resets on
@@ -315,7 +320,7 @@ export async function rateLimit(
 
 // The contract's rate-limit table. Rule names match the monolith's
 // rateLimit(req, name, rule) calls exactly so keys stay identical.
-const LIMITED_ROUTES: { pattern: RegExp; name: string; rule: RateRule }[] = [
+export const LIMITED_ROUTES: { pattern: RegExp; name: string; rule: RateRule }[] = [
   { pattern: /^\/api\/auth\/login$/, name: "auth-login", rule: RATE_LIMITS.authStrict },
   { pattern: /^\/api\/auth\/forgot-password$/, name: "auth-forgot", rule: RATE_LIMITS.authStrict },
   { pattern: /^\/api\/auth\/reset-password$/, name: "auth-reset", rule: RATE_LIMITS.authStrict },
@@ -326,6 +331,10 @@ const LIMITED_ROUTES: { pattern: RegExp; name: string; rule: RateRule }[] = [
   { pattern: /^\/api\/auth\/delete-account$/, name: "auth-delete", rule: RATE_LIMITS.authStrict },
   { pattern: /^\/api\/auth\/register$/, name: "auth-register", rule: RATE_LIMITS.authSignup },
   { pattern: /^\/api\/auth\/resend-verification$/, name: "auth-resend", rule: RATE_LIMITS.resend },
+  // Change-email (#505) sends a confirmation email to an attacker-CHOSEN
+  // address on every call, so it sits on the same email-sending budget as
+  // resend-verification.
+  { pattern: /^\/api\/account\/email\/change$/, name: "account-email-change", rule: RATE_LIMITS.resend },
   { pattern: /^\/api\/jobs$/, name: "job-post", rule: RATE_LIMITS.inquiry },
   { pattern: /^\/api\/providers\/[^/]+\/inquiries$/, name: "inquiry", rule: RATE_LIMITS.inquiry },
   // Phone-number reveal (#64) — anti-scraping budget on the number-reveal POST.
@@ -340,6 +349,12 @@ const LIMITED_ROUTES: { pattern: RegExp; name: string; rule: RateRule }[] = [
   { pattern: /^\/api\/providers\/[^/]+\/report$/, name: "report", rule: RATE_LIMITS.review },
   { pattern: /^\/api\/photos\/[^/]+\/report$/, name: "report", rule: RATE_LIMITS.review },
   { pattern: /^\/api\/reviews\/[^/]+\/report$/, name: "report", rule: RATE_LIMITS.review },
+  // Image uploads (#520): each runs a CPU-expensive sharp re-encode, so they
+  // share one per-IP "upload" bucket across the four upload POST endpoints.
+  { pattern: /^\/api\/account\/avatar$/, name: "upload", rule: RATE_LIMITS.upload },
+  { pattern: /^\/api\/provider\/photos$/, name: "upload", rule: RATE_LIMITS.upload },
+  { pattern: /^\/api\/provider\/verification$/, name: "upload", rule: RATE_LIMITS.upload },
+  { pattern: /^\/api\/admin\/categories\/image$/, name: "upload", rule: RATE_LIMITS.upload },
 ];
 
 export async function rateLimitMiddleware(c: Context, next: Next) {

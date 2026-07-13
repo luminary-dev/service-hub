@@ -47,16 +47,37 @@ export async function generateMetadata({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }): Promise<Metadata> {
-  const [params, urlLocale] = await Promise.all([
+  const [params, urlLocale, locale] = await Promise.all([
     searchParams,
     getUrlLocale(),
+    getLocale(),
   ]);
   const category =
     typeof params.category === "string" && params.category
-      ? `?category=${encodeURIComponent(params.category)}`
+      ? params.category
       : "";
+  const district =
+    typeof params.district === "string" && params.district
+      ? params.district
+      : "";
+  const canonical = category
+    ? `?category=${encodeURIComponent(category)}`
+    : "";
+  const alternates = languageAlternates(`/providers${canonical}`, urlLocale);
+
+  // Default listing (no filters) keeps the generic root title/description via
+  // the layout — only category/district permutations get a bespoke, keyword-
+  // rich title so /providers?category=… pages stop sharing one <title> (#513).
+  if (!category && !district) {
+    return { alternates };
+  }
+
+  const t = dict[locale];
+  const categoryLabel = category ? categoryLabelLoc(category, locale) : null;
   return {
-    alternates: languageAlternates(`/providers${category}`, urlLocale),
+    title: t.browse.metaTitle(categoryLabel, district || null),
+    description: t.browse.metaDesc(categoryLabel, district || null),
+    alternates,
   };
 }
 

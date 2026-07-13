@@ -1,15 +1,16 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { FaCircleCheck } from "@/components/icons";
+import FormSuccess from "@/components/FormSuccess";
 import { useT } from "@/components/I18nProvider";
 
 export default function JobRespondForm({ jobId }: { jobId: string }) {
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
-  const router = useRouter();
   const t = useT().jobs;
 
   async function submit(e: React.FormEvent) {
@@ -23,11 +24,25 @@ export default function JobRespondForm({ jobId }: { jobId: string }) {
     });
     setLoading(false);
     if (res.ok) {
-      router.refresh();
+      // Show an announced, focus-catching confirmation in place rather than
+      // refreshing away to a static "Responded" chip: a plain refresh unmounts
+      // this form, drops the focused submit button, and announces nothing (#510).
+      setSent(true);
     } else {
       const d = await res.json().catch(() => ({}));
       setError(d.error ?? t.respondError);
     }
+  }
+
+  if (sent) {
+    return (
+      <FormSuccess
+        title={t.responseSent}
+        icon={<FaCircleCheck className="h-4 w-4 shrink-0 text-emerald-500" />}
+        className="flex items-center gap-2 text-sm font-medium text-emerald-700"
+        headingClassName="text-sm font-medium text-emerald-700 focus:outline-none"
+      />
+    );
   }
 
   if (!open) {

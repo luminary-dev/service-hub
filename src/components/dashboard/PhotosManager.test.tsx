@@ -217,7 +217,7 @@ describe("PhotosManager reorder", () => {
     renderManager(photos);
 
     fireEvent.click(screen.getAllByRole("button", { name: ph.moveRight })[0]);
-    const toast = await screen.findByRole("status");
+    const toast = await screen.findByRole("alert");
     expect(toast.textContent).toContain(ph.reorderError);
 
     const cells = screen.getAllByAltText(/one|two/);

@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "../db";
+import { optionalWebUrl } from "../lib/field-rules";
 import { removeStoredFile, sweepMedia } from "../lib/storage";
 
 export const internalRoutes = new Hono();
@@ -15,6 +16,13 @@ const MAX_BATCH_IDS = 500;
 
 const optionalText = (max: number) =>
   z.string().max(max).optional().or(z.literal("")).nullish();
+
+// Social/website links carry a URL, so they must go through the same scheme
+// validator/normalizer as the profile-EDIT path (provider.ts) rather than a
+// plain length check (#518) — otherwise this S2S create path would persist a
+// `javascript:`/`data:` value that later renders as a live link. `.nullable()`
+// because identity-service sends explicit `null` for an omitted field.
+const optionalWebUrlOrNull = optionalWebUrl.nullable();
 
 const createSchema = z.object({
   userId: z.string().min(1),
@@ -33,11 +41,11 @@ const createSchema = z.object({
   experience: z.number().int().min(0).max(60),
   whatsapp: optionalText(15),
   phone2: optionalText(15),
-  facebook: optionalText(200),
-  instagram: optionalText(200),
-  tiktok: optionalText(200),
-  youtube: optionalText(200),
-  website: optionalText(200),
+  facebook: optionalWebUrlOrNull,
+  instagram: optionalWebUrlOrNull,
+  tiktok: optionalWebUrlOrNull,
+  youtube: optionalWebUrlOrNull,
+  website: optionalWebUrlOrNull,
   services: z
     .array(
       z.object({
@@ -200,6 +208,48 @@ internalRoutes.post("/internal/providers/avatar", async (c) => {
     data: { avatarUrl: body.avatarUrl ?? null },
   });
   return c.json({ ok: true });
+});
+
+// Forward lead-gen fan-out (#501): the providers to notify when a customer
+// posts a job. Mirrors the job board's scoping exactly — a provider matches a
+// job when its `category` and `district` equal the job's AND it is not
+// suspended (the same `suspended: false` gate browse applies; verification and
+// availability are display concerns the board itself doesn't filter on). So the
+// set emailed about a new job is precisely the set that would see it on their
+// board. `excludeUserId` drops the poster if they happen to also be a provider,
+// mirroring the board's not-own-job rule. Returns each match's denormalized
+// `contactEmail` — the same address recorded at registration and the canonical
+// provider contact (customer emails live in identity, but provider emails live
+// here). Capped and deduped by email so no provider is alerted twice.
+const MAX_MATCHING_PROVIDERS = 200;
+
+internalRoutes.get("/internal/providers/matching", async (c) => {
+  const category = c.req.query("category");
+  const district = c.req.query("district");
+  if (!category || !district) {
+    return c.json({ error: "category and district are required" }, 400);
+  }
+  const excludeUserId = c.req.query("excludeUserId");
+  const matches = await db.provider.findMany({
+    where: {
+      category,
+      district,
+      suspended: false,
+      ...(excludeUserId ? { NOT: { userId: excludeUserId } } : {}),
+    },
+    select: { id: true, contactName: true, contactEmail: true },
+    take: MAX_MATCHING_PROVIDERS,
+  });
+  // Dedupe by contact email — two profiles could share an address; a provider
+  // must never get two copies of the same new-job alert.
+  const seen = new Set<string>();
+  const providers = matches.filter((p) => {
+    const email = p.contactEmail.toLowerCase();
+    if (seen.has(email)) return false;
+    seen.add(email);
+    return true;
+  });
+  return c.json({ providers });
 });
 
 // Batch hydration (job-service response lists).

@@ -55,14 +55,34 @@ const cardInclude = {
   },
 };
 
-// Cover-image fallback map (#436): slug → category cover, resolved once per
-// request and attached to each card so the web can fall back
-// provider cover → category image → placeholder without a per-card lookup.
+// Cover-image fallback map (#436): slug → category cover, attached to each card
+// so the web can fall back provider cover → category image → placeholder
+// without a per-card lookup.
+//
+// This runs on the hottest endpoints (every /api/providers browse plus the
+// favorites `ids=` path), so the slug→imageUrl map is memoized in-process for
+// 60s (#523) — the same TTL as the category-slug validator in lib/categories.ts
+// — instead of hitting the DB on every request. Categories change rarely; a
+// freshly uploaded cover simply shows up within the TTL window.
+const CATEGORY_IMAGE_TTL_MS = 60_000;
+let categoryImageCache: Map<string, string | null> | null = null;
+let categoryImageExpiresAt = 0;
+
 async function categoryImageMap(): Promise<Map<string, string | null>> {
+  const now = Date.now();
+  if (categoryImageCache && categoryImageExpiresAt > now) return categoryImageCache;
   const rows = await db.category.findMany({
     select: { slug: true, imageUrl: true },
   });
-  return new Map(rows.map((c) => [c.slug, c.imageUrl]));
+  categoryImageCache = new Map(rows.map((c) => [c.slug, c.imageUrl]));
+  categoryImageExpiresAt = now + CATEGORY_IMAGE_TTL_MS;
+  return categoryImageCache;
+}
+
+// Tests only — drop the memoized map so a case starts from a cold cache.
+export function __resetCategoryImageCache() {
+  categoryImageCache = null;
+  categoryImageExpiresAt = 0;
 }
 
 function toCardDTO(
@@ -299,8 +319,11 @@ providersRoutes.get("/api/providers/:id", async (c) => {
     return c.json({ error: "Provider not found" }, 404);
   }
   // Strip the raw phone columns (#64) — the public payload carries only
-  // booleans; the digits are fetched on demand via POST /:id/contact.
-  const { contactPhone, whatsapp, phone2, ...pub } = provider;
+  // booleans; the digits are fetched on demand via POST /:id/contact. Also drop
+  // rejectionReason (#506): it's admin-authored moderation text and must never
+  // reach a public caller (a REJECTED-but-live provider would otherwise leak
+  // it). It stays only on the owner-gated dashboard.
+  const { contactPhone, whatsapp, phone2, rejectionReason, ...pub } = provider;
   return c.json({
     provider: {
       ...pub,
@@ -362,9 +385,11 @@ providersRoutes.get("/api/providers/:id/full", async (c) => {
       select: { createdAt: true, respondedAt: true },
     }),
   ]);
-  // Drop _count (internal) and the raw phone columns (#64) — the profile page
-  // reveals the digits on demand via POST /:id/contact.
-  const { _count, contactPhone, whatsapp, phone2, ...providerFields } = provider;
+  // Drop _count (internal), the raw phone columns (#64) — the profile page
+  // reveals the digits on demand via POST /:id/contact — and rejectionReason
+  // (#506), which is admin-only moderation text kept off every public payload.
+  const { _count, contactPhone, whatsapp, phone2, rejectionReason, ...providerFields } =
+    provider;
   return c.json({
     provider: {
       ...providerFields,

@@ -19,6 +19,7 @@ import {
   syncIdentityProfile,
 } from "../lib/clients";
 import { getCurrentProvider } from "../lib/provider-auth";
+import { isSupportOrAdmin, s2s } from "../lib/http";
 import { unreadCounts } from "./messages";
 import {
   ALLOWED_IMAGE_TYPES,
@@ -30,6 +31,9 @@ import {
 } from "../lib/storage";
 
 export const providerDashboardRoutes = new Hono();
+
+const MEDIA_SERVICE_URL =
+  process.env.MEDIA_SERVICE_URL ?? "http://localhost:4006";
 
 // Everything the dashboard page needs in one payload: the provider with its
 // contact info (emailVerified fresh from identity), services, photos,
@@ -431,7 +435,9 @@ providerDashboardRoutes.patch("/api/provider/inquiries/:id", async (c) => {
 });
 
 // Provider submits verification documents (NIC and/or business registration).
-// Sensitive PII — the stored URLs are only ever returned to admins.
+// Sensitive PII: stored under the media `verification` prefix, which the
+// gateway routes to the admin-gated serve route below instead of the public
+// media path (#500) — so the bytes are only ever viewable by ADMIN/SUPPORT.
 providerDashboardRoutes.post("/api/provider/verification", async (c) => {
   const provider = await getCurrentProvider(c);
   if (!provider) {
@@ -494,4 +500,32 @@ providerDashboardRoutes.post("/api/provider/verification", async (c) => {
   ]);
 
   return c.json({ status: "PENDING" });
+});
+
+// Admin-gated delivery of a verification document (#500). These are PII (NIC /
+// business-registration scans), so the gateway routes
+// /api/files/provider/verification/* here — NOT to the public media path — and
+// only ADMIN/SUPPORT (who see the /api/admin/verifications queue that lists
+// them) may fetch the bytes. The document's stored URL is exactly this request
+// path, so we hand it straight to media's internal raw endpoint over S2S and
+// stream the bytes back; PII is marked private/no-store so it is never cached
+// by a shared cache. Pre-existing documents keep the same URL and are served
+// unchanged through this route.
+providerDashboardRoutes.get("/api/files/provider/verification/*", async (c) => {
+  if (!isSupportOrAdmin(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+  const res = await s2s(
+    MEDIA_SERVICE_URL,
+    `/internal/media/raw?url=${encodeURIComponent(c.req.path)}`
+  );
+  if (!res.ok) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  return c.body(new Uint8Array(await res.arrayBuffer()), 200, {
+    "content-type": res.headers.get("content-type") ?? "application/octet-stream",
+    "cache-control": "private, no-store",
+    "x-content-type-options": "nosniff",
+    "content-disposition": "inline",
+  });
 });

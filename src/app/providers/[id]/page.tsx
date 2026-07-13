@@ -126,6 +126,31 @@ function fetchProvider(id: string, session: SessionPayload | null) {
     : apiJson<{ provider: FullProvider }>(path, { revalidate: 60 });
 }
 
+// Aggregated rating summary over ALL of a provider's reviews (#528): overall
+// average+count, per-dimension averages and the 5→1 star distribution. Read
+// straight from review-service's public reviews endpoint (no provider-service
+// change) — `?take=1` because we only need the summary, not another page of
+// reviews (those already arrive via /full). Same viewer-split caching as the
+// profile itself; degrades to null so the breakdown just hides.
+type ReviewSummary = {
+  rating: number;
+  count: number;
+  dimensions: {
+    quality: number | null;
+    punctuality: number | null;
+    value: number | null;
+    communication: number | null;
+  };
+  distribution: Record<string, number>;
+};
+
+function fetchReviewSummary(id: string, session: SessionPayload | null) {
+  const path = `/api/providers/${encodeURIComponent(id)}/reviews?take=1`;
+  return session
+    ? apiJson<{ summary: ReviewSummary }>(path)
+    : apiJson<{ summary: ReviewSummary }>(path, { revalidate: 60 });
+}
+
 export async function generateMetadata({
   params,
 }: {
@@ -192,6 +217,11 @@ export default async function ProviderProfilePage({
     );
     favorited = favorites?.providerIds.includes(provider.id) ?? false;
   }
+
+  // Rating breakdown/distribution over all reviews (#528) — read directly from
+  // review-service, independent of the profile's first review page.
+  const reviewData = await fetchReviewSummary(provider.id, session);
+  const reviewSummary = reviewData?.summary ?? null;
 
   const away =
     !!provider.awayUntil && new Date(provider.awayUntil) > new Date();
@@ -406,6 +436,7 @@ export default async function ProviderProfilePage({
               }))}
               canReview={!!session && !isOwner}
               signedIn={!!session}
+              summary={reviewSummary}
               myReview={
                 myReview
                   ? {

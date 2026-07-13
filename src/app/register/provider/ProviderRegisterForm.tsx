@@ -4,7 +4,12 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { DISTRICTS, PRICE_TYPES } from "@/lib/constants";
+import {
+  DISTRICTS,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  PRICE_TYPES,
+} from "@/lib/constants";
 import { categoryOptionLabel, type CategoryOption } from "@/lib/categories";
 import { districtLabelLoc, priceTypeLabelLoc } from "@/lib/i18n";
 import { useLocale, useT } from "@/components/I18nProvider";
@@ -86,7 +91,7 @@ export default function ProviderRegisterForm({
       if (form.name.trim().length < 2) return r.errName;
       if (!/^\S+@\S+\.\S+$/.test(form.email)) return r.errEmail;
       if (form.phone.trim().length < 9) return r.errPhone;
-      if (form.password.length < 6) return r.errPassword;
+      if (form.password.length < PASSWORD_MIN_LENGTH) return r.errPassword;
     }
     if (step === 1) {
       if (!form.category) return r.errCategory;
@@ -326,6 +331,8 @@ export default function ProviderRegisterForm({
                 id="pr-password"
                 value={form.password}
                 onChange={(e) => set("password", e.target.value)}
+                minLength={PASSWORD_MIN_LENGTH}
+                maxLength={PASSWORD_MAX_LENGTH}
                 autoComplete="new-password"
               />
             </div>

@@ -6,6 +6,7 @@ import { useT } from "@/components/I18nProvider";
 import PasswordInput from "@/components/PasswordInput";
 import { useToast } from "@/components/ToastProvider";
 import { Field } from "@/components/ui/Field";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/constants";
 
 // Account security controls, backed by identity-service via the gateway:
 // change-password re-issues this session's cookie (other devices drop via the
@@ -128,8 +129,8 @@ export default function SecuritySettings() {
               value={next}
               onChange={(e) => setNext(e.target.value)}
               required
-              minLength={6}
-              maxLength={100}
+              minLength={PASSWORD_MIN_LENGTH}
+              maxLength={PASSWORD_MAX_LENGTH}
               autoComplete="new-password"
             />
           </Field>
@@ -139,8 +140,8 @@ export default function SecuritySettings() {
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               required
-              minLength={6}
-              maxLength={100}
+              minLength={PASSWORD_MIN_LENGTH}
+              maxLength={PASSWORD_MAX_LENGTH}
               autoComplete="new-password"
               aria-invalid={changeError ? true : undefined}
               aria-describedby={

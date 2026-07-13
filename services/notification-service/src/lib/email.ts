@@ -83,6 +83,10 @@ const T: Record<
     existsHeading: string;
     existsBody: string;
     existsButton: string;
+    attemptSubject: string;
+    attemptHeading: string;
+    attemptBody: string;
+    attemptButton: string;
   }
 > = {
   en: {
@@ -106,6 +110,11 @@ const T: Record<
     existsBody:
       "Someone tried to sign up for Baas.lk with this email address, but an account already exists. If it was you, sign in below — or reset your password if you have forgotten it. If it was not you, you can safely ignore this email; no new account was created and nothing has changed.",
     existsButton: "Sign in",
+    attemptSubject: "Someone tried to use your Baas.lk email",
+    attemptHeading: "A change-email request used your address",
+    attemptBody:
+      "Someone tried to change the email address on a Baas.lk account to this one. If it was you, sign in and start the change from your account settings. If it was not you, you can safely ignore this email — nothing has changed and your account is unaffected.",
+    attemptButton: "Sign in",
   },
   si: {
     resetSubject: "ඔබේ Baas.lk මුරපදය යළි සකසන්න",
@@ -128,6 +137,11 @@ const T: Record<
     existsBody:
       "යමෙකු මෙම විද්‍යුත් තැපැල් ලිපිනය සමඟ Baas.lk සඳහා ලියාපදිංචි වීමට උත්සාහ කළ නමුත්, දැනටමත් ගිණුමක් පවතී. එය ඔබ නම්, පහතින් පිවිසෙන්න — නැතහොත් මුරපදය අමතක වී ඇත්නම් එය යළි සකසන්න. එය ඔබ නොවේ නම්, මෙම විද්‍යුත් තැපෑල නොසලකා හැරිය හැක; නව ගිණුමක් සෑදී නැත, කිසිවක් වෙනස් වී නැත.",
     existsButton: "පිවිසෙන්න",
+    attemptSubject: "යමෙකු ඔබේ Baas.lk විද්‍යුත් තැපෑල භාවිතා කිරීමට උත්සාහ කළා",
+    attemptHeading: "විද්‍යුත් තැපෑල වෙනස් කිරීමේ ඉල්ලීමක් ඔබේ ලිපිනය භාවිතා කළා",
+    attemptBody:
+      "යමෙකු Baas.lk ගිණුමක විද්‍යුත් තැපැල් ලිපිනය මෙයට වෙනස් කිරීමට උත්සාහ කළා. එය ඔබ නම්, පිවිස ඔබේ ගිණුම් සැකසුම් තුළින් වෙනස්කම ආරම්භ කරන්න. එය ඔබ නොවේ නම්, මෙම විද්‍යුත් තැපෑල නොසලකා හැරිය හැක — කිසිවක් වෙනස් වී නැත, ඔබේ ගිණුමට බලපෑමක් නැත.",
+    attemptButton: "පිවිසෙන්න",
   },
 };
 
@@ -168,6 +182,19 @@ export function accountExistsEmail(url: string, locale: Locale = "en") {
   };
 }
 
+// Change-email attempt on a taken address (#503): the change-email endpoint
+// returns the same generic success whether or not the target address is already
+// registered (anti-enumeration), so this out-of-band mail is how the genuine
+// owner of a taken address learns someone tried to move an account onto it.
+// `url` points at the sign-in page.
+export function emailChangeAttemptEmail(url: string, locale: Locale = "en") {
+  const t = T[locale] ?? T.en;
+  return {
+    subject: t.attemptSubject,
+    html: layout(t.attemptHeading, t.attemptBody, t.attemptButton, url),
+  };
+}
+
 export function inquiryEmail(
   url: string,
   customerName: string,
@@ -187,6 +214,35 @@ export function inquiryEmail(
         ? `${name} ඔබේ Baas.lk පැතිකඩ හරහා විමසීමක් එවා ඇත. ඔවුන්ගේ පණිවිඩය සහ සම්බන්ධතා විස්තර බැලීමට ඔබේ උපකරණ පුවරුවට පිවිසෙන්න.`
         : `${name} sent you an inquiry through your Baas.lk profile. Log in to your dashboard to view their message and contact details.`,
       si ? "විමසීම බලන්න" : "View inquiry",
+      url
+    ),
+  };
+}
+
+// New-matching-job alert (#501): sent to every provider whose category +
+// district match a freshly posted job, so the lead-gen loop reaches them
+// instead of relying on them to browse the board. Mirrors jobResponseEmail's
+// bilingual structure; `jobTitle` is user-controlled and escaped for the body
+// (the subject is a plain-text header, so `district` is used raw there).
+export function newJobEmail(
+  url: string,
+  jobTitle: string,
+  district: string,
+  locale: Locale = "en"
+) {
+  const si = locale === "si";
+  const title = escapeHtml(jobTitle);
+  const area = escapeHtml(district);
+  return {
+    subject: si
+      ? `${district} හි ඔබට ගැලපෙන නව රැකියාවක්`
+      : `New job in ${district} matching your services`,
+    html: layout(
+      si ? "ඔබට ගැලපෙන නව රැකියාවක්" : "A new job matches your services",
+      si
+        ? `ඔබේ ප්‍රවර්ගයට සහ ${area} දිස්ත්‍රික්කයට ගැලපෙන "${title}" නමින් නව රැකියාවක් පළ කර ඇත. එය බලා ප්‍රතිචාර දැක්වීමට ඔබේ රැකියා පුවරුවට පිවිසෙන්න.`
+        : `A new job "${title}" was posted in ${area} matching your category. Log in to your job board to view it and respond.`,
+      si ? "රැකියාව බලන්න" : "View job",
       url
     ),
   };

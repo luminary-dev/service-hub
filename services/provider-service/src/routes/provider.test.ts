@@ -3,7 +3,7 @@
 // row. Beyond that, per-resource routes enforce ownership — a service/photo/
 // inquiry belonging to a different provider must 404, never mutate. Prisma,
 // storage and the S2S clients are mocked.
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { dbMock } = vi.hoisted(() => ({
   dbMock: {
@@ -245,5 +245,61 @@ describe("PUT /api/provider/profile — bilingual content (#515)", () => {
     const arg = dbMock.provider.update.mock.calls[0][0];
     expect(arg.data.headlineSi).toBeNull();
     expect(arg.data.bioSi).toBeNull();
+  });
+});
+
+// Verification documents are PII (NIC / business-registration scans). The
+// gateway routes /api/files/provider/verification/* here instead of to the
+// public media path (#500); only ADMIN/SUPPORT may fetch the bytes, which this
+// route pulls from media over S2S. The stored URL IS the request path, so the
+// route hands it straight to media's raw endpoint.
+describe("GET /api/files/provider/verification/* (admin-gated PII, #500)", () => {
+  const url = "/api/files/provider/verification/doc-1.jpg";
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each<Role>([null, "CUSTOMER", "PROVIDER"])(
+    "403 for role=%s (not an admin/support session)",
+    async (role) => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+      const res = await req(url, role ? { role } : {});
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ error: "Forbidden" });
+      // Never reaches media when the caller is unauthorized.
+      expect(fetchSpy).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each<Role>(["ADMIN", "SUPPORT"])(
+    "streams the document for role=%s, fetching it from media with the same url",
+    async (role) => {
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(
+          new Response(new Uint8Array([1, 2, 3]), {
+            status: 200,
+            headers: { "content-type": "image/jpeg" },
+          })
+        );
+      const res = await req(url, { role });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("image/jpeg");
+      expect(res.headers.get("cache-control")).toBe("private, no-store");
+      expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+      expect((await res.arrayBuffer()).byteLength).toBe(3);
+      expect(fetchSpy).toHaveBeenCalledOnce();
+      const calledUrl = String(fetchSpy.mock.calls[0][0]);
+      expect(calledUrl).toContain("/internal/media/raw?url=");
+      expect(calledUrl).toContain(encodeURIComponent(url));
+    }
+  );
+
+  it("404 when media has no such document", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("nope", { status: 404 })
+    );
+    const res = await req(url, { role: "ADMIN" });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "Not found" });
   });
 });
