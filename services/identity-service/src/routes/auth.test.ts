@@ -27,6 +27,7 @@ import {
   getProviderIdByUser,
   reactivateProviderProfile,
   resolveProviderIdForErase,
+  syncContactToProvider,
 } from "../lib/providers";
 
 // Stateful-enough Prisma double: canned per-test return values + call assertions
@@ -68,6 +69,7 @@ vi.mock("../lib/providers", () => ({
   eraseProviderProfile: vi.fn(),
   reactivateProviderProfile: vi.fn(),
   resolveProviderIdForErase: vi.fn(async () => null),
+  syncContactToProvider: vi.fn(),
 }));
 vi.mock("../lib/audit", () => ({ logAudit: vi.fn() }));
 
@@ -909,6 +911,11 @@ describe("POST /api/auth/complete-provider", () => {
     expect(res.status).toBe(200);
     expect(reactivateProviderProfile).toHaveBeenCalledWith("u1");
     expect(createProviderProfile).not.toHaveBeenCalled();
+    // The reused profile's contactPhone is refreshed with the wizard's phone
+    // (#553) — the create path writes it itself, so only this path syncs.
+    expect(syncContactToProvider).toHaveBeenCalledWith("u1", {
+      phone: "+94771234567",
+    });
   });
 
   it("502s the re-upgrade when reactivation fails (role not flipped)", async () => {
