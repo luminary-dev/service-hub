@@ -23,9 +23,17 @@ structural parity is guarded by `src/lib/legal.test.ts` the same way
   the cookie (#379). `robots.txt` disallows the private areas in both URL
   spaces (`/dashboard`, `/admin`, `/account` and their `/si/*` twins), and the
   root metadata files 404 under `/si` rather than serving duplicates.
-- **Locale-preserving links.** Internal nav, auth, and error-boundary links (and
-  their `router.push` redirects) route through `localizedHref(path, locale)`, so
-  a visitor under `/si/*` stays in the `/si` URL space as they navigate.
+- **Locale-preserving links.** Every internal `href`, server `redirect()`, and
+  client `router.push` on the user-facing surface routes through
+  `localizedHref(path, locale)` (locale from `getLocale()` on the server,
+  `useLocale()` in client components), so a visitor under `/si/*` stays in the
+  `/si` URL space as they navigate — including post-auth pushes. Signed-out
+  gates redirect via `loginNext(path)` (`src/lib/login.ts`), which keeps both
+  the `/login` URL and its `?next=` return-to (#560) in the visitor's locale
+  space. The admin console is the deliberate exception: navigation within
+  `/admin/*` stays unlocalized. A guard test (`src/lib/links-guard.test.ts`)
+  scans the sources and fails on any literal root-path navigation outside
+  `/admin`, so regressions can't land.
 
 ### Theme
 

@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useT } from "@/components/I18nProvider";
+import { useLocale, useT } from "@/components/I18nProvider";
 import { ConsentCheckbox } from "@/components/LegalConsent";
+import { localizedHref } from "@/lib/links";
 import PasswordInput from "@/components/PasswordInput";
 import { Field } from "@/components/ui/Field";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/constants";
@@ -21,6 +22,7 @@ export default function CustomerRegisterPage() {
   const [error, setError] = useState("");
   const router = useRouter();
   const t = useT();
+  const locale = useLocale();
 
   function set(field: string, value: string) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -37,7 +39,7 @@ export default function CustomerRegisterPage() {
         body: JSON.stringify({ ...form, role: "CUSTOMER" }),
       });
       if (res.ok) {
-        router.push("/providers");
+        router.push(localizedHref("/providers", locale));
         router.refresh();
       } else {
         const data = await res.json().catch(() => ({}));
@@ -141,7 +143,7 @@ export default function CustomerRegisterPage() {
         <p className="mt-6 text-center text-sm text-ink-500">
           {t.custReg.offering}{" "}
           <Link
-            href="/register/provider"
+            href={localizedHref("/register/provider", locale)}
             className="font-semibold text-brand-600 hover:text-brand-700"
           >
             {t.custReg.joinPro}

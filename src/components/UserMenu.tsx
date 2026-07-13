@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { isSvg } from "@/lib/image";
-import { useT } from "./I18nProvider";
+import { localizedHref } from "@/lib/links";
+import { useLocale, useT } from "./I18nProvider";
 
 export default function UserMenu({
   name,
@@ -22,6 +23,7 @@ export default function UserMenu({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const router = useRouter();
   const t = useT();
+  const locale = useLocale();
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -39,7 +41,7 @@ export default function UserMenu({
     try {
       await fetch("/api/auth/logout", { method: "POST" });
       setOpen(false);
-      router.push("/");
+      router.push(localizedHref("/", locale));
       router.refresh();
     } catch {
       setSigningOut(false);
@@ -122,7 +124,7 @@ export default function UserMenu({
           <div className="py-1">
             {role === "PROVIDER" && (
               <Link
-                href="/dashboard"
+                href={localizedHref("/dashboard", locale)}
                 onClick={() => setOpen(false)}
                 className="block rounded-md px-3 py-2 text-sm text-ink-700 transition-colors duration-200 ease-snap hover:bg-ink-100 hover:text-brand-700"
               >
@@ -131,7 +133,7 @@ export default function UserMenu({
             )}
             {(role === "ADMIN" || role === "SUPPORT") && (
               <Link
-                href="/admin"
+                href={localizedHref("/admin", locale)}
                 onClick={() => setOpen(false)}
                 className="block rounded-md px-3 py-2 text-sm text-ink-700 transition-colors duration-200 ease-snap hover:bg-ink-100 hover:text-brand-700"
               >
@@ -139,21 +141,21 @@ export default function UserMenu({
               </Link>
             )}
             <Link
-              href="/account"
+              href={localizedHref("/account", locale)}
               onClick={() => setOpen(false)}
               className="block rounded-md px-3 py-2 text-sm text-ink-700 transition-colors duration-200 ease-snap hover:bg-ink-100 hover:text-brand-700"
             >
               {t.nav.account}
             </Link>
             <Link
-              href="/account#saved"
+              href={localizedHref("/account#saved", locale)}
               onClick={() => setOpen(false)}
               className="block rounded-md px-3 py-2 text-sm text-ink-700 transition-colors duration-200 ease-snap hover:bg-ink-100 hover:text-brand-700"
             >
               {t.nav.saved}
             </Link>
             <Link
-              href="/providers"
+              href={localizedHref("/providers", locale)}
               onClick={() => setOpen(false)}
               className="block rounded-md px-3 py-2 text-sm text-ink-700 transition-colors duration-200 ease-snap hover:bg-ink-100 hover:text-brand-700"
             >
@@ -164,7 +166,7 @@ export default function UserMenu({
                 post-a-job entry point for both customers and providers. */}
             {(role === "CUSTOMER" || role === "PROVIDER") && (
               <Link
-                href="/jobs/new"
+                href={localizedHref("/jobs/new", locale)}
                 onClick={() => setOpen(false)}
                 className="block rounded-md px-3 py-2 text-sm text-ink-700 transition-colors duration-200 ease-snap hover:bg-ink-100 hover:text-brand-700"
               >
@@ -174,7 +176,7 @@ export default function UserMenu({
             {/* Become a provider (#401): entry point for existing customers. */}
             {role === "CUSTOMER" && (
               <Link
-                href="/welcome/provider"
+                href={localizedHref("/welcome/provider", locale)}
                 onClick={() => setOpen(false)}
                 className="block rounded-md px-3 py-2 text-sm text-ink-700 transition-colors duration-200 ease-snap hover:bg-ink-100 hover:text-brand-700"
               >
