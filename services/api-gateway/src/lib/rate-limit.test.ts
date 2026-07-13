@@ -159,6 +159,14 @@ describe("LIMITED_ROUTES", () => {
     expect(route?.rule).toBe(RATE_LIMITS.upload);
   });
 
+  // #395: a provider's response to a review is a one-shot form on the same
+  // budget as review submission, in its own bucket.
+  it("rate-limits review responses on the review budget", () => {
+    const route = match("/api/reviews/rev_1/response");
+    expect(route?.name).toBe("review-response");
+    expect(route?.rule).toBe(RATE_LIMITS.review);
+  });
+
   // Near-miss paths must not be swept into the upload/email buckets.
   it("does not match unrelated or sibling paths", () => {
     expect(match("/api/account/email/confirm")?.name).not.toBe(
