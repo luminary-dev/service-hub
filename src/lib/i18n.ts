@@ -1005,6 +1005,7 @@ const en = {
     steps: ["Account", "Profile", "Contact & Socials", "Services & Rates"],
     stepOf: (n: number, total: number, label: string) =>
       `Step ${n} of ${total}: ${label}`,
+    stepCompleted: "completed",
     back: "← Back",
     continue: "Continue →",
     create: "Create my profile",
@@ -2056,6 +2057,7 @@ const si: Dict = {
     steps: ["ගිණුම", "පැතිකඩ", "සම්බන්ධතා සහ සමාජ මාධ්‍ය", "සේවා සහ ගාස්තු"],
     stepOf: (n: number, total: number, label: string) =>
       `පියවර ${n} / ${total}: ${label}`,
+    stepCompleted: "සම්පූර්ණයි",
     back: "← ආපසු",
     continue: "ඉදිරියට →",
     create: "මගේ පැතිකඩ සාදන්න",
