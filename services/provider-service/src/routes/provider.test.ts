@@ -12,6 +12,9 @@ const { dbMock } = vi.hoisted(() => ({
     workPhoto: { findUnique: vi.fn(), findMany: vi.fn(), delete: vi.fn() },
     inquiry: { findUnique: vi.fn(), findMany: vi.fn(), count: vi.fn(), update: vi.fn() },
     inquiryMessage: { groupBy: vi.fn() },
+    // Content filter (#375): the auto-report path files a SYSTEM report on
+    // the provider when profile/service text matches the denylist.
+    report: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
   },
 }));
 
@@ -319,6 +322,114 @@ describe("PUT /api/provider/profile — bilingual content (#515)", () => {
     const arg = dbMock.provider.update.mock.calls[0][0];
     expect(arg.data.headlineSi).toBeNull();
     expect(arg.data.bioSi).toBeNull();
+  });
+});
+
+// Write-time content filter (#375): a denylist hit on profile or service text
+// auto-files a SYSTEM report on the provider; the write itself always
+// succeeds (decision: auto-report and keep visible, never hard-block).
+describe("content filter on profile/service text (#375)", () => {
+  const baseBody = {
+    name: "Ann Silva",
+    phone: "0771234567",
+    category: "plumber",
+    headline: "Reliable plumber",
+    bio: "Twenty-plus characters of provider bio text here.",
+    district: "Colombo",
+    city: "Colombo",
+    experience: 5,
+    available: true,
+  };
+
+  it("PUT profile: flags a denylist hit in the bio without blocking the save", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(MY_PROVIDER);
+    dbMock.provider.update.mockResolvedValue({ id: "prov1" });
+    dbMock.report.findFirst.mockResolvedValue(null);
+    const res = await req("/api/provider/profile", {
+      method: "PUT",
+      role: "PROVIDER",
+      body: { ...baseBody, bio: "I do not work with those fucking agencies, ever." },
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.update).toHaveBeenCalledTimes(1);
+    expect(dbMock.report.create).toHaveBeenCalledWith({
+      data: {
+        targetType: "PROVIDER",
+        targetId: "prov1",
+        reporterId: null,
+        reason: "auto-flag: content filter",
+        details: expect.stringContaining('matched "fucking" in bio'),
+        source: "SYSTEM",
+      },
+    });
+  });
+
+  it("PUT profile: flags Sinhala bio text (bioSi) too", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(MY_PROVIDER);
+    dbMock.provider.update.mockResolvedValue({ id: "prov1" });
+    dbMock.report.findFirst.mockResolvedValue(null);
+    const res = await req("/api/provider/profile", {
+      method: "PUT",
+      role: "PROVIDER",
+      body: { ...baseBody, bioSi: "අනිත් කට්ටිය ඔක්කොම වේසි වැඩ කරන අය" },
+    });
+    expect(res.status).toBe(200);
+    const arg = dbMock.report.create.mock.calls[0][0] as { data: { details: string } };
+    expect(arg.data.details).toContain("වේසි");
+  });
+
+  it("PUT profile: clean text never touches the reports table", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(MY_PROVIDER);
+    dbMock.provider.update.mockResolvedValue({ id: "prov1" });
+    const res = await req("/api/provider/profile", {
+      method: "PUT",
+      role: "PROVIDER",
+      body: baseBody,
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.report.findFirst).not.toHaveBeenCalled();
+    expect(dbMock.report.create).not.toHaveBeenCalled();
+  });
+
+  it("POST services: flags a denylist hit in the description (PROVIDER target)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(MY_PROVIDER);
+    dbMock.service.create.mockResolvedValue({ id: "s1" });
+    dbMock.report.findFirst.mockResolvedValue(null);
+    const res = await req("/api/provider/services", {
+      method: "POST",
+      role: "PROVIDER",
+      body: {
+        title: "Pipe repairs",
+        description: "hutta wage wada naha, quality service only",
+        price: 2500,
+        priceType: "FIXED",
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.service.create).toHaveBeenCalledTimes(1);
+    const arg = dbMock.report.create.mock.calls[0][0] as {
+      data: { targetType: string; targetId: string; details: string };
+    };
+    expect(arg.data.targetType).toBe("PROVIDER");
+    expect(arg.data.targetId).toBe("prov1");
+    expect(arg.data.details).toContain("hutta");
+  });
+
+  it("refreshes an existing OPEN SYSTEM report instead of stacking duplicates", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(MY_PROVIDER);
+    dbMock.provider.update.mockResolvedValue({ id: "prov1" });
+    dbMock.report.findFirst.mockResolvedValue({ id: "rep1" });
+    const res = await req("/api/provider/profile", {
+      method: "PUT",
+      role: "PROVIDER",
+      body: { ...baseBody, bio: "I do not work with those fucking agencies, ever." },
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.report.create).not.toHaveBeenCalled();
+    expect(dbMock.report.update).toHaveBeenCalledWith({
+      where: { id: "rep1" },
+      data: { details: expect.stringContaining('matched "fucking"') },
+    });
   });
 });
 

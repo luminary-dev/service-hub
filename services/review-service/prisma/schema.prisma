@@ -68,9 +68,9 @@ model Report {
   // "OPEN" | "RESOLVED" | "DISMISSED"
   status     String   @default("OPEN")
   // "USER" | "SYSTEM" (#232, reconciled with provider-service in #370): USER
-  // reports come from the public report flow; SYSTEM is reserved for
-  // auto-created reports. Reviews currently only ever produce USER reports, so
-  // this defaults to "USER" and the create path leaves it unset.
+  // reports come from the public report flow; SYSTEM reports are auto-created
+  // by the write-time content filter (#375) when a review comment matches the
+  // moderation denylist.
   source     String   @default("USER")
   createdAt  DateTime @default(now())
   // Last-transition timestamp (#370): auto-stamped on every write (status

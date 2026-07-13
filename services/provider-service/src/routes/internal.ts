@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "../db";
+import { moderateContent } from "../lib/auto-report";
 import { optionalWebUrl } from "../lib/field-rules";
 import { removeStoredFile, sweepMedia } from "../lib/storage";
 
@@ -110,6 +111,17 @@ internalRoutes.post("/internal/providers", async (c) => {
           })),
         },
       },
+    });
+    // Content filter (#375): AFTER the write on purpose — the profile stays
+    // visible and a filter hit only queues a SYSTEM report for admin triage.
+    await moderateContent("PROVIDER", provider.id, {
+      headline: data.headline,
+      bio: data.bio,
+      headlineSi: data.headlineSi,
+      bioSi: data.bioSi,
+      services: data.services
+        .map((s) => `${s.title} ${s.description ?? ""}`)
+        .join("\n"),
     });
     return c.json({ id: provider.id });
   } catch (e) {

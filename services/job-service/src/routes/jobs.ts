@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "../db";
+import { moderateContent } from "../lib/auto-report";
 import { getAuth, getLocale, getOrigin, s2s } from "../lib/http";
 import { log } from "../lib/log";
 import { jobSchema, jobResponseSchema } from "../lib/job-schema";
@@ -107,6 +108,13 @@ jobs.post("/", async (c) => {
       description: parsed.data.description,
       budget: parsed.data.budget ?? null,
     },
+  });
+
+  // Content filter (#375): AFTER the write on purpose — the post stays
+  // visible and a filter hit only queues a SYSTEM report for admin triage.
+  await moderateContent("JOB", job.id, {
+    title: parsed.data.title,
+    description: parsed.data.description,
   });
 
   // Lead-gen fan-out (#501): email the providers whose category + district
@@ -369,8 +377,9 @@ jobs.post("/:id/responses", async (c) => {
     return c.json({ error: "You've already responded to this job" }, 400);
   }
 
+  let response: { id: string };
   try {
-    await db.jobResponse.create({
+    response = await db.jobResponse.create({
       data: {
         jobRequestId: id,
         providerId: provider.id,
@@ -386,6 +395,12 @@ jobs.post("/:id/responses", async (c) => {
     }
     throw e;
   }
+
+  // Content filter (#375): AFTER the write on purpose — the response stays
+  // visible and a filter hit only queues a SYSTEM report for admin triage.
+  await moderateContent("JOB_RESPONSE", response.id, {
+    message: parsed.data.message,
+  });
 
   // Best-effort notification to the customer — never fail the response on this.
   try {
