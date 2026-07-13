@@ -12,6 +12,7 @@ import InView from "@/components/InView";
 import PageHeader from "@/components/ui/PageHeader";
 import StatReadout from "@/components/ui/StatReadout";
 import EmptyState from "@/components/ui/EmptyState";
+import Pagination from "@/components/ui/Pagination";
 import JobRespondForm from "@/components/jobs/JobRespondForm";
 import JobStatusToggle from "@/components/jobs/JobStatusToggle";
 import ReportButton from "@/components/ReportButton";
@@ -120,23 +121,17 @@ export default async function JobsPage({
   }
 
   function pager(key: "boardPage" | "minePage", current: number, totalPages: number) {
-    if (totalPages <= 1) return null;
     return (
-      <div className="mt-8 flex items-center justify-center gap-2">
-        {current > 1 && (
-          <Link href={pageHref(key, current - 1)} className="btn-secondary">
-            {t.prev}
-          </Link>
-        )}
-        <span className="px-3 text-sm text-ink-500">
-          {t.pageOf(current, totalPages)}
-        </span>
-        {current < totalPages && (
-          <Link href={pageHref(key, current + 1)} className="btn-secondary">
-            {t.next}
-          </Link>
-        )}
-      </div>
+      <Pagination
+        page={current}
+        totalPages={totalPages}
+        hrefFor={(p) => pageHref(key, p)}
+        locale={locale}
+        // Both sections can paginate on the same page — name each landmark
+        // after the list it pages so they stay distinguishable.
+        label={key === "boardPage" ? t.boardTitle : t.myTitle}
+        className="mt-8"
+      />
     );
   }
 

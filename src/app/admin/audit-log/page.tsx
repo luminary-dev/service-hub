@@ -5,6 +5,8 @@ import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
+import { FaFileLines } from "@/components/icons";
+import EmptyState from "@/components/ui/EmptyState";
 
 // Caching (#57): admin-only moderation view; edits must be visible on the
 // next request — stays fully dynamic (no-store).
@@ -149,7 +151,7 @@ export default async function AdminAuditLogPage({
       </form>
 
       {rows.length === 0 ? (
-        <p className="mt-8 text-sm text-ink-500">{t.auditLogEmpty}</p>
+        <EmptyState icon={FaFileLines} title={t.auditLogEmpty} className="mt-8" />
       ) : (
         <ul className="mt-8 space-y-3">
           {rows.map((r) => (
