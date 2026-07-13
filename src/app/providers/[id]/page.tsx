@@ -65,6 +65,8 @@ type FullReview = {
   createdAt: string;
   user: { name: string };
   photos: { id: string; url: string }[];
+  // Provider's public reply (#395); optional so cached pre-#395 payloads parse.
+  response?: { text: string; createdAt: string } | null;
 };
 
 type FullProvider = {
@@ -436,6 +438,7 @@ export default async function ProviderProfilePage({
 
             <ReviewSection
               providerId={provider.id}
+              providerName={provider.user.name}
               reviews={provider.reviews.map((r) => ({
                 id: r.id,
                 rating: r.rating,
@@ -443,8 +446,12 @@ export default async function ProviderProfilePage({
                 createdAt: r.createdAt,
                 userName: r.user.name,
                 photos: r.photos.map((ph) => ({ id: ph.id, url: ph.url })),
+                response: r.response
+                  ? { text: r.response.text, createdAt: r.response.createdAt }
+                  : null,
               }))}
               canReview={!!session && !isOwner}
+              canRespond={isOwner}
               signedIn={!!session}
               summary={reviewSummary}
               myReview={
