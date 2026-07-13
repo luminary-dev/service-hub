@@ -3,6 +3,13 @@
 import { useRef, useState } from "react";
 import { FaCircleCheck, FaRegPaperPlane } from "@/components/icons";
 import FormSuccess from "./FormSuccess";
+import { Field } from "./ui/Field";
+import {
+  FormError,
+  isValidEmail,
+  useFieldErrors,
+  type FieldErrors,
+} from "./ui/FormError";
 import { useT } from "./I18nProvider";
 
 export default function InquiryForm({
@@ -25,12 +32,25 @@ export default function InquiryForm({
   // so a bot that writes the field's value without firing React events is still
   // caught. The authoritative check is server-side; this only carries the value.
   const honeypotRef = useRef<HTMLInputElement>(null);
+  const { fieldErrors, show } = useFieldErrors();
   const t = useT();
+
+  function validate(): FieldErrors {
+    const errs: FieldErrors = {};
+    if (name.trim().length < 2) errs["inquiry-name"] = t.fieldErrors.name;
+    if (phone.trim().length < 9) errs["inquiry-phone"] = t.fieldErrors.phone;
+    if (email.trim() !== "" && !isValidEmail(email))
+      errs["inquiry-email"] = t.fieldErrors.email;
+    if (message.trim().length < 10)
+      errs["inquiry-message"] = t.fieldErrors.messageMin(10);
+    return errs;
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
     setError("");
+    if (show(validate())) return;
+    setLoading(true);
     const res = await fetch(`/api/providers/${providerId}/inquiries`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -70,8 +90,11 @@ export default function InquiryForm({
   }
 
   return (
+    // noValidate: validation happens in JS so errors are localized, inline
+    // and linked to their fields (#378), not browser bubbles.
     <form
       onSubmit={submit}
+      noValidate
       className="tech-corners border border-ink-300 bg-surface"
     >
       <div className="hazard h-2 w-full" />
@@ -112,10 +135,11 @@ export default function InquiryForm({
       </div>
 
       <div className="mt-4 space-y-3">
-        <div>
-          <label className="label" htmlFor="inquiry-name">
-            {t.inquiry.name}
-          </label>
+        <Field
+          label={t.inquiry.name}
+          htmlFor="inquiry-name"
+          error={fieldErrors["inquiry-name"]}
+        >
           <input
             id="inquiry-name"
             className="input"
@@ -124,11 +148,12 @@ export default function InquiryForm({
             required
             minLength={2}
           />
-        </div>
-        <div>
-          <label className="label" htmlFor="inquiry-phone">
-            {t.inquiry.phone}
-          </label>
+        </Field>
+        <Field
+          label={t.inquiry.phone}
+          htmlFor="inquiry-phone"
+          error={fieldErrors["inquiry-phone"]}
+        >
           <input
             id="inquiry-phone"
             className="input"
@@ -139,12 +164,17 @@ export default function InquiryForm({
             required
             minLength={9}
           />
-        </div>
-        <div>
-          <label className="label" htmlFor="inquiry-email">
-            {t.inquiry.email}{" "}
-            <span className="text-ink-500">{t.inquiry.optional}</span>
-          </label>
+        </Field>
+        <Field
+          label={
+            <>
+              {t.inquiry.email}{" "}
+              <span className="text-ink-500">{t.inquiry.optional}</span>
+            </>
+          }
+          htmlFor="inquiry-email"
+          error={fieldErrors["inquiry-email"]}
+        >
           <input
             id="inquiry-email"
             className="input"
@@ -152,11 +182,12 @@ export default function InquiryForm({
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-        </div>
-        <div>
-          <label className="label" htmlFor="inquiry-message">
-            {t.inquiry.message}
-          </label>
+        </Field>
+        <Field
+          label={t.inquiry.message}
+          htmlFor="inquiry-message"
+          error={fieldErrors["inquiry-message"]}
+        >
           <textarea
             id="inquiry-message"
             className="input min-h-28 resize-y"
@@ -166,14 +197,10 @@ export default function InquiryForm({
             required
             minLength={10}
           />
-        </div>
+        </Field>
       </div>
 
-      {error && (
-        <p role="alert" className="mt-3 text-sm text-red-600">
-          {error}
-        </p>
-      )}
+      <FormError className="mt-3">{error}</FormError>
 
       <button type="submit" disabled={loading} className="btn-primary mt-4 w-full">
         <FaRegPaperPlane className="h-3.5 w-3.5" />

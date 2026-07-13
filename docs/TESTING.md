@@ -85,14 +85,23 @@ What's automated and what still needs a human (#66):
 
 - **Automated — `src/components/a11y.test.tsx`.** Each test renders a
   high-traffic component (Navbar's mobile menu, provider cards, filter/search
-  bars, the login/registration/inquiry/review/security forms, message thread,
-  chat assistant, report modal, photo lightbox) and runs
+  bars, every auth page — login, register choice, customer registration, all
+  four provider-wizard steps, forgot/reset-password, verify-email — the
+  inquiry/review/security and job post/respond forms, message thread, chat
+  assistant, report modal, photo lightbox) and runs
   [axe-core](https://github.com/dequelabs/axe-core) on the result, failing on
   any violation axe rates *serious* or *critical* — missing accessible names,
   broken label/input association, bad ARIA wiring, missing image alt text.
   The modal tests additionally assert focus behavior directly: focus moves
   into the dialog on open, `Escape` closes it, and focus returns to the
-  trigger. Add new interactive components to this file as they're built.
+  trigger. The form tests also submit invalid input and assert the error
+  wiring (#378): inline errors linked to their fields via
+  `aria-describedby`/`aria-invalid` with focus moved to the first invalid
+  control, and the provider wizard's focus-managed error summary whose
+  in-page links focus the offending field. Add new interactive components to
+  this file as they're built, and surface their errors through the `Field`
+  error prop / `src/components/ui/FormError.tsx` helpers so the wiring stays
+  consistent.
 - **Not automatable here — needs a browser.** axe's `color-contrast` rule is
   disabled because jsdom has no layout engine; contrast must be re-verified
   in a real browser (both light and dark themes — the token ramps in

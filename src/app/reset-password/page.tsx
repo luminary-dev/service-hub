@@ -7,6 +7,7 @@ import { FaCircleCheck } from "@/components/icons";
 import { useT } from "@/components/I18nProvider";
 import PasswordInput from "@/components/PasswordInput";
 import { Field } from "@/components/ui/Field";
+import { FormError, useFieldErrors } from "@/components/ui/FormError";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/constants";
 
 function ResetForm() {
@@ -16,6 +17,7 @@ function ResetForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
+  const { fieldErrors, show } = useFieldErrors();
   const t = useT();
 
   if (!token) {
@@ -24,8 +26,18 @@ function ResetForm() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
     setError("");
+    if (
+      show(
+        password.length < PASSWORD_MIN_LENGTH
+          ? {
+              "reset-password": t.fieldErrors.passwordMin(PASSWORD_MIN_LENGTH),
+            }
+          : {},
+      )
+    )
+      return;
+    setLoading(true);
     try {
       const res = await fetch("/api/auth/reset-password", {
         method: "POST",
@@ -81,11 +93,14 @@ function ResetForm() {
           <span className="font-bold tabular-nums text-ink-700">PWD-02</span>
           <span className="text-brand-700">RESET</span>
         </div>
-        <form onSubmit={submit} className="space-y-4 p-6">
+        {/* noValidate: validation happens in JS so the error is localized,
+            inline and linked to the field (#378), not a browser bubble. */}
+        <form onSubmit={submit} noValidate className="space-y-4 p-6">
           <Field
             label={t.reset.password}
             htmlFor="reset-password"
             help={t.reset.passwordHint}
+            error={fieldErrors["reset-password"]}
           >
             <PasswordInput
               id="reset-password"
@@ -97,11 +112,7 @@ function ResetForm() {
               autoComplete="new-password"
             />
           </Field>
-          {error && (
-            <p role="alert" className="text-sm text-red-600">
-              {error}
-            </p>
-          )}
+          <FormError>{error}</FormError>
           <button
             type="submit"
             disabled={loading}

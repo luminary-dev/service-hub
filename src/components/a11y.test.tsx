@@ -6,9 +6,16 @@
 // docs/TESTING.md ("Accessibility") for what still needs a browser and a
 // screen reader.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import axe from "axe-core";
 import { dict } from "@/lib/i18n";
+import { PASSWORD_MIN_LENGTH } from "@/lib/constants";
 import { I18nProvider } from "./I18nProvider";
 import { ToastProvider, useToast } from "./ToastProvider";
 import MobileMenu from "./MobileMenu";
@@ -22,14 +29,30 @@ import ChatAssistant from "./ChatAssistant";
 import ReportButton from "./ReportButton";
 import PhotoGallery from "./PhotoGallery";
 import ReviewSection from "./ReviewSection";
+import JobPostForm from "./jobs/JobPostForm";
+import JobRespondForm from "./jobs/JobRespondForm";
 import LoginPage from "@/app/login/page";
+import RegisterChoicePage from "@/app/register/page";
 import CustomerRegisterPage from "@/app/register/customer/page";
 import ProviderRegisterForm from "@/app/register/provider/ProviderRegisterForm";
+import ForgotPasswordPage from "@/app/forgot-password/page";
+import ResetPasswordPage from "@/app/reset-password/page";
+import VerifyEmailPage from "@/app/verify-email/page";
+
+// Mutable search string so pages that read a query token (reset-password,
+// verify-email) can be rendered in their real states.
+const navState = vi.hoisted(() => ({ search: "" }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
   usePathname: () => "/",
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(navState.search),
+}));
+
+// The register choice page is a server component that reads the locale cookie.
+vi.mock("@/lib/locale", () => ({
+  getLocale: async () => "en",
+  getUrlLocale: async () => "en",
 }));
 
 const t = dict.en;
@@ -69,6 +92,7 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   fetchMock.mockReset();
+  navState.search = "";
 });
 
 const cardFixture: ProviderCardDTO = {
@@ -184,17 +208,48 @@ describe("axe: feedback", () => {
 });
 
 describe("axe: forms", () => {
-  it("login page has no violations", async () => {
+  it("login page has no violations and links inline validation errors (#378)", async () => {
     const { container } = render(<LoginPage />);
     await expectNoAxeViolations(container);
-  }, AXE_TIMEOUT);
 
-  it("customer registration has no violations", async () => {
-    const { container } = render(<CustomerRegisterPage />);
+    // Submitting empty runs JS validation: errors are linked to their fields
+    // via aria-describedby/aria-invalid and focus moves to the first one.
+    fireEvent.submit(container.querySelector("form")!);
+    const email = screen.getByLabelText(t.login.email);
+    expect(email.getAttribute("aria-invalid")).toBe("true");
+    expect(email.getAttribute("aria-describedby")).toBe("login-email-error");
+    expect(document.getElementById("login-email-error")!.textContent).toBe(
+      t.fieldErrors.email
+    );
+    expect(document.activeElement).toBe(email);
+    const password = screen.getByLabelText(t.login.password);
+    expect(password.getAttribute("aria-describedby")).toBe(
+      "login-password-error"
+    );
     await expectNoAxeViolations(container);
   }, AXE_TIMEOUT);
 
-  it("provider registration (each step) has no violations", async () => {
+  it("register choice page has no violations", async () => {
+    const { container } = render(await RegisterChoicePage());
+    await expectNoAxeViolations(container);
+  }, AXE_TIMEOUT);
+
+  it("customer registration has no violations and links inline validation errors (#378)", async () => {
+    const { container } = render(<CustomerRegisterPage />);
+    await expectNoAxeViolations(container);
+
+    fireEvent.submit(container.querySelector("form")!);
+    const name = screen.getByLabelText(t.custReg.fullName);
+    expect(name.getAttribute("aria-invalid")).toBe("true");
+    expect(name.getAttribute("aria-describedby")).toBe("reg-name-error");
+    expect(document.getElementById("reg-name-error")!.textContent).toBe(
+      t.fieldErrors.name
+    );
+    expect(document.activeElement).toBe(name);
+    await expectNoAxeViolations(container);
+  }, AXE_TIMEOUT);
+
+  it("provider registration walks every step with a focus-managed error summary (#378)", async () => {
     const { container } = render(
       <ProviderRegisterForm
         categories={[
@@ -203,19 +258,168 @@ describe("axe: forms", () => {
         ]}
       />
     );
+    const r = t.providerReg;
     // Step 0 (account details).
     await expectNoAxeViolations(container);
-    // Walking to later steps trips validation; the inline error must also
-    // be accessible.
-    fireEvent.click(screen.getByRole("button", { name: t.providerReg.continue }));
-    expect(screen.getByRole("alert").textContent).toBe(t.providerReg.errName);
+
+    // Continuing with invalid fields shows an error summary that takes focus
+    // and links every message to its field via in-page links (#378).
+    fireEvent.click(screen.getByRole("button", { name: r.continue }));
+    const summary = screen.getByRole("alert");
+    expect(summary.textContent).toContain(t.fieldErrors.summaryTitle);
+    expect(summary.textContent).toContain(r.errName);
+    await waitFor(() => expect(document.activeElement).toBe(summary));
+    const name = screen.getByLabelText(r.fullName);
+    expect(name.getAttribute("aria-invalid")).toBe("true");
+    expect(name.getAttribute("aria-describedby")).toBe("pr-name-error");
+    fireEvent.click(screen.getByRole("link", { name: r.errName }));
+    expect(document.activeElement).toBe(name);
+    await expectNoAxeViolations(container);
+
+    // Fill step 0 → step 1 (profile).
+    fireEvent.change(name, { target: { value: "Nuwan Perera" } });
+    fireEvent.change(screen.getByLabelText(r.email), {
+      target: { value: "nuwan@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText(r.phone), {
+      target: { value: "0771234567" },
+    });
+    fireEvent.change(screen.getByLabelText(r.password), {
+      target: { value: "correct-horse-battery" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: r.continue }));
+    expect(screen.getByRole("group", { name: r.serviceQuestion })).toBeDefined();
+    await expectNoAxeViolations(container);
+
+    // Fill step 1 → step 2 (contact & socials).
+    fireEvent.click(screen.getByRole("button", { name: "Electrician" }));
+    fireEvent.change(screen.getByLabelText(r.headline), {
+      target: { value: "Reliable house wiring" },
+    });
+    fireEvent.change(screen.getByLabelText(r.about), {
+      target: { value: "Twenty years of wiring experience in Colombo." },
+    });
+    fireEvent.change(screen.getByLabelText(r.district), {
+      target: { value: "Colombo" },
+    });
+    fireEvent.change(screen.getByLabelText(r.townCity), {
+      target: { value: "Nugegoda" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: r.continue }));
+    expect(screen.getByLabelText(r.whatsapp)).toBeDefined();
+    await expectNoAxeViolations(container);
+
+    // Step 2 is all-optional → step 3 (services & rates). The price-type
+    // select must carry its own label, not the service number.
+    fireEvent.click(screen.getByRole("button", { name: r.continue }));
+    expect(screen.getByLabelText(r.priceType)).toBeDefined();
+    await expectNoAxeViolations(container);
+
+    // Submitting an empty service lists both problems, numbered per service,
+    // and each link focuses the offending field.
+    fireEvent.click(screen.getByRole("button", { name: r.create }));
+    expect(
+      screen.getByRole("link", { name: r.errServiceTitle(1) })
+    ).toBeDefined();
+    fireEvent.click(screen.getByRole("link", { name: r.errServicePrice(1) }));
+    expect(document.activeElement?.id).toBe("pr-service-0-price");
     await expectNoAxeViolations(container);
   }, AXE_TIMEOUT);
 
-  it("inquiry form has no violations", async () => {
+  it("inquiry form has no violations and links inline validation errors (#378)", async () => {
     const { container } = render(
       <InquiryForm providerId="prov_1" providerName="Sunil Perera" defaultName="" />
     );
+    await expectNoAxeViolations(container);
+
+    fireEvent.submit(container.querySelector("form")!);
+    const name = screen.getByLabelText(t.inquiry.name);
+    expect(name.getAttribute("aria-invalid")).toBe("true");
+    expect(name.getAttribute("aria-describedby")).toBe("inquiry-name-error");
+    expect(document.activeElement).toBe(name);
+    const message = screen.getByLabelText(t.inquiry.message);
+    expect(message.getAttribute("aria-describedby")).toBe(
+      "inquiry-message-error"
+    );
+    expect(
+      document.getElementById("inquiry-message-error")!.textContent
+    ).toBe(t.fieldErrors.messageMin(10));
+    await expectNoAxeViolations(container);
+  }, AXE_TIMEOUT);
+
+  it("job post form has no violations and links inline validation errors (#378)", async () => {
+    const { container } = render(<JobPostForm />);
+    await expectNoAxeViolations(container);
+
+    fireEvent.submit(container.querySelector("form")!);
+    const title = screen.getByLabelText(t.jobs.jobTitle);
+    expect(title.getAttribute("aria-invalid")).toBe("true");
+    expect(title.getAttribute("aria-describedby")).toBe("job-title-error");
+    expect(document.getElementById("job-title-error")!.textContent).toBe(
+      t.jobs.errTitle
+    );
+    expect(document.activeElement).toBe(title);
+    await expectNoAxeViolations(container);
+  }, AXE_TIMEOUT);
+
+  it("job respond form has no violations and links its inline validation error (#378)", async () => {
+    const { container } = render(<JobRespondForm jobId="job_1" />);
+    fireEvent.click(screen.getByRole("button", { name: t.jobs.respond }));
+    await expectNoAxeViolations(container);
+
+    fireEvent.submit(container.querySelector("form")!);
+    const field = screen.getByLabelText(t.jobs.respondPh);
+    expect(field.getAttribute("aria-invalid")).toBe("true");
+    expect(document.activeElement).toBe(field);
+    expect(document.getElementById(`${field.id}-error`)!.textContent).toBe(
+      t.fieldErrors.messageMin(10)
+    );
+    await expectNoAxeViolations(container);
+  }, AXE_TIMEOUT);
+
+  it("forgot-password page has no violations", async () => {
+    const { container } = render(<ForgotPasswordPage />);
+    await expectNoAxeViolations(container);
+  }, AXE_TIMEOUT);
+
+  it("reset-password page has no violations and links its inline error (#378)", async () => {
+    navState.search = "token=tok_1";
+    const { container } = render(<ResetPasswordPage />);
+    await expectNoAxeViolations(container);
+
+    fireEvent.submit(container.querySelector("form")!);
+    const input = screen.getByLabelText(t.reset.password);
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(input.getAttribute("aria-describedby")).toBe(
+      "reset-password-error"
+    );
+    expect(screen.getByRole("alert").textContent).toBe(
+      t.fieldErrors.passwordMin(PASSWORD_MIN_LENGTH)
+    );
+    expect(document.activeElement).toBe(input);
+    await expectNoAxeViolations(container);
+  }, AXE_TIMEOUT);
+
+  it("verify-email announces progress and outcome and moves focus (#378)", async () => {
+    navState.search = "token=tok_1";
+    let resolveFetch!: (v: unknown) => void;
+    fetchMock.mockReturnValue(new Promise((r) => (resolveFetch = r)));
+    const { container } = render(<VerifyEmailPage />);
+
+    // The in-flight state is a live region, not a silent swap.
+    expect(screen.getByRole("status").textContent).toContain(
+      t.verify.verifying
+    );
+    await expectNoAxeViolations(container);
+
+    resolveFetch({ ok: true });
+    const heading = await screen.findByRole("heading", {
+      name: t.verify.successTitle,
+    });
+    expect(screen.getByRole("status").textContent).toContain(
+      t.verify.successTitle
+    );
+    await waitFor(() => expect(document.activeElement).toBe(heading));
     await expectNoAxeViolations(container);
   }, AXE_TIMEOUT);
 
