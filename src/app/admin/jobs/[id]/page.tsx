@@ -6,6 +6,7 @@ import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { dict, categoryLabelLoc, districtLabelLoc } from "@/lib/i18n";
 import { formatDate, formatLKR } from "@/lib/format";
+import AdminJobTakedownButton from "@/components/admin/AdminJobTakedownButton";
 
 // Caching (#57): admin-only moderation view; edits must be visible on the
 // next request — stays fully dynamic (no-store).
@@ -22,6 +23,8 @@ type AdminJobDetail = {
   district: string;
   budget: number | null;
   status: "OPEN" | "CLOSED";
+  // Takedown flag (#376): set while the job is hidden by an admin.
+  hiddenAt: string | null;
   createdAt: string;
   customer: { id: string; name: string; email: string | null };
   responses: {
@@ -74,6 +77,19 @@ export default async function AdminJobDetailPage({
               {t.jobStatusClosed}
             </span>
           )}
+          {job.hiddenAt && (
+            <span className="chip bg-red-50 text-red-700 ring-1 ring-red-200">
+              {t.jobHiddenTag}
+            </span>
+          )}
+          {/* Takedown (#376): reversible hide, full-ADMIN only. */}
+          <span className="ml-auto">
+            <AdminJobTakedownButton
+              jobId={job.id}
+              hidden={job.hiddenAt !== null}
+              role={session.role}
+            />
+          </span>
         </div>
 
         <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">

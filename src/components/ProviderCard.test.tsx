@@ -5,6 +5,7 @@
 // original otherwise; the English locale always shows the English headline.
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import { dict } from "@/lib/i18n";
 import ProviderCard, { type ProviderCardDTO } from "./ProviderCard";
 
 afterEach(cleanup);
@@ -52,5 +53,30 @@ describe("ProviderCard bilingual headline (#515)", () => {
     render(<ProviderCard p={{ ...base, headlineSi: SI_HEADLINE }} locale="en" />);
     expect(screen.getByText(base.headline)).toBeTruthy();
     expect(screen.queryByText(SI_HEADLINE)).toBeNull();
+  });
+});
+
+describe("ProviderCard verified indicator (#559)", () => {
+  it("exposes a localized accessible name for the verified checkmark", () => {
+    render(<ProviderCard p={base} locale="en" />);
+    expect(
+      screen.getByRole("img", { name: dict.en.card.verified })
+    ).toBeTruthy();
+  });
+
+  it("localizes the verified name under the si locale", () => {
+    render(<ProviderCard p={base} locale="si" />);
+    expect(
+      screen.getByRole("img", { name: dict.si.card.verified })
+    ).toBeTruthy();
+  });
+
+  it("renders no verified indicator for unverified providers", () => {
+    render(
+      <ProviderCard p={{ ...base, verificationStatus: "PENDING" }} locale="en" />
+    );
+    expect(
+      screen.queryByRole("img", { name: dict.en.card.verified })
+    ).toBeNull();
   });
 });

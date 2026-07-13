@@ -427,26 +427,67 @@ adminRoutes.patch("/api/admin/photos/:id/restore", async (c) => {
   return c.json({ ok: true });
 });
 
+// Takedown of a reported inquiry thread message (#376). Same soft-delete /
+// restore pair as work photos: the removal is reversible and the row survives
+// so the reports queue can still show what was removed. Destructive → full
+// ADMIN only, audit-logged.
+adminRoutes.delete("/api/admin/messages/:id", async (c) => {
+  if (!isFullAdmin(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+  const id = c.req.param("id");
+  const { count } = await db.inquiryMessage.updateMany({
+    where: { id },
+    data: { deletedAt: new Date() },
+  });
+  if (count === 0) {
+    return c.json({ error: "Message not found" }, 404);
+  }
+  await logAudit(c, "delete-message", "MESSAGE", id);
+  return c.json({ ok: true });
+});
+
+adminRoutes.patch("/api/admin/messages/:id/restore", async (c) => {
+  if (!isFullAdmin(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+  const id = c.req.param("id");
+  const { count } = await db.inquiryMessage.updateMany({
+    where: { id },
+    data: { deletedAt: null },
+  });
+  if (count === 0) {
+    return c.json({ error: "Message not found" }, 404);
+  }
+  await logAudit(c, "restore-message", "MESSAGE", id);
+  return c.json({ ok: true });
+});
+
 // ---------------------------------------------------------------------------
-// Abuse-report moderation queue (#50): reports on providers and work photos
-// (review reports live at review-service under /api/admin/review-reports).
+// Abuse-report moderation queue (#50): reports on providers, work photos,
+// inquiry threads (content-filter flags, #375) and inquiry thread messages
+// (user reports, #376) — review reports live at review-service under
+// /api/admin/review-reports, job reports at job-service under
+// /api/admin/job-reports.
 // ---------------------------------------------------------------------------
 
 const REPORT_STATUSES = ["OPEN", "RESOLVED", "DISMISSED"] as const;
-// This queue only ever holds PROVIDER/WORK_PHOTO/INQUIRY reports — REVIEW
-// reports live at review-service, JOB/JOB_RESPONSE at job-service. Filters
-// for a type another service owns are valid overall (the admin frontend
-// offers one dropdown across all sources) but never match here, so they
-// short-circuit to an empty list below. INQUIRY reports (#375) are only ever
-// SYSTEM-created by the write-time content filter — there is no public
-// report-an-inquiry flow.
-const LOCAL_TARGET_TYPES = ["PROVIDER", "WORK_PHOTO", "INQUIRY"] as const;
+// This queue only ever holds PROVIDER/WORK_PHOTO/INQUIRY/MESSAGE reports —
+// REVIEW reports live at review-service, JOB/JOB_RESPONSE at job-service.
+// Filters for a type another service owns are valid overall (the admin
+// frontend offers one dropdown across all sources) but never match here, so
+// they short-circuit to an empty list below. INQUIRY reports (#375) are only
+// ever SYSTEM-created by the write-time content filter — there is no public
+// report-an-inquiry flow; MESSAGE reports (#376) are user reports on
+// individual thread messages.
+const LOCAL_TARGET_TYPES = ["PROVIDER", "WORK_PHOTO", "INQUIRY", "MESSAGE"] as const;
 
 // OPEN reports first (newest first), then closed ones (newest first). Every
 // report carries a hydrated target summary from local tables — provider name
 // for PROVIDER targets, photo url + owner for WORK_PHOTO targets, thread
-// context for INQUIRY targets — and `target` is null when the target has
-// since been hard-deleted.
+// context for INQUIRY targets, message body + thread owner for MESSAGE
+// targets — and `target` is null when the target has since been
+// hard-deleted.
 //
 // Filtering (#223): optional `status` and `targetType` query params, passed
 // straight through from the admin frontend's filter dropdowns. Unrecognized
@@ -539,7 +580,10 @@ adminRoutes.get("/api/admin/reports", async (c) => {
   const inquiryIds = rows
     .filter((r) => r.targetType === "INQUIRY")
     .map((r) => r.targetId);
-  const [providers, photos, inquiries] = await Promise.all([
+  const messageIds = rows
+    .filter((r) => r.targetType === "MESSAGE")
+    .map((r) => r.targetId);
+  const [providers, photos, inquiries, messages] = await Promise.all([
     providerIds.length
       ? db.provider.findMany({
           where: { id: { in: providerIds } },
@@ -571,10 +615,28 @@ adminRoutes.get("/api/admin/reports", async (c) => {
           },
         })
       : [],
+    messageIds.length
+      ? db.inquiryMessage.findMany({
+          where: { id: { in: messageIds } },
+          select: {
+            id: true,
+            sender: true,
+            body: true,
+            deletedAt: true,
+            inquiry: {
+              select: {
+                providerId: true,
+                provider: { select: { contactName: true } },
+              },
+            },
+          },
+        })
+      : [],
   ]);
   const providerById = new Map(providers.map((p) => [p.id, p]));
   const photoById = new Map(photos.map((p) => [p.id, p]));
   const inquiryById = new Map(inquiries.map((i) => [i.id, i]));
+  const messageById = new Map(messages.map((m) => [m.id, m]));
 
   const reports = rows.map((r) => {
     let target = null;
@@ -599,6 +661,20 @@ adminRoutes.get("/api/admin/reports", async (c) => {
           providerName: i.provider.contactName,
           customerName: i.name,
           message: i.message,
+        };
+      }
+    } else if (r.targetType === "MESSAGE") {
+      // A user-reported thread message (#376): the message itself plus the
+      // provider whose thread it is, and whether an admin already removed it.
+      const m = messageById.get(r.targetId);
+      if (m) {
+        target = {
+          messageId: m.id,
+          providerId: m.inquiry.providerId,
+          providerName: m.inquiry.provider.contactName,
+          sender: m.sender,
+          body: m.body,
+          removed: m.deletedAt !== null,
         };
       }
     } else {

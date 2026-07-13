@@ -24,6 +24,19 @@
   the profile goes live immediately. Signup is rate-limited (see
   [RATE_LIMITING.md](../RATE_LIMITING.md)).
 
+### Legal pages & registration consent (#62)
+
+- **`/terms`** and **`/privacy`** (localized under `/si/*` too) render the
+  Terms of Service and the PDPA-aware Privacy Policy from `src/lib/legal.ts`
+  via the shared `LegalArticle` component. English is the authoritative text;
+  the Sinhala version must mirror its structure (`src/lib/legal.test.ts`).
+  Both pages are linked from the footer and listed in the sitemap.
+- **Consent.** Both email registration forms require an "I agree to the Terms
+  of Service and Privacy Policy" checkbox (`ConsentCheckbox` — native
+  `required` on the customer form, wizard validation on the provider form's
+  final step), and the social sign-in buttons on `/login` and `/register`
+  carry a "by continuing, you agree" notice (`ConsentNotice`).
+
 ### Social login (#398)
 
 Both `/login` and `/register` show a **Continue with Google** button

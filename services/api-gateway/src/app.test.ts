@@ -166,6 +166,8 @@ describe("rate limiting", () => {
     ["/api/providers/prov-1/report", "203.0.113.91"],
     ["/api/photos/ph-1/report", "203.0.113.92"],
     ["/api/reviews/rev-1/report", "203.0.113.93"],
+    ["/api/jobs/job-1/report", "203.0.113.95"],
+    ["/api/messages/msg-1/report", "203.0.113.96"],
   ])("rate-limits %s with the report (review) budget", async (path, ip) => {
     const headers = { "sec-fetch-site": "same-origin", "x-forwarded-for": ip };
     // The review budget allows 10 submissions per window.

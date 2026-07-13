@@ -2,6 +2,7 @@ import Link from "next/link";
 import { FaHouse, FaScrewdriverWrench } from "@/components/icons";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
 import FacebookSignInButton from "@/components/FacebookSignInButton";
+import { ConsentNotice } from "@/components/LegalConsent";
 import { dict } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
 import { localizedHref } from "@/lib/links";
@@ -81,6 +82,7 @@ export default async function RegisterChoicePage() {
             <FacebookSignInButton label={t.oauth.continueWithFacebook} />
           </div>
           <p className="mt-3 text-center text-xs text-ink-500">{t.oauth.dataUse}</p>
+          <ConsentNotice />
         </div>
 
         <p className="mt-8 text-center text-sm text-ink-500">

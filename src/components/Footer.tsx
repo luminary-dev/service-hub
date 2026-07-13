@@ -107,6 +107,20 @@ export default async function Footer() {
           <span>Baas.lk · {t.footer.made1}</span>
           <FaHeart className="h-3 w-3 text-brand-500" />
           {t.footer.made2}
+          <span className="ml-auto flex items-center gap-4">
+            <Link
+              href={localizedHref("/terms", locale)}
+              className="transition-colors duration-200 hover:text-brand-700"
+            >
+              {t.footer.terms}
+            </Link>
+            <Link
+              href={localizedHref("/privacy", locale)}
+              className="transition-colors duration-200 hover:text-brand-700"
+            >
+              {t.footer.privacy}
+            </Link>
+          </span>
         </div>
       </div>
     </footer>
