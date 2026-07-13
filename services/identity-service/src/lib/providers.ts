@@ -23,6 +23,27 @@ export async function syncAvatarToProvider(
   }
 }
 
+// Mirror name/phone/email changes onto the provider profile's denormalized
+// contact columns (#553) — those drive public cards, admin lists and the
+// inquiry / new-job lead emails, so identity-side edits must follow or the
+// notifications keep going to an abandoned address. Only the fields provided
+// are written. Best-effort like the avatar sync: the user's own update already
+// committed, so a failed mirror only means stale contact data and must never
+// fail their request. No-op for users without a provider profile.
+export async function syncContactToProvider(
+  userId: string,
+  contact: { name?: string; phone?: string | null; email?: string }
+): Promise<void> {
+  try {
+    await s2s(PROVIDER_SERVICE_URL, "/internal/providers/contact", {
+      method: "POST",
+      body: JSON.stringify({ userId, ...contact }),
+    });
+  } catch (e) {
+    log.error("contact sync failed", { context: "providers", err: e });
+  }
+}
+
 // Looks up the caller's provider profile id. Read-path hydration: degrades to
 // null on any S2S failure so login / me never fail because provider-service
 // is down.
