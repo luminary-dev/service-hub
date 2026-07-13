@@ -313,6 +313,8 @@ const en = {
     sent: "Inquiry sent. The provider will be in touch.",
     sendError: "Couldn't send the inquiry. Please try again.",
     cancelled: "Cancelled — nothing was sent.",
+    signInPrompt: "Please sign in to use the assistant.",
+    signInCta: "Sign in",
   },
   errors: {
     notFoundTitle: "Page not found",
@@ -1356,6 +1358,8 @@ const si: Dict = {
     sent: "විමසීම යවන ලදී. වෘත්තිකයා ඔබ හා සම්බන්ධ වනු ඇත.",
     sendError: "විමසීම යැවිය නොහැකි විය. නැවත උත්සාහ කරන්න.",
     cancelled: "අවලංගු කරන ලදී — කිසිවක් යවා නැත.",
+    signInPrompt: "සහායක භාවිතයට කරුණාකර පිවිසෙන්න.",
+    signInCta: "පිවිසෙන්න",
   },
   errors: {
     notFoundTitle: "පිටුව හමු නොවීය",
