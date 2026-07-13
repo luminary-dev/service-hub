@@ -94,6 +94,7 @@ export default async function AccountPage() {
           phone: string | null;
           emailVerified: string | null;
           avatarUrl: string | null;
+          hasPassword: boolean;
         } | null;
       }>("/api/auth/me"),
     ]);
@@ -164,6 +165,7 @@ export default async function AccountPage() {
                   email: me.email,
                   emailVerified: me.emailVerified != null,
                   avatarUrl: me.avatarUrl,
+                  hasPassword: me.hasPassword,
                 }}
               />
             </div>
