@@ -21,7 +21,22 @@ const MAX_JOBS_PER_DAY = 10;
 
 const statusSchema = z.object({ status: z.enum(["OPEN", "CLOSED"]) });
 
-type ProviderByUser = { id: string; category: string; district: string };
+type ProviderByUser = {
+  id: string;
+  category: string;
+  district: string;
+  // Multi-district service area (#502) — always includes `district`.
+  serviceDistricts?: string[];
+};
+
+// The districts a provider serves (#502). Falls back to the primary district
+// when the set is absent/empty (a provider-service predating #502, or a row
+// that raced the backfill) so scoping never widens or collapses to nothing.
+function servedDistricts(provider: ProviderByUser): string[] {
+  return provider.serviceDistricts?.length
+    ? provider.serviceDistricts
+    : [provider.district];
+}
 
 // Verified-email gate (#556): a throwaway account with an unconfirmed address
 // must not be able to trigger the 200-recipient provider fan-out. Fails loudly
@@ -194,7 +209,8 @@ jobs.get("/board", async (c) => {
   const where = {
     status: "OPEN" as const,
     category: provider.category,
-    district: provider.district,
+    // Membership over the served set (#502), not just the home district.
+    district: { in: servedDistricts(provider) },
     NOT: { customerId: auth.userId },
   };
 
@@ -345,14 +361,17 @@ jobs.post("/:id/responses", async (c) => {
   if (!job) {
     return c.json({ error: "Job not found" }, 404);
   }
-  // Enforce the same scoping the board query applies (category + district +
-  // not-own-job). Without this a provider who obtains a job id can respond to
-  // jobs outside their trade/area, or to their own posting — bypassing the
-  // board and enabling cross-scope response spam.
+  // Enforce the same scoping the board query applies (category + served
+  // districts + not-own-job). Without this a provider who obtains a job id can
+  // respond to jobs outside their trade/area, or to their own posting —
+  // bypassing the board and enabling cross-scope response spam.
   if (job.customerId === auth.userId) {
     return c.json({ error: "You cannot respond to your own job" }, 400);
   }
-  if (job.category !== provider.category || job.district !== provider.district) {
+  if (
+    job.category !== provider.category ||
+    !servedDistricts(provider).includes(job.district)
+  ) {
     return c.json(
       { error: "This job is outside your category or district" },
       403

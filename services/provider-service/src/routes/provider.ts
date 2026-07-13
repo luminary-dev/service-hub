@@ -7,9 +7,12 @@ import { db } from "../db";
 import { moderateContent } from "../lib/auto-report";
 import {
   districtEnum,
+  MAX_SERVICE_DISTRICTS,
+  normalizeServiceDistricts,
   optionalSlPhone,
   optionalWebUrl,
   priceRupees,
+  serviceDistrictsField,
   slPhone,
 } from "../lib/field-rules";
 import { categoryValidator } from "../lib/categories";
@@ -77,7 +80,15 @@ providerDashboardRoutes.get("/api/provider/dashboard", async (c) => {
     db.inquiry.count({ where: { providerId: provider.id, status: "NEW" } }),
     fetchEmailVerified(provider.userId),
     fetchRatings([provider.id]),
-    fetchOpenJobsCount(provider.category, provider.district, provider.userId),
+    fetchOpenJobsCount(
+      provider.category,
+      // Served set (#502); rows predating the backfill (tests, partial
+      // fixtures) fall back to the primary district.
+      provider.serviceDistricts?.length
+        ? provider.serviceDistricts
+        : [provider.district],
+      provider.userId
+    ),
   ]);
 
   const r = ratings[provider.id];
@@ -141,6 +152,10 @@ const profileSchema = z.object({
   headlineSi: z.string().max(120).optional().or(z.literal("")).nullish(),
   bioSi: z.string().max(2000).optional().or(z.literal("")).nullish(),
   district: districtEnum,
+  // Multi-district service area (#502): the districts the provider serves.
+  // Optional so pre-#502 clients keep working; the primary district is always
+  // (re)added by normalizeServiceDistricts below.
+  serviceDistricts: serviceDistrictsField,
   city: z.string().min(1).max(60),
   experience: z.number().int().min(0).max(60),
   available: z.boolean(),
@@ -170,10 +185,26 @@ providerDashboardRoutes.put("/api/provider/profile", async (c) => {
   }
   const { name, phone, ...profile } = parsed.data;
 
+  // Served set (#502): dedupe, pin the (possibly changed) primary district,
+  // refuse a union over the cap rather than silently truncating.
+  const serviceDistricts = normalizeServiceDistricts(
+    profile.district,
+    profile.serviceDistricts
+  );
+  if (!serviceDistricts) {
+    return c.json(
+      {
+        error: `You can serve at most ${MAX_SERVICE_DISTRICTS} districts (including your own)`,
+      },
+      400
+    );
+  }
+
   const updated = await db.provider.update({
     where: { id: provider.id },
     data: {
       ...profile,
+      serviceDistricts,
       headlineSi: profile.headlineSi || null,
       bioSi: profile.bioSi || null,
       whatsapp: profile.whatsapp || null,

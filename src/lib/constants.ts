@@ -62,6 +62,11 @@ export const DISTRICTS = [
   "Trincomalee", "Vavuniya",
 ] as const;
 
+// Multi-district service area (#502): how many districts one provider may
+// serve in total, home district included. Mirrors the server's source of
+// truth (services/*/src/lib/field-rules.ts) — keep in sync.
+export const MAX_SERVICE_DISTRICTS = 5;
+
 export const PRICE_TYPES = [
   { value: "HOURLY", label: "Per Hour" },
   { value: "DAILY", label: "Per Day" },

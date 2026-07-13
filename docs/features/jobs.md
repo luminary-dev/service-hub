@@ -17,7 +17,8 @@ so a blocked post never triggers the provider fan-out.
 
 **On a successful post, matching providers are emailed (#501).** After the job
 is saved, job-service fans out a best-effort notification to every provider
-whose **category and district match the job** (the same scoping the board
+whose **category matches the job and whose service area contains the job's
+district** (`Provider.serviceDistricts`, #502 — the same scoping the board
 applies, suspended profiles excluded, the poster excluded). It asks
 provider-service for the matching contact emails
 (`GET /internal/providers/matching`, capped at 200 and deduped) and hands the
@@ -33,8 +34,10 @@ below.
 
 **`/jobs`** shows a provider their matching board via `GET /api/jobs/board`.
 **Scoping rule:** the board returns only **OPEN** jobs where the job's
-**category equals the provider's category AND the job's district equals the
-provider's district**, excluding the provider's own postings. The board is only
+**category equals the provider's category AND the job's district is one of the
+provider's served districts** (`serviceDistricts`, #502 — falls back to the
+home district for a payload predating the field), excluding the provider's own
+postings. The board is only
 shown to users who actually have a provider profile (role alone is not enough).
 Each board card is flagged `responded` if the provider already replied.
 
@@ -43,7 +46,7 @@ Each board card is flagged `responded` if the provider already replied.
 `JobRespondForm` → `POST /api/jobs/{jobId}/responses` (message 10–1000 chars).
 Only registered providers may respond, and the server **re-enforces the scoping
 rule**: responding to your own job (400), or to a job outside your category or
-district (403 "This job is outside your category or district"), or to a job that
+served districts (403 "This job is outside your category or district"), or to a job that
 is not OPEN (400) all fail. One response per provider per job. The customer gets
 a best-effort email.
 

@@ -877,6 +877,47 @@ describe("POST /api/auth/complete-provider", () => {
     expect(res.headers.get("set-cookie")).toContain("sh_session=");
   });
 
+  it("forwards the normalized served set (deduped, home district pinned) (#502)", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "a@b.lk",
+      name: "Ann",
+      role: "CUSTOMER",
+    });
+    vi.mocked(createProviderProfile).mockResolvedValue("prov-1");
+    db.user.update.mockResolvedValue({
+      id: "u1",
+      name: "Ann",
+      role: "PROVIDER",
+      sessionVersion: 1,
+    });
+
+    const res = await post(
+      "/api/auth/complete-provider",
+      { ...providerBody, serviceDistricts: ["Gampaha", "Colombo", "Gampaha"] },
+      AUTH_HEADERS
+    );
+    expect(res.status).toBe(200);
+    expect(createProviderProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ serviceDistricts: ["Colombo", "Gampaha"] })
+    );
+  });
+
+  it("400s before any write when the served set exceeds the cap (#502)", async () => {
+    const res = await post(
+      "/api/auth/complete-provider",
+      {
+        ...providerBody,
+        // 5 extras + the home district = 6 > MAX_SERVICE_DISTRICTS.
+        serviceDistricts: ["Gampaha", "Kalutara", "Kandy", "Galle", "Matara"],
+      },
+      AUTH_HEADERS
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/at most 5 districts/i);
+    expect(createProviderProfile).not.toHaveBeenCalled();
+  });
+
   it("409s an account that is already a provider", async () => {
     db.user.findUnique.mockResolvedValue({
       id: "u1",

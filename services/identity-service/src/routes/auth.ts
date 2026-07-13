@@ -10,7 +10,11 @@ import { hashToken } from "../lib/tokens";
 import { eraseUserData } from "../lib/erase";
 import { isLockedOut, lockUntilFor } from "../lib/lockout";
 import { passwordSchema, providerSchema, registerSchema } from "../lib/register-schema";
-import { emailAddress } from "../lib/field-rules";
+import {
+  emailAddress,
+  MAX_SERVICE_DISTRICTS,
+  normalizeServiceDistricts,
+} from "../lib/field-rules";
 import { categoryValidator } from "../lib/categories";
 import {
   createProviderProfile,
@@ -44,6 +48,23 @@ authRoutes.post("/register", async (c) => {
     );
   }
   const data = parsed.data;
+
+  // Served set (#502): dedupe + pin the home district here (a friendly 400,
+  // before the user row exists) rather than letting provider-service's own
+  // guard turn a validation miss into a 502 + compensation. Sync check, so it
+  // runs before the S2S category lookup below.
+  const serviceDistricts =
+    data.role === "PROVIDER"
+      ? normalizeServiceDistricts(data.district, data.serviceDistricts)
+      : null;
+  if (data.role === "PROVIDER" && !serviceDistricts) {
+    return c.json(
+      {
+        error: `You can serve at most ${MAX_SERVICE_DISTRICTS} districts (including your own)`,
+      },
+      400
+    );
+  }
 
   // Category is data now, not code: check it against provider-service's list
   // (60s cache, static fallback) as an explicit post-parse step.
@@ -119,6 +140,7 @@ authRoutes.post("/register", async (c) => {
         headline: data.headline,
         bio: data.bio,
         district: data.district,
+        serviceDistricts: serviceDistricts ?? [data.district],
         city: data.city,
         experience: data.experience,
         whatsapp: data.whatsapp || null,
@@ -213,6 +235,21 @@ authRoutes.post("/complete-provider", async (c) => {
   }
   const data = parsed.data;
 
+  // Served set (#502) — same pre-flight normalization as /register, ahead of
+  // the S2S category lookup.
+  const serviceDistricts = normalizeServiceDistricts(
+    data.district,
+    data.serviceDistricts
+  );
+  if (!serviceDistricts) {
+    return c.json(
+      {
+        error: `You can serve at most ${MAX_SERVICE_DISTRICTS} districts (including your own)`,
+      },
+      400
+    );
+  }
+
   if (!(await categoryValidator.isValidCategory(data.category))) {
     return c.json({ error: "Invalid category" }, 400);
   }
@@ -243,6 +280,7 @@ authRoutes.post("/complete-provider", async (c) => {
         headline: data.headline,
         bio: data.bio,
         district: data.district,
+        serviceDistricts,
         city: data.city,
         experience: data.experience,
         whatsapp: data.whatsapp || null,

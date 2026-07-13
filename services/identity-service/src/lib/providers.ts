@@ -178,6 +178,7 @@ export type ProviderRegistration = {
   headline: string;
   bio: string;
   district: string;
+  serviceDistricts: string[];
   city: string;
   experience: number;
   whatsapp: string | null;

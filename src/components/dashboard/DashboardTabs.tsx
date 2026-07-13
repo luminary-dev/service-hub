@@ -42,6 +42,8 @@ export type DashboardData = {
   headlineSi?: string;
   bioSi?: string;
   district: string;
+  // Full served set (#502) — always includes `district`.
+  serviceDistricts: string[];
   city: string;
   experience: number;
   available: boolean;

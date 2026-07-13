@@ -13,7 +13,11 @@
   2. *Profile* — category, headline (5–120 chars), bio (≥20 chars), optional
      Sinhala variants of the headline/bio (#515 — shown to visitors browsing in
      Sinhala, English stays the required source of truth), district (one of the
-     25 Sri Lankan districts), city, years of experience (0–60).
+     25 Sri Lankan districts), city, years of experience (0–60), and the
+     **districts you serve** (#502) — a toggle-chip picker over the 25
+     districts, up to 5 total with the home district always pinned in. The
+     served set drives browse filtering, the job board and the new-job
+     fan-out.
   3. *Contact & Socials* (all optional) — WhatsApp, alt phone, Facebook,
      Instagram, TikTok, YouTube, website.
   4. *Services & Rates* — 1–20 service rows, each with title, optional

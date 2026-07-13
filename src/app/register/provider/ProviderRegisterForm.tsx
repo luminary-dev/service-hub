@@ -15,6 +15,7 @@ import { districtLabelLoc, priceTypeLabelLoc } from "@/lib/i18n";
 import { useLocale, useT } from "@/components/I18nProvider";
 import PasswordInput from "@/components/PasswordInput";
 import CategoryIcon from "@/components/CategoryIcon";
+import ServiceDistrictsPicker from "@/components/ServiceDistrictsPicker";
 
 type ServiceInput = {
   title: string;
@@ -85,6 +86,9 @@ export default function ProviderRegisterForm({
   const [services, setServices] = useState<ServiceInput[]>([
     { ...emptyService },
   ]);
+  // Extra served districts beyond the home district (#502) — the home
+  // district is pinned by the picker and unioned in at submit time.
+  const [serviceDistricts, setServiceDistricts] = useState<string[]>([]);
 
   function set(field: string, value: string) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -155,6 +159,11 @@ export default function ProviderRegisterForm({
       headlineSi: form.headlineSi.trim() || undefined,
       bioSi: form.bioSi.trim() || undefined,
       district: form.district,
+      // Full served set (#502): home district first, extras after.
+      serviceDistricts: [
+        form.district,
+        ...serviceDistricts.filter((d) => d !== form.district),
+      ],
       city: form.city.trim(),
       experience: Number(form.experience) || 0,
       whatsapp: form.whatsapp.trim(),
@@ -540,6 +549,13 @@ export default function ProviderRegisterForm({
                 />
               </div>
             </div>
+            {/* Multi-district service area (#502). */}
+            <ServiceDistrictsPicker
+              id="pr-service-districts"
+              primary={form.district}
+              value={serviceDistricts}
+              onChange={setServiceDistricts}
+            />
           </div>
         )}
 

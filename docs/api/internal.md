@@ -23,8 +23,9 @@ using the shared `s2s()` helper (one bounded retry on idempotent GETs).
 | Method + path | Purpose |
 |---|---|
 | `GET /internal/categories` | Full category list (incl. inactive) for peers' validation caches. |
-| `POST /internal/providers` | Registration orchestration (called by identity); idempotent on the unique userId → `{ id }`. |
-| `GET /internal/providers/by-user/:userId` | Provider owned by a user (login / job-board gate). |
+| `POST /internal/providers` | Registration orchestration (called by identity); optional `serviceDistricts` served set (#502) is deduped with the primary `district` pinned first, defaulting to `[district]`; idempotent on the unique userId → `{ id }`. |
+| `GET /internal/providers/by-user/:userId` | Provider owned by a user (login / job-board gate) — includes the `serviceDistricts` served set (#502). |
+| `GET /internal/providers/matching?category&district&excludeUserId?` | Lead-gen fan-out (#501): non-suspended providers whose `category` matches and whose `serviceDistricts` set contains the district (#502) — capped at 200, deduped by contact email → `{ providers }`. |
 | `POST /internal/providers/by-user/:userId/deactivate` | Self-downgrade (#403, called by identity `leave-provider`): hide the user's provider profile (`suspended = true`). Idempotent. |
 | `POST /internal/providers/by-user/:userId/reactivate` | Re-upgrade (#403, called by identity `complete-provider` and the admin CUSTOMER→PROVIDER promotion): clear `suspended`. Idempotent — answers `{ reactivated: false }` when no profile exists, which the admin promotion treats as a 400 (#554). |
 | `POST /internal/providers/avatar` | Denormalized avatar sync from identity (#434), `{ userId, avatarUrl }` — updates the provider's cached `avatarUrl`. No-op if the user has no provider. |
@@ -49,7 +50,7 @@ using the shared `s2s()` helper (one bounded retry on idempotent GETs).
 
 | Method + path | Purpose |
 |---|---|
-| `GET /internal/jobs/count?category&district&excludeCustomerId` | Open-jobs count for the provider dashboard. |
+| `GET /internal/jobs/count?category&districts&excludeCustomerId` | Open-jobs count for the provider dashboard. `districts` is the provider's comma-separated served set (#502, jobs in ANY count); the legacy single `district` param is still honored. |
 | `POST /internal/users/:id/erase` | Account-deletion fan-out: delete the user's JobRequests, plus JobResponses when `{ providerId }` is passed. Idempotent. Identity erases this service before provider-service (#551), so the erase always receives the `providerId` while the Provider row (its only source) still exists. |
 
 ### notification-service

@@ -10,6 +10,7 @@ import {
 } from "@/lib/categories";
 import { districtLabelLoc } from "@/lib/i18n";
 import { Field, FormRow } from "@/components/ui/Field";
+import ServiceDistrictsPicker from "@/components/ServiceDistrictsPicker";
 import { useLocale, useT } from "../I18nProvider";
 import { useToast } from "../ToastProvider";
 import type { DashboardData } from "./DashboardTabs";
@@ -58,6 +59,11 @@ export default function ProfileForm({
     youtube: data.youtube,
     website: data.website,
   });
+  // Extra served districts beyond the home district (#502) — the home
+  // district is pinned by the picker and unioned in at save time.
+  const [serviceDistricts, setServiceDistricts] = useState<string[]>(
+    data.serviceDistricts.filter((d) => d !== data.district),
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const toast = useToast();
@@ -76,6 +82,11 @@ export default function ProfileForm({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...form,
+        // Full served set (#502): home district first, extras after.
+        serviceDistricts: [
+          form.district,
+          ...serviceDistricts.filter((d) => d !== form.district),
+        ],
         experience: Number(form.experience) || 0,
         // Empty input means "not away" — send an explicit null to clear it.
         awayUntil: form.awayUntil || null,
@@ -213,6 +224,14 @@ export default function ProfileForm({
           />
         </Field>
       </FormRow>
+
+      {/* Multi-district service area (#502). */}
+      <ServiceDistrictsPicker
+        id="pf-service-districts"
+        primary={form.district}
+        value={serviceDistricts}
+        onChange={setServiceDistricts}
+      />
 
       <Field label={p.headline} htmlFor="pf-headline">
         <input

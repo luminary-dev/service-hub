@@ -47,6 +47,12 @@ model Provider {
   headlineSi String?
   bioSi      String?
   district   String
+  // Multi-district service area (#502): every district the provider serves,
+  // always including the primary `district` (which stays the home base shown
+  // on cards). Backfilled to [district] by migration 20260714090000; capped at
+  // MAX_SERVICE_DISTRICTS (5) in lib/field-rules.ts. Browse filtering and the
+  // job board/fan-out match on membership in this set.
+  serviceDistricts String[] @default([])
   city       String
   experience Int     @default(0)
   whatsapp   String?
@@ -86,6 +92,8 @@ model Provider {
   // ranking; district-only browsing is a separate path.
   @@index([category, district])
   @@index([district])
+  // District filters/matching are membership tests on the service-area set.
+  @@index([serviceDistricts(ops: ArrayOps)], type: Gin)
   @@index([createdAt])
   // Admin verification queue filters by status (#369).
   @@index([verificationStatus])

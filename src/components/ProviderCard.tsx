@@ -34,6 +34,10 @@ export type ProviderCardDTO = {
   // fixtures/consumers need no churn.
   headlineSi?: string | null;
   district: string;
+  // Multi-district service area (#502); always includes `district`. Optional
+  // on the DTO so existing fixtures/consumers need no churn — the card itself
+  // keeps showing the home district only.
+  serviceDistricts?: string[];
   city: string;
   experience: number;
   // `available` is the EFFECTIVE availability (the service already folds the

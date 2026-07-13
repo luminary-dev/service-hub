@@ -73,9 +73,14 @@ export default async function JobsPage({
   const [locale, dashboard] = await Promise.all([
     getLocale(),
     session.role === "PROVIDER"
-      ? apiJson<{ provider: { category: string; district: string } }>(
-          "/api/provider/dashboard"
-        )
+      ? apiJson<{
+          provider: {
+            category: string;
+            district: string;
+            // Multi-district service area (#502).
+            serviceDistricts?: string[];
+          };
+        }>("/api/provider/dashboard")
       : Promise.resolve(null),
   ]);
   const t = dict[locale].jobs;
@@ -158,7 +163,13 @@ export default async function JobsPage({
           provider
             ? t.boardSubtitle(
                 categoryLabelLoc(provider.category, locale),
-                districtLabelLoc(provider.district, locale)
+                // The full served set (#502), not just the home district.
+                (provider.serviceDistricts?.length
+                  ? provider.serviceDistricts
+                  : [provider.district]
+                )
+                  .map((d) => districtLabelLoc(d, locale))
+                  .join(", ")
               )
             : t.mySubtitle
         }

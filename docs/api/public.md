@@ -8,11 +8,11 @@ the upstream that owns the handler.
 
 | Method + path | Auth | Summary |
 |---|---|---|
-| `POST /api/auth/register` | public | Register a CUSTOMER or PROVIDER (zod discriminated union). PROVIDER also creates the provider profile via S2S (on failure it compensates by erasing any committed-but-unacknowledged provider row + deleting the user, then 502). A **new** email creates the account, sets the session cookie, and sends a verification email → `{ user, providerId }`. A **duplicate** email is not rejected (no 409, #373): the endpoint returns the same generic `200 { ok: true }` (no session) and instead emails the real owner an "account already exists" notice out-of-band, so registration cannot be used to enumerate accounts. |
+| `POST /api/auth/register` | public | Register a CUSTOMER or PROVIDER (zod discriminated union). PROVIDER accepts an optional `serviceDistricts` served set (#502, ≤5 valid districts; deduped with the home `district` pinned in — union over the cap → 400). PROVIDER also creates the provider profile via S2S (on failure it compensates by erasing any committed-but-unacknowledged provider row + deleting the user, then 502). A **new** email creates the account, sets the session cookie, and sends a verification email → `{ user, providerId }`. A **duplicate** email is not rejected (no 409, #373): the endpoint returns the same generic `200 { ok: true }` (no session) and instead emails the real owner an "account already exists" notice out-of-band, so registration cannot be used to enumerate accounts. |
 | `POST /api/auth/login` | public | bcrypt verify; per-account lockout (5 fails → 15 min); no email enumeration. Sets cookie → `{ user, providerId }`. 400/401 otherwise. Social-only accounts (no password) get the same uniform 401. |
 | `GET /api/auth/oauth/:provider/start` | public | Social login (#398); `:provider` ∈ `google`, `facebook`. Sets state (+ PKCE) cookies, 302 → provider consent. Optional `?next=` (same-origin relative). Unknown/unconfigured provider → 302 `/login?error=oauth_unavailable`. |
 | `GET /api/auth/oauth/:provider/callback` | public | Validates state (+ PKCE) + code, reads the provider identity (Google: id_token; Facebook: Graph API), then: existing linked account → sign in; matching verified email → link + sign in; new verified email → create a CUSTOMER (`emailVerified` set) + link; no email (some Facebook accounts) → create a CUSTOMER keyed on the provider id with a non-deliverable placeholder email (never auto-linked). Sets cookie, 302 → `/welcome` (new) or `next`/`/` (returning). Failures → `/login?error=oauth`. |
-| `POST /api/auth/complete-provider` | authenticated | Turns the signed-in CUSTOMER into a PROVIDER: validates the provider profile (registration fields minus account fields), creates the profile via S2S, flips role, bumps `sessionVersion`, re-issues cookie → `{ user, providerId }`. 409 if already a provider. Re-upgrading a previously closed profile reactivates it (clears `suspended`). |
+| `POST /api/auth/complete-provider` | authenticated | Turns the signed-in CUSTOMER into a PROVIDER: validates the provider profile (registration fields minus account fields, incl. the optional `serviceDistricts` served set #502), creates the profile via S2S, flips role, bumps `sessionVersion`, re-issues cookie → `{ user, providerId }`. 409 if already a provider. Re-upgrading a previously closed profile reactivates it (clears `suspended`). |
 | `POST /api/auth/leave-provider` | authenticated (PROVIDER) | Counterpart to complete-provider (#403): hides the provider profile from listings via S2S (`suspended = true`, reversible — reviews/inquiries/responses kept), flips role → CUSTOMER, bumps `sessionVersion`, re-issues cookie, audit-logs. Profile-hide runs first: if provider-service is down → 502, role unchanged. 409 if not a provider. |
 | `POST /api/auth/logout` | public | Clears the session cookie → `{ ok: true }`. |
 | `POST /api/auth/logout-all` | authenticated | Bumps `sessionVersion` (revokes every session), re-issues this one → `{ ok: true }`. |
@@ -56,7 +56,7 @@ the upstream that owns the handler.
 | Param | Meaning |
 |---|---|
 | `q` | Free text over headline/bio, the optional Sinhala headlineSi/bioSi (#515), city, contactName, services (pg_trgm) + Category label match (en/si). |
-| `category`, `district` | Exact filters. |
+| `category`, `district` | `category` is exact; `district` is a **membership test on the provider's served set** (`serviceDistricts`, #502) — a provider based elsewhere but serving the district matches. |
 | `sort` | `recommended` (default), `rating`, `reviews`, `price`, `experience`, `newest`. |
 | `page` | ≥ 1 (default 1). |
 | `pageSize` / `take` | Default 12, capped **24** (`take` is an alias). |
@@ -73,7 +73,7 @@ Every route requires a provider owned by the authenticated user (else
 | Method + path | Auth | Summary |
 |---|---|---|
 | `GET /api/provider/dashboard` | role: PROVIDER (owner) | Provider + contact + services + photos + first 20 inquiries (+ `inquiriesTotal`/`newInquiriesCount`, #372) + rating summary + `openJobsCount` (S2S). |
-| `PUT /api/provider/profile` | role: PROVIDER (owner) | Update profile (tightened field rules; optional `awayUntil`, #49); category re-checked; syncs name/phone to identity via S2S. |
+| `PUT /api/provider/profile` | role: PROVIDER (owner) | Update profile (tightened field rules; optional `awayUntil`, #49; optional `serviceDistricts` served set, #502 — deduped, home district always re-added, cap 5, over-cap → 400); category re-checked; syncs name/phone to identity via S2S. |
 | `POST /api/provider/services` | role: PROVIDER (owner) | Add a service `{ title, description?, price, priceType }` → `{ service }`. |
 | `PUT /api/provider/services/:id` | role: PROVIDER (owner) | Update own service (404 if not owned). |
 | `DELETE /api/provider/services/:id` | role: PROVIDER (owner) | Delete own service. |
@@ -120,8 +120,8 @@ Reasons enum: `spam`, `scam`, `offensive`, `fake`, `other`.
 |---|---|---|
 | `POST /api/jobs` | authenticated (verified email) | Post a job `{ category, district, title, description, budget? }` (category checked S2S) → `{ id }`. Unverified email → 403; over 10 posts per account per rolling 24 h → 429 (#556). |
 | `PATCH /api/jobs/:id` | authenticated (owner) | `{ status: OPEN\|CLOSED }`; non-owner → 404. |
-| `POST /api/jobs/:id/responses` | authenticated (PROVIDER) | Respond `{ message }`; provider gate + same category/district scope as the board; open + dup checks; emails the customer best-effort → `{ ok: true }`. |
-| `GET /api/jobs/board` | authenticated (PROVIDER) | OPEN jobs matching the provider's category+district, excluding own, with customer names + `responded`. Paginated → `{ jobs, total, page, pageSize }`. |
+| `POST /api/jobs/:id/responses` | authenticated (PROVIDER) | Respond `{ message }`; provider gate + same category/served-districts scope as the board (#502); open + dup checks; emails the customer best-effort → `{ ok: true }`. |
+| `GET /api/jobs/board` | authenticated (PROVIDER) | OPEN jobs matching the provider's category and **any of their served districts** (`serviceDistricts`, #502), excluding own, with customer names + `responded`. Paginated → `{ jobs, total, page, pageSize }`. |
 | `GET /api/jobs/mine` | authenticated | Own jobs with responses hydrated with provider `{ name, phone }`. Paginated → `{ jobs, total, page, pageSize }`. |
 
 Board/mine pagination: `page` ≥ 1, `pageSize`/`take` default 20, capped **50**.

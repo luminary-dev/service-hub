@@ -84,6 +84,35 @@ describe("ProviderRegisterForm (authed mode, #552)", () => {
     expect(JSON.parse(init.body).phone).toBe("0771234567");
   });
 
+  it("includes the served set with the home district pinned first (#502)", async () => {
+    fetchMock.mockResolvedValue({ ok: true });
+    render(<ProviderRegisterForm categories={categories} authed />);
+
+    fillProfileStep({ phone: "0771234567" });
+    // The home district renders as a pinned, non-toggleable chip.
+    const home = screen.getByRole("button", {
+      name: `Colombo · ${dict.en.serviceDistricts.homeBadge}`,
+    }) as HTMLButtonElement;
+    expect(home.disabled).toBe(true);
+    // Add one extra served district.
+    fireEvent.click(screen.getByRole("button", { name: "Gampaha" }));
+    fireEvent.click(screen.getByRole("button", { name: t.continue }));
+    fireEvent.click(screen.getByRole("button", { name: t.continue }));
+    fireEvent.change(screen.getByPlaceholderText(t.serviceTitlePh), {
+      target: { value: "Full house wiring" },
+    });
+    fireEvent.change(screen.getByPlaceholderText(t.pricePh), {
+      target: { value: "5000" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: t.create }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).serviceDistricts).toEqual([
+      "Colombo",
+      "Gampaha",
+    ]);
+  });
+
   it("keeps the phone on the account step only in guest mode", () => {
     render(<ProviderRegisterForm categories={categories} />);
     expect(screen.getByLabelText(t.phone)).toBeTruthy(); // step 0

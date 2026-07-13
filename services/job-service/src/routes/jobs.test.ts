@@ -44,7 +44,14 @@ import { s2s } from "../lib/http";
 const SECRET = "dev-internal-secret";
 const CUSTOMER_ID = "user_customer";
 const PROVIDER_USER_ID = "user_provider";
-const PROVIDER = { id: "prov_1", category: "plumbing", district: "Colombo" };
+// Served set (#502): the fixture provider covers a second district so the
+// board/response scoping tests exercise membership, not equality.
+const PROVIDER = {
+  id: "prov_1",
+  category: "plumbing",
+  district: "Colombo",
+  serviceDistricts: ["Colombo", "Gampaha"],
+};
 
 const s2sMock = vi.mocked(s2s);
 
@@ -347,7 +354,7 @@ describe("GET /api/jobs/board", () => {
     expect((await res.json()).error).toMatch(/registered professionals/i);
   });
 
-  it("scopes to the provider's category+district, excludes own jobs, flags responded", async () => {
+  it("scopes to the provider's category + served districts (#502), excludes own jobs, flags responded", async () => {
     dbMock.jobRequest.findMany.mockResolvedValue([
       {
         id: "job_1",
@@ -372,9 +379,24 @@ describe("GET /api/jobs/board", () => {
         where: {
           status: "OPEN",
           category: "plumbing",
-          district: "Colombo",
+          district: { in: ["Colombo", "Gampaha"] },
           NOT: { customerId: PROVIDER_USER_ID },
         },
+      })
+    );
+  });
+
+  it("falls back to the primary district when the served set is absent (pre-#502 payload)", async () => {
+    wireS2s({
+      providerByUser: { id: "prov_1", category: "plumbing", district: "Colombo" },
+    });
+    dbMock.jobRequest.findMany.mockResolvedValue([]);
+    dbMock.jobRequest.count.mockResolvedValue(0);
+    const res = await req("/api/jobs/board", {}, { "x-user-id": PROVIDER_USER_ID });
+    expect(res.status).toBe(200);
+    expect(dbMock.jobRequest.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ district: { in: ["Colombo"] } }),
       })
     );
   });
@@ -527,7 +549,7 @@ describe("POST /api/jobs/:id/responses (provider responds)", () => {
     expect((await res.json()).error).toMatch(/your own job/i);
   });
 
-  it("403s when the job is outside the provider's category or district", async () => {
+  it("403s when the job's district is outside the provider's served set", async () => {
     dbMock.jobRequest.findUnique.mockResolvedValue({ ...openJob, district: "Kandy" });
     const res = await req(
       "/api/jobs/job_1/responses",
@@ -570,6 +592,22 @@ describe("POST /api/jobs/:id/responses (provider responds)", () => {
     expect(res.status).toBe(400);
     expect((await res.json()).error).toMatch(/already responded/i);
     expect(dbMock.jobResponse.create).not.toHaveBeenCalled();
+  });
+
+  it("allows responding to a job in a secondary served district (#502)", async () => {
+    dbMock.jobRequest.findUnique.mockResolvedValue({ ...openJob, district: "Gampaha" });
+    dbMock.jobResponse.findUnique.mockResolvedValue(null);
+    dbMock.jobResponse.create.mockResolvedValue({ id: "resp_1" });
+    wireS2s({
+      users: [{ id: CUSTOMER_ID, name: "Cus Tomer", email: "cust@example.com" }],
+    });
+    const res = await req(
+      "/api/jobs/job_1/responses",
+      { method: "POST", body: JSON.stringify(message) },
+      { "x-user-id": PROVIDER_USER_ID }
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
   });
 
   it("creates the response (notification best-effort) and returns ok", async () => {

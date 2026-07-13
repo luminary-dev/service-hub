@@ -37,7 +37,13 @@
   `Provider` denormalizes `contactName`/`contactEmail`/`contactPhone` (copied
   from the user at registration; profile updates write both locally and S2S to
   identity) and carries `awayUntil` (#49), `verificationStatus`/`verifiedAt`/
-  `rejectionReason`, `suspended`. The free-text pitch is bilingual (#515):
+  `rejectionReason`, `suspended`. Multi-district service area (#502):
+  `serviceDistricts String[]` is the full set of districts the provider serves
+  — it **always contains the primary `district`** (kept as the home base shown
+  on cards), is capped at 5 (`MAX_SERVICE_DISTRICTS` in `lib/field-rules.ts`,
+  deduped with the primary pinned first), was backfilled to `[district]` by
+  migration `20260714090000`, and is GIN-indexed because browse filtering, the
+  job board and the new-job fan-out all match on membership in the set. The free-text pitch is bilingual (#515):
   `headline`/`bio` (English, required) plus **optional nullable**
   `headlineSi`/`bioSi` (Sinhala variants) — the public payload prefers the SI
   variant under the `si` locale and falls back to the English original, and

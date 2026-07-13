@@ -15,6 +15,28 @@ export const emailAddress = z.string().trim().toLowerCase().email();
 // provider-service's Category table (see lib/categories.ts) since #135/#60.
 export const districtEnum = z.enum([...DISTRICTS] as [string, ...string[]]);
 
+// Multi-district service area (#502): how many districts one provider may
+// serve in total, primary district included.
+export const MAX_SERVICE_DISTRICTS = 5;
+
+export const serviceDistrictsField = z
+  .array(districtEnum)
+  .max(MAX_SERVICE_DISTRICTS, {
+    message: `You can serve at most ${MAX_SERVICE_DISTRICTS} districts`,
+  })
+  .optional();
+
+// Canonical served set: the primary district always leads, duplicates drop,
+// submitted order is otherwise preserved. Null when the union exceeds the cap
+// (the caller 400s) — never silently truncate a provider's coverage.
+export function normalizeServiceDistricts(
+  district: string,
+  serviceDistricts: string[] | undefined
+): string[] | null {
+  const set = [...new Set([district, ...(serviceDistricts ?? [])])];
+  return set.length > MAX_SERVICE_DISTRICTS ? null : set;
+}
+
 // Sri Lankan phone numbers (0771234567, 0112345678, +94/0094/94 variants,
 // spaces/dashes/parens tolerated), normalized to E.164 (+94XXXXXXXXX) for
 // storage so rendering and WhatsApp links stay consistent.
