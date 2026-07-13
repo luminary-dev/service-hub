@@ -5,6 +5,7 @@ name: Release
 # the :prod / :<sha> tags that deploy.yml pushes on the prod branch) and cuts a
 # GitHub Release with auto-generated notes. This gives a durable, human-readable
 # release marker and lets a container be mapped back to a released version.
+# Only commits contained in the prod branch can be released (see guard, #569).
 on:
   push:
     tags:
@@ -14,8 +15,36 @@ on:
 permissions: {}
 
 jobs:
+  # Only release commits that shipped through the dev→prod PR gate (#569): a
+  # bare `v*` tag push would otherwise publish :latest + :<version> images (and
+  # write the shared per-image build cache) from ANY commit — the release.yml
+  # sibling of deploy.yml's prod-branch ref guard (#383).
+  guard:
+    name: Verify tag is on prod
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Require the tagged commit to be contained in prod
+        run: |
+          git fetch origin prod
+          # GITHUB_SHA is the tag's target; peel annotated tags to their commit.
+          commit=$(git rev-parse "${GITHUB_SHA}^{commit}")
+          if git merge-base --is-ancestor "$commit" origin/prod; then
+            echo "$commit is contained in origin/prod — releasing."
+          else
+            echo "::error::Tag ${GITHUB_REF_NAME} points at ${commit}, which is not contained in origin/prod. Only prod commits can be released."
+            exit 1
+          fi
+
   images:
     name: Publish ${{ matrix.image }} @ ${{ github.ref_name }}
+    needs: guard
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:

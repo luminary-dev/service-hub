@@ -36,14 +36,23 @@ import { LOCALE_HEADER } from "@/lib/links";
 // `X-Locale: si` on an English-root URL (e.g. /providers) would render Sinhala
 // and emit a canonical pointing at /si. The `lang` cookie still drives the
 // rendered locale via getLocale(), which reads the cookie directly.
+// Root metadata files exist only at the English root. Without this guard the
+// /si rewrite would serve them as duplicates (/si/sitemap.xml etc.); skipping
+// the rewrite lets them fall through to the app's not-found instead (#379).
+const SI_ROOT_METADATA =
+  /^\/si\/(?:sitemap\.xml|robots\.txt|manifest\.webmanifest)$/;
+
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
   if (pathname === "/si" || pathname.startsWith("/si/")) {
-    const destination = request.nextUrl.clone();
-    destination.pathname = pathname === "/si" ? "/" : pathname.slice(3);
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set(LOCALE_HEADER, "si");
+    if (SI_ROOT_METADATA.test(pathname)) {
+      return NextResponse.next({ request: { headers: requestHeaders } });
+    }
+    const destination = request.nextUrl.clone();
+    destination.pathname = pathname === "/si" ? "/" : pathname.slice(3);
     return NextResponse.rewrite(destination, {
       request: { headers: requestHeaders },
     });

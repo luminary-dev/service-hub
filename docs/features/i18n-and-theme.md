@@ -18,7 +18,11 @@ structural parity is guarded by `src/lib/legal.test.ts` the same way
   `/si`, else falls back to the `lang` cookie, else `en`.
 - **Language toggle** — writes the `lang` cookie (1-year) and navigates to the
   localized URL. `generateMetadata` emits hreflang alternates (`en`, `si`,
-  `x-default`).
+  `x-default`), and pages with a canonical emit a matching `og:url` via
+  `siteOpenGraph()` (`src/lib/seo.ts`); `og:locale` follows the URL locale, not
+  the cookie (#379). `robots.txt` disallows the private areas in both URL
+  spaces (`/dashboard`, `/admin`, `/account` and their `/si/*` twins), and the
+  root metadata files 404 under `/si` rather than serving duplicates.
 - **Locale-preserving links.** Internal nav, auth, and error-boundary links (and
   their `router.push` redirects) route through `localizedHref(path, locale)`, so
   a visitor under `/si/*` stays in the `/si` URL space as they navigate.

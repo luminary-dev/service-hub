@@ -59,6 +59,29 @@ revocation, S2S trust — are identical to password sessions. See
 [AUTHZ.md](../AUTHZ.md#sign-in-methods-398). Facebook is a planned fast-follow
 (#405) and is **not** shipped yet.
 
+### Post-login return-to (#560)
+
+Sign-in carries the page the user was headed to as a `?next=` param on
+`/login`, so a successful sign-in returns them there instead of the generic
+role default (`/dashboard` for providers, `/providers` otherwise, which still
+applies when there is no `next`):
+
+- **Session-gated pages** (`/jobs`, `/jobs/new`, `/account`,
+  `/account/security`, `/dashboard`, and the inquiry threads under both)
+  redirect signed-out visitors to `/login?next=<path>` via `loginNext()`
+  (`src/lib/login.ts`), preserving the `/si` locale prefix of the URL they
+  requested.
+- **"Sign in to continue" links** (e.g. the review CTA on a provider profile)
+  link to the same URL shape via `loginNextHref()` (`src/lib/links.ts`).
+- The login page honors `next` for the password form and threads it to the
+  Google/Facebook buttons, whose OAuth flow already round-trips it through the
+  identity-service state cookie.
+
+`next` is validated on every consumer (`sanitizeNext` in `src/lib/links.ts` on
+the web, its namesake in identity-service `routes/oauth.ts`): only same-origin
+relative paths pass — absolute URLs, protocol-relative `//host`, and backslash
+variants are dropped, so the param cannot become an open redirect.
+
 ### Account self-service (`/account`)
 
 Customer actions (post a job, send an inquiry, favorite, review) are gated on

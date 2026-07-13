@@ -135,6 +135,25 @@ describe("resolveRoute (routing table)", () => {
     });
   });
 
+  it("routes the job moderation queue + audit log to job-service (#375)", () => {
+    expect(resolveRoute("/api/admin/job-reports")).toEqual({
+      service: "job",
+      path: "/api/admin/job-reports",
+    });
+    expect(resolveRoute("/api/admin/job-reports/rep-1")).toEqual({
+      service: "job",
+      path: "/api/admin/job-reports/rep-1",
+    });
+    expect(resolveRoute("/api/admin/job-reports/count")).toEqual({
+      service: "job",
+      path: "/api/admin/job-reports/count",
+    });
+    expect(resolveRoute("/api/admin/job-audit-log")).toEqual({
+      service: "job",
+      path: "/api/admin/job-audit-log",
+    });
+  });
+
   it("routes the admin dashboard analytics endpoints to their owning services (#219)", () => {
     expect(resolveRoute("/api/admin/signups")).toEqual({
       service: "identity",

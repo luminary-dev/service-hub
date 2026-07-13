@@ -33,6 +33,8 @@ const { dbMock } = vi.hoisted(() => ({
       update: vi.fn(),
       updateMany: vi.fn(),
     },
+    // INQUIRY report hydration (#375) in the moderation queue.
+    inquiry: { findMany: vi.fn() },
     category: {
       findMany: vi.fn(),
       findUnique: vi.fn(),
@@ -96,6 +98,7 @@ beforeEach(() => {
   dbMock.report.createMany.mockResolvedValue({ count: 0 });
   dbMock.workPhoto.findUnique.mockResolvedValue(null);
   dbMock.workPhoto.findMany.mockResolvedValue([]);
+  dbMock.inquiry.findMany.mockResolvedValue([]);
   dbMock.workPhoto.update.mockResolvedValue({});
   dbMock.workPhoto.updateMany.mockResolvedValue({ count: 1 });
   dbMock.category.findMany.mockResolvedValue([]);
@@ -492,6 +495,59 @@ describe("GET /api/admin/reports (SUPPORT read)", () => {
     expect(await res.json()).toMatchObject({ reports: [], total: 0 });
     expect(dbMock.report.findMany).not.toHaveBeenCalled();
   });
+
+  it("hydrates INQUIRY reports (#375) with thread context from the local tables", async () => {
+    const row = {
+      id: "rep1",
+      targetType: "INQUIRY",
+      targetId: "inq1",
+      reporterId: null,
+      reason: "auto-flag: content filter",
+      details: 'content filter matched "hutta" in message: "…"',
+      status: "OPEN",
+      source: "SYSTEM",
+      createdAt: new Date("2026-07-01"),
+    };
+    dbMock.report.count.mockResolvedValue(1);
+    dbMock.report.findMany.mockResolvedValue([row]);
+    dbMock.inquiry.findMany.mockResolvedValue([
+      {
+        id: "inq1",
+        name: "Kamal",
+        message: "Original inquiry message",
+        providerId: "p1",
+        provider: { contactName: "Nimal" },
+      },
+    ]);
+    const res = await req("/api/admin/reports?status=OPEN", { role: "SUPPORT" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.reports).toHaveLength(1);
+    expect(body.reports[0].target).toEqual({
+      providerId: "p1",
+      providerName: "Nimal",
+      customerName: "Kamal",
+      message: "Original inquiry message",
+    });
+  });
+
+  it("returns target=null for an INQUIRY report whose inquiry was hard-deleted", async () => {
+    dbMock.report.count.mockResolvedValue(1);
+    dbMock.report.findMany.mockResolvedValue([
+      {
+        id: "rep1",
+        targetType: "INQUIRY",
+        targetId: "gone",
+        status: "OPEN",
+        source: "SYSTEM",
+        createdAt: new Date("2026-07-01"),
+      },
+    ]);
+    dbMock.inquiry.findMany.mockResolvedValue([]);
+    const res = await req("/api/admin/reports?status=OPEN", { role: "SUPPORT" });
+    const body = await res.json();
+    expect(body.reports[0].target).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -699,5 +755,36 @@ describe("POST /api/admin/categories — imageUrl path validation (#519)", () =>
     });
     expect(res.status).toBe(200);
     expect(dbMock.category.create).toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/admin/providers?sort=mostReviews — bounded ranking (#372)", () => {
+  it("loads at most the candidate cap (+1 sentinel) instead of the whole table", async () => {
+    const res = await req("/api/admin/providers?sort=mostReviews", { role: "ADMIN" });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 1001, orderBy: { createdAt: "desc" } })
+    );
+  });
+
+  it("still returns the paginated envelope from the ranked slice", async () => {
+    dbMock.provider.findMany.mockResolvedValue(
+      Array.from({ length: 3 }, (_, i) => ({
+        id: `p${i}`,
+        contactName: `P${i}`,
+        contactEmail: `p${i}@x.lk`,
+        createdAt: new Date(2026, 0, i + 1),
+        _count: { photos: 0 },
+      }))
+    );
+    const res = await req("/api/admin/providers?sort=mostReviews&pageSize=2", {
+      role: "ADMIN",
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.total).toBe(3);
+    expect(body.page).toBe(1);
+    expect(body.pageSize).toBe(2);
+    expect(body.providers).toHaveLength(2);
   });
 });
