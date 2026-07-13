@@ -104,7 +104,11 @@ signed-in user:
 - **Change email** — `POST /api/account/email/change` emails a 1h confirmation
   link **to the new address**; clicking it (`/verify-email-change`) posts
   `POST /api/account/email/confirm`, which switches the address and marks it
-  verified. The current session stays valid (email isn't in the JWT).
+  verified. The current session stays valid (email isn't in the JWT). Changing
+  the sign-in email is a sensitive op (#504): password accounts must confirm
+  their **current password** in the form (the field is shown when
+  `GET /api/auth/me` reports `hasPassword`); social-only accounts (#398) have
+  none, so for them the valid session alone is the re-auth.
 
 Role transitions are also surfaced here (and in the user menu):
 

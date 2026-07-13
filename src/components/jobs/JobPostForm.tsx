@@ -9,6 +9,7 @@ import {
   type CategoryOption,
 } from "@/lib/categories";
 import { districtLabelLoc } from "@/lib/i18n";
+import { localizedHref } from "@/lib/links";
 import { useLocale, useT } from "@/components/I18nProvider";
 import { Field, FormRow } from "@/components/ui/Field";
 import {
@@ -70,7 +71,7 @@ export default function JobPostForm({
         }),
       });
       if (res.ok) {
-        router.push("/jobs");
+        router.push(localizedHref("/jobs", locale));
         router.refresh();
       } else {
         const d = await res.json().catch(() => ({}));

@@ -205,9 +205,13 @@ export default function ReviewSection({
         )}
         {!signedIn && (
           <Link
-            // Return here after sign-in (#560) instead of the generic listing.
-            href={loginNextHref(
-              localizedHref(`/providers/${providerId}`, locale),
+            // Return here after sign-in (#560) instead of the generic
+            // listing; the /login URL itself stays in the /si space (#364).
+            href={localizedHref(
+              loginNextHref(
+                localizedHref(`/providers/${providerId}`, locale),
+              ),
+              locale,
             )}
             className="text-sm font-medium text-brand-600 hover:text-brand-700"
           >

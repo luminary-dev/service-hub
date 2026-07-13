@@ -7,6 +7,7 @@ import { getLocale } from "@/lib/locale";
 import { loginNext } from "@/lib/login";
 import { formatDate, formatNumber } from "@/lib/format";
 import { dict, categoryLabelLoc, districtLabelLoc } from "@/lib/i18n";
+import { localizedHref } from "@/lib/links";
 import InView from "@/components/InView";
 import PageHeader from "@/components/ui/PageHeader";
 import StatReadout from "@/components/ui/StatReadout";
@@ -110,7 +111,7 @@ export default async function JobsPage({
     if (boardPage > 1) sp.set("boardPage", String(boardPage));
     if (minePage > 1) sp.set("minePage", String(minePage));
     sp.set(key, String(value));
-    return `/jobs?${sp.toString()}`;
+    return localizedHref(`/jobs?${sp.toString()}`, locale);
   }
 
   function pager(key: "boardPage" | "minePage", current: number, totalPages: number) {
@@ -167,7 +168,7 @@ export default async function JobsPage({
       >
         <div className="flex flex-col items-start gap-4 sm:items-end">
           <StatReadout stats={stats} />
-          <Link href="/jobs/new" className="btn-primary">
+          <Link href={localizedHref("/jobs/new", locale)} className="btn-primary">
             <FaPlus className="h-3.5 w-3.5" />
             {t.postCta}
           </Link>
@@ -254,7 +255,10 @@ export default async function JobsPage({
                 icon={FaBriefcase}
                 title={t.myEmpty}
                 action={
-                  <Link href="/jobs/new" className="btn-primary">
+                  <Link
+                    href={localizedHref("/jobs/new", locale)}
+                    className="btn-primary"
+                  >
                     {t.postCta}
                   </Link>
                 }
@@ -302,7 +306,10 @@ export default async function JobsPage({
                           <li key={r.id} className="py-3">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <Link
-                                href={`/providers/${r.provider.id}`}
+                                href={localizedHref(
+                                  `/providers/${r.provider.id}`,
+                                  locale
+                                )}
                                 className="text-sm font-medium text-ink-800 hover:text-brand-700"
                               >
                                 {r.provider.name}

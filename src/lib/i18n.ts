@@ -261,6 +261,8 @@ const en = {
     emailNew: "New email address",
     emailVerifiedTag: "Verified",
     emailUnverifiedTag: "Unverified",
+    // Sensitive-op re-auth (#504) — shown only for accounts with a password.
+    emailPassword: "Current password",
     changeEmail: "Change email",
     changingEmail: "Sending…",
     emailChangeSent: (email: string) =>
@@ -1445,6 +1447,7 @@ const si: Dict = {
     emailNew: "නව විද්‍යුත් තැපැල් ලිපිනය",
     emailVerifiedTag: "සත්‍යාපිතයි",
     emailUnverifiedTag: "සත්‍යාපනය නොකළ",
+    emailPassword: "වත්මන් මුරපදය",
     changeEmail: "විද්‍යුත් තැපෑල වෙනස් කරන්න",
     changingEmail: "යවමින්…",
     emailChangeSent: (email: string) =>

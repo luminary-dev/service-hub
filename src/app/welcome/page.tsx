@@ -12,10 +12,9 @@ export const metadata = { title: "Welcome to Baas.lk" };
 // here as CUSTOMER; they either continue as a customer or set up a provider
 // profile. Anyone who already has a role (returning provider/admin) skips it.
 export default async function WelcomePage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  const [session, locale] = await Promise.all([getSession(), getLocale()]);
+  if (!session) redirect(localizedHref("/login", locale));
 
-  const locale = await getLocale();
   if (session.role === "PROVIDER") redirect(localizedHref("/dashboard", locale));
   if (session.role !== "CUSTOMER") redirect(localizedHref("/", locale));
 

@@ -100,3 +100,39 @@ export function requestLogger(
 export function getRequestId(c: Context): string | undefined {
   return c.get("requestId");
 }
+
+// Last-resort process-level error capture (#34). Hono's onError covers request
+// handlers; these hooks cover everything else — fire-and-forget promises,
+// timers, event emitters. Each logs one structured line, then exits 1 shortly
+// after: Node's default for both events is already a crash (fail fast; compose
+// `restart: unless-stopped` brings the container back), so the handlers only
+// change *what gets written*, not whether we die. The exit is delayed a beat
+// because process.exit() can truncate pending stdout writes when stdout is a
+// pipe — under Docker it always is, and the whole point is getting the line
+// out. An error-monitoring backend (Sentry/GlitchTip/…) can later hook in here
+// and in each app's onError without touching call sites.
+const EXIT_FLUSH_MS = 100;
+
+export type ProcessLike = {
+  on: (
+    event: "uncaughtException" | "unhandledRejection",
+    listener: (reason: unknown) => void
+  ) => unknown;
+  exit: (code: number) => void;
+};
+
+// `proc` is injectable for tests; production always hooks the real process.
+export function installProcessErrorHandlers(
+  log: Logger,
+  proc: ProcessLike = process
+): void {
+  const fail = (msg: string) => (reason: unknown) => {
+    // Rejection reasons aren't necessarily Errors — normalize so the line
+    // always carries err.name/message/stack.
+    const err = reason instanceof Error ? reason : new Error(String(reason));
+    log.error(msg, { err });
+    setTimeout(() => proc.exit(1), EXIT_FLUSH_MS);
+  };
+  proc.on("uncaughtException", fail("uncaught exception"));
+  proc.on("unhandledRejection", fail("unhandled rejection"));
+}
