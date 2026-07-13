@@ -27,7 +27,12 @@ export function formatDate(
   locale: Locale,
   opts: Intl.DateTimeFormatOptions = DEFAULT_DATE_OPTS
 ): string {
-  return new Date(d).toLocaleDateString(intlLocale(locale), opts);
+  // Pin to Sri Lanka time so a UTC server and a local browser render the same
+  // calendar day — otherwise SSR'd dates can hydrate to a different day (#377).
+  return new Date(d).toLocaleDateString(intlLocale(locale), {
+    timeZone: "Asia/Colombo",
+    ...opts,
+  });
 }
 
 // Whole days elapsed since `d` (never negative — clock skew or a

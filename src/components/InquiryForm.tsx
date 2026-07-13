@@ -31,23 +31,29 @@ export default function InquiryForm({
     e.preventDefault();
     setLoading(true);
     setError("");
-    const res = await fetch(`/api/providers/${providerId}/inquiries`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name,
-        phone,
-        email,
-        message,
-        company: honeypotRef.current?.value ?? "",
-      }),
-    });
-    setLoading(false);
-    if (res.ok) {
-      setSent(true);
-    } else {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? t.inquiry.error);
+    try {
+      const res = await fetch(`/api/providers/${providerId}/inquiries`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          phone,
+          email,
+          message,
+          company: honeypotRef.current?.value ?? "",
+        }),
+      });
+      if (res.ok) {
+        setSent(true);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? t.inquiry.error);
+      }
+    } catch {
+      // Network failure — recover instead of wedging the button (#363).
+      setError(t.inquiry.error);
+    } finally {
+      setLoading(false);
     }
   }
 
