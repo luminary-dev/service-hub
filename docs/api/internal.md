@@ -49,7 +49,7 @@ using the shared `s2s()` helper (one bounded retry on idempotent GETs).
 | Method + path | Purpose |
 |---|---|
 | `GET /internal/jobs/count?category&district&excludeCustomerId` | Open-jobs count for the provider dashboard. |
-| `POST /internal/users/:id/erase` | Account-deletion fan-out: delete the user's JobRequests, plus JobResponses when `{ providerId }` is passed. Idempotent. |
+| `POST /internal/users/:id/erase` | Account-deletion fan-out: delete the user's JobRequests, plus JobResponses when `{ providerId }` is passed. Idempotent. Identity erases this service before provider-service (#551), so the erase always receives the `providerId` while the Provider row (its only source) still exists. |
 
 ### notification-service
 
