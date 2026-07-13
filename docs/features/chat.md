@@ -41,7 +41,9 @@ inquiry, which the customer then sends themselves, in English or Sinhala.
   replies short, and answers in Sinhala when the locale is `si`.
 - **Session-gated & rate-limited.** The web proxy requires a signed-in session
   (401 otherwise) and enforces a per-user sliding window of **15 requests / 60 s**
-  (429 on exceed). The in-memory window map is swept of aged-out users (mirroring
+  (429 on exceed). The widget handles the 401 for signed-out visitors by showing
+  a localized sign-in prompt with a link to `/login` (keeping the `/si` prefix
+  on Sinhala URLs) instead of the generic error (#558). The in-memory window map is swept of aged-out users (mirroring
   the gateway limiter) so it can't grow unbounded over the process lifetime.
 
 ---

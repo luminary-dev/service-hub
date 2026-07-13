@@ -18,9 +18,10 @@ Public entry. Responsibilities:
    `POST /api/providers/:id/contact` → contactReveal (phone-number reveal, #64);
    `POST /api/jobs/:id/responses`
    and `POST /api/providers/:id/reviews` → review;
-   `POST /api/providers/:id/report`, `POST /api/photos/:id/report` and
-   `POST /api/reviews/:id/report` → report. 429 body/headers identical to the
-   monolith (`Retry-After`).
+   `POST /api/providers/:id/report`, `POST /api/photos/:id/report`,
+   `POST /api/reviews/:id/report`, `POST /api/jobs/:id/report` and
+   `POST /api/messages/:id/report` (#376) → report. 429 body/headers identical
+   to the monolith (`Retry-After`).
 3. **Session / identity headers** (`lib/proxy.ts#buildUpstreamHeaders`): strip
    any client-sent trusted headers first (`GATEWAY_HEADERS`: `x-user-id`,
    `x-user-role`, `x-user-name`, `x-impersonated-by`, `x-internal-secret`,
@@ -50,10 +51,14 @@ Public entry. Responsibilities:
    - `/api/reviews/*` → review
    - `/api/admin/users*`, `/api/admin/impersonate*`, `/api/admin/signups` →
      identity
-   - `/api/admin/jobs*` → job
+   - `/api/admin/jobs*`, `/api/admin/job-reports*`,
+     `/api/admin/job-audit-log` → job
    - all other `/api/admin/*` (providers, verifications, reports, photos,
-     categories, stats, `notifications/counts`, `audit-log`) → provider
+     messages, categories, stats, `notifications/counts`, `audit-log`) →
+     provider
    - `/api/photos/:id/report` → provider (work-photo abuse reports)
+   - `/api/messages/:id/report` → provider (inquiry-message abuse reports,
+     #376)
    - `/api/auth/*`, `/api/favorites*` → identity
    - `/api/providers*`, `/api/provider/*`, `/api/inquiries/*`,
      `/api/categories`, `/api/stats` → provider
@@ -81,15 +86,17 @@ by service:
 - **provider-service (:4002)** — the public directory/search (`/api/providers*`,
   `/api/categories`, `/api/stats`), provider profile pages, the provider
   dashboard (`/api/provider/*`), inquiries + threads (`/api/inquiries/*`,
-  `/api/account/inquiries`), provider/photo abuse reports, and the bulk of the
-  admin surface (providers, verifications, reports, categories, auto-flagging,
-  audit log, stats/notification counts).
+  `/api/account/inquiries`), provider/photo/message abuse reports, and the bulk
+  of the admin surface (providers, verifications, reports, message takedown,
+  categories, auto-flagging, audit log, stats/notification counts).
 - **review-service (:4003)** — public + write review routes
   (`/api/providers/:id/reviews`), `/api/account/reviews`, review photo delete,
   review abuse reports, and the admin review moderation queues
   (`/api/admin/review-*`).
-- **job-service (:4004)** — `/api/jobs*` (post, board, mine, responses, status)
-  and the read-only admin jobs oversight. **Monetization (pricing, commission,
+- **job-service (:4004)** — `/api/jobs*` (post, board, mine, responses, status,
+  abuse reports #376), the admin jobs oversight (incl. the hide/unhide takedown
+  #376), and the job moderation queue + audit log (`/api/admin/job-reports*`,
+  `/api/admin/job-audit-log`, #375). **Monetization (pricing, commission,
   payments) is intentionally deferred to v0.2** — v0.1 is free to use, so there
   is no transaction ledger and no price/commission field on a job (a JobRequest
   carries only an optional customer-stated `budget`).

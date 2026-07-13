@@ -44,7 +44,8 @@ together. Compose base images (`postgres:16-alpine`, `redis:7-alpine`,
   a trailing comment (`uses: actions/checkout@<sha> # v7`), so a hijacked tag
   can't run with our `packages: write` / `contents: write` scopes or deploy
   secrets; Dependabot bumps the SHA and the comment together. (`actionlint.yml`'s
-  `docker://rhysd/actionlint` is pinned by image tag.)
+  `docker://rhysd/actionlint` is pinned by **image digest** with the tag as the
+  readable label, #573.)
 - **docker** — bumps the pinned base-image digests so base-layer CVEs surface as
   PRs instead of silently persisting.
 
@@ -75,7 +76,15 @@ These endpoints back the layered gates:
 
 - **Compose healthchecks** — every service uses the shared node healthcheck
   (`wget -qO- http://localhost:$PORT/healthz`); Postgres uses `pg_isready`, Redis
-  `redis-cli ping`. Prod intervals are 10s with 10 retries.
+  `redis-cli ping`. In prod the web app is probed the same way (its own
+  gateway-independent `/healthz` route — `/api/healthz` would be proxied to the
+  gateway) and Caddy via its admin API (`http://localhost:2019/config/`, which
+  works before DNS/ACME are in place), so the deploy gate covers the public
+  site (#385). Prod intervals are 10s with 10 retries, plus a
+  `start_period` (30s; **120s for the DB-owning services**, whose boot runs
+  `prisma migrate deploy` first) during which failed probes don't count against
+  the retry budget — so a slow migration no longer trips the deploy gate into
+  rollback (#568). A passing probe ends the grace period early.
 - **`depends_on: condition: service_healthy`** — services wait for Postgres /
   media-service, and the gateway waits for all upstreams, so boot order is
   correct.
@@ -107,11 +116,15 @@ Runs on push and PR to `dev` and `prod`. Jobs:
   job only fails if coverage regresses below the floor. Raise the floors as the
   suites grow.
 - **`e2e` compose-smoke** (#241) — **PRs only** (booting the full stack is
-  heavy). Boots the whole stack with `docker compose up -d --build --wait`, waits
-  for web on :3000, **seeds with `SEED_DEMO_DATA=true`** (the prod images run
-  `NODE_ENV=production`, where the seed otherwise refuses), then runs
-  `scripts/e2e-smoke.sh`. Dumps logs on failure and always tears down with
-  `down -v`.
+  heavy). Pre-builds the nine compose images with `docker/bake-action` reusing
+  deploy.yml's per-image GHA layer cache (read-only — no `cache-to`, so a
+  feature branch can't write the shared cache; #573), boots the stack with
+  `docker compose up -d --no-build --wait`, waits for web on :3000, **seeds
+  with `SEED_DEMO_DATA=true`** (the prod images run `NODE_ENV=production`,
+  where the seed otherwise refuses), then runs `scripts/e2e-smoke.sh` and the
+  **backup → restore-verify path** (#389: `backup-dbs.sh` dumps the seeded DBs,
+  `verify-backup.sh` restores them into a scratch container and row-counts the
+  main tables). Dumps logs on failure and always tears down with `down -v`.
 - **`prod-compose`** (#512) — validates `docker-compose.prod.yml` (the file that
   actually ships) with `docker compose -f docker-compose.prod.yml config -q`.
   The dev/e2e jobs only ever exercise `docker-compose.yml`, so the prod file used
@@ -190,7 +203,8 @@ Lints the workflow YAML itself with actionlint (bad `runs-on`, malformed
 `${{ }}` expressions, deprecated syntax, broken `needs:`/`if:` refs). It runs
 on push + PR to `dev`/`prod` **only when a `.github/workflows/**` file changes**
 (so it never touches unrelated PRs), plus `workflow_dispatch`, pinned to the
-`rhysd/actionlint:1.7.12` image. Least-privilege `permissions` (`contents:
+`rhysd/actionlint:1.7.12` image **by digest** (#573; the mutable Docker Hub tag
+alone could be repointed by the publisher). Least-privilege `permissions` (`contents:
 read`), a 10-minute `timeout-minutes` cap, and the shared `concurrency` cancel
 group. The bundled shellcheck integration is disabled for now (`-shellcheck=`)
 because today's workflows trip only benign SC2016/SC2034 false-positives.
@@ -208,14 +222,19 @@ Work is tracked on the org-wide Service Hub board
 `.github/workflows/add-to-project.yml`. The board tracks **issues only** — one
 card per work item; pull requests are **not** separate cards.
 
-- **New issue** → added to the board (Status=Backlog, Service field set for this
-  repo) and **assigned to its opener**, so the card shows who owns it. Adding is
-  idempotent (an issue appears once).
-- **New PR** → **assigned to its author**. If it resolves an issue (a `Closes #n`
-  link), the author is mirrored onto that issue as an assignee, so the issue's
-  board card reflects who's working it and the PR links under the issue. A PR
-  that resolves no issue gets **no card** — fine for trivial chores, but
-  substantive work should have an issue first.
+- **New issue** → added to the board with Status=Backlog and the **Service
+  field resolved from the issue's `service:` label** (matched to the board
+  option by name at runtime, #388 — no label or no matching option leaves the
+  field unset with a logged warning). Adding is idempotent (an issue appears
+  once).
+- **New PR** → **assigned to its author**. If it resolves an issue in **this
+  repo** (a `Closes #n` link; cross-repo references are skipped), the author is
+  mirrored onto that issue as an assignee, so the issue's board card reflects
+  who's working it and the PR links under the issue. A PR that resolves no
+  issue gets **no card** — fine for trivial chores, but substantive work should
+  have an issue first. Fork PRs are skipped with a logged notice (their
+  `GITHUB_TOKEN` is read-only) — assign those manually; other assignment
+  failures surface as workflow warnings instead of being swallowed.
 
 GitHub's **built-in "auto-add" workflow must stay OFF** so this workflow is the
 single sync path.
@@ -223,12 +242,18 @@ single sync path.
 ## Backups
 
 Database and upload backup/restore procedures live in
-[BACKUPS.md](BACKUPS.md): logical `pg_dump -Fc` per database via
-`scripts/backup-dbs.sh` (daily cron on the prod host, 14-snapshot retention),
-upload volumes tarred alongside — or Cloudflare R2 when the `R2_*` vars are set
-(durable managed storage, no self-managed backup needed). Restore with
-`scripts/restore-db.sh`. Redis rate-limit windows are intentionally **not**
-backed up (ephemeral by design).
+[BACKUPS.md](BACKUPS.md): a nightly cron on the prod host (#389, installed once
+with `sudo ./scripts/install-backup-cron.sh`) runs `scripts/backup-cron.sh` —
+logical `pg_dump -Fc` per database (`scripts/backup-dbs.sh`; 14 local / 30
+offsite snapshot retention), an offsite copy to a dedicated R2 bucket, a
+restore-verification into a scratch Postgres (`scripts/verify-backup.sh`), and
+a success ping to a heartbeat monitor (a missed ping alerts). Upload volumes
+are tarred alongside — or Cloudflare R2 when the `R2_*` vars are set (durable
+managed storage, no self-managed backup needed). Restore with
+`scripts/restore-db.sh`. Redis is intentionally **not** backed up: rate-limit
+windows are ephemeral by design, and the session-revocation list (#374) is a
+mirror of identity_db's `sessionVersion` (which is backed up) — but it *is*
+persisted across container recreation via the prod `redis_data` volume (#571).
 
 ## Secret rotation
 
@@ -300,7 +325,7 @@ so `migrate deploy` stops erroring with P3005); fresh DBs never need it.
 | media-service | 4006 | uploads (local disk or R2) |
 | chat-service | 4007 | holds the Anthropic key |
 | postgres | 5432 (host **5433**) | remapped so it won't clash with a local Postgres |
-| redis | 6379 | shared rate-limit windows |
+| redis | 6379 | shared rate-limit windows + session-revocation list |
 
 In prod, service and datastore ports are **not** published — only Caddy binds
 80/443 on the host; everything else talks over the internal compose network.
@@ -342,5 +367,6 @@ docker compose logs --no-log-prefix | grep '"requestId":"<id>"'
 **Uptime probing, alerting, and an error-monitoring backend are still
 pending** — tracked by **#113 / #34** and listed among the pre-launch
 requirements in DEPLOYMENT.md. There is currently no external uptime probe,
-metrics/APM, or alerting; log inspection is manual (`docker compose logs`)
-until those land.
+metrics/APM, or alerting (the one exception: backup freshness has a
+dead-man's-switch heartbeat, see [BACKUPS.md](BACKUPS.md)); log inspection is
+manual (`docker compose logs`) until those land.

@@ -5,6 +5,7 @@ import { FaIdCard, FaInbox, FaRegHeart, FaRegStar, type IconType } from "@/compo
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
+import { loginNext } from "@/lib/login";
 import { categoryLabelLoc, dict } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
 import ProviderCard, { ProviderCardDTO } from "@/components/ProviderCard";
@@ -78,7 +79,7 @@ function SectionHeading({
 
 export default async function AccountPage() {
   const session = await getSession();
-  if (!session) redirect("/login");
+  if (!session) redirect(await loginNext("/account"));
 
   const [locale, favorites, inquiriesData, reviewsData, meData] =
     await Promise.all([
@@ -136,9 +137,9 @@ export default async function AccountPage() {
         <div className="flex flex-col items-start gap-4 sm:items-end">
           <StatReadout
             stats={[
-              { label: "SAVED", value: results.length },
-              { label: "SENT", value: inquiries.length },
-              { label: "REVIEWS", value: reviews.length },
+              { label: t.account.stats.saved, value: results.length },
+              { label: t.account.stats.sent, value: inquiries.length },
+              { label: t.account.stats.reviews, value: reviews.length },
             ]}
           />
           <Link href="/account/security" className="btn-secondary">
@@ -322,7 +323,10 @@ export default async function AccountPage() {
                           {r.provider.name}
                         </Link>
                         <div className="mt-1 flex items-center gap-2">
-                          <Stars rating={r.rating} />
+                          <Stars
+                            rating={r.rating}
+                            label={t.a11y.rated(r.rating.toFixed(1))}
+                          />
                           {r.verified && (
                             <VerifiedBadge label={t.account.verifiedReview} />
                           )}

@@ -16,6 +16,9 @@ const { dbMock, txMock } = vi.hoisted(() => {
     dbMock: {
       inquiry: { findUnique: vi.fn(), update: vi.fn() },
       inquiryMessage: { findMany: vi.fn(), create: vi.fn() },
+      // Content filter (#375): the auto-report path files a SYSTEM report on
+      // the thread's inquiry when a message matches the denylist.
+      report: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
       $transaction: vi.fn((fn: (tx: typeof txMock) => unknown) => fn(txMock)),
     },
   };
@@ -115,6 +118,17 @@ describe("GET /api/inquiries/:id/messages — thread party gate", () => {
     expect((await res.json()).party).toBe("PROVIDER");
     expect(dbMock.inquiry.update.mock.calls[0][0].data).toHaveProperty("providerLastReadAt");
   });
+
+  it("excludes messages removed by admin takedown (#376)", async () => {
+    dbMock.inquiry.findUnique.mockResolvedValue(inquiryRow());
+    const res = await req("/api/inquiries/inq1/messages", { role: "CUSTOMER", userId: "cust-1" });
+    expect(res.status).toBe(200);
+    expect(dbMock.inquiryMessage.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ deletedAt: null }),
+      })
+    );
+  });
 });
 
 describe("POST /api/inquiries/:id/messages", () => {
@@ -165,5 +179,75 @@ describe("POST /api/inquiries/:id/messages", () => {
     });
     const updateArg = txMock.inquiry.update.mock.calls[0][0];
     expect(updateArg.data).not.toHaveProperty("status");
+  });
+});
+
+// Write-time content filter (#375): a denylist hit on a thread message
+// auto-files a SYSTEM report on the inquiry; the message itself is still
+// delivered (decision: auto-report and keep visible, never hard-block).
+describe("POST /api/inquiries/:id/messages — content filter (#375)", () => {
+  it("auto-files a SYSTEM INQUIRY report on a denylist hit, message still sent", async () => {
+    dbMock.inquiry.findUnique.mockResolvedValue(inquiryRow());
+    dbMock.report.findFirst.mockResolvedValue(null);
+    const res = await req("/api/inquiries/inq1/messages", {
+      method: "POST",
+      body: { body: "pay up or you're a dead man, hutta" },
+      role: "CUSTOMER",
+      userId: "cust-1",
+    });
+    expect(res.status).toBe(200);
+    expect(txMock.inquiryMessage.create).toHaveBeenCalledTimes(1);
+    expect(dbMock.report.create).toHaveBeenCalledWith({
+      data: {
+        targetType: "INQUIRY",
+        targetId: "inq1",
+        reporterId: null,
+        reason: "auto-flag: content filter",
+        details: expect.stringContaining('matched "hutta" in message'),
+        source: "SYSTEM",
+      },
+    });
+  });
+
+  it("refreshes the thread's existing OPEN SYSTEM report instead of stacking", async () => {
+    dbMock.inquiry.findUnique.mockResolvedValue(inquiryRow());
+    dbMock.report.findFirst.mockResolvedValue({ id: "rep1" });
+    const res = await req("/api/inquiries/inq1/messages", {
+      method: "POST",
+      body: { body: "මූ පකයා වගේ වැඩ කරන්නේ" },
+      role: "CUSTOMER",
+      userId: "cust-1",
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.report.create).not.toHaveBeenCalled();
+    expect(dbMock.report.update).toHaveBeenCalledWith({
+      where: { id: "rep1" },
+      data: { details: expect.stringContaining("පකයා") },
+    });
+  });
+
+  it("leaves the reports table untouched for a clean message", async () => {
+    dbMock.inquiry.findUnique.mockResolvedValue(inquiryRow());
+    const res = await req("/api/inquiries/inq1/messages", {
+      method: "POST",
+      body: { body: "Thanks, the quote looks reasonable." },
+      role: "CUSTOMER",
+      userId: "cust-1",
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.report.findFirst).not.toHaveBeenCalled();
+    expect(dbMock.report.create).not.toHaveBeenCalled();
+  });
+
+  it("never fails the send when the auto-report path throws (best-effort)", async () => {
+    dbMock.inquiry.findUnique.mockResolvedValue(inquiryRow());
+    dbMock.report.findFirst.mockRejectedValue(new Error("db down"));
+    const res = await req("/api/inquiries/inq1/messages", {
+      method: "POST",
+      body: { body: "hutta" },
+      role: "CUSTOMER",
+      userId: "cust-1",
+    });
+    expect(res.status).toBe(200);
   });
 });

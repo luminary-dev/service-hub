@@ -17,11 +17,14 @@ import {
   deactivateProviderProfile,
   eraseProviderProfile,
   getProviderIdByUser,
+  ProviderAdminSuspendedError,
   reactivateProviderProfile,
   resolveProviderIdForErase,
+  syncContactToProvider,
 } from "../lib/providers";
 import { logAudit } from "../lib/audit";
 import { publishRevocation } from "../lib/revocation";
+import { removeStoredFile } from "../lib/storage";
 import {
   sendAccountExistsEmail,
   sendPasswordResetEmail,
@@ -261,13 +264,24 @@ authRoutes.post("/complete-provider", async (c) => {
     // Re-upgrade (#403): the profile already exists but may have been
     // self-deactivated on a prior downgrade. Reactivate it so it returns to
     // public listings; fail loudly (502) rather than flip the role while the
-    // profile stays hidden.
+    // profile stays hidden. An ADMIN suspension is refused outright (#550) —
+    // no role flip — so leave-provider → complete-provider can't self-lift it.
     try {
       await reactivateProviderProfile(user.id);
     } catch (e) {
+      if (e instanceof ProviderAdminSuspendedError) {
+        return c.json(
+          { error: "This provider profile has been suspended. Contact support." },
+          403
+        );
+      }
       log.error("provider reactivation failed", { context: "complete-provider", err: e });
       return c.json({ error: "Upstream service unavailable" }, 502);
     }
+    // The reused profile kept the contactPhone from its first registration;
+    // mirror the wizard's fresh phone onto it (#553). Best-effort — the
+    // create path above already writes it, so only this reuse path syncs.
+    await syncContactToProvider(user.id, { phone: data.phone });
   }
 
   // Flip the role and bump sessionVersion so the old CUSTOMER token is revoked
@@ -524,6 +538,14 @@ authRoutes.post("/delete-account", async (c) => {
     }),
     db.user.delete({ where: { id: user.id } }),
   ]);
+
+  // The avatar file (PII, #434) lives in media-service and would otherwise
+  // outlive the account (#555). After the local delete so a failed transaction
+  // can't erase a still-referenced file; best-effort — removeStoredFile
+  // swallows errors and the `user`-namespace orphan sweep catches any miss.
+  if (user.avatarUrl) {
+    await removeStoredFile(user.avatarUrl);
+  }
 
   destroySession(c);
   return c.json({ ok: true });

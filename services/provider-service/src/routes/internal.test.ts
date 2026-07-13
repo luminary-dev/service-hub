@@ -13,11 +13,15 @@ const { dbMock, storageMock } = vi.hoisted(() => ({
       findMany: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       delete: vi.fn(),
     },
     workPhoto: { findMany: vi.fn() },
     verificationDocument: { findMany: vi.fn() },
+    category: { findMany: vi.fn() },
     inquiry: { deleteMany: vi.fn() },
+    // Content filter (#375) on the registration create path.
+    report: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
   },
   storageMock: {
     removeStoredFile: vi.fn().mockResolvedValue(undefined),
@@ -73,7 +77,11 @@ describe("POST /internal/providers/by-user/:userId/deactivate", () => {
 
 describe("POST /internal/providers/by-user/:userId/reactivate", () => {
   it("clears suspended on a self-deactivated profile (re-upgrade)", async () => {
-    dbMock.provider.findUnique.mockResolvedValue({ id: "prov1", suspended: true });
+    dbMock.provider.findUnique.mockResolvedValue({
+      id: "prov1",
+      suspended: true,
+      adminSuspended: false,
+    });
     dbMock.provider.update.mockResolvedValue({ id: "prov1", suspended: false });
 
     const res = await post("/internal/providers/by-user/owner-1/reactivate");
@@ -86,9 +94,27 @@ describe("POST /internal/providers/by-user/:userId/reactivate", () => {
   });
 
   it("is a no-op when already active", async () => {
-    dbMock.provider.findUnique.mockResolvedValue({ id: "prov1", suspended: false });
+    dbMock.provider.findUnique.mockResolvedValue({
+      id: "prov1",
+      suspended: false,
+      adminSuspended: false,
+    });
     const res = await post("/internal/providers/by-user/owner-1/reactivate");
     expect(res.status).toBe(200);
+    expect(dbMock.provider.update).not.toHaveBeenCalled();
+  });
+
+  // #550: leave-provider → complete-provider must not lift an ADMIN
+  // suspension — the reactivate path refuses it outright, with no write.
+  it("refuses an ADMIN suspension with 409 and no write", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({
+      id: "prov1",
+      suspended: true,
+      adminSuspended: true,
+    });
+    const res = await post("/internal/providers/by-user/owner-1/reactivate");
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "Suspended by admin" });
     expect(dbMock.provider.update).not.toHaveBeenCalled();
   });
 });
@@ -156,6 +182,96 @@ describe("POST /internal/providers re-upgrade", () => {
     expect(await res.json()).toEqual({ id: "prov1" });
     // No un-suspension on the create path — the profile stays as it was.
     expect(dbMock.provider.update).not.toHaveBeenCalled();
+  });
+
+  // Write-time content filter (#375): registration text is checked like a
+  // profile edit — a hit flags the new provider (SYSTEM report), the create
+  // itself always succeeds.
+  it("auto-files a SYSTEM PROVIDER report when registration text hits the denylist", async () => {
+    dbMock.provider.create.mockResolvedValue({ id: "prov9" });
+    dbMock.report.findFirst.mockResolvedValue(null);
+    const res = await post("/internal/providers", {
+      ...body,
+      bio: "Best in town, the rest are wesi scammers frankly.",
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: "prov9" });
+    expect(dbMock.report.create).toHaveBeenCalledWith({
+      data: {
+        targetType: "PROVIDER",
+        targetId: "prov9",
+        reporterId: null,
+        reason: "auto-flag: content filter",
+        details: expect.stringContaining('matched "wesi" in bio'),
+        source: "SYSTEM",
+      },
+    });
+  });
+
+  it("clean registration text never touches the reports table", async () => {
+    dbMock.provider.create.mockResolvedValue({ id: "prov10" });
+    const res = await post("/internal/providers", body);
+    expect(res.status).toBe(200);
+    expect(dbMock.report.findFirst).not.toHaveBeenCalled();
+    expect(dbMock.report.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /internal/providers/contact (#553 contact sync)", () => {
+  it("mirrors only the provided fields onto the contact columns", async () => {
+    dbMock.provider.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await post("/internal/providers/contact", {
+      userId: "u1",
+      name: "New Name",
+      phone: "+94771234567",
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(dbMock.provider.updateMany).toHaveBeenCalledWith({
+      where: { userId: "u1" },
+      data: { contactName: "New Name", contactPhone: "+94771234567" },
+    });
+  });
+
+  it("updates the contact email alone (change-email confirm)", async () => {
+    dbMock.provider.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await post("/internal/providers/contact", {
+      userId: "u1",
+      email: "new@baas.lk",
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.updateMany).toHaveBeenCalledWith({
+      where: { userId: "u1" },
+      data: { contactEmail: "new@baas.lk" },
+    });
+  });
+
+  it("stores null when phone is cleared", async () => {
+    dbMock.provider.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await post("/internal/providers/contact", {
+      userId: "u1",
+      phone: null,
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.updateMany).toHaveBeenCalledWith({
+      where: { userId: "u1" },
+      data: { contactPhone: null },
+    });
+  });
+
+  it("no-ops (200) when no contact fields are provided", async () => {
+    const res = await post("/internal/providers/contact", { userId: "u1" });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("400s without a userId", async () => {
+    const res = await post("/internal/providers/contact", { name: "X" });
+    expect(res.status).toBe(400);
+    expect(dbMock.provider.updateMany).not.toHaveBeenCalled();
   });
 });
 
@@ -266,6 +382,7 @@ describe("POST /internal/maintenance/sweep-orphans", () => {
     dbMock.verificationDocument.findMany.mockResolvedValue([
       { url: "provider/doc.pdf" },
     ]);
+    dbMock.category.findMany.mockResolvedValue([]);
     // avatar query then cover-photo query, in Promise.all order.
     dbMock.provider.findMany
       .mockResolvedValueOnce([{ avatarUrl: "provider/avatar.jpg" }])
@@ -273,7 +390,6 @@ describe("POST /internal/maintenance/sweep-orphans", () => {
 
     const res = await post("/internal/maintenance/sweep-orphans");
     expect(res.status).toBe(200);
-    expect(storageMock.sweepMedia).toHaveBeenCalledTimes(1);
 
     const [namespace, referenced] = storageMock.sweepMedia.mock.calls[0];
     expect(namespace).toBe("provider");
@@ -283,6 +399,25 @@ describe("POST /internal/maintenance/sweep-orphans", () => {
     expect(referenced).toContain("provider/avatar.jpg");
     expect(referenced).toContain("provider/photo.jpg");
     expect(referenced).toContain("provider/doc.pdf");
+  });
+
+  // #555: category cover images share this DB, so the same maintenance call
+  // sweeps their namespace, keeping the saved imageUrls.
+  it("also sweeps the category namespace with saved covers referenced", async () => {
+    dbMock.workPhoto.findMany.mockResolvedValue([]);
+    dbMock.verificationDocument.findMany.mockResolvedValue([]);
+    dbMock.category.findMany.mockResolvedValue([
+      { imageUrl: "/api/files/category/covers/live.jpg" },
+    ]);
+    dbMock.provider.findMany.mockResolvedValue([]);
+
+    const res = await post("/internal/maintenance/sweep-orphans");
+    expect(res.status).toBe(200);
+    expect(storageMock.sweepMedia).toHaveBeenCalledTimes(2);
+
+    const [namespace, referenced] = storageMock.sweepMedia.mock.calls[1];
+    expect(namespace).toBe("category");
+    expect(referenced).toContain("/api/files/category/covers/live.jpg");
   });
 });
 

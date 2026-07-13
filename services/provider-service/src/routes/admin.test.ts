@@ -33,6 +33,12 @@ const { dbMock } = vi.hoisted(() => ({
       update: vi.fn(),
       updateMany: vi.fn(),
     },
+    inquiryMessage: {
+      findMany: vi.fn(),
+      updateMany: vi.fn(),
+    },
+    // INQUIRY report hydration (#375) in the moderation queue.
+    inquiry: { findMany: vi.fn() },
     category: {
       findMany: vi.fn(),
       findUnique: vi.fn(),
@@ -96,8 +102,11 @@ beforeEach(() => {
   dbMock.report.createMany.mockResolvedValue({ count: 0 });
   dbMock.workPhoto.findUnique.mockResolvedValue(null);
   dbMock.workPhoto.findMany.mockResolvedValue([]);
+  dbMock.inquiry.findMany.mockResolvedValue([]);
   dbMock.workPhoto.update.mockResolvedValue({});
   dbMock.workPhoto.updateMany.mockResolvedValue({ count: 1 });
+  dbMock.inquiryMessage.findMany.mockResolvedValue([]);
+  dbMock.inquiryMessage.updateMany.mockResolvedValue({ count: 1 });
   dbMock.category.findMany.mockResolvedValue([]);
   dbMock.category.findUnique.mockResolvedValue(null);
   dbMock.category.create.mockResolvedValue({ slug: "x" });
@@ -135,6 +144,8 @@ const fullAdminRoutes: { name: string; method: string; path: string; body?: unkn
   { name: "PATCH /api/admin/verifications (bulk)", method: "PATCH", path: "/api/admin/verifications", body: { ids: ["p1"], action: "approve" } },
   { name: "DELETE /api/admin/photos/:id", method: "DELETE", path: "/api/admin/photos/ph1" },
   { name: "PATCH /api/admin/photos/:id/restore", method: "PATCH", path: "/api/admin/photos/ph1/restore" },
+  { name: "DELETE /api/admin/messages/:id", method: "DELETE", path: "/api/admin/messages/m1" },
+  { name: "PATCH /api/admin/messages/:id/restore", method: "PATCH", path: "/api/admin/messages/m1/restore" },
   { name: "POST /api/admin/flagging/run", method: "POST", path: "/api/admin/flagging/run" },
   { name: "POST /api/admin/categories", method: "POST", path: "/api/admin/categories", body: { slug: "new-cat", labelEn: "New", labelSi: "අලුත්" } },
   { name: "PATCH /api/admin/categories/:slug", method: "PATCH", path: "/api/admin/categories/new-cat", body: { active: false } },
@@ -225,7 +236,7 @@ describe("SUPPORT cannot mutate provider/verification state", () => {
 // gated actions so the tests assert real effects, not just the guard.
 // ---------------------------------------------------------------------------
 describe("PATCH /api/admin/providers/:id (ADMIN actions)", () => {
-  it("suspend flips suspended=true and records an audit entry", async () => {
+  it("suspend flips suspended+adminSuspended=true and records an audit entry", async () => {
     dbMock.provider.findUnique.mockResolvedValue({ id: "p1", suspended: false });
     const res = await req("/api/admin/providers/p1", {
       method: "PATCH",
@@ -236,9 +247,24 @@ describe("PATCH /api/admin/providers/:id (ADMIN actions)", () => {
     expect(await res.json()).toEqual({ ok: true });
     expect(dbMock.provider.update).toHaveBeenCalledWith({
       where: { id: "p1" },
-      data: { suspended: true },
+      data: { suspended: true, adminSuspended: true },
     });
     expect(dbMock.adminAuditLog.create).toHaveBeenCalledOnce();
+  });
+
+  // #550: this is the single path that lifts an ADMIN suspension.
+  it("unsuspend clears both suspended and adminSuspended", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({ id: "p1", suspended: true });
+    const res = await req("/api/admin/providers/p1", {
+      method: "PATCH",
+      body: { action: "unsuspend" },
+      role: "ADMIN",
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.update).toHaveBeenCalledWith({
+      where: { id: "p1" },
+      data: { suspended: false, adminSuspended: false },
+    });
   });
 
   it("verify sets VERIFIED + verifiedAt", async () => {
@@ -345,6 +371,90 @@ describe("PATCH /api/admin/photos/:id/restore (ADMIN)", () => {
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "Photo not found" });
     expect(dbMock.adminAuditLog.create).not.toHaveBeenCalled();
+  });
+});
+
+// Message takedown (#376): same soft-delete/restore pair as photos.
+describe("DELETE /api/admin/messages/:id (ADMIN soft-delete)", () => {
+  it("soft-deletes (sets deletedAt) and audits the action", async () => {
+    const res = await req("/api/admin/messages/m1", { method: "DELETE", role: "ADMIN" });
+    expect(res.status).toBe(200);
+    const arg = dbMock.inquiryMessage.updateMany.mock.calls[0][0];
+    expect(arg.where).toEqual({ id: "m1" });
+    expect(arg.data.deletedAt).toBeInstanceOf(Date);
+    expect(dbMock.adminAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: "delete-message", targetId: "m1" }),
+    });
+  });
+
+  it("404 when the message is unknown (updateMany count 0)", async () => {
+    dbMock.inquiryMessage.updateMany.mockResolvedValue({ count: 0 });
+    const res = await req("/api/admin/messages/nope", { method: "DELETE", role: "ADMIN" });
+    expect(res.status).toBe(404);
+    expect(dbMock.adminAuditLog.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("PATCH /api/admin/messages/:id/restore (ADMIN)", () => {
+  it("clears deletedAt and audits the action", async () => {
+    const res = await req("/api/admin/messages/m1/restore", {
+      method: "PATCH",
+      role: "ADMIN",
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    const arg = dbMock.inquiryMessage.updateMany.mock.calls[0][0];
+    expect(arg.where).toEqual({ id: "m1" });
+    expect(arg.data).toEqual({ deletedAt: null });
+    expect(dbMock.adminAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: "restore-message", targetId: "m1" }),
+    });
+  });
+});
+
+// MESSAGE reports (#376) hydrate from the local InquiryMessage table with the
+// thread's provider for context, and flag taken-down messages as removed.
+describe("GET /api/admin/reports — MESSAGE target hydration", () => {
+  it("hydrates message body/sender/provider and the removed flag", async () => {
+    dbMock.report.count.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+    dbMock.report.findMany
+      .mockResolvedValueOnce([
+        { id: "r1", targetType: "MESSAGE", targetId: "m1", status: "OPEN" },
+      ])
+      .mockResolvedValueOnce([]);
+    dbMock.inquiryMessage.findMany.mockResolvedValue([
+      {
+        id: "m1",
+        sender: "PROVIDER",
+        body: "buy my crypto course",
+        deletedAt: new Date(),
+        inquiry: { providerId: "p1", provider: { contactName: "Nimal" } },
+      },
+    ]);
+    const res = await req("/api/admin/reports", { role: "SUPPORT" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.reports[0].target).toEqual({
+      messageId: "m1",
+      providerId: "p1",
+      providerName: "Nimal",
+      sender: "PROVIDER",
+      body: "buy my crypto course",
+      removed: true,
+    });
+  });
+
+  it("hydrates to null when the message was hard-deleted", async () => {
+    dbMock.report.count.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+    dbMock.report.findMany
+      .mockResolvedValueOnce([
+        { id: "r1", targetType: "MESSAGE", targetId: "gone", status: "OPEN" },
+      ])
+      .mockResolvedValueOnce([]);
+    dbMock.inquiryMessage.findMany.mockResolvedValue([]);
+    const res = await req("/api/admin/reports", { role: "SUPPORT" });
+    const body = await res.json();
+    expect(body.reports[0].target).toBeNull();
   });
 });
 
@@ -492,6 +602,59 @@ describe("GET /api/admin/reports (SUPPORT read)", () => {
     expect(await res.json()).toMatchObject({ reports: [], total: 0 });
     expect(dbMock.report.findMany).not.toHaveBeenCalled();
   });
+
+  it("hydrates INQUIRY reports (#375) with thread context from the local tables", async () => {
+    const row = {
+      id: "rep1",
+      targetType: "INQUIRY",
+      targetId: "inq1",
+      reporterId: null,
+      reason: "auto-flag: content filter",
+      details: 'content filter matched "hutta" in message: "…"',
+      status: "OPEN",
+      source: "SYSTEM",
+      createdAt: new Date("2026-07-01"),
+    };
+    dbMock.report.count.mockResolvedValue(1);
+    dbMock.report.findMany.mockResolvedValue([row]);
+    dbMock.inquiry.findMany.mockResolvedValue([
+      {
+        id: "inq1",
+        name: "Kamal",
+        message: "Original inquiry message",
+        providerId: "p1",
+        provider: { contactName: "Nimal" },
+      },
+    ]);
+    const res = await req("/api/admin/reports?status=OPEN", { role: "SUPPORT" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.reports).toHaveLength(1);
+    expect(body.reports[0].target).toEqual({
+      providerId: "p1",
+      providerName: "Nimal",
+      customerName: "Kamal",
+      message: "Original inquiry message",
+    });
+  });
+
+  it("returns target=null for an INQUIRY report whose inquiry was hard-deleted", async () => {
+    dbMock.report.count.mockResolvedValue(1);
+    dbMock.report.findMany.mockResolvedValue([
+      {
+        id: "rep1",
+        targetType: "INQUIRY",
+        targetId: "gone",
+        status: "OPEN",
+        source: "SYSTEM",
+        createdAt: new Date("2026-07-01"),
+      },
+    ]);
+    dbMock.inquiry.findMany.mockResolvedValue([]);
+    const res = await req("/api/admin/reports?status=OPEN", { role: "SUPPORT" });
+    const body = await res.json();
+    expect(body.reports[0].target).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -512,6 +675,12 @@ describe("bulk moderation records one audit entry per affected target", () => {
       role: "ADMIN",
     });
     expect(res.status).toBe(200);
+    // adminSuspended mirrors suspended (#550): a bulk suspend is admin-owned
+    // and must not be self-liftable via the #403 downgrade → re-upgrade cycle.
+    expect(dbMock.provider.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["p1", "p2", "ghost"] } },
+      data: { suspended: true, adminSuspended: true },
+    });
     expect(dbMock.adminAuditLog.create).toHaveBeenCalledTimes(2);
     const entries = dbMock.adminAuditLog.create.mock.calls.map((call) => call[0].data);
     expect(entries).toEqual([
@@ -699,5 +868,36 @@ describe("POST /api/admin/categories — imageUrl path validation (#519)", () =>
     });
     expect(res.status).toBe(200);
     expect(dbMock.category.create).toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/admin/providers?sort=mostReviews — bounded ranking (#372)", () => {
+  it("loads at most the candidate cap (+1 sentinel) instead of the whole table", async () => {
+    const res = await req("/api/admin/providers?sort=mostReviews", { role: "ADMIN" });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 1001, orderBy: { createdAt: "desc" } })
+    );
+  });
+
+  it("still returns the paginated envelope from the ranked slice", async () => {
+    dbMock.provider.findMany.mockResolvedValue(
+      Array.from({ length: 3 }, (_, i) => ({
+        id: `p${i}`,
+        contactName: `P${i}`,
+        contactEmail: `p${i}@x.lk`,
+        createdAt: new Date(2026, 0, i + 1),
+        _count: { photos: 0 },
+      }))
+    );
+    const res = await req("/api/admin/providers?sort=mostReviews&pageSize=2", {
+      role: "ADMIN",
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.total).toBe(3);
+    expect(body.page).toBe(1);
+    expect(body.pageSize).toBe(2);
+    expect(body.providers).toHaveLength(2);
   });
 });

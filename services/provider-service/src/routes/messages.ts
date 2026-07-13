@@ -5,6 +5,7 @@
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { db } from "../db";
+import { moderateContent } from "../lib/auto-report";
 import { getAuth } from "../lib/http";
 import {
   lastReadField,
@@ -46,6 +47,9 @@ messagesRoutes.get("/api/inquiries/:id/messages", async (c) => {
   const messages = await db.inquiryMessage.findMany({
     where: {
       inquiryId: inquiry.id,
+      // Messages removed by admin takedown (#376) are invisible to both
+      // parties.
+      deletedAt: null,
       ...(after && !Number.isNaN(after.getTime())
         ? { createdAt: { gt: after } }
         : {}),
@@ -115,6 +119,11 @@ messagesRoutes.post("/api/inquiries/:id/messages", async (c) => {
     return m;
   });
 
+  // Content filter (#375): AFTER the write on purpose — the message is
+  // delivered as normal and a filter hit only queues a SYSTEM report (on the
+  // thread's inquiry — the report's details carry the offending excerpt).
+  await moderateContent("INQUIRY", inquiry.id, { message: parsed.data.body });
+
   return c.json({
     message: {
       id: message.id,
@@ -141,6 +150,8 @@ export async function unreadCounts(
     by: ["inquiryId"],
     where: {
       sender: otherParty(party),
+      // Removed messages (#376) can't be read, so they never count as unread.
+      deletedAt: null,
       OR: inquiries.map((i) => {
         const lastRead =
           party === "CUSTOMER" ? i.customerLastReadAt : i.providerLastReadAt;

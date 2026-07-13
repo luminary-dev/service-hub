@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useT } from "@/components/I18nProvider";
 import { formatDate } from "@/lib/format";
+import ReportButton from "@/components/ReportButton";
 
 type Message = {
   id: string;
@@ -40,11 +41,20 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
   const lastSeenRef = useRef<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal?: AbortSignal) => {
     const after = lastSeenRef.current;
-    const res = await fetch(
-      `/api/inquiries/${inquiryId}/messages${after ? `?after=${encodeURIComponent(after)}` : ""}`
-    );
+    let res: Response;
+    try {
+      res = await fetch(
+        `/api/inquiries/${inquiryId}/messages${after ? `?after=${encodeURIComponent(after)}` : ""}`,
+        { signal }
+      );
+    } catch {
+      // Abort on unmount is expected; a dropped connection on the first load
+      // shows the load-failed alert, later polls just retry next tick (#377).
+      if (!signal?.aborted && !after) setError(true);
+      return;
+    }
     if (!res.ok) {
       if (!after) setError(true);
       return;
@@ -67,9 +77,15 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
   }, [inquiryId]);
 
   useEffect(() => {
-    load();
-    const timer = setInterval(load, POLL_MS);
-    return () => clearInterval(timer);
+    // Abort the in-flight fetch on unmount so a slow response can't set state
+    // on an unmounted thread (#377).
+    const controller = new AbortController();
+    load(controller.signal);
+    const timer = setInterval(() => load(controller.signal), POLL_MS);
+    return () => {
+      clearInterval(timer);
+      controller.abort();
+    };
   }, [load]);
 
   useEffect(() => {
@@ -82,22 +98,28 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
     if (!body || sending) return;
     setSending(true);
     setSendError(false);
-    const res = await fetch(`/api/inquiries/${inquiryId}/messages`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ body }),
-    });
-    setSending(false);
-    if (!res.ok) {
+    try {
+      const res = await fetch(`/api/inquiries/${inquiryId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body }),
+      });
+      if (!res.ok) {
+        setSendError(true);
+        return;
+      }
+      const data = (await res.json()) as { message: Message };
+      setDraft("");
+      lastSeenRef.current = data.message.createdAt;
+      setThread((prev) =>
+        prev ? { ...prev, messages: [...prev.messages, data.message] } : prev
+      );
+    } catch {
+      // Network failure — recover instead of wedging the send button (#363).
       setSendError(true);
-      return;
+    } finally {
+      setSending(false);
     }
-    const data = (await res.json()) as { message: Message };
-    setDraft("");
-    lastSeenRef.current = data.message.createdAt;
-    setThread((prev) =>
-      prev ? { ...prev, messages: [...prev.messages, data.message] } : prev
-    );
   }
 
   if (error) {
@@ -151,7 +173,7 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
         {thread.messages.map((m) => {
           const mine = m.sender === thread.party;
           return (
-            <div key={m.id} className={mine ? "flex justify-end" : "flex justify-start"}>
+            <div key={m.id} className={mine ? "flex justify-end" : "flex items-end justify-start gap-1.5"}>
               <div
                 className={
                   mine
@@ -172,6 +194,15 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
                   })}
                 </p>
               </div>
+              {/* Abuse reporting (#376): only the counterpart's messages are
+                  reportable — reporting your own makes no sense. */}
+              {!mine && (
+                <ReportButton
+                  endpoint={`/api/messages/${m.id}/report`}
+                  label={t.report.reportMessage}
+                  showLabel={false}
+                />
+              )}
             </div>
           );
         })}

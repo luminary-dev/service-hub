@@ -4,6 +4,7 @@ import { FaBriefcase, FaInbox, FaPhone, FaPlus } from "@/components/icons";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
+import { loginNext } from "@/lib/login";
 import { formatDate, formatNumber } from "@/lib/format";
 import { dict, categoryLabelLoc, districtLabelLoc } from "@/lib/i18n";
 import InView from "@/components/InView";
@@ -12,6 +13,7 @@ import StatReadout from "@/components/ui/StatReadout";
 import EmptyState from "@/components/ui/EmptyState";
 import JobRespondForm from "@/components/jobs/JobRespondForm";
 import JobStatusToggle from "@/components/jobs/JobStatusToggle";
+import ReportButton from "@/components/ReportButton";
 
 // Caching (#57): session-gated and must reflect the user's own writes
 // immediately — stays fully dynamic (no-store).
@@ -60,7 +62,7 @@ export default async function JobsPage({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const session = await getSession();
-  if (!session) redirect("/login");
+  if (!session) redirect(await loginNext("/jobs"));
 
   const params = await searchParams;
   const boardPage = Math.max(1, Number(params.boardPage) || 1);
@@ -79,6 +81,7 @@ export default async function JobsPage({
   ]);
   const t = dict[locale].jobs;
   const nav = dict[locale].nav;
+  const tr = dict[locale].report;
   const provider = dashboard?.provider ?? null;
 
   const [boardData, mineData] = await Promise.all([
@@ -132,16 +135,18 @@ export default async function JobsPage({
   }
 
   // Instrument readout in the header band — board-focused for providers,
-  // posting-focused for customers. Labels are decorative mono captions
-  // (matching the registry header), values are localized counts.
+  // posting-focused for customers. Captions and counts are both localized.
   const stats = provider
     ? [
-        { label: "MATCHING", value: boardTotal },
-        { label: "RESPONDED", value: board.filter((j) => j.responded).length },
+        { label: t.stats.matching, value: boardTotal },
+        {
+          label: t.stats.responded,
+          value: board.filter((j) => j.responded).length,
+        },
       ]
     : [
-        { label: "POSTED", value: mineTotal },
-        { label: "OPEN", value: openCount },
+        { label: t.stats.posted, value: mineTotal },
+        { label: t.stats.open, value: openCount },
       ];
 
   return (
@@ -204,13 +209,23 @@ export default async function JobsPage({
                       {job.description}
                     </p>
                     <div className="mt-3.5 border-t border-dashed border-ink-300 pt-3.5">
-                      {job.responded ? (
-                        <span className="chip bg-emerald-50 text-emerald-700">
-                          {t.respondedTag}
-                        </span>
-                      ) : (
-                        <JobRespondForm jobId={job.id} />
-                      )}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          {job.responded ? (
+                            <span className="chip bg-emerald-50 text-emerald-700">
+                              {t.respondedTag}
+                            </span>
+                          ) : (
+                            <JobRespondForm jobId={job.id} />
+                          )}
+                        </div>
+                        {/* Abuse reporting (#376): scam/abusive postings feed
+                            the admin job-reports queue. */}
+                        <ReportButton
+                          endpoint={`/api/jobs/${job.id}/report`}
+                          label={tr.reportJob}
+                        />
+                      </div>
                     </div>
                   </li>
                 ))}

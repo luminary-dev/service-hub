@@ -12,6 +12,8 @@ import { dict } from "@/lib/i18n";
 import { I18nProvider } from "./I18nProvider";
 import { ToastProvider, useToast } from "./ToastProvider";
 import MobileMenu from "./MobileMenu";
+import UserMenu from "./UserMenu";
+import EmailVerifyBanner from "./EmailVerifyBanner";
 import ProviderCard, { type ProviderCardDTO } from "./ProviderCard";
 import FilterBar from "./FilterBar";
 import SearchBar from "./SearchBar";
@@ -24,6 +26,8 @@ import PhotoGallery from "./PhotoGallery";
 import ReviewSection from "./ReviewSection";
 import LoginPage from "@/app/login/page";
 import CustomerRegisterPage from "@/app/register/customer/page";
+import LegalArticle from "./LegalArticle";
+import { legal } from "@/lib/legal";
 import ProviderRegisterForm from "@/app/register/provider/ProviderRegisterForm";
 
 vi.mock("next/navigation", () => ({
@@ -136,6 +140,24 @@ describe("axe: navigation", () => {
     expect(screen.getByRole("navigation")).toBeDefined();
     await expectNoAxeViolations(container);
   }, AXE_TIMEOUT);
+
+  it("UserMenu trigger keeps an accessible name with an avatar set (#565)", async () => {
+    // With an avatar the image alt is empty and the name span is hidden below
+    // sm, so the trigger must carry an explicit aria-label.
+    const { container } = render(
+      <I18nProvider locale="en">
+        <UserMenu name="Sunil Perera" role="PROVIDER" avatarUrl="/uploads/a.jpg" />
+      </I18nProvider>
+    );
+    const trigger = screen.getByRole("button", { name: "Sunil Perera" });
+    await expectNoAxeViolations(container);
+
+    // The signed-in header shows the localized role, not the raw enum.
+    fireEvent.click(trigger);
+    expect(screen.getByText(t.roles.PROVIDER)).toBeDefined();
+    expect(screen.queryByText("PROVIDER")).toBeNull();
+    await expectNoAxeViolations(container);
+  }, AXE_TIMEOUT);
 });
 
 describe("axe: browse & search", () => {
@@ -181,6 +203,27 @@ describe("axe: feedback", () => {
     expect((await screen.findByRole("status")).textContent).toContain("Saved!");
     await expectNoAxeViolations(container);
   }, AXE_TIMEOUT);
+
+  it("email-verify banner announces a resend failure (#565)", async () => {
+    fetchMock.mockRejectedValue(new Error("offline"));
+    const { container } = render(
+      <I18nProvider locale="en">
+        <EmailVerifyBanner />
+      </I18nProvider>
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: t.verify.bannerResend })
+    );
+    // The failure surfaces as an alert while the resend button keeps its label
+    // for a retry.
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      t.verify.bannerError
+    );
+    expect(
+      screen.getByRole("button", { name: t.verify.bannerResend })
+    ).toBeDefined();
+    await expectNoAxeViolations(container);
+  }, AXE_TIMEOUT);
 });
 
 describe("axe: forms", () => {
@@ -212,6 +255,60 @@ describe("axe: forms", () => {
     await expectNoAxeViolations(container);
   }, AXE_TIMEOUT);
 
+  it("provider registration wizard submits as a form and manages focus on step change (#564)", async () => {
+    const { container } = render(
+      <ProviderRegisterForm
+        categories={[
+          { slug: "electrician", labelEn: "Electrician", labelSi: "විදුලි කාර්මික", icon: null },
+        ]}
+      />
+    );
+    const r = t.providerReg;
+    // Each step renders inside a <form> whose Continue/Create button is the
+    // submit, so Enter in a field advances instead of doing nothing.
+    const form = container.querySelector("form");
+    expect(form).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: r.continue }).getAttribute("type")
+    ).toBe("submit");
+
+    // Submitting (as Enter would) runs the same step validation…
+    fireEvent.submit(form!);
+    expect(screen.getByRole("alert").textContent).toBe(r.errName);
+
+    // …and with valid fields advances to the next step.
+    fireEvent.change(screen.getByLabelText(r.fullName), {
+      target: { value: "Nuwan Perera" },
+    });
+    fireEvent.change(screen.getByLabelText(r.email), {
+      target: { value: "nuwan@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText(r.phone), {
+      target: { value: "0771234567" },
+    });
+    fireEvent.change(screen.getByLabelText(r.password), {
+      target: { value: "correct-horse-battery" },
+    });
+    fireEvent.submit(form!);
+
+    // Focus moves to the new step's heading, which announces the full
+    // "Step n of N" context to screen readers.
+    const heading = screen.getByRole("heading", {
+      name: r.stepOf(2, r.steps.length, r.steps[1]),
+    });
+    expect(document.activeElement).toBe(heading);
+
+    // The stepper marks the active step, and Back also refocuses the heading.
+    expect(
+      container.querySelector('[aria-current="step"]')?.textContent
+    ).toContain(r.steps[1]);
+    fireEvent.click(screen.getByRole("button", { name: r.back }));
+    expect(document.activeElement?.textContent).toContain(
+      r.stepOf(1, r.steps.length, r.steps[0])
+    );
+    await expectNoAxeViolations(container);
+  }, AXE_TIMEOUT);
+
   it("inquiry form has no violations", async () => {
     const { container } = render(
       <InquiryForm providerId="prov_1" providerName="Sunil Perera" defaultName="" />
@@ -233,6 +330,7 @@ describe("axe: forms", () => {
       <ToastProvider>
         <ReviewSection
           providerId="prov_1"
+          providerName="Nimal"
           reviews={[
             {
               id: "rev_1",
@@ -241,9 +339,14 @@ describe("axe: forms", () => {
               createdAt: "2025-05-01T00:00:00.000Z",
               userName: "Kasun",
               photos: [{ id: "rph_1", url: "/uploads/review.jpg" }],
+              response: {
+                text: "Thank you for the kind words!",
+                createdAt: "2025-05-02T00:00:00.000Z",
+              },
             },
           ]}
           canReview
+          canRespond={false}
           signedIn
           myReview={null}
           summary={{
@@ -268,13 +371,32 @@ describe("axe: forms", () => {
   }, AXE_TIMEOUT);
 });
 
+describe("axe: legal pages", () => {
+  it("terms document has no violations", async () => {
+    const { container } = render(<LegalArticle doc={legal.en.terms} tag="TERMS" />);
+    await expectNoAxeViolations(container);
+  }, AXE_TIMEOUT);
+
+  it("privacy document (Sinhala) has no violations", async () => {
+    const { container } = render(
+      <LegalArticle doc={legal.si.privacy} tag="PRIVACY" />
+    );
+    await expectNoAxeViolations(container);
+  }, AXE_TIMEOUT);
+});
+
 describe("axe: messaging", () => {
   it("message thread has no violations", async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       json: async () => threadFixture,
     });
-    const { container } = render(<MessageThread inquiryId="inq_1" />);
+    // The per-message ReportButton (#376) needs the toast context.
+    const { container } = render(
+      <ToastProvider>
+        <MessageThread inquiryId="inq_1" />
+      </ToastProvider>
+    );
     await screen.findByRole("heading", {
       name: t.messages.threadWith("Sunil Perera"),
     });
@@ -309,11 +431,14 @@ describe("axe: modals", () => {
     expect(dialog.getAttribute("aria-modal")).toBe("true");
     // Focus moves into the modal on open…
     expect(document.activeElement?.id).toBe("report-reason");
+    // …the page behind is scroll-locked (#565)…
+    expect(document.body.style.overflow).toBe("hidden");
     await expectNoAxeViolations(container);
 
-    // …Escape closes it and hands focus back to the trigger.
+    // …Escape closes it, unlocks scrolling and hands focus back to the trigger.
     fireEvent.keyDown(dialog, { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.body.style.overflow).toBe("");
     expect(document.activeElement).toBe(trigger);
   }, AXE_TIMEOUT);
 
@@ -335,11 +460,15 @@ describe("axe: modals", () => {
     // Close button is focused on open…
     const close = screen.getByRole("button", { name: t.profile.closePhoto });
     expect(document.activeElement).toBe(close);
+    // …and the page behind is scroll-locked (#565).
+    expect(document.body.style.overflow).toBe("hidden");
     await expectNoAxeViolations(container);
 
-    // …Escape closes and returns focus to the thumbnail that opened it.
+    // …Escape closes, unlocks scrolling and returns focus to the thumbnail
+    // that opened it.
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.body.style.overflow).toBe("");
     expect(document.activeElement).toBe(thumb);
   }, AXE_TIMEOUT);
 });

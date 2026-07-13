@@ -100,11 +100,14 @@ and the "customer" actions are gated on *being signed in*, not on the role:
   `POST /api/auth/complete-provider` (the `/welcome/provider` wizard). This is
   not social-signup-specific — it is the single upgrade path for password and
   OAuth users alike. It creates/reactivates the provider profile, flips
-  `role → PROVIDER`, bumps `sessionVersion`, and re-issues the cookie.
+  `role → PROVIDER`, bumps `sessionVersion`, and re-issues the cookie. A
+  profile under an **ADMIN suspension** (`adminSuspended`) is refused with 403
+  and no role flip (#550): the downgrade→re-upgrade cycle must not lift a
+  moderation suspension — only the admin unsuspend action does.
 - **Revert to a customer (#403):** any `PROVIDER` downgrades via
   `POST /api/auth/leave-provider` — hides the provider profile (`suspended`,
-  reversible; reviews/inquiries kept), flips `role → CUSTOMER`, bumps
-  `sessionVersion`, re-issues the cookie.
+  reversible; reviews/inquiries kept; an active ADMIN suspension survives),
+  flips `role → CUSTOMER`, bumps `sessionVersion`, re-issues the cookie.
 - **Session-gated actions (#402):** posting a job, sending an inquiry, and
   leaving a review are gated on `getAuth(c)` (signed-in), **not** on
   `role === "CUSTOMER"`. So a `PROVIDER` can also post jobs, inquire, and
@@ -226,6 +229,8 @@ owning service applies. The two agree.
 | Verification queue: approve / reject | ADMIN | `hasFullAdminAccess` | `isFullAdmin` (provider-service) |
 | Delete / restore work photos (soft) | ADMIN | `hasFullAdminAccess` | `isFullAdmin` (provider-service) |
 | Delete / restore reviews (soft) | ADMIN | `hasFullAdminAccess` | `isFullAdmin` (review-service) |
+| Delete / restore inquiry thread messages (soft, #376) | ADMIN | `hasFullAdminAccess` | `isFullAdmin` (provider-service) |
+| Job takedown: hide / unhide (#376) | ADMIN | `hasFullAdminAccess` | `isFullAdmin` (job-service) |
 | Auto-flagging ("Run flagging") | ADMIN | `hasFullAdminAccess` | `isFullAdmin` (provider-service) |
 | Category create / edit / deactivate | ADMIN | `hasFullAdminAccess` | `isFullAdmin` (provider-service) |
 | User management: lock / unlock, role change, force-logout | ADMIN | `role === "ADMIN"` (page) | `isFullAdmin` (identity-service) |
@@ -236,7 +241,10 @@ Role changes (including assigning **`SUPPORT`**) go through
 `PATCH /api/admin/users/:id`; the target role enum is
 `CUSTOMER | PROVIDER | ADMIN | SUPPORT`, and any actual role change bumps
 `sessionVersion` so the affected user's existing tokens are revoked and the new
-role takes effect on their next request. **Locking an account
+role takes effect on their next request. Promoting a user to **PROVIDER**
+requires an existing (possibly hidden) provider profile — without one the PATCH
+is rejected with `400` (#554), because a profile-less PROVIDER account can
+neither use the provider dashboard nor complete the signup wizard. **Locking an account
 (`{ action: "lock" }`) bumps `sessionVersion` the same way**, so a locked user's
 active sessions are cut off at the gateway immediately instead of surviving
 until the JWT expires. A SUPPORT account can also be
@@ -253,7 +261,7 @@ plus report resolve/dismiss).
 Backend admin routes live in:
 `services/provider-service/src/routes/admin.ts`,
 `services/identity-service/src/routes/{admin.ts,admin-users.ts,admin-impersonation.ts}`,
-`services/job-service/src/routes/admin.ts`,
+`services/job-service/src/routes/{admin.ts,reports.ts}`,
 `services/review-service/src/routes/reports.ts`.
 
 ## Audit log
@@ -274,9 +282,11 @@ action names as their single-item counterparts.
   `adminId`, `action`, and a `from`/`to` date range).
 - **Report closures** additionally stamp `resolvedBy` / `resolvedAt` on the
   report row itself.
-- review-service keeps its **own** audit log for the review actions it owns
-  (exposed at `GET /api/admin/review-audit-log`); the admin frontend merges the
-  two.
+- review-service and job-service keep their **own** audit logs for the
+  actions they own (exposed at `GET /api/admin/review-audit-log` and
+  `GET /api/admin/job-audit-log` — the latter records `hide-job`/`unhide-job`
+  takedowns (#376) alongside job-report closures); the admin frontend merges
+  the three.
 
 ## Impersonation ("view as")
 

@@ -5,6 +5,7 @@ import { fetchCategoryOptions } from "@/lib/categories-server";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
 import { languageAlternates, localizedHref } from "@/lib/links";
 import { getLocale, getUrlLocale } from "@/lib/locale";
+import { siteOpenGraph } from "@/lib/seo";
 import { normalizeSort } from "@/lib/sort-keys";
 import { getSession } from "@/lib/auth";
 import ProviderCard, { ProviderCardDTO } from "@/components/ProviderCard";
@@ -16,10 +17,9 @@ import Link from "next/link";
 
 // Caching (#57): public-but-fresh. No force-dynamic - the page renders per
 // request (searchParams + locale/session cookies), but the search results
-// come from the Data Cache with a 60-second revalidate. The full query
-// string is part of the fetch URL, so every filter/sort/page combination is
-// its own cache entry; new/edited profiles show up in browse within a
-// minute, which is plenty for a directory listing.
+// come from the Data Cache with a 60-second revalidate. Only bounded filter
+// combinations are cached (see `cacheable` below, #377); new/edited profiles
+// show up in browse within a minute, which is plenty for a directory listing.
 const PAGE_SIZE = 12;
 
 // Shown as suggestions when a search or filter combination yields no results.
@@ -64,20 +64,26 @@ export async function generateMetadata({
     ? `?category=${encodeURIComponent(category)}`
     : "";
   const alternates = languageAlternates(`/providers${canonical}`, urlLocale);
+  // og:url mirrors the canonical (#379) — search permutations share the
+  // category listing's URL, exactly like the alternates above.
+  const openGraph = siteOpenGraph(locale, urlLocale, `/providers${canonical}`);
 
   // Default listing (no filters) keeps the generic root title/description via
   // the layout — only category/district permutations get a bespoke, keyword-
   // rich title so /providers?category=… pages stop sharing one <title> (#513).
   if (!category && !district) {
-    return { alternates };
+    return { alternates, openGraph };
   }
 
   const t = dict[locale];
   const categoryLabel = category ? categoryLabelLoc(category, locale) : null;
+  const title = t.browse.metaTitle(categoryLabel, district || null);
+  const description = t.browse.metaDesc(categoryLabel, district || null);
   return {
-    title: t.browse.metaTitle(categoryLabel, district || null),
-    description: t.browse.metaDesc(categoryLabel, district || null),
+    title,
+    description,
     alternates,
+    openGraph: { ...openGraph, title, description },
   };
 }
 
@@ -118,15 +124,27 @@ export default async function ProvidersPage({
   query.set("sort", sort);
   query.set("page", String(page));
 
-  const [listing, categories] = await Promise.all([
-    apiJson<{
-      providers: ProviderCardDTO[];
-      total: number;
-      page: number;
-      pageSize: number;
-    }>(`/api/providers?${query.toString()}`, { revalidate: 60 }),
-    fetchCategoryOptions({ revalidate: 300 }),
-  ]);
+  // Data Cache entries are keyed by the full fetch URL, so only queries drawn
+  // from a bounded key space (known category/district, normalized sort, capped
+  // page) are cached — free-text q, arbitrary numeric filters or made-up slugs
+  // would let anyone mint unlimited cache entries on disk (#377). Unbounded
+  // permutations still render fine, just without the shared cache.
+  const categories = await fetchCategoryOptions({ revalidate: 300 });
+  const cacheable =
+    !q &&
+    !priceMin &&
+    !priceMax &&
+    !ratingMin &&
+    page <= 50 &&
+    (!category || categories.some((c) => c.slug === category)) &&
+    (!district || (DISTRICTS as readonly string[]).includes(district));
+
+  const listing = await apiJson<{
+    providers: ProviderCardDTO[];
+    total: number;
+    page: number;
+    pageSize: number;
+  }>(`/api/providers?${query.toString()}`, cacheable ? { revalidate: 60 } : undefined);
 
   const results = listing?.providers ?? [];
   const total = listing?.total ?? 0;
@@ -148,9 +166,9 @@ export default async function ProvidersPage({
   }
 
   const stats: [string, number][] = [
-    ["TOTAL", total],
-    ["TRADES", categories.length],
-    ["DISTRICTS", DISTRICTS.length],
+    [t.browse.stats.total, total],
+    [t.browse.stats.trades, categories.length],
+    [t.browse.stats.districts, DISTRICTS.length],
   ];
 
   return (

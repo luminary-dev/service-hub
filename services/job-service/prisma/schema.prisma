@@ -19,6 +19,11 @@ model JobRequest {
   description String
   budget      Int? // optional, LKR
   status      String        @default("OPEN") // OPEN | CLOSED
+  // Admin takedown (#376): set when a full admin hides a reported job, cleared
+  // on unhide. Hidden jobs disappear from the provider board and stop
+  // accepting responses; the row survives so the action is reversible and the
+  // admin view can still show what was taken down.
+  hiddenAt    DateTime?
   createdAt   DateTime      @default(now())
   // Last-transition timestamp (#370): auto-stamped on every write (edit, the
   // OPEN→CLOSED transition) so listings can reason about recency of the last
@@ -48,4 +53,63 @@ model JobResponse {
 
   @@unique([jobRequestId, providerId])
   @@index([providerId])
+}
+
+// Moderation reports on content this service owns (job posts and job
+// responses). Same-shaped model as provider-service and review-service (#370
+// field set: `source`, resolution audit, `updatedAt`) so the admin frontend
+// merges the three queues uniformly. Unlike those two there is no public
+// report flow here (yet) — every row is SYSTEM-created by the write-time
+// content filter (#375), which is why reporterId is always null today. No FK
+// to the target: a report must survive its target being deleted so admins can
+// still see what happened.
+model Report {
+  id         String  @id @default(cuid())
+  // "JOB" | "JOB_RESPONSE"
+  targetType String
+  targetId   String
+  reporterId String?
+  reason     String
+  details    String?
+  // "OPEN" | "RESOLVED" | "DISMISSED"
+  status     String   @default("OPEN")
+  // "USER" | "SYSTEM" (#375/#376): USER reports come from the public
+  // report-a-job flow (POST /api/jobs/:id/report); SYSTEM reports are
+  // auto-created by the write-time content filter.
+  source     String   @default("USER")
+  createdAt  DateTime @default(now())
+  // Last-transition timestamp (#370): auto-stamped on every write (status
+  // resolve/dismiss).
+  updatedAt  DateTime @updatedAt
+  // Audit trail (#223): admin userId + timestamp stamped when a report
+  // transitions to RESOLVED or DISMISSED. Both null while OPEN.
+  resolvedBy String?
+  resolvedAt DateTime?
+
+  // Admin queue reads by status; duplicate-protection looks up by target.
+  @@index([status])
+  @@index([targetType, targetId])
+  // Report queue orders newest-first.
+  @@index([createdAt])
+}
+
+// Moderation audit trail (#227 convention): one row per admin action taken
+// through this service's /api/admin/* routes (job-report resolve/dismiss).
+// provider-service and review-service keep identical models for the actions
+// they own; the logs are merged only in the admin frontend's combined view,
+// never server-side.
+model AdminAuditLog {
+  id         String   @id @default(cuid())
+  adminId    String
+  action     String
+  targetType String
+  targetId   String
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  // The read endpoint filters by any combination of admin/action/date range,
+  // and always orders newest-first.
+  @@index([adminId])
+  @@index([action])
+  @@index([createdAt])
 }

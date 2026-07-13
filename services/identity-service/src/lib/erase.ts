@@ -16,11 +16,12 @@ export async function eraseUserData(
   providerId: string | null
 ): Promise<void> {
   const id = encodeURIComponent(userId);
+  // Review + job erase first, provider erase LAST (#551): the providerId the
+  // job erase needs (JobResponses are keyed by it) is resolved from the very
+  // Provider row the provider erase deletes. If the provider erase committed
+  // first and the job erase then failed, the retry would resolve providerId as
+  // null and skip the JobResponses forever.
   const results = await Promise.all([
-    s2s(PROVIDER_SERVICE_URL, `/internal/users/${id}/erase`, {
-      method: "POST",
-      body: "{}",
-    }),
     s2s(REVIEW_SERVICE_URL, `/internal/users/${id}/erase`, {
       method: "POST",
       body: "{}",
@@ -37,5 +38,14 @@ export async function eraseUserData(
     if (!res.ok) {
       throw new Error(`peer erase responded ${res.status}`);
     }
+  }
+
+  const providerRes = await s2s(
+    PROVIDER_SERVICE_URL,
+    `/internal/users/${id}/erase`,
+    { method: "POST", body: "{}" }
+  );
+  if (!providerRes.ok) {
+    throw new Error(`peer erase responded ${providerRes.status}`);
   }
 }

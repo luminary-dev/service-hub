@@ -1,10 +1,14 @@
 // Admin job-management endpoints (#222). Reads (jobs list + detail) are open
-// to the SUPPORT tier (isSupportOrAdmin). Roles are forwarded by the gateway
-// after JWT verification, otherwise 403 { error: "Forbidden" }.
+// to the SUPPORT tier (isSupportOrAdmin); the takedown write (#376) requires
+// full ADMIN (isFullAdmin). Roles are forwarded by the gateway after JWT
+// verification, otherwise 403 { error: "Forbidden" }.
 import { Hono } from "hono";
+import { z } from "zod";
 import { db } from "../db";
-import { isSupportOrAdmin } from "../lib/http";
+import { logAudit } from "../lib/audit";
+import { isFullAdmin, isSupportOrAdmin } from "../lib/http";
 import { fetchUsers, fetchProviders } from "../lib/hydrate";
+import { normalizeListQuery } from "../lib/query";
 
 export const admin = new Hono();
 
@@ -17,7 +21,10 @@ export const admin = new Hono();
 const JOB_STATUSES = ["OPEN", "CLOSED"] as const;
 
 // Job list (#222): newest first, optionally filtered by status/category, with
-// the customer name and a response count hydrated for the row.
+// the customer name and a response count hydrated for the row. Paginated
+// (#372) like every other admin list: page/pageSize use the shared board
+// normalization (default 20, cap 50) and `total` rides along; the envelope
+// keeps the existing `jobs` key so older callers keep working.
 admin.get("/api/admin/jobs", async (c) => {
   if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
@@ -29,14 +36,25 @@ admin.get("/api/admin/jobs", async (c) => {
     : undefined;
   const category = c.req.query("category");
 
-  const rows = await db.jobRequest.findMany({
-    where: {
-      ...(status ? { status } : {}),
-      ...(category ? { category } : {}),
-    },
-    orderBy: { createdAt: "desc" },
-    include: { _count: { select: { responses: true } } },
+  const { page, pageSize } = normalizeListQuery({
+    page: c.req.query("page") ?? null,
+    pageSize: c.req.query("pageSize") ?? null,
   });
+
+  const where = {
+    ...(status ? { status } : {}),
+    ...(category ? { category } : {}),
+  };
+  const [total, rows] = await Promise.all([
+    db.jobRequest.count({ where }),
+    db.jobRequest.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      include: { _count: { select: { responses: true } } },
+    }),
+  ]);
 
   const customerIds = [...new Set(rows.map((j) => j.customerId))];
   const users = await fetchUsers(customerIds);
@@ -47,7 +65,7 @@ admin.get("/api/admin/jobs", async (c) => {
     responseCount: _count.responses,
   }));
 
-  return c.json({ jobs });
+  return c.json({ jobs, total, page, pageSize });
 });
 
 // Job detail (#222): job + its responses, with customer and provider contact
@@ -82,6 +100,7 @@ admin.get("/api/admin/jobs/:id", async (c) => {
       district: job.district,
       budget: job.budget,
       status: job.status,
+      hiddenAt: job.hiddenAt,
       createdAt: job.createdAt,
       customer: {
         id: job.customerId,
@@ -100,4 +119,36 @@ admin.get("/api/admin/jobs/:id", async (c) => {
       })),
     },
   });
+});
+
+const takedownSchema = z.object({ action: z.enum(["hide", "unhide"]) });
+
+// Admin takedown (#376): hide a reported job (soft, reversible — mirrors the
+// work-photo soft delete at provider-service). Hidden jobs vanish from the
+// provider board and stop accepting responses; the row survives so unhide
+// can restore it. Destructive → full ADMIN only, audit-logged.
+admin.patch("/api/admin/jobs/:id", async (c) => {
+  if (!isFullAdmin(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const id = c.req.param("id");
+  const job = await db.jobRequest.findUnique({ where: { id } });
+  if (!job) {
+    return c.json({ error: "Job not found" }, 404);
+  }
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = takedownSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid action" }, 400);
+  }
+
+  const hide = parsed.data.action === "hide";
+  await db.jobRequest.update({
+    where: { id },
+    data: { hiddenAt: hide ? new Date() : null },
+  });
+  await logAudit(c, hide ? "hide-job" : "unhide-job", "JOB", id);
+  return c.json({ ok: true });
 });

@@ -24,6 +24,19 @@
   the profile goes live immediately. Signup is rate-limited (see
   [RATE_LIMITING.md](../RATE_LIMITING.md)).
 
+### Legal pages & registration consent (#62)
+
+- **`/terms`** and **`/privacy`** (localized under `/si/*` too) render the
+  Terms of Service and the PDPA-aware Privacy Policy from `src/lib/legal.ts`
+  via the shared `LegalArticle` component. English is the authoritative text;
+  the Sinhala version must mirror its structure (`src/lib/legal.test.ts`).
+  Both pages are linked from the footer and listed in the sitemap.
+- **Consent.** Both email registration forms require an "I agree to the Terms
+  of Service and Privacy Policy" checkbox (`ConsentCheckbox` — native
+  `required` on the customer form, wizard validation on the provider form's
+  final step), and the social sign-in buttons on `/login` and `/register`
+  carry a "by continuing, you agree" notice (`ConsentNotice`).
+
 ### Social login (#398)
 
 Both `/login` and `/register` show a **Continue with Google** button
@@ -45,6 +58,29 @@ when the Google email is verified and matches. Failures come back to the form as
 revocation, S2S trust — are identical to password sessions. See
 [AUTHZ.md](../AUTHZ.md#sign-in-methods-398). Facebook is a planned fast-follow
 (#405) and is **not** shipped yet.
+
+### Post-login return-to (#560)
+
+Sign-in carries the page the user was headed to as a `?next=` param on
+`/login`, so a successful sign-in returns them there instead of the generic
+role default (`/dashboard` for providers, `/providers` otherwise, which still
+applies when there is no `next`):
+
+- **Session-gated pages** (`/jobs`, `/jobs/new`, `/account`,
+  `/account/security`, `/dashboard`, and the inquiry threads under both)
+  redirect signed-out visitors to `/login?next=<path>` via `loginNext()`
+  (`src/lib/login.ts`), preserving the `/si` locale prefix of the URL they
+  requested.
+- **"Sign in to continue" links** (e.g. the review CTA on a provider profile)
+  link to the same URL shape via `loginNextHref()` (`src/lib/links.ts`).
+- The login page honors `next` for the password form and threads it to the
+  Google/Facebook buttons, whose OAuth flow already round-trips it through the
+  identity-service state cookie.
+
+`next` is validated on every consumer (`sanitizeNext` in `src/lib/links.ts` on
+the web, its namesake in identity-service `routes/oauth.ts`): only same-origin
+relative paths pass — absolute URLs, protocol-relative `//host`, and backslash
+variants are dropped, so the param cannot become an open redirect.
 
 ### Account self-service (`/account`)
 
@@ -81,7 +117,9 @@ Role transitions are also surfaced here (and in the user menu):
   not delete**: the `Provider` row is marked `suspended` (dropped from every
   public listing), role reverts to `CUSTOMER`, and the session is re-issued (no
   re-login). Reviews, inquiries and job responses are retained; becoming a
-  provider again reactivates the same profile. Audit-logged in identity-service.
+  provider again reactivates the same profile — unless it is under an ADMIN
+  suspension, which survives the downgrade and blocks the re-upgrade with 403
+  until an admin unsuspends (#550). Audit-logged in identity-service.
 
 ### Provider dashboard & profile editing
 

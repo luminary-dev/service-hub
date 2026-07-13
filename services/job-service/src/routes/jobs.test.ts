@@ -1,7 +1,8 @@
 // Route-handler tests for job-service's public /api/jobs endpoints. app.test.ts
 // covers the /internal S2S contracts and query.test.ts covers pagination
 // normalization; this file exercises the route handlers themselves: job
-// creation (+ category validation), the board's category/district scoping and
+// creation (+ category validation, the #556 verified-email gate and daily
+// posting cap), the board's category/district scoping and
 // exclude-own filter, /mine, the owner-only status patch, and the response flow
 // (provider gate, out-of-scope / own-job / closed-job rejection, one-per-job
 // dedup + the P2002 race guard). Prisma is mocked and s2s is stubbed per path —
@@ -29,6 +30,9 @@ const { dbMock } = vi.hoisted(() => ({
       findUnique: vi.fn(),
       create: vi.fn(),
     },
+    // Content filter (#375): the auto-report path files a SYSTEM report on
+    // the job / response when its text matches the denylist.
+    report: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
     $queryRaw: vi.fn(),
   },
 }));
@@ -62,6 +66,9 @@ function wireS2s(opts: {
   // whether the matching lookup / new-job notification blows up.
   matching?: { id: string; contactName: string | null; contactEmail: string }[] | "fail";
   newJob?: "fail";
+  // #556 gate: the emailVerified value identity returns for any looked-up user
+  // (verified by default); "fail" makes the identity lookup blow up.
+  emailVerified?: string | null | "fail";
 } = {}) {
   const {
     providerByUser = PROVIDER,
@@ -69,6 +76,7 @@ function wireS2s(opts: {
     providers = [],
     matching = [],
     newJob,
+    emailVerified = "2026-01-01T00:00:00.000Z",
   } = opts;
   s2sMock.mockImplementation(async (_base: string, path: string) => {
     if (path.includes("/internal/categories")) {
@@ -82,11 +90,25 @@ function wireS2s(opts: {
       if (matching === "fail") throw new Error("provider-service down");
       return json({ providers: matching });
     }
-    if (path.includes("/internal/users?ids=")) return json({ users });
+    if (path.includes("/internal/users?ids=")) {
+      if (emailVerified === "fail") return new Response("boom", { status: 503 });
+      if (users.length > 0) return json({ users });
+      // Echo the queried ids back with the configured emailVerified so the
+      // create path's gate resolves without per-test wiring.
+      const ids = decodeURIComponent(path.split("ids=")[1] ?? "").split(",");
+      return json({
+        users: ids.filter(Boolean).map((id) => ({
+          id,
+          name: "User",
+          email: "user@example.com",
+          emailVerified,
+        })),
+      });
+    }
     if (path.includes("/internal/providers?ids=")) return json({ providers });
     if (path.includes("/internal/email/new-job")) {
       if (newJob === "fail") throw new Error("notification down");
-      return json({ ok: true, sent: 0, delivered: 0 });
+      return json({ ok: true, accepted: 0 }, 202);
     }
     if (path.includes("/internal/email/job-response")) return json({ ok: true });
     throw new Error(`unexpected s2s path: ${path}`);
@@ -115,6 +137,8 @@ const validJob = {
 beforeEach(() => {
   vi.clearAllMocks();
   wireS2s();
+  // Create-path daily cap (#556): default to no posts in the window.
+  dbMock.jobRequest.count.mockResolvedValue(0);
 });
 
 describe("POST /api/jobs (create)", () => {
@@ -142,6 +166,48 @@ describe("POST /api/jobs (create)", () => {
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe("Invalid category");
     expect(dbMock.jobRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("403s when the poster's email is unverified (#556)", async () => {
+    wireS2s({ emailVerified: null });
+    const res = await req(
+      "/api/jobs",
+      { method: "POST", body: JSON.stringify(validJob) },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toMatch(/verify your email/i);
+    expect(dbMock.jobRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("502s when the email-verification lookup fails (write-path gate)", async () => {
+    wireS2s({ emailVerified: "fail" });
+    const res = await req(
+      "/api/jobs",
+      { method: "POST", body: JSON.stringify(validJob) },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(502);
+    expect(dbMock.jobRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("429s when the daily posting cap is reached (#556)", async () => {
+    dbMock.jobRequest.count.mockResolvedValue(10);
+    const res = await req(
+      "/api/jobs",
+      { method: "POST", body: JSON.stringify(validJob) },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(429);
+    expect((await res.json()).error).toMatch(/daily job posting limit/i);
+    expect(dbMock.jobRequest.create).not.toHaveBeenCalled();
+    // The cap counts only the caller's posts inside the 24h window.
+    expect(dbMock.jobRequest.count).toHaveBeenCalledWith({
+      where: {
+        customerId: CUSTOMER_ID,
+        createdAt: { gte: expect.any(Date) },
+      },
+    });
   });
 
   it("creates the job and returns its id", async () => {
@@ -305,6 +371,7 @@ describe("GET /api/jobs/board", () => {
       expect.objectContaining({
         where: {
           status: "OPEN",
+          hiddenAt: null,
           category: "plumbing",
           district: "Colombo",
           NOT: { customerId: PROVIDER_USER_ID },
@@ -450,6 +517,17 @@ describe("POST /api/jobs/:id/responses (provider responds)", () => {
     expect(res.status).toBe(404);
   });
 
+  it("404s when the job was taken down by an admin (#376)", async () => {
+    dbMock.jobRequest.findUnique.mockResolvedValue({ ...openJob, hiddenAt: new Date() });
+    const res = await req(
+      "/api/jobs/job_1/responses",
+      { method: "POST", body: JSON.stringify(message) },
+      { "x-user-id": PROVIDER_USER_ID }
+    );
+    expect(res.status).toBe(404);
+    expect(dbMock.jobResponse.create).not.toHaveBeenCalled();
+  });
+
   it("400s when responding to your own job", async () => {
     dbMock.jobRequest.findUnique.mockResolvedValue({ ...openJob, customerId: PROVIDER_USER_ID });
     const res = await req(
@@ -541,5 +619,123 @@ describe("POST /api/jobs/:id/responses (provider responds)", () => {
     );
     expect(res.status).toBe(400);
     expect((await res.json()).error).toMatch(/already responded/i);
+  });
+});
+
+// Write-time content filter (#375): a denylist hit on job / response text
+// auto-files a SYSTEM report; the write itself always succeeds (decision:
+// auto-report and keep visible, never hard-block).
+describe("content filter on job posts and responses (#375)", () => {
+  const openJob = {
+    id: "job_1",
+    customerId: CUSTOMER_ID,
+    category: "plumbing",
+    district: "Colombo",
+    status: "OPEN",
+    title: "Fix a leaking tap",
+  };
+
+  it("POST /api/jobs: flags a denylist hit in the description (JOB target)", async () => {
+    dbMock.jobRequest.create.mockResolvedValue({ id: "job_1", ...validJob });
+    dbMock.report.findFirst.mockResolvedValue(null);
+    const res = await req(
+      "/api/jobs",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...validJob,
+          description: "Last plumber was a fucking crook, need a real one.",
+        }),
+      },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: "job_1" });
+    expect(dbMock.report.create).toHaveBeenCalledWith({
+      data: {
+        targetType: "JOB",
+        targetId: "job_1",
+        reporterId: null,
+        reason: "auto-flag: content filter",
+        details: expect.stringContaining('matched "fucking" in description'),
+        source: "SYSTEM",
+      },
+    });
+  });
+
+  it("POST /api/jobs: flags Sinhala job text too", async () => {
+    dbMock.jobRequest.create.mockResolvedValue({ id: "job_1", ...validJob });
+    dbMock.report.findFirst.mockResolvedValue(null);
+    const res = await req(
+      "/api/jobs",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...validJob,
+          description: "කලින් ආපු කැරියා වැඩේ කලේ නැහැ, හොඳ කෙනෙක් ඕන.",
+        }),
+      },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(200);
+    const arg = dbMock.report.create.mock.calls[0][0] as { data: { details: string } };
+    expect(arg.data.details).toContain("කැරියා");
+  });
+
+  it("POST /api/jobs: clean text never touches the reports table", async () => {
+    dbMock.jobRequest.create.mockResolvedValue({ id: "job_1", ...validJob });
+    const res = await req(
+      "/api/jobs",
+      { method: "POST", body: JSON.stringify(validJob) },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(200);
+    expect(dbMock.report.findFirst).not.toHaveBeenCalled();
+    expect(dbMock.report.create).not.toHaveBeenCalled();
+  });
+
+  it("POST /api/jobs/:id/responses: flags a hit in the message (JOB_RESPONSE target)", async () => {
+    dbMock.jobRequest.findUnique.mockResolvedValue(openJob);
+    dbMock.jobResponse.findUnique.mockResolvedValue(null);
+    dbMock.jobResponse.create.mockResolvedValue({ id: "resp_1" });
+    dbMock.report.findFirst.mockResolvedValue(null);
+    wireS2s({
+      users: [{ id: CUSTOMER_ID, name: "Cus Tomer", email: "cust@example.com" }],
+    });
+    const res = await req(
+      "/api/jobs/job_1/responses",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          message: "mata deela thibba job eka hariyata karala nathi hutta mama nemei",
+        }),
+      },
+      { "x-user-id": PROVIDER_USER_ID }
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(dbMock.report.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        targetType: "JOB_RESPONSE",
+        targetId: "resp_1",
+        source: "SYSTEM",
+        details: expect.stringContaining('matched "hutta" in message'),
+      }),
+    });
+  });
+
+  it("never fails the write when the auto-report path throws (best-effort)", async () => {
+    dbMock.jobRequest.create.mockResolvedValue({ id: "job_1", ...validJob });
+    dbMock.report.findFirst.mockRejectedValue(new Error("db down"));
+    const res = await req(
+      "/api/jobs",
+      {
+        method: "POST",
+        body: JSON.stringify({ ...validJob, description: "utter bullshit service" }),
+      },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: "job_1" });
   });
 });
