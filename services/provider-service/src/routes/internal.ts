@@ -115,14 +115,12 @@ internalRoutes.post("/internal/providers", async (c) => {
   } catch (e) {
     // userId is unique: a retried/concurrent registration for the same user
     // must be idempotent, not an unhandled 500. Return the existing id WITHOUT
-    // touching `suspended`. The schema has a single `suspended` flag that can't
-    // distinguish a self-service downgrade (#403) from an ADMIN suspension, so
-    // clearing it here would silently lift an admin suspension if a
-    // re-registration ever raced through this path. Un-suspension is owned
-    // solely by the dedicated /reactivate endpoint below — invoked by
-    // complete-provider only for a self-downgraded CUSTOMER whose profile
-    // already exists — which keeps the invariant "re-registration must never
-    // lift an ADMIN suspension" intact even if this create path is reached.
+    // touching `suspended` — clearing it here could silently lift an admin
+    // suspension if a re-registration ever raced through this path.
+    // Un-suspension is owned solely by the dedicated /reactivate endpoint
+    // below (which itself refuses ADMIN suspensions, #550), keeping the
+    // invariant "re-registration must never lift an ADMIN suspension" intact
+    // even if this create path is reached.
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
       const existing = await db.provider.findUnique({
         where: { userId: data.userId },
@@ -138,9 +136,10 @@ internalRoutes.post("/internal/providers", async (c) => {
 
 // Self-service downgrade (#403): a provider closing their own profile. Hides
 // it from every public listing (the `suspended` flag the admin path already
-// uses). Idempotent — a missing profile is a no-op { ok: true } so identity's
-// role flip can proceed. Reversible: becoming a provider again unsuspends it
-// via the /internal/providers create path below.
+// uses; `adminSuspended` is deliberately untouched so an active ADMIN
+// suspension survives the downgrade, #550). Idempotent — a missing profile is
+// a no-op { ok: true } so identity's role flip can proceed. Reversible:
+// becoming a provider again unsuspends it via the /reactivate endpoint below.
 internalRoutes.post("/internal/providers/by-user/:userId/deactivate", async (c) => {
   const userId = c.req.param("userId");
   const provider = await db.provider.findUnique({
@@ -159,13 +158,19 @@ internalRoutes.post("/internal/providers/by-user/:userId/deactivate", async (c) 
 // reuses an existing profile via getProviderIdByUser and never hits the create
 // path, so becoming a provider again must explicitly clear `suspended` here.
 // Idempotent — a missing or already-active profile is a no-op { ok: true }.
+// An ADMIN suspension is refused (409, #550): only the admin unsuspend action
+// may clear it, otherwise leave-provider → complete-provider would let a
+// suspended provider lift their own moderation suspension.
 internalRoutes.post("/internal/providers/by-user/:userId/reactivate", async (c) => {
   const userId = c.req.param("userId");
   const provider = await db.provider.findUnique({
     where: { userId },
-    select: { id: true, suspended: true },
+    select: { id: true, suspended: true, adminSuspended: true },
   });
   if (!provider) return c.json({ ok: true, reactivated: false });
+  if (provider.adminSuspended) {
+    return c.json({ error: "Suspended by admin" }, 409);
+  }
   if (provider.suspended) {
     await db.provider.update({
       where: { id: provider.id },

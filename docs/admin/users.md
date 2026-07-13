@@ -21,7 +21,10 @@ own account):
   provider-service stays consistent: demoting **PROVIDER → non-PROVIDER**
   deactivates (hides) their provider profile, and promoting **non-PROVIDER →
   PROVIDER** reactivates an existing hidden profile (no-op if none exists — they
-  complete the provider wizard later). The provider-service call is a write-path
+  complete the provider wizard later). A profile under an **ADMIN suspension**
+  refuses the promotion with `409` (#550) — lifting a moderation suspension
+  stays exclusive to the unsuspend action on Admin → Providers, so a role change
+  can't lift one as a side effect. The provider-service call is a write-path
   gate: if it fails the API returns `502` and the role is left unchanged, so the
   two services never drift. Role changes that don't involve PROVIDER (e.g.
   CUSTOMER ↔ ADMIN ↔ SUPPORT) make no provider-service call.

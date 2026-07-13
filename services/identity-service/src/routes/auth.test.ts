@@ -25,6 +25,7 @@ import {
   deactivateProviderProfile,
   eraseProviderProfile,
   getProviderIdByUser,
+  ProviderAdminSuspendedError,
   reactivateProviderProfile,
   resolveProviderIdForErase,
 } from "../lib/providers";
@@ -62,6 +63,9 @@ vi.mock("../lib/verification", () => ({
 }));
 vi.mock("../lib/erase", () => ({ eraseUserData: vi.fn() }));
 vi.mock("../lib/providers", () => ({
+  // Stand-in for the real class: the route's instanceof (#550) and the test's
+  // throw both resolve to this same mocked export.
+  ProviderAdminSuspendedError: class ProviderAdminSuspendedError extends Error {},
   getProviderIdByUser: vi.fn(async () => null),
   createProviderProfile: vi.fn(),
   deactivateProviderProfile: vi.fn(),
@@ -923,6 +927,26 @@ describe("POST /api/auth/complete-provider", () => {
 
     const res = await post("/api/auth/complete-provider", providerBody, AUTH_HEADERS);
     expect(res.status).toBe(502);
+    expect(db.user.update).not.toHaveBeenCalled();
+  });
+
+  // #550: the exploit chain — admin suspends, provider leave-providers (role →
+  // CUSTOMER), then complete-providers. The reactivate refusal must surface as
+  // a 403 with NO role flip, so the ADMIN suspension stays in force.
+  it("403s the re-upgrade when the profile is ADMIN-suspended (role not flipped)", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "a@b.lk",
+      name: "Ann",
+      role: "CUSTOMER",
+    });
+    vi.mocked(getProviderIdByUser).mockResolvedValue("prov-1");
+    vi.mocked(reactivateProviderProfile).mockRejectedValue(
+      new ProviderAdminSuspendedError()
+    );
+
+    const res = await post("/api/auth/complete-provider", providerBody, AUTH_HEADERS);
+    expect(res.status).toBe(403);
     expect(db.user.update).not.toHaveBeenCalled();
   });
 });

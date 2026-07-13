@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   eraseProviderProfile,
+  ProviderAdminSuspendedError,
   providerExists,
+  reactivateProviderProfile,
   resolveProviderIdForErase,
 } from "./providers";
 
@@ -100,5 +102,30 @@ describe("eraseProviderProfile", () => {
   it("throws on a non-ok status so the failed cleanup is logged", async () => {
     stubFetch(500, { error: "boom" });
     await expect(eraseProviderProfile("u1")).rejects.toThrow(/500/);
+  });
+});
+
+// #550: provider-service refuses to reactivate a profile under an ADMIN
+// suspension (409). That refusal must surface as the typed error so
+// complete-provider answers 403 and never flips the role; every other failure
+// stays the generic write-path throw (→ 502).
+describe("reactivateProviderProfile", () => {
+  it("resolves on 200", async () => {
+    stubFetch(200, { ok: true, reactivated: true });
+    await expect(reactivateProviderProfile("u1")).resolves.toBeUndefined();
+  });
+
+  it("throws ProviderAdminSuspendedError on 409 (admin suspension)", async () => {
+    stubFetch(409, { error: "Suspended by admin" });
+    await expect(reactivateProviderProfile("u1")).rejects.toBeInstanceOf(
+      ProviderAdminSuspendedError
+    );
+  });
+
+  it("throws a generic error on other non-ok statuses", async () => {
+    stubFetch(500, { error: "boom" });
+    const err = await reactivateProviderProfile("u1").catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(ProviderAdminSuspendedError);
   });
 });

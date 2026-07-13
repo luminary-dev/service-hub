@@ -25,8 +25,8 @@ using the shared `s2s()` helper (one bounded retry on idempotent GETs).
 | `GET /internal/categories` | Full category list (incl. inactive) for peers' validation caches. |
 | `POST /internal/providers` | Registration orchestration (called by identity); idempotent on the unique userId → `{ id }`. |
 | `GET /internal/providers/by-user/:userId` | Provider owned by a user (login / job-board gate). |
-| `POST /internal/providers/by-user/:userId/deactivate` | Self-downgrade (#403, called by identity `leave-provider`): hide the user's provider profile (`suspended = true`). Idempotent. |
-| `POST /internal/providers/by-user/:userId/reactivate` | Re-upgrade (#403, called by identity `complete-provider` when a hidden profile exists): clear `suspended`. Idempotent. |
+| `POST /internal/providers/by-user/:userId/deactivate` | Self-downgrade (#403, called by identity `leave-provider`): hide the user's provider profile (`suspended = true`; `adminSuspended` untouched, so an active ADMIN suspension survives, #550). Idempotent. |
+| `POST /internal/providers/by-user/:userId/reactivate` | Re-upgrade (#403, called by identity `complete-provider` when a hidden profile exists): clear `suspended`. Refuses an ADMIN suspension with 409 (#550) — only the admin unsuspend action clears `adminSuspended`. Idempotent otherwise. |
 | `POST /internal/providers/avatar` | Denormalized avatar sync from identity (#434), `{ userId, avatarUrl }` — updates the provider's cached `avatarUrl`. No-op if the user has no provider. |
 | `GET /internal/providers?ids=` | Batch provider hydration (≤500). |
 | `GET /internal/inquiries/exists?providerId=&userId=` | Review gate — has this user inquired with this provider? → `{ exists }`. |
