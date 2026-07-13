@@ -47,7 +47,10 @@ OIDC id_token; Facebook uses no PKCE and a Graph-API profile lookup.
   the change-email flow (#396).
 - Social signups have **no password** (`User.passwordHash` is nullable):
   password login returns the uniform 401, change-password directs them to the
-  reset flow, and delete-account skips the password re-auth (the session is it).
+  reset flow, and delete-account and change-email skip the password re-auth (the
+  session is it). Accounts that **do** have a password must re-authenticate for
+  every sensitive change — delete-account, change-password, and change-email
+  (#504) — before it takes effect.
 - A first-time social signup starts as `CUSTOMER`; the `/welcome` chooser lets
   them convert to `PROVIDER` via `POST /api/auth/complete-provider` (which flips
   the role and bumps `sessionVersion`).
@@ -64,6 +67,15 @@ and the mail is fire-and-forget, so the branch isn't an obvious faster/earlier
 return. (A genuinely new signup still creates the account and returns its
 session, exactly as before — the same "success reveals nothing you didn't
 already cause" property login has.)
+
+The same closure covers the **authenticated** change-email entry point (#503):
+`POST /api/account/email/change` no longer 409s a target address that belongs to
+another account. It returns the same generic `200 { ok: true }` whether or not
+the address is taken, starts no change for a taken one, and instead emails the
+real owner a "someone tried to move an account to your email" notice
+out-of-band. Both branches fire their mail-and-forget it, so the taken branch
+isn't measurably faster — a signed-in attacker gains no probe for which
+addresses have accounts.
 
 ```
 ADMIN_ROLES = ["ADMIN", "SUPPORT"]

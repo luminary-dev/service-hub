@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { accountExistsEmail, escapeHtml, inquiryEmail, jobResponseEmail, passwordResetEmail, verifyEmail } from "./email";
+import { accountExistsEmail, emailChangeAttemptEmail, escapeHtml, inquiryEmail, jobResponseEmail, passwordResetEmail, verifyEmail } from "./email";
 
 describe("verifyEmail", () => {
   it("renders the English template by default", () => {
@@ -58,6 +58,27 @@ describe("accountExistsEmail", () => {
     expect(subject).toBe("ඔබට දැනටමත් Baas.lk ගිණුමක් ඇත");
     expect(html).toContain("ඔබට දැනටමත් ගිණුමක් ඇත");
     expect(html).toContain("නව ගිණුමක් සෑදී නැත");
+    expect(html).toContain(">පිවිසෙන්න</a>");
+    expect(html).toContain('href="https://baas.lk/login"');
+  });
+});
+
+describe("emailChangeAttemptEmail", () => {
+  it("renders the English template by default", () => {
+    const { subject, html } = emailChangeAttemptEmail("https://baas.lk/login");
+    expect(subject).toBe("Someone tried to use your Baas.lk email");
+    expect(html).toContain("A change-email request used your address");
+    expect(html).toContain(
+      "Someone tried to change the email address on a Baas.lk account to this one."
+    );
+    expect(html).toContain(">Sign in</a>");
+    expect(html).toContain('href="https://baas.lk/login"');
+  });
+
+  it("renders the Sinhala template", () => {
+    const { subject, html } = emailChangeAttemptEmail("https://baas.lk/login", "si");
+    expect(subject).toBe("යමෙකු ඔබේ Baas.lk විද්‍යුත් තැපෑල භාවිතා කිරීමට උත්සාහ කළා");
+    expect(html).toContain("විද්‍යුත් තැපෑල වෙනස් කිරීමේ ඉල්ලීමක් ඔබේ ලිපිනය භාවිතා කළා");
     expect(html).toContain(">පිවිසෙන්න</a>");
     expect(html).toContain('href="https://baas.lk/login"');
   });
