@@ -18,7 +18,9 @@ import { useLocale, useT } from "@/components/I18nProvider";
 import { ConsentCheckbox } from "@/components/LegalConsent";
 import PasswordInput from "@/components/PasswordInput";
 import CategoryIcon from "@/components/CategoryIcon";
+import LocationPicker from "@/components/LocationPicker";
 import ServiceDistrictsPicker from "@/components/ServiceDistrictsPicker";
+import type { GeoPoint } from "@/lib/geo";
 import {
   ErrorSummary,
   FormError,
@@ -104,6 +106,10 @@ export default function ProviderRegisterForm({
   // Extra served districts beyond the home district (#502) — the home
   // district is pinned by the picker and unioned in at submit time.
   const [serviceDistricts, setServiceDistricts] = useState<string[]>([]);
+  // Optional map pin (#48): null means "no pin" — the picker only ever hands
+  // back a complete in-bounds pair, so submit sends both coordinates or
+  // neither.
+  const [location, setLocation] = useState<GeoPoint | null>(null);
   const [agree, setAgree] = useState(false);
 
   function set(field: string, value: string) {
@@ -190,6 +196,10 @@ export default function ProviderRegisterForm({
         ...serviceDistricts.filter((d) => d !== form.district),
       ],
       city: form.city.trim(),
+      // Optional map pin (#48) — omitted entirely (undefined → dropped by
+      // JSON.stringify) when the provider skipped it.
+      latitude: location?.latitude,
+      longitude: location?.longitude,
       experience: Number(form.experience) || 0,
       whatsapp: form.whatsapp.trim(),
       phone2: form.phone2.trim(),
@@ -598,6 +608,14 @@ export default function ProviderRegisterForm({
               value={serviceDistricts}
               onChange={setServiceDistricts}
               hasError={Boolean(fieldErrors["pr-service-districts"])}
+            />
+            {/* Optional map pin (#48): pre-centered on the chosen district's
+                centroid; entirely skippable. */}
+            <LocationPicker
+              id="pr-location"
+              value={location}
+              onChange={setLocation}
+              district={form.district}
             />
           </div>
         )}

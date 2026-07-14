@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useT } from "@/components/I18nProvider";
 import { formatDate } from "@/lib/format";
 import ReportButton from "@/components/ReportButton";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 type Message = {
   id: string;
@@ -132,8 +133,8 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
   if (!thread) {
     return (
       <div className="tech-corners animate-pulse rounded-lg border border-ink-300 bg-surface p-6">
-        <div className="h-4 w-1/3 rounded bg-ink-100" />
-        <div className="mt-4 h-16 rounded bg-ink-100" />
+        <Skeleton className="h-4 w-1/3 rounded" />
+        <Skeleton className="mt-4 h-16 rounded" />
       </div>
     );
   }

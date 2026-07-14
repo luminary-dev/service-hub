@@ -55,6 +55,18 @@ via a rate-limited endpoint (#64), so crawlers can't harvest the directory's
 numbers from page HTML.
 Suspended providers 404 for everyone except admins.
 
+When the provider has dropped a **location pin** (#48, geo-capture phase of
+the [search & discovery RFC](../rfcs/search-discovery-service.md)), the About
+section shows a small static OpenStreetMap mini-map
+(`StaticLocationMap` — a server-rendered 3×3 grid of OSM raster tiles with a
+CSS pin, zero JS) linking to the full map on openstreetmap.org, with the
+required OSM attribution. The pin is captured with a Leaflet picker in the
+register wizard and the dashboard profile form (`LocationPicker` — optional,
+pre-centered on the district centroid, with manual coordinate inputs as the
+keyboard path); coordinates are validated to a Sri Lanka bounding box and are
+only ever real pins — district centroids are never substituted. Map search /
+"near me" itself ships with the RFC's search-service (phases 2–3).
+
 ### Open Graph images
 
 **`/providers/[id]/opengraph-image`** generates a 1200×630 PNG via `next/og`

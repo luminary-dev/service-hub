@@ -444,6 +444,66 @@ describe("GET /internal/providers/matching (#501 lead-gen fan-out)", () => {
   });
 });
 
+// Geo capture (#48): the S2S create path re-validates the optional pin —
+// identity pre-validates, so a 400 here only catches a drifted/hostile caller.
+describe("POST /internal/providers — map pin (#48)", () => {
+  const base = {
+    userId: "owner-geo",
+    name: "Ann",
+    email: "a@b.lk",
+    phone: "+94771234567",
+    category: "plumbing",
+    headline: "Plumber for hire",
+    bio: "Twenty-plus characters of provider bio text.",
+    district: "Colombo",
+    city: "Colombo",
+    experience: 3,
+    services: [{ title: "Fix taps", price: 1000, priceType: "FIXED" }],
+  };
+
+  it("persists an in-bounds pair", async () => {
+    dbMock.provider.create.mockResolvedValue({ id: "prov-geo" });
+    const res = await post("/internal/providers", {
+      ...base,
+      latitude: 6.9271,
+      longitude: 79.8612,
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ latitude: 6.9271, longitude: 79.8612 }),
+      })
+    );
+  });
+
+  it("stores nulls when the pin is absent", async () => {
+    dbMock.provider.create.mockResolvedValue({ id: "prov-geo" });
+    const res = await post("/internal/providers", base);
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ latitude: null, longitude: null }),
+      })
+    );
+  });
+
+  it("400s a lone coordinate", async () => {
+    const res = await post("/internal/providers", { ...base, latitude: 6.9271 });
+    expect(res.status).toBe(400);
+    expect(dbMock.provider.create).not.toHaveBeenCalled();
+  });
+
+  it("400s an off-island pair", async () => {
+    const res = await post("/internal/providers", {
+      ...base,
+      latitude: 51.5072,
+      longitude: -0.1276,
+    });
+    expect(res.status).toBe(400);
+    expect(dbMock.provider.create).not.toHaveBeenCalled();
+  });
+});
+
 describe("POST /internal/providers — social/website URL validation (#518)", () => {
   const base = {
     userId: "owner-2",

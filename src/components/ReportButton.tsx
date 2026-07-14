@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { FaFlag, FaXmark } from "@/components/icons";
+import Dialog from "@/components/ui/Dialog";
 import { useT } from "./I18nProvider";
 import { useToast } from "./ToastProvider";
-import { useFocusTrap } from "./useFocusTrap";
-import { useScrollLock } from "./useScrollLock";
 
 // Report abusive content (#50): a small trigger that opens a modal with a
 // reason select and optional details, then POSTs to the given report endpoint
@@ -37,30 +36,13 @@ export default function ReportButton({
   showLabel?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const dialogRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(dialogRef, open);
-  useScrollLock(open);
   const [reason, setReason] = useState<(typeof REASONS)[number]>("spam");
   const [details, setDetails] = useState("");
   const [loading, setLoading] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const reasonRef = useRef<HTMLSelectElement>(null);
-  const wasOpen = useRef(false);
   const t = useT();
   const toast = useToast();
-
-  // Focus management for the modal: move focus to the first field when it
-  // opens, and hand it back to the trigger when it closes (skipping the
-  // initial mount so page load never steals focus).
-  useEffect(() => {
-    if (open) {
-      wasOpen.current = true;
-      reasonRef.current?.focus();
-    } else if (wasOpen.current) {
-      wasOpen.current = false;
-      triggerRef.current?.focus();
-    }
-  }, [open]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -103,95 +85,79 @@ export default function ReportButton({
       </button>
 
       {open && (
-        // z-above the photo lightbox (z-50), which can host this modal.
-        <div
-          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4"
-          onClick={(e) => {
-            e.stopPropagation();
-            setOpen(false);
-          }}
-          // stopPropagation: inside the photo lightbox Escape must close the
-          // report modal only, not the lightbox behind it.
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              e.stopPropagation();
-              setOpen(false);
-            }
-          }}
-          onTouchStart={(e) => e.stopPropagation()}
-          onTouchEnd={(e) => e.stopPropagation()}
+        // z-above the photo lightbox (z-50), which can host this modal;
+        // `isolate` keeps Escape/clicks from also closing the lightbox.
+        <Dialog
+          onClose={() => setOpen(false)}
+          label={label}
+          overlayClassName="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4"
+          panelClassName="card w-full max-w-md p-6"
+          initialFocus={reasonRef}
+          restoreFocus={triggerRef}
+          isolate
         >
-          <div
-            ref={dialogRef}
-            role="dialog"
-            aria-modal="true"
-            aria-label={label}
-            className="card w-full max-w-md p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-4">
-              <h2 className="font-semibold text-ink-900">{label}</h2>
+          <div className="flex items-start justify-between gap-4">
+            <h2 className="font-semibold text-ink-900">{label}</h2>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              aria-label={t.report.cancel}
+              className="cursor-pointer text-ink-500 transition hover:text-ink-700"
+            >
+              <FaXmark className="h-4 w-4" />
+            </button>
+          </div>
+          <p className="mt-1 text-sm text-ink-500">{t.report.sub}</p>
+
+          <form onSubmit={submit} className="mt-4">
+            <label className="label" htmlFor="report-reason">
+              {t.report.reason}
+            </label>
+            <select
+              ref={reasonRef}
+              id="report-reason"
+              className="input"
+              value={reason}
+              onChange={(e) =>
+                setReason(e.target.value as (typeof REASONS)[number])
+              }
+            >
+              {REASONS.map((r) => (
+                <option key={r} value={r}>
+                  {t.report.reasons[r]}
+                </option>
+              ))}
+            </select>
+
+            <label className="label mt-3" htmlFor="report-details">
+              {t.report.details}{" "}
+              <span className="font-normal text-ink-400">
+                {t.report.optional}
+              </span>
+            </label>
+            <textarea
+              id="report-details"
+              className="input min-h-20 resize-y"
+              value={details}
+              onChange={(e) => setDetails(e.target.value)}
+              maxLength={MAX_DETAILS}
+              placeholder={t.report.detailsPh}
+            />
+
+            <div className="mt-4 flex gap-2">
+              <button type="submit" disabled={loading} className="btn-primary">
+                {loading ? t.report.sending : t.report.submit}
+              </button>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                aria-label={t.report.cancel}
-                className="cursor-pointer text-ink-500 transition hover:text-ink-700"
+                className="btn-ghost"
               >
-                <FaXmark className="h-4 w-4" />
+                {t.report.cancel}
               </button>
             </div>
-            <p className="mt-1 text-sm text-ink-500">{t.report.sub}</p>
-
-            <form onSubmit={submit} className="mt-4">
-              <label className="label" htmlFor="report-reason">
-                {t.report.reason}
-              </label>
-              <select
-                ref={reasonRef}
-                id="report-reason"
-                className="input"
-                value={reason}
-                onChange={(e) =>
-                  setReason(e.target.value as (typeof REASONS)[number])
-                }
-              >
-                {REASONS.map((r) => (
-                  <option key={r} value={r}>
-                    {t.report.reasons[r]}
-                  </option>
-                ))}
-              </select>
-
-              <label className="label mt-3" htmlFor="report-details">
-                {t.report.details}{" "}
-                <span className="font-normal text-ink-400">
-                  {t.report.optional}
-                </span>
-              </label>
-              <textarea
-                id="report-details"
-                className="input min-h-20 resize-y"
-                value={details}
-                onChange={(e) => setDetails(e.target.value)}
-                maxLength={MAX_DETAILS}
-                placeholder={t.report.detailsPh}
-              />
-
-              <div className="mt-4 flex gap-2">
-                <button type="submit" disabled={loading} className="btn-primary">
-                  {loading ? t.report.sending : t.report.submit}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  className="btn-ghost"
-                >
-                  {t.report.cancel}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+          </form>
+        </Dialog>
       )}
     </>
   );

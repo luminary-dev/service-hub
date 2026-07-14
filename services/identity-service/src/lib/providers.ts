@@ -193,6 +193,10 @@ export type ProviderRegistration = {
   district: string;
   serviceDistricts: string[];
   city: string;
+  // Optional map pin (#48, geo-capture phase of the search RFC); both set or
+  // both null, pre-validated by the caller.
+  latitude: number | null;
+  longitude: number | null;
   experience: number;
   whatsapp: string | null;
   phone2: string | null;

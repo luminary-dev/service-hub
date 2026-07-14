@@ -6,6 +6,8 @@ import { isCommonPassword } from "./common-passwords";
 import {
   districtEnum,
   emailAddress,
+  latitudeField,
+  longitudeField,
   optionalSlPhone,
   optionalWebUrl,
   priceRupees,
@@ -57,6 +59,12 @@ export const providerSchema = baseSchema.extend({
   // clients keep registering with just `district`.
   serviceDistricts: serviceDistrictsField,
   city: z.string().min(1).max(60),
+  // Optional map pin (#48, geo-capture phase of the search RFC), dropped in
+  // the wizard's Leaflet picker. Bounds-checked against the Sri Lanka box; the
+  // both-or-neither pair rule is enforced in the route (geoPairState) so the
+  // 400 lands before the user row exists — mirroring serviceDistricts.
+  latitude: latitudeField,
+  longitude: longitudeField,
   experience: z.number().int().min(0).max(60),
   whatsapp: optionalSlPhone,
   phone2: optionalSlPhone,

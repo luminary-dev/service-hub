@@ -201,6 +201,7 @@ const en = {
     prev: "← Previous",
     next: "Next →",
     pageOf: (p: number, t: number) => `Page ${p} of ${t}`,
+    paginationLabel: "Pagination",
     sortLabel: "Sort by",
     sort: {
       recommended: "Recommended",
@@ -1218,6 +1219,28 @@ const en = {
     areasLabel: "Service areas",
     limitReached: "You can serve at most 5 districts.",
   },
+  // Geo capture (#48, search & discovery RFC phase 1): the optional map-pin
+  // picker shared by the registration wizard and the dashboard profile form,
+  // plus the public profile's mini-map.
+  location: {
+    label: "Location pin (optional)",
+    hint: "Drop a pin on your base location so customers can find you on the map once map search launches. Skipping it is fine — your district listing is unaffected.",
+    mapLabel:
+      "Map of Sri Lanka. Click your location or drag the pin. You can also type the coordinates below.",
+    mapLoading: "Loading map…",
+    pinSet: (lat: number, lng: number) =>
+      `Pin set at ${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+    pinNotSet: "No pin set yet.",
+    latitude: "Latitude",
+    longitude: "Longitude",
+    manualHint: "Prefer the keyboard? Type the coordinates instead.",
+    clear: "Clear pin",
+    errOutOfBounds: "The pin must be within Sri Lanka.",
+    errPair: "Enter both latitude and longitude, or clear both.",
+    profileLocation: "Location",
+    mapImageAlt: (name: string) => `Map showing the approximate location of ${name}`,
+    viewOnOsm: "View on OpenStreetMap",
+  },
 };
 
 export type Dict = typeof en;
@@ -1418,6 +1441,7 @@ const si: Dict = {
     prev: "← පෙර",
     next: "ඊළඟ →",
     pageOf: (p: number, t: number) => `පිටුව ${p} / ${t}`,
+    paginationLabel: "පිටු සංචාලනය",
     sortLabel: "අනුපිළිවෙල",
     sort: {
       recommended: "නිර්දේශිත",
@@ -2403,6 +2427,25 @@ const si: Dict = {
     homeBadge: "මුල් දිස්ත්‍රික්කය",
     areasLabel: "සේවා ප්‍රදේශ",
     limitReached: "ඔබට උපරිම දිස්ත්‍රික්ක 5ක් දක්වා සේවය සැපයිය හැක.",
+  },
+  location: {
+    label: "සිතියම් පින් (අත්‍යවශ්‍ය නොවේ)",
+    hint: "සිතියම් සෙවීම ආරම්භ වූ පසු පාරිභෝගිකයන්ට ඔබව සිතියමෙන් සොයාගත හැකි වන පරිදි ඔබේ මූලික ස්ථානයට පින් එකක් දමන්න. මඟහැරීම ගැටලුවක් නොවේ — ඔබේ දිස්ත්‍රික් ලැයිස්තුවට බලපෑමක් නැත.",
+    mapLabel:
+      "ශ්‍රී ලංකා සිතියම. ඔබේ ස්ථානය ක්ලික් කරන්න හෝ පින් එක ඇදගෙන යන්න. පහතින් ඛණ්ඩාංක ටයිප් කිරීමටද හැක.",
+    mapLoading: "සිතියම පූරණය වෙමින්…",
+    pinSet: (lat: number, lng: number) =>
+      `පින් එක ${lat.toFixed(4)}, ${lng.toFixed(4)} හි තබා ඇත`,
+    pinNotSet: "තවම පින් එකක් තබා නැත.",
+    latitude: "අක්ෂාංශ",
+    longitude: "දේශාංශ",
+    manualHint: "යතුරුපුවරුවෙන්ද? ඛණ්ඩාංක කෙලින්ම ටයිප් කරන්න.",
+    clear: "පින් ඉවත් කරන්න",
+    errOutOfBounds: "පින් එක ශ්‍රී ලංකාව තුළ විය යුතුය.",
+    errPair: "අක්ෂාංශ සහ දේශාංශ දෙකම ඇතුළත් කරන්න, නැතහොත් දෙකම හිස් කරන්න.",
+    profileLocation: "ස්ථානය",
+    mapImageAlt: (name: string) => `${name}ගේ ආසන්න ස්ථානය පෙන්වන සිතියම`,
+    viewOnOsm: "OpenStreetMap හි බලන්න",
   },
 };
 

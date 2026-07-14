@@ -17,7 +17,12 @@
      **districts you serve** (#502) — a toggle-chip picker over the 25
      districts, up to 5 total with the home district always pinned in. The
      served set drives browse filtering, the job board and the new-job
-     fan-out.
+     fan-out. Also an **optional location pin** (#48, search & discovery RFC
+     phase 1): a Leaflet/OpenStreetMap map (`LocationPicker`, client-only,
+     lazily loaded) pre-centered on the chosen district's centroid — click or
+     drag to drop a pin, with manual latitude/longitude inputs as the
+     keyboard-accessible path and a clear button. Entirely skippable; an
+     unpinned profile keeps full district-based visibility.
   3. *Contact & Socials* (all optional) — WhatsApp, alt phone, Facebook,
      Instagram, TikTok, YouTube, website.
   4. *Services & Rates* — 1–20 service rows, each with title, optional
@@ -139,7 +144,9 @@ a "View public" link to the live profile. A tabbed editor
 
 - **Profile** — `PUT /api/provider/profile`: availability toggle, an
   "away until" date (clears to available), plus all profile/contact/social
-  fields.
+  fields — including the optional **location pin** (#48): the same Leaflet
+  picker as the register wizard, pre-filled from the stored coordinates, so
+  providers who skipped it at signup can backfill (or clear) their pin.
 - **Services** — inline add/edit/delete of service rows.
 - **Photos** — profile-photo (avatar) upload, a **dedicated cover photo**
   (#435, `POST /api/provider/photos` with `kind: "cover"` /

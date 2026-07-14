@@ -52,7 +52,15 @@
   on cards), is capped at 5 (`MAX_SERVICE_DISTRICTS` in `lib/field-rules.ts`,
   deduped with the primary pinned first), was backfilled to `[district]` by
   migration `20260714090000`, and is GIN-indexed because browse filtering, the
-  job board and the new-job fan-out all match on membership in the set. The
+  job board and the new-job fan-out all match on membership in the set.
+  Geo capture (#48, search & discovery RFC phase 1): **optional nullable**
+  `latitude`/`longitude` floats — the provider's map pin, captured via the
+  web's Leaflet picker (migration `20260714130000`). Always both set or both
+  null; validated against a Sri Lanka bounding box (5.7–10.1 lat, 79.4–82.1
+  lng in `lib/field-rules.ts`). District centroids are never substituted for
+  a missing pin, and the public detail payloads include the pair only when
+  set. Plain floats for now — the RFC's search index (phase 2, PostGIS)
+  derives a geography column from them. The
   free-text pitch is bilingual (#515):
   `headline`/`bio` (English, required) plus **optional nullable**
   `headlineSi`/`bioSi` (Sinhala variants) — the public payload prefers the SI

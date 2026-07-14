@@ -35,6 +35,9 @@ type DashboardProvider = {
   // the backfill.
   serviceDistricts?: string[];
   city: string;
+  // Optional map pin (#48); both set or both null.
+  latitude?: number | null;
+  longitude?: number | null;
   experience: number;
   available: boolean;
   awayUntil: string | null;
@@ -182,6 +185,8 @@ export default async function DashboardPage({
           district: provider.district,
           serviceDistricts: provider.serviceDistricts ?? [provider.district],
           city: provider.city,
+          latitude: provider.latitude ?? null,
+          longitude: provider.longitude ?? null,
           experience: provider.experience,
           available: provider.available,
           awayUntil: provider.awayUntil,
