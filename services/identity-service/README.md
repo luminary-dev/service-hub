@@ -30,6 +30,20 @@ the gateway-forwarded `x-user-id` / `x-user-role` / `x-user-name` headers.
 | POST | `/api/auth/resend-verification` | Re-send the verification email (session required). |
 | POST | `/api/auth/forgot-password` | Issue a reset token + email; always `{ ok: true }` (anti-enumeration). |
 | POST | `/api/auth/reset-password` | Consume a reset token, set a new password, bump `sessionVersion`. |
+| POST | `/api/auth/complete-provider` | Role switch: turn the signed-in CUSTOMER into a PROVIDER (creates/reactivates the provider profile S2S; admin suspensions are never self-lifted) (#403). |
+| POST | `/api/auth/leave-provider` | Counterpart: revert to CUSTOMER (deactivates the profile S2S) (#403). |
+| GET | `/api/auth/oauth/:provider/start` | Social login (#398): redirect to Google/Facebook (state cookie; PKCE for Google). |
+| GET | `/api/auth/oauth/:provider/callback` | Verify, resolve/auto-link the account (verified matching email only), mint `sh_session`, redirect into the app. |
+
+### Public — account self-service (`/api/account`, #396)
+
+| Method | Path | Description |
+|---|---|---|
+| PUT | `/api/account/profile` | Update own name/phone (synced S2S to a provider profile's denormalized contact columns). |
+| POST | `/api/account/avatar` | Upload own avatar (multipart, stored via media-service in the `user` namespace). |
+| DELETE | `/api/account/avatar` | Remove own avatar. |
+| POST | `/api/account/email/change` | Start a change-email flow (re-auths the current password — session-only for social accounts, #504/#398); emails a confirm token to the new address. |
+| POST | `/api/account/email/confirm` | Consume the token, swap the email (marked verified) and mirror it onto the denormalized Provider contact email (#553). |
 
 ### Public — favorites (`/api/favorites`)
 
@@ -53,7 +67,7 @@ the gateway-forwarded `x-user-id` / `x-user-role` / `x-user-name` headers.
 |---|---|---|
 | GET | `/api/admin/users?q=&page=` | Search users by email/name, paginated (SUPPORT+) (#220). |
 | GET | `/api/admin/users/:id` | User detail + favorites hydrated with provider names/phones (SUPPORT+) (#220). |
-| PATCH | `/api/admin/users/:id` | Full ADMIN; lock/unlock and/or change role `CUSTOMER`\|`PROVIDER`\|`ADMIN` (blocks acting on yourself) (#220). |
+| PATCH | `/api/admin/users/:id` | Full ADMIN; lock/unlock and/or change role `CUSTOMER`\|`PROVIDER`\|`ADMIN`\|`SUPPORT` (blocks acting on yourself; promoting to PROVIDER requires an existing provider profile, #554) (#220). |
 | POST | `/api/admin/users/:id/force-logout` | Full ADMIN; bump the target's `sessionVersion` (#220). |
 | POST | `/api/admin/impersonate/:userId` | Start "view as" — issues a 15-min `impersonation_session` cookie, writes an `ImpersonationLog` row (rejects self / another admin) (#234). |
 | POST | `/api/admin/impersonate/end` | Destroy the impersonation cookie, close the log row (#234). |
@@ -74,18 +88,21 @@ the gateway-forwarded `x-user-id` / `x-user-role` / `x-user-name` headers.
 
 ## Data ownership (`prisma/schema.prisma`)
 
-- **User** — account: `email`, `passwordHash`, `name`, `phone?`, `role`, `emailVerified?`, `sessionVersion` (revocation counter), `failedLogins` / `lockedUntil?` (lockout).
+- **User** — account: `email`, `passwordHash` (null for social-only accounts), `name`, `phone?`, `role`, `emailVerified?`, `sessionVersion` (revocation counter), `failedLogins` / `lockedUntil?` (lockout).
+- **Account** — linked OAuth identities (`provider` + provider user id) for social login (#398).
 - **Favorite** — a user's favorited provider (`userId` FK, `providerId` cross-service ref); unique per pair.
 - **SavedSearch** — a named snapshot of the `/providers` browse filters (`query?`, `category?`, `district?`) + `locale` and `lastNotifiedAt` (alert cooldown), FK to User (cascade) (#516).
-- **PasswordResetToken** / **EmailVerificationToken** — hashed single-use tokens (sha256; raw never stored) with expiry, FK to User (cascade).
+- **PasswordResetToken** / **EmailVerificationToken** / **EmailChangeToken** — hashed single-use tokens (sha256; raw never stored) with expiry, FK to User (cascade).
 - **AccountDeletion** — audit trail for self-service deletion (#123); no FK (survives the deleted user).
 - **ImpersonationLog** — audit trail for admin "view as" (#234): `adminId`, `targetUserId`, `startedAt`, `endedAt?`.
+- **AdminAuditLog** — identity's own audit rows for the user-management writes (lock/unlock, role change, force-logout, leave-provider); write-only today (no read endpoint).
 
 ## Roles & session-version
 
 `User.role` is a plain string (default `CUSTOMER`). Self-registration allows
 only `CUSTOMER` / `PROVIDER`; the admin role-change API additionally assigns
-`ADMIN` (SUPPORT is set out-of-band in the DB). The two-tier admin model
+`ADMIN` and `SUPPORT` (a first admin/support account can also be bootstrapped
+via `prisma/create-admin.js`). The two-tier admin model
 (`ADMIN` | `SUPPORT`, #226; an earlier unused admin value was removed by
 migration `20260708200000`) is enforced by a DB CHECK constraint and end-to-end
 in both layers: the web app's `src/lib/roles.ts` and
@@ -108,6 +125,9 @@ all increment it. The gateway checks it via `GET /internal/users/:id/session-ver
 | `REVIEW_SERVICE_URL` | `http://localhost:4003` | Account-deletion erase fan-out |
 | `JOB_SERVICE_URL` | `http://localhost:4004` | Account-deletion erase fan-out |
 | `NOTIFICATION_SERVICE_URL` | `http://localhost:4005` | Verification / reset emails + account-deletion erase fan-out |
+| `MEDIA_SERVICE_URL` | `http://localhost:4006` | Account avatars (`user` namespace, #434) |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | *(unset → Google button hidden)* | Social login (#398) |
+| `FACEBOOK_CLIENT_ID` / `FACEBOOK_CLIENT_SECRET` | *(unset → Facebook button hidden)* | Social login (#398) |
 | `WEB_ORIGIN` | `http://localhost:3000` | Fallback origin for email links (normally the `x-origin` header) |
 
 ## Gateway / S2S model

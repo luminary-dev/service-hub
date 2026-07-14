@@ -1,6 +1,6 @@
 # RFC: Stateful notification-service (in-app notification center)
 
-- **Status:** Proposed
+- **Status:** Implemented — stateful core + `notification_db` (#618), in-app notification center (#621), producer events from the other services (#623)
 - **Track:** Stage-2 Track 1
 - **Refs:** #394 (in-app notification center), #393 (silent events), #516 (saved-search alerts — delivery half), #557/#580 (202-ack fan-out pattern), #612 (per-service DB roles, Redis auth)
 

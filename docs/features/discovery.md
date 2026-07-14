@@ -14,9 +14,9 @@ during the transition (RFC §5.2). Signed-in users also fetch
 
 **Filters** (`FilterBar`, all pass through to search-service):
 
-- Free-text search `q` (matches name, category EN/SI labels, and the English
-  **and** optional Sinhala headline/bio (#515) so a Sinhala query finds a
-  Sinhala-authored pitch).
+- Free-text search `q` (matches name, city, service titles, category EN/SI
+  labels, and the English **and** optional Sinhala headline/bio (#515) so a
+  Sinhala query finds a Sinhala-authored pitch).
 - `category` and `district` selects (25 districts). The district filter is a
   **membership test on the provider's service area** (#502): it matches any
   provider whose `serviceDistricts` set contains the chosen district, not
@@ -74,8 +74,10 @@ a center and radius:
   activates) with accessible "{name}, {category}, {distance} km" names;
   activating one moves focus to the matching card in the list below. A skip
   link jumps past the map, and every map result also renders as a normal
-  provider card (with distance) in that list — providers without a pin never
-  appear on the map but remain in the list view. Result counts, geolocation
+  provider card (with distance) in that list. The nearby query only returns
+  **pinned** providers in range, so pin-less providers appear in neither the
+  map nor its list — switch back to the list view (regular search) to see
+  them. Result counts, geolocation
   progress and errors are announced (`role="status"` / `role="alert"`, with
   retry).
 
