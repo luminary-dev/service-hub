@@ -212,6 +212,28 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
   return null;
 }
 
+// Self-service actions an impersonating admin must NEVER perform as the target
+// (#634). Impersonation is a read-mostly "view as" for debugging; it must not
+// become a way to irreversibly act on someone else's account. These three POSTs
+// destroy the account, move its login email, or drop its provider role — each
+// changes the target's identity/access in a way the real owner never consented
+// to. Blocked centrally here (the single public entry) whenever an
+// impersonation session is in effect (x-impersonated-by set), rather than in
+// each service, so the list can't drift per-service. Everything else stays
+// usable so the admin can still reproduce the target's experience.
+export function isImpersonationBlocked(
+  method: string,
+  pathname: string
+): boolean {
+  if (method.toUpperCase() !== "POST") return false;
+  return (
+    pathname === "/api/auth/delete-account" ||
+    pathname === "/api/auth/leave-provider" ||
+    pathname === "/api/account/email/change" ||
+    pathname === "/api/account/email/confirm"
+  );
+}
+
 function containsInternal(pathname: string): boolean {
   // Decode until the string stops changing, so single- (%2Finternal) *and*
   // multi-encoded (%252finternal, and deeper) attempts to smuggle an

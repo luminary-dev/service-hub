@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveRoute } from "./routes";
+import { isImpersonationBlocked, resolveRoute } from "./routes";
 
 describe("resolveRoute (routing table)", () => {
   it("routes auth and favorites to identity", () => {
@@ -362,5 +362,26 @@ describe("resolveRoute (routing table)", () => {
     expect(resolveRoute("/api/jobsx")).toBeNull();
     expect(resolveRoute("/api/statsx")).toBeNull();
     expect(resolveRoute("/other")).toBeNull();
+  });
+});
+
+describe("isImpersonationBlocked (#634)", () => {
+  it("blocks the irreversible self-service POSTs", () => {
+    for (const p of [
+      "/api/auth/delete-account",
+      "/api/auth/leave-provider",
+      "/api/account/email/change",
+      "/api/account/email/confirm",
+    ]) {
+      expect(isImpersonationBlocked("POST", p)).toBe(true);
+      expect(isImpersonationBlocked("post", p)).toBe(true);
+    }
+  });
+
+  it("does not block reads of the same paths, or unrelated writes", () => {
+    expect(isImpersonationBlocked("GET", "/api/auth/delete-account")).toBe(false);
+    expect(isImpersonationBlocked("POST", "/api/auth/logout")).toBe(false);
+    expect(isImpersonationBlocked("POST", "/api/jobs")).toBe(false);
+    expect(isImpersonationBlocked("POST", "/api/account/profile")).toBe(false);
   });
 });
