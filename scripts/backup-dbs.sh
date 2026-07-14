@@ -31,6 +31,10 @@ STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 DEST="$BACKUP_DIR/$STAMP"
 mkdir -p "$DEST"
 
+# Count is derived from the array above so it can never drift out of sync with
+# the actual set (currently 6; search_db excluded by design — see above).
+echo "==> Backing up ${#DATABASES[@]} databases to $DEST (search_db excluded)"
+
 for db in "${DATABASES[@]}"; do
   echo "==> Dumping $db"
   "${COMPOSE[@]}" exec -T postgres pg_dump -U postgres --format=custom "$db" > "$DEST/$db.dump"

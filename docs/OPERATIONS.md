@@ -11,12 +11,17 @@ Every image is a **multi-stage build** (#237): a full-toolchain `build` stage
 compiles/builds, then a slim `runtime` stage ships only production dependencies
 plus the build output.
 
-- **Web** (`/Dockerfile`) — `build` runs `next build`; `runtime` installs
-  `npm ci --omit=dev`, copies `.next` + `public` + `next.config.ts`, and runs
-  `next start`. `/api/*` → gateway proxying happens at request time
-  (`src/proxy.ts` reads `GATEWAY_URL` from the environment), so no build-time
-  gateway URL is baked in and one image promotes across environments. The
-  `.next` tree is chowned to `node` so the non-root runtime can write its cache.
+- **Web** (`/Dockerfile`) — `build` runs `next build` with `output:
+  "standalone"` (set in `next.config.ts`); `runtime` ships that self-contained
+  bundle — **no `npm ci`, no prod `node_modules`** — copying `.next/standalone`
+  (Next's traced `server.js` + only the deps it actually imports) plus
+  `.next/static` and `public` alongside it, and runs **`node server.js`**
+  (standalone reads `PORT`/`HOSTNAME` from the env). This shrinks the image
+  from ~1GB (`next start` over full prod deps) to ~340MB. `/api/*` → gateway
+  proxying happens at request time (`src/proxy.ts` reads `GATEWAY_URL` from the
+  environment), so no build-time gateway URL is baked in and one image promotes
+  across environments. The `.next` tree is chowned to `node` so the non-root
+  runtime can write its cache under `.next/cache`.
 - **Services** (`services/*/Dockerfile`) — `build` compiles TypeScript with
   `tsc`; `runtime` installs prod-only deps and copies `dist`.
 - **DB-owning services** (identity, provider, review, job, notification,
@@ -32,7 +37,13 @@ Every image runs as the **non-root `node` user** (`USER node`).
 `# dependabot: <tag>` comment plus the readable tag before the `@sha256:` digest,
 so a build is reproducible and Dependabot can bump the tag comment and digest
 together. Compose base images (`postgis/postgis:16-3.5-alpine`, `redis:7-alpine`,
-`caddy:2-alpine` in `docker-compose.prod.yml`) are pinned the same way.
+`caddy:2-alpine` in `docker-compose.prod.yml`) are pinned the *same way* by hand,
+but **Dependabot can't bump them** — its `docker` ecosystem only parses `FROM`
+in Dockerfiles, never `image:` refs in compose files. A scheduled
+[`compose-image-digests`](../.github/workflows/compose-image-digests.yml)
+workflow (#664) diffs those pinned compose digests against the live upstream
+tags weekly and opens a tracking issue on drift, so a base-layer CVE fix still
+surfaces as work instead of persisting silently.
 
 **Dependabot** (`.github/dependabot.yml`) tracks three ecosystems weekly, for
 `/` and `/services/*`:
@@ -47,8 +58,11 @@ together. Compose base images (`postgis/postgis:16-3.5-alpine`, `redis:7-alpine`
   secrets; Dependabot bumps the SHA and the comment together. (`actionlint.yml`'s
   `docker://rhysd/actionlint` is pinned by **image digest** with the tag as the
   readable label, #573.)
-- **docker** — bumps the pinned base-image digests so base-layer CVEs surface as
-  PRs instead of silently persisting.
+- **docker** — bumps the pinned base-image digests **in the Dockerfiles** (the
+  root web image at `/` and every `services/*` image) so base-layer CVEs surface
+  as PRs instead of silently persisting. It does **not** see the `image:` refs in
+  the compose files — the postgis/redis/caddy digests in `docker-compose.prod.yml`
+  are watched by the separate `compose-image-digests` workflow instead (#664).
 
 ## Runtime behavior
 
