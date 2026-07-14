@@ -26,10 +26,11 @@
   requests carry an optional customer-stated `budget`, but there is no
   transaction ledger, price agreement, or commission anywhere.)
 
-Every service also exposes `GET /healthz` (unauthenticated). The five DB
-services (identity, provider, review, job, notification) run it as a readiness
-probe (`200 {ok:true,service}` / `503 {ok:false,service,db:"down"}`); gateway,
-media and chat return the static `200 {ok:true,service}`.
+Every service also exposes `GET /healthz` (unauthenticated). The seven DB
+services (identity, provider, review, job, notification, search, trust-safety)
+run it as a readiness probe (`200 {ok:true,service}` /
+`503 {ok:false,service,db:"down"}`); gateway, media and chat return the static
+`200 {ok:true,service}`.
 
 ---
 

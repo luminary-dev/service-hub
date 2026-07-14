@@ -1,6 +1,6 @@
 # RFC: Search & discovery service (geo-aware provider search)
 
-- **Status:** Draft — awaiting owner sign-off on the third-party choices in §3.3
+- **Status:** Phases 1–3 implemented — geo capture (#617), search-service at browse parity with the PostGIS index (#620), map view + distance discovery (#624). Alerts matching (phase 4) and Tamil are still pending.
 - **Refs:** #48 (map view + distance-based discovery), #2 (Tamil — design for, don't block on)
 - **Scope:** Stage-2 Track 3. A new `search-service` owning provider search queries and
   geo/distance discovery. Provider data source of truth **stays in provider-service**.

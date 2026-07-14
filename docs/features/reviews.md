@@ -34,13 +34,15 @@ review-service.
   [API reference](../api/public.md).
 - **Review photos** — up to **3** per review (JPEG/PNG/WebP), submitted
   multipart to `POST /api/providers/{providerId}/reviews`. Authors can remove
-  their own photos (`DELETE /api/reviews/photos/{id}`, a hard delete).
+  their own photos (`DELETE /api/reviews/photos/{id}`, a hard delete; admins
+  can remove any).
 - **Provider responses (#395).** The reviewed profile's owner can keep **one
   public reply per review** — add, edit (posting again replaces the text,
   3–1000 chars) or delete it, via `POST`/`DELETE
   /api/reviews/{id}/response`. Ownership is verified server-side over S2S
   (fail-loud on the write path); suspended providers cannot respond. The reply
-  renders under the review for every visitor, localized, and hides with the
+  renders under the review for every visitor as written (a single free-text
+  field — only the surrounding UI chrome is localized), and hides with the
   review when it is soft-deleted (and cascades on hard delete). A **first**
   response sends the review's author a best-effort `REVIEW_RESPONSE`
   notification (edits stay silent).

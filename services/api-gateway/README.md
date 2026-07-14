@@ -7,7 +7,7 @@ The single publicly exposed entry point for Service Hub. No database. It
 terminates the cross-cutting edge concerns — structured request logging, CSRF,
 per-route rate limiting, a request-body cap and session (JWT) verification —
 then reverse-proxies every `/api/*` request to the right backend service
-(identity, provider, review, job, media). It strips any client-supplied trusted
+(identity, provider, review, job, notification, media, search). It strips any client-supplied trusted
 headers and stamps its own identity headers plus `x-internal-secret` on each
 upstream request. The gateway **adds** the internal secret; it does not require
 one itself.
@@ -16,18 +16,22 @@ one itself.
 
 | Public path | Upstream | Upstream path |
 |---|---|---|
-| `/api/files/provider/*`, `/api/files/review/*` | media | rewritten to `/files/*` |
+| `/api/files/provider/verification/*` (PII, #500) | provider | unchanged (admin-gated serve, bytes fetched from media over S2S) |
+| `/api/files/provider/*`, `/api/files/review/*`, `/api/files/category/*`, `/api/files/user/*` | media | rewritten to `/files/*` |
 | `/api/account/inquiries` | provider | unchanged |
 | `/api/account/reviews` | review | unchanged |
+| `/api/account/profile`, `/api/account/avatar`, `/api/account/email/change`, `/api/account/email/confirm` (#396) | identity | unchanged |
 | `/api/providers/:id/reviews` | review | unchanged |
 | `/api/admin/reviews/*`, `/api/admin/review-reports*`, `/api/admin/review-audit-log`, `/api/admin/review-stats` | review | unchanged |
 | `/api/reviews/*` | review | unchanged |
 | `/api/admin/users*`, `/api/admin/impersonate/*`, `/api/admin/signups` | identity | unchanged |
-| `/api/admin/jobs*` | job | unchanged |
+| `/api/admin/jobs*`, `/api/admin/job-reports*`, `/api/admin/job-audit-log` | job | unchanged |
 | `/api/admin/*` (everything else, incl. `/api/admin/reports`, `/api/admin/audit-log`, `/api/admin/notifications/counts`) | provider | unchanged |
-| `/api/photos/:id/report` | provider | unchanged |
+| `/api/notifications`, `/api/notifications/*`, `/api/notification-preferences` (#394) | notification | unchanged |
+| `/api/photos/:id/report`, `/api/messages/:id/report` | provider | unchanged |
 | `/api/auth/*` | identity | unchanged |
-| `/api/favorites`, `/api/favorites/*` | identity | unchanged |
+| `/api/favorites`, `/api/favorites/*`, `/api/saved-searches`, `/api/saved-searches/*` | identity | unchanged |
+| `/api/search/*` (search RFC phase 2) | search | unchanged |
 | `/api/providers`, `/api/providers/*`, `/api/provider/*`, `/api/inquiries/*`, `/api/categories`, `/api/stats` | provider | unchanged |
 | `/api/jobs`, `/api/jobs/*` | job | unchanged |
 | anything else | — | `404 { "error": "Not found" }` |
@@ -37,6 +41,11 @@ each carve out their own admin sub-paths ahead of the generic provider
 fallback. Any path containing `/internal` (literal or percent-encoded) is
 **never** forwarded — it 404s. The gateway does **not** enforce auth on any
 route; it forwards identity when present and each upstream decides its own 401s.
+
+`trust-safety` (:4009) is wired into the `ServiceName` union and `serviceUrl`
+but **dark**: `resolveRoute` never returns it yet — the trust & safety
+extraction's cutover PR flips the report/queue paths to it
+(`docs/rfcs/trust-safety-service.md` §5.4).
 
 `GET /healthz` → `200 { ok: true, service: "api-gateway" }` (not proxied, not
 logged, no CSRF / rate-limit / body cap).
@@ -91,10 +100,11 @@ logged, no CSRF / rate-limit / body cap).
 | `PROVIDER_SERVICE_URL` | `http://localhost:4002` | upstream |
 | `REVIEW_SERVICE_URL` | `http://localhost:4003` | upstream |
 | `JOB_SERVICE_URL` | `http://localhost:4004` | upstream |
+| `NOTIFICATION_SERVICE_URL` | `http://localhost:4005` | upstream (notification center + preferences) |
 | `MEDIA_SERVICE_URL` | `http://localhost:4006` | upstream (file serving) |
+| `SEARCH_SERVICE_URL` | `http://localhost:4008` | upstream (`/api/search/*`) |
+| `TRUST_SAFETY_SERVICE_URL` | `http://localhost:4009` | wired but dark — no public route resolves to it yet |
 | `WEB_ORIGIN` | `http://localhost:3000` | authoritative public origin for `x-origin` |
-
-`NOTIFICATION_SERVICE_URL` is not routed publicly (notification is internal-only).
 
 ## Scripts
 

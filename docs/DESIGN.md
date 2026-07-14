@@ -140,6 +140,12 @@ components:
   `.label` with a control plus optional help/error text (error takes
   precedence and is announced via `role="alert"`). `FormRow` lays 2–3 `Field`s
   side by side (single column on mobile).
+- **`FormError` / `ErrorSummary` / `useFieldErrors`** (one module,
+  `FormError.tsx`) — inline field-error text wired to its control via
+  `aria-describedby`/`aria-invalid`, the focus-managed top-of-form
+  `ErrorSummary` linking to the offending fields, and the hook that keeps the
+  per-field error map (and moves focus to the first invalid control) behind
+  both (#378 — the failure-side counterpart of `FormSuccess`).
 - **`Dialog`** (client) — the one modal implementation: fixed overlay, focus
   trap, scroll lock, Escape-to-close, initial-focus + focus-restore. Render it
   only while open (`{open && <Dialog …>}`). Panel mode (`panelClassName`)

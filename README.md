@@ -48,8 +48,9 @@ docker compose up -d --build
 
 # The container images run as NODE_ENV=production, so the demo seed is an
 # explicit opt-in (unlike `npm run setup` above, which seeds for you). Seed the
-# five data services once the stack is up:
-for s in identity-service provider-service review-service job-service notification-service; do
+# six stateful services once the stack is up (search_db is a derived index —
+# migrated, not seeded):
+for s in identity-service provider-service review-service job-service notification-service trust-safety-service; do
   docker compose exec -e SEED_DEMO_DATA=true "$s" npm run db:seed
 done
 ```

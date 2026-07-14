@@ -40,10 +40,13 @@ home district for a payload predating the field), excluding the provider's own
 postings. The board is only
 shown to users who actually have a provider profile (role alone is not enough).
 Each board card is flagged `responded` if the provider already replied, and
-carries a **Report** action (`POST /api/jobs/{jobId}/report`, #376) feeding the
-[admin reports queue](../admin/moderation.md#reports-queue); an admin can take
-a reported job down (it leaves the board and stops accepting responses — see
-[admin jobs](../admin/jobs.md)).
+carries a **Report** action (`POST /api/jobs/{jobId}/report`, #376 — reports
+are accepted with or without a session; a signed-in re-report refreshes the
+existing open one) feeding the
+[admin reports queue](../admin/moderation.md#reports-queue); a full admin can
+take a reported job down (`PATCH /api/admin/jobs/:id` `{ action: "hide" }` —
+it leaves the board and stops accepting responses; SUPPORT can work the queue
+but not hide — see [admin jobs](../admin/jobs.md)).
 
 ### Responding
 
@@ -67,7 +70,7 @@ The same page shows a customer their own jobs (`GET /api/jobs/mine`) with the
 response list and a status toggle. **Job statuses are OPEN / CLOSED**; the owner
 closes/reopens via `PATCH /api/jobs/{jobId}` `{ status }`.
 
-Admins have read-only oversight of all jobs — see
+Admins have oversight of all jobs, plus the hide/unhide takedown — see
 [ADMIN.md](../admin/jobs.md). **Monetization — payments, commission/fees, billing
 and transaction records — is intentionally deferred to v0.2**; the platform is
 free to use in v0.1. Service rates, the price-range filter, and the optional job

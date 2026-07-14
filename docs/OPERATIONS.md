@@ -153,12 +153,12 @@ workflows follows one format: a **per-package** check is `<package> / <task>`
 (e.g. `web / typecheck`, `api-gateway / build`, `web / coverage`,
 `media-service / npm-audit`, `web / trivy-image`); a **repo-wide** check is a
 single lowercase-kebab name with no slash (`e2e`, `compose-config`, `trivy-fs`,
-`actionlint`). The per-package matrix produces 34 legs; the 28 pre-existing
-`<package> / {typecheck,(lint,)test,build}` legs are the required status checks
-in the `dev`/`prod` rulesets today (the six `search-service` /
-`trust-safety-service` legs run on every PR but have not been promoted to
-required yet) — keep those exact names stable, and if you rename one, update
-the ruleset's required-checks list in the same change.
+`actionlint`). The per-package matrix produces 34 legs
+(`<package> / {typecheck,(lint,)test,build}`), and **all 34 are required status
+checks in both the `dev` and `prod` rulesets** — including the six
+`search-service` / `trust-safety-service` legs. Keep those exact names stable,
+and if you rename one, update the ruleset's required-checks list in the same
+change.
 
 See [TESTING.md](TESTING.md) for the test layers behind these jobs.
 
@@ -174,9 +174,8 @@ sh` install (a moving upstream branch).
 - **Trivy filesystem scan** — `trivy fs` over the lockfiles
   (CRITICAL/HIGH/MEDIUM). **Report-only**: uploads SARIF to the Security tab,
   never fails the build.
-- **Trivy image scan** (#238) — builds each of the ten images in its matrix
-  (web + nine services — search-service is not yet in the trivy-image or
-  npm-audit matrices) and scans the
+- **Trivy image scan** (#238) — builds each of the eleven images in its matrix
+  (web + the 10 services) and scans the
   base-image / OS packages (`vuln-type: os`). **Gating**: fails the build on
   fixable HIGH/CRITICAL OS vulns (`severity: HIGH,CRITICAL`, `ignore-unfixed`,
   `exit-code: 1`); SARIF still uploads so all findings surface.
@@ -309,7 +308,7 @@ One-time setup, then run the whole stack on the host:
 ```bash
 npm run setup       # scripts/setup.sh — installs all packages, writes .env files
                     # from the examples, starts Postgres, migrates + seeds the 6
-                    # stateful DBs (search_db: migrate only — a derived index)
+                    # stateful DBs (search's derived index is migrated, not seeded)
 npm run dev:all     # scripts/dev-all.sh — Postgres (docker) + all 10 services + web
 ```
 
@@ -323,9 +322,9 @@ To run everything in containers instead (closest to prod):
 
 ```bash
 docker compose up -d --build      # dev compose: builds locally, all services + web
-# the container images run NODE_ENV=production, so seed the 5 data services
+# the container images run NODE_ENV=production, so seed the 6 data services
 # explicitly (setup.sh seeds for you on the host path; the container path does not):
-for s in identity-service provider-service review-service job-service notification-service; do
+for s in identity-service provider-service review-service job-service notification-service trust-safety-service; do
   docker compose exec -e SEED_DEMO_DATA=true "$s" npm run db:seed
 done
 npm run e2e                       # scripts/e2e-smoke.sh against the running stack
@@ -339,7 +338,8 @@ board is intentionally empty — jobs are customer-created) are both expected.
 the seeds are dummy data only. When a run's state gets in the way, reset to a
 clean, seeded stack with `scripts/dev-reset.sh`, which tears everything down
 **including volumes** (`docker compose down -v`), rebuilds (`up -d --build`),
-reseeds the five demo databases and rebuilds the derived search index:
+reseeds the stateful databases, and rebuilds the derived search index via the
+reindex sweep:
 
 ```bash
 ./scripts/dev-reset.sh            # down -v → up -d --build → reseed

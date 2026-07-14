@@ -46,6 +46,9 @@ Public entry. Responsibilities:
 4. **Routing** (`lib/routes.ts`, streaming proxy, preserves method/headers/body
    incl. multipart; passes `Set-Cookie` back). Longest-prefix first; anything
    containing `/internal` (raw or percent-encoded) is never forwarded → `404`.
+   - `/api/files/provider/verification/*` → **provider** (carved out AHEAD of
+     the media forward — verification documents are PII, served only through
+     provider-service's ADMIN/SUPPORT-gated route, #500)
    - `/api/files/{provider,review,category,user}/*` → media `/files/*`
    - `/api/account/inquiries` → provider; `/api/account/reviews` → review
    - `/api/account/profile`, `/api/account/avatar`,
@@ -67,7 +70,7 @@ Public entry. Responsibilities:
    - `/api/photos/:id/report` → provider (work-photo abuse reports)
    - `/api/messages/:id/report` → provider (inquiry-message abuse reports,
      #376)
-   - `/api/auth/*`, `/api/favorites*` → identity
+   - `/api/auth/*`, `/api/favorites*`, `/api/saved-searches*` (#516) → identity
    - `/api/search/*` → search (provider search + geo discovery; the web
      listing queries it since RFC phase 3, while `/api/providers` browse
      deliberately stays at parity on provider-service until the cut-over has
@@ -92,7 +95,8 @@ by service:
 
 - **identity-service (:4001)** — `/api/auth/*` (register/login/logout/session,
   email verification, password reset/change, self-service account deletion),
-  `/api/favorites*`, and the admin user-management, impersonation ("view as") and
+  `/api/favorites*`, `/api/saved-searches*` (#516), and the admin
+  user-management, impersonation ("view as") and
   signups-analytics routes. Signs the `sh_session` JWT; owns the S2S user
   hydration + session-version revocation check.
 - **provider-service (:4002)** — the public directory/search (`/api/providers*`,
@@ -137,4 +141,12 @@ by service:
   review-service and a daily reindex sweep (see the
   [search & discovery RFC](../rfcs/search-discovery-service.md)). Card DTOs are
   hydrated back from provider-service, so display data stays single-sourced.
+- **trust-safety-service (:4009)** — the unified reports/moderation store
+  (`trust_safety_db`: one `Report` model for all seven target types + the
+  merged `AdminAuditLog`). **Dark-launched**: wired into the gateway's
+  `ServiceName` union and `TRUST_SAFETY_SERVICE_URL`, but `resolveRoute` never
+  returns it — no public path resolves to it until the cutover PR flips the
+  report/moderation routes over
+  ([RFC](../rfcs/trust-safety-service.md) §8 phase 1). Its S2S ingestion
+  endpoints (`/internal/reports/auto`, `/internal/audit`) are live but uncalled.
 

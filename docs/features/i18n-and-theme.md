@@ -13,7 +13,10 @@ structural parity is guarded by `src/lib/legal.test.ts` the same way
 
 - **`/si` routing.** `src/proxy.ts` matches `/si` and `/si/*`, rewrites to the
   same path minus the `/si` prefix (keeping a single route tree), and sets an
-  `x-locale: si` request header. The browser URL stays `/si/...`.
+  `x-locale: si` request header. The browser URL stays `/si/...`. The proxy
+  *owns* that header: on every other (English-root) page route it overwrites
+  any client-forgeable `x-locale` and pins it to `en`, so the URL — not the
+  header — is the authoritative locale.
 - **Locale detection.** `getLocale()` returns `si` when the request came through
   `/si`, else falls back to the `lang` cookie, else `en`.
 - **Language toggle** — writes the `lang` cookie (1-year) and navigates to the

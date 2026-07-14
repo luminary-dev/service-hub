@@ -226,7 +226,7 @@ owning service applies. The two agree.
 | View verification documents (NIC / business-registration PII) | SUPPORT+ | (queue link) | `isSupportOrAdmin` (provider-service serve route, #500) |
 | Resolve / dismiss abuse reports | SUPPORT+ | `hasSupportAccess` | `isSupportOrAdmin` |
 | Provider moderation: verify / suspend / bulk actions | ADMIN | `hasFullAdminAccess` | `isFullAdmin` (provider-service) |
-| Verification queue: approve / reject | ADMIN | `hasFullAdminAccess` | `isFullAdmin` (provider-service) |
+| Verification queue: approve / reject | ADMIN | *(none — buttons render for SUPPORT too; the backend 403 is the gate)* | `isFullAdmin` (provider-service) |
 | Delete / restore work photos (soft) | ADMIN | `hasFullAdminAccess` | `isFullAdmin` (provider-service) |
 | Delete / restore reviews (soft) | ADMIN | `hasFullAdminAccess` | `isFullAdmin` (review-service) |
 | Delete / restore inquiry thread messages (soft, #376) | ADMIN | `hasFullAdminAccess` | `isFullAdmin` (provider-service) |
@@ -262,7 +262,7 @@ Backend admin routes live in:
 `services/provider-service/src/routes/admin.ts`,
 `services/identity-service/src/routes/{admin.ts,admin-users.ts,admin-impersonation.ts}`,
 `services/job-service/src/routes/{admin.ts,reports.ts}`,
-`services/review-service/src/routes/reports.ts`.
+`services/review-service/src/routes/{reports.ts,reviews.ts}`.
 
 ## Audit log
 

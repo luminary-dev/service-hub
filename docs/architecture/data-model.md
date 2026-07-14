@@ -142,6 +142,22 @@
   Redis-backed email delivery queue (`notify:email` / `notify:processing`,
   BRPOPLPUSH worker with a processing-list reclaim sweep, 3 attempts at
   30s × 2^n backoff; Redis down → one-attempt direct sends).
+- **trust-safety-service** (`trust_safety_db`, **dark launch** — deployed and
+  functional, but the owning services still write their local tables until the
+  cutover PR; [RFC](../rfcs/trust-safety-service.md)): `Report` — ONE unified
+  model for all **seven** target types previously split field-for-field
+  identically across provider-, review- and job-service (`targetType` =
+  `PROVIDER`|`WORK_PHOTO`|`INQUIRY`|`MESSAGE`|`REVIEW`|`JOB`|`JOB_RESPONSE`),
+  same field set (`reporterId` nullable, `reason`, `details`, `status`,
+  `source` `USER`|`SYSTEM`, `updatedAt`, `resolvedBy`/`resolvedAt`) plus a
+  denormalized `ownerService` (`provider`|`review`|`job`) so queue hydration
+  and takedown actions fan out per owning service; and `AdminAuditLog` — the
+  unified moderation trail (same shape as the per-service logs plus a
+  `service` origin column, fed by `POST /internal/audit` and the backfill).
+  `targetId`/`reporterId`/`adminId` are plain strings (no cross-service FK —
+  a report must survive its target's deletion); target existence/visibility
+  is checked over S2S at write time. Backfilled ids are preserved verbatim
+  (`scripts/migrate-trust-safety-backfill.sh`).
 - **media-service** / **chat-service**: stateless (no DB).
 
 Cross-service uniqueness/cascades that FKs used to give us are preserved by

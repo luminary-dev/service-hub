@@ -10,7 +10,7 @@
 ```bash
 git clone https://github.com/luminary-dev/service-hub.git
 cd service-hub
-npm run setup      # installs all packages, creates .env files, starts Postgres, applies migrations, seeds
+npm run setup      # installs all packages, creates .env files, starts Postgres, migrates, seeds
 npm run dev:all    # runs the gateway + all nine backend services + the web app (Ctrl-C stops everything)
 ```
 

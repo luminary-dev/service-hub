@@ -186,7 +186,7 @@ Board/mine pagination: `page` ≥ 1, `pageSize`/`take` default 20, capped **50**
 
 | Method + path | Auth | Summary |
 |---|---|---|
-| `GET /api/files/:namespace/*` | public (via gateway) | Serve a stored image, streamed from R2 (private bucket) or local disk; long-cache immutable. The gateway routes the `provider`, `review`, `category` and `user` namespaces (→ media `/files/*`, supplying the internal secret). Optional `?variant=thumb\|medium` (#382) serves the 400px/800px derivative, falling back to the original when it's missing (pre-#382 uploads) or the value is unknown. Non-image extension / missing → 404. |
+| `GET /api/files/:namespace/*` | public (via gateway) | Serve a stored image, streamed from R2 (private bucket) or local disk; long-cache immutable. The gateway routes the `provider`, `review`, `category` and `user` namespaces (→ media `/files/*`, supplying the internal secret) — except `/api/files/provider/verification/*` (PII), which is carved out to provider-service's SUPPORT+-gated serve route (#500, see the [admin API](admin.md)). Optional `?variant=thumb\|medium` (#382) serves the 400px/800px derivative, falling back to the original when it's missing (pre-#382 uploads) or the value is unknown. Non-image extension / missing → 404. |
 
 Uploads never go here directly — the provider/review services stream bytes to
 media over S2S (`/internal/media/store`) and keep the returned URL, which

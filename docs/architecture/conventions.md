@@ -58,8 +58,8 @@
   backend can later hook `onError` + these handlers without touching call
   sites.
 - **Error shape**: `{ "error": string }`. Success shapes match the monolith.
-- **Health**: `GET /healthz`. The **five DB services** (identity, provider,
-  review, job, notification) run it as a **readiness probe** — `SELECT 1` raced
+- **Health**: `GET /healthz`. The **seven DB services** (identity, provider,
+  review, job, notification, search, trust-safety) run it as a **readiness probe** — `SELECT 1` raced
   against a 2s timeout, returning `503 { ok: false, service, db: "down" }` if
   Postgres is unreachable so the orchestrator can depool the instance; success
   is `200 { ok: true, service }`. gateway, chat and media return the static
@@ -92,10 +92,13 @@
   identity-service; verified by the gateway and by the web app (page gating).
 - **Session revocation**: `sv` is `User.sessionVersion` at mint time. Identity
   bumps the version on password change/reset, `POST /api/auth/logout-all`, and
-  admin force-logout; the gateway rejects tokens minted before the current
-  version (checked via `GET identity /internal/users/:id/session-version`,
-  cached 60s per user, fail-open on identity outage). Tokens minted before this
-  scheme count as version 0. The web app's page-gating verifier is a soft
+  admin force-logout / lock / role change; the gateway rejects tokens minted
+  before the current version. It resolves the current version from a shared
+  Redis revocation list first (`revocation:<userId>`, published best-effort on
+  every bump — authoritative, survives an identity outage, #374), falling back
+  to `GET identity /internal/users/:id/session-version` (cached 60s per user,
+  fail-open on identity outage) when Redis has no entry. Tokens minted before
+  this scheme count as version 0. The web app's page-gating verifier is a soft
   check — every data/state request goes through the gateway, the enforcement
-  point.
+  point. See [AUTHZ.md](../AUTHZ.md#session-revocation-374).
 
