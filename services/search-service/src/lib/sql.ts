@@ -144,11 +144,15 @@ export function buildOrderBy(sort: SortKey, point?: GeoPoint | null): Prisma.Sql
     default:
       // Bayesian rating + recency + verified boost (lib/sort.ts's
       // recommendedScore): bayes = (ratingSum + prior) / (count + priorCount),
-      // where ratingSum = avg * count (0 when unrated).
+      // where ratingSum = avg * count (0 when unrated). The constants are
+      // compile-time literals (never user input), inlined with Prisma.raw
+      // rather than bound: a bound param inside `CASE … ELSE 0 END` gets
+      // unified to the ELSE arm's integer type and 0.75 then fails to cast
+      // (22P02) — literals carry their own types.
       return Prisma.sql`(
-        (coalesce("ratingAvg", 0) * "ratingCount" + ${PRIOR_MEAN * PRIOR_COUNT}) / ("ratingCount" + ${PRIOR_COUNT})
-        + ${RECENCY_WEIGHT} * exp(-GREATEST(extract(epoch FROM (now() - "createdAt")), 0) / 86400.0 / ${RECENCY_HALFLIFE_DAYS})
-        + (CASE WHEN "verificationStatus" = 'VERIFIED' THEN ${VERIFIED_BOOST} ELSE 0 END)
+        (coalesce("ratingAvg", 0) * "ratingCount" + ${Prisma.raw(String(PRIOR_MEAN * PRIOR_COUNT))}) / ("ratingCount" + ${Prisma.raw(String(PRIOR_COUNT))})
+        + ${Prisma.raw(String(RECENCY_WEIGHT))} * exp(-GREATEST(extract(epoch FROM (now() - "createdAt")), 0) / 86400.0 / ${Prisma.raw(String(RECENCY_HALFLIFE_DAYS))})
+        + (CASE WHEN "verificationStatus" = 'VERIFIED' THEN ${Prisma.raw(String(VERIFIED_BOOST))} ELSE 0 END)
       ) DESC, ${newest}`;
   }
 }

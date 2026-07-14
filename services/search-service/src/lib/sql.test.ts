@@ -90,8 +90,12 @@ describe("buildOrderBy", () => {
     expect(order.sql).toContain(`coalesce("ratingAvg", 0) * "ratingCount"`);
     expect(order.sql).toContain("exp(-GREATEST(extract(epoch FROM");
     expect(order.sql).toContain(`"verificationStatus" = 'VERIFIED'`);
-    expect(order.values).toContain(12); // PRIOR_MEAN * PRIOR_COUNT
-    expect(order.values).toContain(0.75); // VERIFIED_BOOST
+    // The scoring constants are inlined literals, NOT bound params — a param
+    // inside `CASE … ELSE 0 END` is unified to integer and 0.75 fails to
+    // cast at runtime (22P02).
+    expect(order.values).toEqual([]);
+    expect(order.sql).toContain("+ 12)"); // PRIOR_MEAN * PRIOR_COUNT
+    expect(order.sql).toContain("THEN 0.75 ELSE 0"); // VERIFIED_BOOST
   });
 
   it("orders distance by KNN and falls back to newest without a point", () => {
