@@ -38,7 +38,10 @@ forward direction of the response-notification below.
 provider's served districts** (`serviceDistricts`, #502 — falls back to the
 home district for a payload predating the field), excluding the provider's own
 postings. The board is only
-shown to users who actually have a provider profile (role alone is not enough).
+shown to users who actually have a provider profile (role alone is not enough),
+and a **suspended** profile is 403'd (#642): it keeps its PROVIDER role but
+loses board access, mirroring how a hidden profile is dropped from every public
+listing.
 Each board card is flagged `responded` if the provider already replied, and
 carries a **Report** action (`POST /api/jobs/{jobId}/report`, #376 — reports
 are accepted with or without a session; a signed-in re-report refreshes the
@@ -51,10 +54,10 @@ but not hide — see [admin jobs](../admin/jobs.md)).
 ### Responding
 
 `JobRespondForm` → `POST /api/jobs/{jobId}/responses` (message 10–1000 chars).
-Only registered providers may respond, and the server **re-enforces the scoping
-rule**: responding to your own job (400), or to a job outside your category or
-served districts (403 "This job is outside your category or district"), or to a job that
-is not OPEN (400) all fail. One response per provider per job. The customer
+Only registered providers may respond (a suspended profile is 403'd, #642), and
+the server **re-enforces the scoping rule**: responding to your own job (400),
+or to a job outside your category or served districts (403 "This job is outside
+your category or district"), or to a job that is not OPEN (400) all fail. One response per provider per job. The customer
 gets a best-effort `JOB_RESPONSE` notification (in-app + email, via the same
 events endpoint).
 
@@ -67,7 +70,9 @@ Job titles/descriptions and response messages also pass the write-time
 ### Managing your jobs
 
 The same page shows a customer their own jobs (`GET /api/jobs/mine`) with the
-response list and a status toggle. **Job statuses are OPEN / CLOSED**; the owner
+response list and a status toggle. A **suspended** responder's contact details
+are withheld here (name → `Unknown`, phone → `null`, #642), matching the public
+listings it's already dropped from. **Job statuses are OPEN / CLOSED**; the owner
 closes/reopens via `PATCH /api/jobs/{jobId}` `{ status }`.
 
 Admins have oversight of all jobs, plus the hide/unhide takedown — see

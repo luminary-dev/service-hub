@@ -26,9 +26,9 @@ each service enforces the tier. **Reads and report resolve/dismiss** gate on
 | `GET /api/admin/providers/:id` | SUPPORT+ | Detail + photos + reviews (incl. soft-deleted) + `quality` score (#229, computed live). |
 | `GET /api/admin/verifications` | SUPPORT+ | PENDING queue + docs, oldest first, paginated (default 20, cap 100) → `{ providers, total, page, pageSize }`. |
 | `GET /api/files/provider/verification/*` | SUPPORT+ | Serve a verification document (NIC / business-registration scan, #500). Carved out of the public media path at the gateway; provider-service re-checks the caller is ADMIN/SUPPORT, fetches the bytes from media over S2S (`GET /internal/media/raw`), and streams them back `private, no-store` (PII — never shared-cached). |
-| `PATCH /api/admin/providers/:id` | ADMIN | `{ action: verify\|unverify\|suspend\|unsuspend }`. |
-| `PATCH /api/admin/providers` | ADMIN | Bulk suspend/unsuspend `{ ids, suspended }` → `{ ok, count }`. |
-| `PATCH /api/admin/verifications/:id` | ADMIN | `{ action: approve\|reject, reason? }` → `{ status }`. |
+| `PATCH /api/admin/providers/:id` | ADMIN | `{ action: verify\|unverify\|suspend\|unsuspend }`. `unsuspend` refuses an **owner-deactivated** profile (`adminSuspended=false`) with 409 (#644) — only the owner re-lists those; it lifts genuine ADMIN suspensions only. |
+| `PATCH /api/admin/providers` | ADMIN | Bulk suspend/unsuspend `{ ids, suspended }` → `{ ok, count }`. Bulk `unsuspend` relists only ADMIN-suspended rows; owner-deactivated ones are left hidden and reported as `skipped` (all-ineligible → 409, #644). |
+| `PATCH /api/admin/verifications/:id` | ADMIN | `{ action: approve\|reject, reason? }` → `{ status }`. Only a still-`PENDING` submission can be decided — otherwise 409 (#647), matching the bulk variant. |
 | `PATCH /api/admin/verifications` | ADMIN | Bulk approve/reject `{ ids, action, reason? }` (only PENDING touched) → `{ status, count }`. |
 | `DELETE /api/admin/photos/:id` | ADMIN | Soft-delete a work photo. |
 | `PATCH /api/admin/photos/:id/restore` | ADMIN | Restore a soft-deleted photo. |
