@@ -70,6 +70,7 @@ jobs:
           - notification-service
           - media-service
           - chat-service
+          - search-service
           - trust-safety-service
           - api-gateway
     steps:
@@ -137,6 +138,7 @@ jobs:
           - notification-service
           - media-service
           - chat-service
+          - search-service
           - trust-safety-service
           - api-gateway
     defaults:
