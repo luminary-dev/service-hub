@@ -261,8 +261,10 @@ accountRoutes.post("/email/confirm", async (c) => {
     where: { tokenHash: hashToken(parsed.data.token) },
   });
   if (!record || record.expiresAt < new Date()) {
+    // deleteMany, not delete: a double-submit races to delete the same row and
+    // delete() throws P2025 on the loser (a spurious 500). deleteMany no-ops.
     if (record) {
-      await db.emailChangeToken.delete({ where: { id: record.id } });
+      await db.emailChangeToken.deleteMany({ where: { id: record.id } });
     }
     return c.json({ error: "expired" }, 400);
   }

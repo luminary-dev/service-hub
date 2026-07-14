@@ -4,6 +4,7 @@ import {
   ProviderAdminSuspendedError,
   providerExists,
   reactivateProviderProfile,
+  resolveProviderIdByUser,
   resolveProviderIdForErase,
 } from "./providers";
 
@@ -31,6 +32,13 @@ describe("providerExists", () => {
   it("returns false when the summary body is { provider: null }", async () => {
     stubFetch(200, { provider: null });
     expect(await providerExists("missing")).toBe(false);
+  });
+
+  // #646/#361: a suspended profile is hidden from every public surface, so
+  // favoriting it must 404 exactly like a missing id — not silently succeed.
+  it("returns false when the provider exists but is suspended", async () => {
+    stubFetch(200, { provider: { id: "p1", userId: "u1", suspended: true } });
+    expect(await providerExists("p1")).toBe(false);
   });
 
   it("throws on a 5xx so the favorites write returns 502, not a false 404", async () => {
@@ -76,6 +84,37 @@ describe("resolveProviderIdForErase", () => {
       })
     );
     await expect(resolveProviderIdForErase("u1")).rejects.toThrow();
+  });
+});
+
+// #643: the fail-loud resolver backs complete-provider's create-vs-reactivate
+// branch (and delete-account's erase). A `provider: null` on 200 is a real
+// "no profile"; any non-ok status or transport error must throw so the caller
+// aborts (502) instead of taking the wrong branch on a false null.
+describe("resolveProviderIdByUser", () => {
+  it("returns the provider id when the user owns a profile", async () => {
+    stubFetch(200, { provider: { id: "prov-1", userId: "u1" } });
+    expect(await resolveProviderIdByUser("u1")).toBe("prov-1");
+  });
+
+  it("returns null only when provider-service confirms no profile (200)", async () => {
+    stubFetch(200, { provider: null });
+    expect(await resolveProviderIdByUser("u1")).toBeNull();
+  });
+
+  it("throws on a 5xx so the caller 502s rather than acting on a false null", async () => {
+    stubFetch(500, { error: "boom" });
+    await expect(resolveProviderIdByUser("u1")).rejects.toThrow(/500/);
+  });
+
+  it("throws on a transport failure", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("fetch failed: ECONNREFUSED");
+      })
+    );
+    await expect(resolveProviderIdByUser("u1")).rejects.toThrow();
   });
 });
 

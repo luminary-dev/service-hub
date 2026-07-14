@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { dbMock } = vi.hoisted(() => ({
   dbMock: {
     $queryRaw: vi.fn(),
+    $executeRaw: vi.fn(),
     notification: {
       findMany: vi.fn(),
       createMany: vi.fn(),
@@ -59,6 +60,7 @@ beforeEach(() => {
   dbMock.notification.findMany.mockResolvedValue([]);
   dbMock.notification.createMany.mockResolvedValue({ count: 0 });
   dbMock.notification.deleteMany.mockResolvedValue({ count: 0 });
+  dbMock.$executeRaw.mockResolvedValue(0);
   dbMock.notificationPreference.findMany.mockResolvedValue([]);
   dbMock.notificationPreference.deleteMany.mockResolvedValue({ count: 0 });
 });
@@ -148,6 +150,16 @@ describe("POST /internal/notifications/events — fan-out", () => {
       },
       expect.objectContaining({ to: "b@example.com", locale: "en" }),
     ]);
+  });
+
+  it("sweeps retention in ONE batched query, not per recipient (#637)", async () => {
+    const res = await postEvent(EVENT);
+    expect(res.status).toBe(202);
+    // The old loop fired findMany+deleteMany per recipient; retention now runs
+    // as a single $executeRaw window-function delete for the whole in-app set.
+    expect(dbMock.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(dbMock.notification.findMany).not.toHaveBeenCalled();
+    expect(dbMock.notification.deleteMany).not.toHaveBeenCalled();
   });
 
   it("dedupes recipients by userId (first entry wins)", async () => {

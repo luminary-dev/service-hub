@@ -530,6 +530,29 @@ describe("admin soft-delete + restore (ADMIN only)", () => {
       data: { deletedAt: null },
     });
   });
+
+  // #L7: updateMany silently no-ops an unknown id — surface a 404 rather than
+  // a misleading 200, and don't fabricate an audit entry for a review that was
+  // never touched (matches provider admin.ts photo restore).
+  it("404s the DELETE and writes no audit entry when the id doesn't exist", async () => {
+    dbMock.review.updateMany.mockResolvedValue({ count: 0 });
+    const res = await req("/api/admin/reviews/nope", { method: "DELETE" }, {
+      "x-user-id": "admin_1",
+      "x-user-role": "ADMIN",
+    });
+    expect(res.status).toBe(404);
+    expect(dbMock.adminAuditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("404s the restore and writes no audit entry when the id doesn't exist", async () => {
+    dbMock.review.updateMany.mockResolvedValue({ count: 0 });
+    const res = await req("/api/admin/reviews/nope/restore", { method: "PATCH" }, {
+      "x-user-id": "admin_1",
+      "x-user-role": "ADMIN",
+    });
+    expect(res.status).toBe(404);
+    expect(dbMock.adminAuditLog.create).not.toHaveBeenCalled();
+  });
 });
 
 describe("GET /api/account/reviews (account history)", () => {

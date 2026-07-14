@@ -10,6 +10,7 @@
 // holds the address, which keeps this service free of a synchronous identity
 // dependency on the hot path. Recipients without an email get in-app only.
 import { Hono, type Context } from "hono";
+import { Prisma } from "@prisma/client";
 import { db } from "../db";
 import { getOrigin } from "../lib/http";
 import {
@@ -25,32 +26,38 @@ import { log } from "../lib/log";
 export const eventRoutes = new Hono();
 
 // Retention is opportunistic, not scheduled (no cron, no new infra): after
-// each insert for a user, drop their READ notifications that are BOTH older
-// than 90 days AND beyond their newest 200 rows. Unread rows are never swept.
+// each insert, drop READ notifications that are BOTH older than 90 days AND
+// beyond the recipient's newest 200 rows. Unread rows are never swept.
 const RETENTION_DAYS = 90;
 const RETENTION_KEEP = 200;
 
+// One batched sweep for the whole recipient set, not a serialized
+// findMany+deleteMany per user (#637 — the old loop fired 2 queries per
+// recipient, up to 400+ per event). A window function ranks each user's rows
+// newest-first in a single statement; we hard-delete only the READ rows that
+// are BOTH past the newest-RETENTION_KEEP window AND older than the cutoff.
+// Rows inside the keep window and unread rows are never touched — same
+// retention semantics as the old loop, at O(1) queries per event.
 async function sweepRetention(userIds: string[]): Promise<void> {
+  if (userIds.length === 0) return;
   const cutoff = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000);
-  for (const userId of userIds) {
-    // The row just past the newest-200 window; nothing to sweep when the user
-    // has fewer rows than the keep budget.
-    const edge = await db.notification.findMany({
-      where: { userId },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      skip: RETENTION_KEEP,
-      take: 1,
-      select: { createdAt: true },
-    });
-    if (edge.length === 0) continue;
-    await db.notification.deleteMany({
-      where: {
-        userId,
-        readAt: { not: null },
-        createdAt: { lt: cutoff, lte: edge[0].createdAt },
-      },
-    });
-  }
+  await db.$executeRaw`
+    DELETE FROM "Notification"
+    WHERE "id" IN (
+      SELECT "id" FROM (
+        SELECT "id",
+          ROW_NUMBER() OVER (
+            PARTITION BY "userId"
+            ORDER BY "createdAt" DESC, "id" DESC
+          ) AS rn
+        FROM "Notification"
+        WHERE "userId" IN (${Prisma.join(userIds)})
+      ) ranked
+      WHERE ranked.rn > ${RETENTION_KEEP}
+    )
+      AND "readAt" IS NOT NULL
+      AND "createdAt" < ${cutoff}
+  `;
 }
 
 async function readBody(c: Context): Promise<unknown> {

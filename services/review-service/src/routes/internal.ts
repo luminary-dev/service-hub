@@ -1,9 +1,19 @@
 import { Hono } from "hono";
 import { db } from "../db";
+import { s2s } from "../lib/http";
 import { listProviderReviews, normalizeTake } from "../lib/provider-reviews";
 import { fetchRatingSummaries } from "../lib/rating-summary";
 import { pushRatingsToSearchIndex } from "../lib/search-index";
 import { removeStoredFile, sweepMedia } from "../lib/storage";
+
+const PROVIDER_SERVICE_URL =
+  process.env.PROVIDER_SERVICE_URL ?? "http://localhost:4002";
+
+// Bound on how many ids a batch lookup will accept, so a caller (or attacker)
+// can't force a single giant IN (...) clause. Matches the peer internal
+// endpoints (identity/provider MAX_BATCH_IDS); extra ids past the cap are
+// ignored.
+const MAX_BATCH_IDS = 500;
 
 export const internal = new Hono();
 
@@ -17,7 +27,8 @@ internal.get("/ratings", async (c) => {
   const ids = (c.req.query("providerIds") ?? "")
     .split(",")
     .map((s) => s.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .slice(0, MAX_BATCH_IDS);
   return c.json({ ratings: await fetchRatingSummaries(ids) });
 });
 
@@ -53,24 +64,61 @@ internal.post("/maintenance/sweep-orphans", async (c) => {
 // POST /internal/users/:id/erase — account-deletion fan-out from
 // identity-service. Deletes the user's reviews (photo rows cascade) and their
 // stored photo files (best-effort — removeStoredFile swallows errors).
+//
+// The user's public review replies (ReviewResponse) and the reviews they
+// RECEIVED are keyed by their providerId, not their userId, so deleting only
+// their authored reviews leaves both behind (#645). Their provider profile is
+// being fully deleted by provider-service's erase, so those rows are orphaned
+// PII: resolve the providerId over S2S and hard-delete the received reviews
+// (their ReviewResponse replies + photo rows cascade). identity erases review
+// BEFORE provider (#551), so the Provider row still exists here to resolve
+// against. Degrades open on a peer blip — the fan-out is idempotent and
+// retried, so a later pass re-resolves and finishes the cleanup.
 // Idempotent: erasing an unknown user is a no-op 200.
 internal.post("/users/:id/erase", async (c) => {
   const userId = c.req.param("id");
+
+  let providerId: string | null = null;
+  try {
+    const res = await s2s(
+      PROVIDER_SERVICE_URL,
+      `/internal/providers/by-user/${encodeURIComponent(userId)}`
+    );
+    if (res.ok) {
+      const data = (await res.json()) as { provider: { id: string } | null };
+      providerId = data.provider?.id ?? null;
+    }
+  } catch {
+    // degrade open — a retry of the erase fan-out re-resolves and finishes
+  }
+
+  // Photo files to remove: authored reviews always, received reviews too when
+  // the user owned a provider profile.
+  const photoWhere = providerId
+    ? { review: { OR: [{ userId }, { providerId }] } }
+    : { review: { userId } };
   const [photos, reviews] = await Promise.all([
-    db.reviewPhoto.findMany({
-      where: { review: { userId } },
-      select: { url: true },
-    }),
+    db.reviewPhoto.findMany({ where: photoWhere, select: { url: true } }),
     // Captured before the delete so the search-index rating push below knows
     // which providers' aggregates just changed.
     db.review.findMany({ where: { userId }, select: { providerId: true } }),
   ]);
+
   await db.review.deleteMany({ where: { userId } });
+  if (providerId) {
+    // Cascades the ReviewResponse replies the user authored (they exist only
+    // on reviews of their own profile) and the received reviews' photo rows.
+    await db.review.deleteMany({ where: { providerId } });
+  }
   for (const p of photos) {
     await removeStoredFile(p.url);
   }
-  // Recount every affected provider (search RFC §4.2, fire-and-forget; the
-  // helper dedupes ids).
-  void pushRatingsToSearchIndex(reviews.map((r) => r.providerId));
+  // Recount every OTHER provider whose aggregates changed from deleting the
+  // user's authored reviews (search RFC §4.2, fire-and-forget; the helper
+  // dedupes ids). The erased user's own provider is left out — its index
+  // document is dropped by provider-service's erase.
+  void pushRatingsToSearchIndex(
+    reviews.map((r) => r.providerId).filter((id) => id !== providerId)
+  );
   return c.json({ ok: true });
 });

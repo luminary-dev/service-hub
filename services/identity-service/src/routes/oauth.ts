@@ -7,6 +7,7 @@ import { getOrigin } from "../lib/http";
 import { log } from "../lib/log";
 import { createSession } from "../lib/session";
 import { getAdapter } from "../lib/oauth";
+import { isLockedOut } from "../lib/lockout";
 
 export const oauthRoutes = new Hono();
 
@@ -190,6 +191,17 @@ oauthRoutes.get("/oauth/:provider/callback", async (c) => {
   } catch (e) {
     log.error("oauth user resolution failed", { context: "oauth", provider, err: e });
     return fail("oauth");
+  }
+
+  // Honor the per-account lockout password login enforces (auth.ts) — a social
+  // sign-in must not mint a session for a locked account (#641). The same
+  // `lockedUntil` column backs both the failed-login window and an admin lock,
+  // so this covers both. All resolution branches above (linked account /
+  // verified-email link / new signup / no-email placeholder) converge here, so
+  // no path can slip past the gate. A brand-new signup is never locked.
+  if (isLockedOut(user.lockedUntil)) {
+    clearTransientCookies(c);
+    return c.redirect(`${origin}/login?error=oauth_locked`);
   }
 
   await createSession(c, {
