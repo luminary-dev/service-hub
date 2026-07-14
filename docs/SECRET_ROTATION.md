@@ -86,7 +86,7 @@ risk.
 trust work. The gateway (and any service calling a peer) stamps it as the
 `x-internal-secret` header; every service validates it with a constant-time
 compare before trusting the forwarded `x-user-*` identity headers. It is read by
-**all eight services and the web app** (web reaches identity directly for the
+**all ten services and the web app** (web reaches identity directly for the
 session-revocation check). See [AUTHZ.md](AUTHZ.md).
 
 **Blast radius.** There is **one** accepted value per service — the code holds a
@@ -115,7 +115,7 @@ but rotate anyway).
 
 **What it protects.** The `postgres` superuser password. Since the
 per-service DB roles landed (#387) it no longer appears in any `DATABASE_URL`
-— the five DB-owning services connect as their own roles (below). The
+— the seven DB-owning services connect as their own roles (below). The
 superuser remains for cluster administration and the backup tooling
 (`scripts/backup-dbs.sh` execs `pg_dump -U postgres` over the container's
 local socket, which trusts local connections, so backups don't even read the
@@ -242,7 +242,7 @@ After any rotation, confirm the deploy went green and the stack is healthy:
    the admin dashboard). No `403 Forbidden` in
    `docker compose -f docker-compose.prod.yml logs api-gateway`.
 5. **DB connectivity** (after `POSTGRES_PASSWORD` or a `*_DB_PASSWORD`) — the
-   five DB services stay `healthy`; no `authentication failed` lines in their
+   seven DB services stay `healthy`; no `authentication failed` lines in their
    logs. After `REDIS_PASSWORD`: no `NOAUTH`/`WRONGPASS` lines from the
    gateway or identity.
 6. **Feature check** (after a third-party key) — send a test email / do an

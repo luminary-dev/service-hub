@@ -2,14 +2,15 @@
 
 Rate limiting lives in the **api-gateway** — the single public entry point in
 front of the microservices (see [ARCHITECTURE.md](ARCHITECTURE.md)). The
-gateway runs a per-IP sliding window over the abuse-prone POST endpoints and
+gateway runs a per-IP sliding window over the abuse-prone endpoints and
 returns `429` with a `Retry-After` header when a client is over budget. The
 implementation is `services/api-gateway/src/lib/rate-limit.ts`.
 
 ## Limits
 
-The named rules live in `RATE_LIMITS`; `LIMITED_ROUTES` maps request paths to
-them. Only `POST` requests are checked.
+The named rules live in `RATE_LIMITS`; `LIMITED_ROUTES` maps `POST` request
+paths to them and `LIMITED_GET_ROUTES` maps the rate-limited reads (today just
+`/api/search/*` — every other GET stays unthrottled).
 
 | Route | Rule | Limit |
 | --- | --- | --- |
@@ -32,6 +33,7 @@ them. Only `POST` requests are checked.
 | `POST /api/notification-preferences` | `review` | 10 / hour (own `notification-prefs` bucket) |
 | `POST /api/providers/[id]/report`, `POST /api/photos/[id]/report`, `POST /api/reviews/[id]/report`, `POST /api/jobs/[id]/report`, `POST /api/messages/[id]/report` | `review` | 10 / hour (shared `report` bucket) |
 | `POST /api/account/avatar`, `POST /api/provider/photos`, `POST /api/provider/verification`, `POST /api/admin/categories/image` | `upload` | 20 / 15 min (shared `upload` bucket) |
+| `GET /api/search/*` | `search` | 60 / min (the only GET budget) |
 
 `change-password` and `delete-account` sit on the strict login budget because
 each verifies the current password and is therefore a guessing oracle for a
@@ -52,6 +54,11 @@ at conversational frequency (each bell open marks a page read) so it sits on
 the `message` rule, and the preference upsert is a settings form on the
 `review` rule; the notification GETs (feed, unread-count poll) stay
 unthrottled like every other read — the client controls polling frequency.
+The `/api/search/*` reads (search & discovery RFC §5) are the one exception to
+"reads are unthrottled": the search endpoints are a query engine a scraper
+could walk the whole directory through, so they carry their own per-IP
+`search` budget — generous enough for a human paging and refining filters
+(each results page is one GET), tight enough to blunt a crawler.
 Job posting is additionally capped **per account** inside job-service (#556):
 each post fans out to up to 200 provider inboxes, and the per-IP rule alone is
 rotatable — so job-service requires a verified email (403 otherwise) and allows
@@ -191,8 +198,8 @@ bot filter — deliberately **not** a third-party CAPTCHA (see below).
 ## Adding or changing a limit
 
 - Add or tune a named rule in `RATE_LIMITS`.
-- Map a route to it by adding an entry to `LIMITED_ROUTES` (a `pattern`
-  RegExp, a `name`, and a `rule`).
+- Map a route to it by adding an entry to `LIMITED_ROUTES` (POSTs) or
+  `LIMITED_GET_ROUTES` (reads) — a `pattern` RegExp, a `name`, and a `rule`.
 - Keep rule names stable — they form part of the Redis/in-memory key, so
   renaming one resets the corresponding window.
 

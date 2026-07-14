@@ -5,7 +5,8 @@
   SUPPORT` (CHECK constraint). There are two admin tiers, enforced **end-to-end**
   (web + backend):
   - **ADMIN** — full access: destructive moderation (verify/suspend, verification
-    approve/reject, photo & review delete/restore, auto-flagging), category
+    approve/reject, photo & review delete/restore, inquiry-message
+    delete/restore and job hide/unhide takedown #376, auto-flagging), category
     edits, user management, role changes, and impersonation.
   - **SUPPORT** — read access to every admin view, plus resolving/dismissing
     abuse reports. Nothing destructive.
@@ -19,11 +20,13 @@
   matching predicate — reads and report resolve/dismiss on `isSupportOrAdmin`,
   destructive writes on `isFullAdmin`. The web gate is UX/defence-in-depth; the
   service check is the authoritative one.
-- **Audit trail (#227/#223):** provider- and review-service each keep an
+- **Audit trail (#227/#223):** provider-, review- and job-service each keep an
   `AdminAuditLog` (one row per moderation write) exposed at
-  `/api/admin/audit-log` and `/api/admin/review-audit-log`; abuse reports also
-  carry `resolvedBy`/`resolvedAt`. The frontend merges those two logs
-  client-side. identity-service records to its own `AdminAuditLog` too
+  `/api/admin/audit-log`, `/api/admin/review-audit-log` and
+  `/api/admin/job-audit-log`; abuse reports also
+  carry `resolvedBy`/`resolvedAt`. The frontend merges those three logs
+  client-side (trust-safety-service's unified log will replace the merge after
+  its cutover — dark today). identity-service records to its own `AdminAuditLog` too
   (self-service actions #403) but does not yet expose or merge it.
   Impersonation keeps its own `ImpersonationLog` (identity-service) —
   intentionally separate for now, to be reconciled with the general audit log

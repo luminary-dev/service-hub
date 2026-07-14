@@ -25,6 +25,7 @@ each service enforces the tier. **Reads and report resolve/dismiss** gate on
 | `GET /api/admin/providers` | SUPPORT+ | Moderation list: `q`/`category`/`city`/`status`/`suspended` filters, sort `newest`\|`mostReviews`, paginated (default 20, cap 100) → `{ providers, total, page, pageSize }`. `mostReviews` ranks in memory over at most the 1000 newest matches (#372). |
 | `GET /api/admin/providers/:id` | SUPPORT+ | Detail + photos + reviews (incl. soft-deleted) + `quality` score (#229, computed live). |
 | `GET /api/admin/verifications` | SUPPORT+ | PENDING queue + docs, oldest first, paginated (default 20, cap 100) → `{ providers, total, page, pageSize }`. |
+| `GET /api/files/provider/verification/*` | SUPPORT+ | Serve a verification document (NIC / business-registration scan, #500). Carved out of the public media path at the gateway; provider-service re-checks the caller is ADMIN/SUPPORT, fetches the bytes from media over S2S (`GET /internal/media/raw`), and streams them back `private, no-store` (PII — never shared-cached). |
 | `PATCH /api/admin/providers/:id` | ADMIN | `{ action: verify\|unverify\|suspend\|unsuspend }`. |
 | `PATCH /api/admin/providers` | ADMIN | Bulk suspend/unsuspend `{ ids, suspended }` → `{ ok, count }`. |
 | `PATCH /api/admin/verifications/:id` | ADMIN | `{ action: approve\|reject, reason? }` → `{ status }`. |

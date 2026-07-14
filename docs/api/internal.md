@@ -120,6 +120,7 @@ console fallback). Bodies carry `{ to, url, locale? }`.
 | Method + path | Purpose |
 |---|---|
 | `POST /internal/media/store` | Multipart `{ namespace, prefix, file }` — sharp re-encode + EXIF strip, store → `{ url }`. 413 over 5 MB, 400 for a non-image. |
+| `GET /internal/media/raw?url=` | Streams a stored file's raw bytes for admin-gated callers that must NOT expose it on the public `/files` path (verification documents, #500 — provider-service's SUPPORT+ serve route fetches through here). Served `private, no-store` (PII), never shared-cached. 404 when missing. |
 | `POST /internal/media/delete` | `{ url }` — best-effort delete, always `{ ok: true }`. |
 | `POST /internal/media/sweep` | `{ namespace, referenced[], graceMs? }` — remove unreferenced files (24 h grace). |
 
@@ -127,7 +128,7 @@ console fallback). Bodies carry `{ to, url, locale? }`.
 
 | Method + path | Purpose |
 |---|---|
-| `POST /internal/chat/:persona/stream` | Streaming Claude tool loop (SSE). Persona `marketplace` today; tools `search_providers` + `create_inquiry` (call the gateway). 503 without `ANTHROPIC_API_KEY`, 404 for an unknown persona, 413 over 256 KB, 400 on empty history. Reached via the web `/agent/chat` proxy. |
+| `POST /internal/chat/:persona/stream` | Streaming Claude tool loop (SSE). Persona `marketplace` today; tools `search_providers` + `propose_inquiry` (search calls the gateway; propose only streams a confirmation card — the user's own `POST /api/providers/:id/inquiries` performs the write, #202). 503 without `ANTHROPIC_API_KEY`, 404 for an unknown persona, 413 over 256 KB, 400 on empty history. Reached via the web `/agent/chat` proxy. |
 
 ### trust-safety-service (dark launch)
 
