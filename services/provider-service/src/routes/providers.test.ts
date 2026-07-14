@@ -220,6 +220,27 @@ describe("GET /api/providers/:id — suspended visibility gate", () => {
     expect(body.provider.services[0].price).toBe(1500);
     expect(typeof body.provider.services[0].price).toBe("number");
   });
+
+  // Category cover (#701): the detail payload carries the admin-managed
+  // per-trade cover so the profile hero can lead with it, like the card.
+  it("exposes the category cover as categoryImageUrl (#701)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(providerRow());
+    dbMock.category.findMany.mockResolvedValue([
+      { slug: "plumbing", imageUrl: "/images/categories/plumbing.jpg" },
+    ]);
+    const res = await req("/api/providers/p1");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.provider.categoryImageUrl).toBe("/images/categories/plumbing.jpg");
+  });
+
+  it("categoryImageUrl is null when the trade has no cover (#701)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(providerRow());
+    dbMock.category.findMany.mockResolvedValue([]);
+    const res = await req("/api/providers/p1");
+    expect(res.status).toBe(200);
+    expect((await res.json()).provider.categoryImageUrl).toBeNull();
+  });
 });
 
 describe("GET /api/providers/:id/full — suspended gate mirrors detail", () => {
@@ -302,6 +323,20 @@ describe("GET /api/providers/:id/full — suspended gate mirrors detail", () => 
     const unpinned = await (await req("/api/providers/p1/full")).json();
     expect(unpinned.provider).not.toHaveProperty("latitude");
     expect(unpinned.provider).not.toHaveProperty("longitude");
+  });
+
+  // Category cover (#701): /full carries categoryImageUrl too, so the profile
+  // hero cover banner matches the listing card's precedence.
+  it("exposes the category cover as categoryImageUrl (#701)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(providerRow({ _count: { photos: 0 } }));
+    dbMock.category.findMany.mockResolvedValue([
+      { slug: "plumbing", imageUrl: "/images/categories/plumbing.jpg" },
+    ]);
+    const res = await req("/api/providers/p1/full");
+    expect(res.status).toBe(200);
+    expect((await res.json()).provider.categoryImageUrl).toBe(
+      "/images/categories/plumbing.jpg"
+    );
   });
 });
 

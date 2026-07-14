@@ -57,14 +57,20 @@ Signed-in customers with at least one primary filter (`q`/`category`/
 `district`) active also get a **"Save this search"** affordance under the
 filter bar — see [Saved searches & alerts](saved-searches.md) (#516).
 
-Provider cards (`ProviderCard`) show a cover image (provider's own cover →
-admin-set category cover image (#436) → placeholder), category, experience,
+Provider cards (`ProviderCard`) show a cover image (admin-set category cover
+image (#436) → provider's own cover → placeholder), category, experience,
 availability chip ("Available" or
 "Away until…"), verified tick, location, headline, rating, "from" price, and an
 optional favorite button. The headline (and, on the profile page, the bio)
 render the provider's Sinhala variant under the `si` locale when present,
 falling back to the English original (#515). On geo results the card also
 shows the distance from the searched point (`distanceKm`, 1-decimal km).
+
+The provider **profile page** leads with a full-width **cover banner** using
+the same precedence and styling as the card (category cover (#436/#701) →
+provider's own cover → flat placeholder). The category cover ships to the
+detail payloads as `categoryImageUrl` on `GET /api/providers/:id` and
+`/api/providers/:id/full`, mirroring the listing card's DTO.
 
 ### Map view & "near me" (#48)
 
