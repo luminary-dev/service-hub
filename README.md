@@ -32,7 +32,7 @@ browser ── same-origin /api/* ──> Next.js web (:3000)
 
 ## Getting started
 
-Prereqs: Node 22+, Docker.
+Prereqs: Node 24, Docker.
 
 ```bash
 npm run setup      # scripts/setup.sh — install all packages, create .env files, start Postgres, run migrations, seed

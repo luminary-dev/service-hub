@@ -17,8 +17,13 @@ every PR/push to `dev`/`prod` we run:
   PR-only compose **e2e smoke**. Concurrency-cancel + `timeout-minutes` on
   every job.
 - **`security-scan.yml`** — Trivy filesystem (deps, report-only), Trivy image
-  (OS packages, **gating** on fixable HIGH/CRITICAL), and `npm audit`
-  (**gating** on CRITICAL production-dependency advisories, #386). Weekly cron + `workflow_dispatch`.
+  (OS packages, **gating** on fixable HIGH/CRITICAL), `npm audit`
+  (**gating** on CRITICAL production-dependency advisories, #386), and
+  **gitleaks** secret scanning (**gating** on any committed secret, #669).
+  Weekly cron + `workflow_dispatch`.
+- **`scorecard.yml`** — OpenSSF Scorecard supply-chain posture grade (#669),
+  **report-only** to the Security tab; weekly + push-to-default (`dev`) +
+  `branch_protection_rule` + `workflow_dispatch`.
 - **`actionlint.yml`** — workflow-YAML linting (shipping now, see below).
 - **CodeQL** — first-party static analysis of our own TS. Already enabled, but
   **not** as a workflow in this repo: it runs through GitHub's code-scanning

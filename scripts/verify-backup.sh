@@ -71,4 +71,24 @@ for pair in identity_db:User provider_db:Provider review_db:Review job_db:JobReq
   fi
 done
 
+# Upload-volume tars (#663) sit alongside the dumps in local-disk media mode and
+# are absent when media is on R2 — so absence is fine (no assumption about the
+# storage mode here). A present tar, though, must be a valid gzip stream: a
+# corrupt archive is a silent disaster-recovery hole, so fail loudly on it.
+shopt -s nullglob
+media_tars=("$SNAPSHOT"/*_uploads.tgz)
+shopt -u nullglob
+if [ "${#media_tars[@]}" -eq 0 ]; then
+  echo "    (no upload-volume tars — media on R2 or none configured)"
+else
+  for tgz in "${media_tars[@]}"; do
+    if tar -tzf "$tgz" >/dev/null 2>&1; then
+      echo "    $(basename "$tgz"): archive OK"
+    else
+      echo "ERROR: $tgz is not a valid gzip tar — media backup is corrupt." >&2
+      exit 1
+    fi
+  done
+fi
+
 echo "Restore verification OK: $SNAPSHOT"

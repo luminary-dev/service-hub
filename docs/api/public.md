@@ -40,7 +40,7 @@ JSON edge, so consumers never see a string-typed amount.
 | Method + path | Auth | Summary |
 |---|---|---|
 | `GET /api/favorites` | authenticated | The caller's favorited provider ids, newest first → `{ providerIds }`. |
-| `POST /api/favorites/:id` | authenticated | Favorite a provider (S2S existence check; 404 if unknown, 502 on peer outage) → `{ favorited: true }`. |
+| `POST /api/favorites/:id` | authenticated | Favorite a provider (S2S existence check; 404 if unknown, 502 on peer outage). Idempotent — re-favoriting a saved provider is a no-op that never burns a slot. Over the **100-per-user** cap (new favorites only) → 429 `{ error: "Favorites limit reached" }`. → `{ favorited: true }`. |
 | `DELETE /api/favorites/:id` | authenticated | Unfavorite → `{ favorited: false }`. |
 
 ### Saved searches — identity-service
@@ -134,7 +134,7 @@ Every route requires a provider owned by the authenticated user (else
 | `POST /api/provider/services` | role: PROVIDER (owner) | Add a service `{ title, description?, price, priceType }` → `{ service }`. |
 | `PUT /api/provider/services/:id` | role: PROVIDER (owner) | Update own service (404 if not owned). |
 | `DELETE /api/provider/services/:id` | role: PROVIDER (owner) | Delete own service. |
-| `POST /api/provider/photos` | role: PROVIDER (owner) | Multipart upload; `kind=cover` sets the dedicated `coverPhoto` (#435), else creates a WorkPhoto. (`kind=avatar` was removed (#647) — avatars go through `/api/account/avatar`, which keeps `User.avatarUrl` and the provider copy in step; this endpoint never wrote `User.avatarUrl`.) 5 MB, jpeg/png/webp. |
+| `POST /api/provider/photos` | role: PROVIDER (owner) | Multipart upload; `kind=cover` sets the dedicated `coverPhoto` (#435), else creates a WorkPhoto — the gallery is capped at **30** per provider (over-limit → 400 `{ error: "Your gallery can have at most 30 photos." }`, and the just-stored file is cleaned up; soft-deleted/moderated photos don't count). (`kind=avatar` was removed (#647) — avatars go through `/api/account/avatar`, which keeps `User.avatarUrl` and the provider copy in step; this endpoint never wrote `User.avatarUrl`.) 5 MB, jpeg/png/webp. |
 | `DELETE /api/provider/cover` | role: PROVIDER (owner) | Clears the dedicated cover (#435) → the card falls back to the first work photo / category image. |
 | `PATCH /api/provider/photos/order` | role: PROVIDER (owner) | `{ ids }` → `sortOrder`; ids not owned are ignored. |
 | `DELETE /api/provider/photos/:id` | role: PROVIDER (owner) | Hard-delete own photo + remove the file. |

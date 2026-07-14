@@ -10,12 +10,22 @@ const { dbMock } = vi.hoisted(() => ({
   dbMock: {
     provider: { findUnique: vi.fn(), update: vi.fn() },
     service: { findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
-    workPhoto: { findUnique: vi.fn(), findMany: vi.fn(), delete: vi.fn() },
+    workPhoto: {
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      delete: vi.fn(),
+      count: vi.fn(),
+      create: vi.fn(),
+    },
     inquiry: { findUnique: vi.fn(), findMany: vi.fn(), count: vi.fn(), update: vi.fn() },
     inquiryMessage: { groupBy: vi.fn() },
     // Content filter (#375): the auto-report path files a SYSTEM report on
     // the provider when profile/service text matches the denylist.
     report: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+    // Work-photo gallery cap (#647 L5): the count + insert run in one
+    // advisory-locked transaction. tx === dbMock; $executeRaw is the lock.
+    $executeRaw: vi.fn(async () => 0),
+    $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(dbMock)),
   },
 }));
 
@@ -44,7 +54,9 @@ vi.mock("../lib/storage", () => ({
 }));
 
 import { app } from "../app";
+import { MAX_WORK_PHOTOS } from "./provider";
 import { fetchOpenJobsCount } from "../lib/clients";
+import { removeStoredFile } from "../lib/storage";
 
 const SECRET = "dev-internal-secret";
 type Role = "ADMIN" | "SUPPORT" | "CUSTOMER" | "PROVIDER" | null;
@@ -292,6 +304,61 @@ describe("photo ownership", () => {
     const res = await req("/api/provider/photos/ph1", { method: "DELETE", role: "PROVIDER" });
     expect(res.status).toBe(200);
     expect(dbMock.workPhoto.delete).toHaveBeenCalledWith({ where: { id: "ph1" } });
+  });
+});
+
+describe("POST /api/provider/photos — work-gallery cap (#647 L5)", () => {
+  function postPhoto(fields: Record<string, string> = {}) {
+    const form = new FormData();
+    form.set("file", new File(["x"], "p.jpg", { type: "image/jpeg" }));
+    for (const [k, v] of Object.entries(fields)) form.set(k, v);
+    return app.request("/api/provider/photos", {
+      method: "POST",
+      headers: {
+        "x-internal-secret": SECRET,
+        "x-user-id": "owner-1",
+        "x-user-role": "PROVIDER",
+        "x-user-name": "Prov",
+      },
+      body: form,
+    });
+  }
+
+  beforeEach(() => {
+    dbMock.provider.findUnique.mockResolvedValue(MY_PROVIDER);
+  });
+
+  it("adds a work photo under the cap, taking a per-provider advisory lock", async () => {
+    dbMock.workPhoto.count.mockResolvedValue(0);
+    dbMock.workPhoto.create.mockResolvedValue({ id: "ph1", url: "/files/x.jpg" });
+    const res = await postPhoto();
+    expect(res.status).toBe(200);
+    expect(dbMock.$transaction).toHaveBeenCalledTimes(1);
+    expect(dbMock.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(dbMock.workPhoto.count).toHaveBeenCalledWith({
+      where: { providerId: "prov1", deletedAt: null },
+    });
+    expect(dbMock.workPhoto.create).toHaveBeenCalled();
+  });
+
+  it("400s (and cleans up the stored file) once the gallery is at the cap", async () => {
+    dbMock.workPhoto.count.mockResolvedValue(MAX_WORK_PHOTOS);
+    const res = await postPhoto();
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(
+      new RegExp(`at most ${MAX_WORK_PHOTOS} photos`, "i")
+    );
+    expect(dbMock.workPhoto.create).not.toHaveBeenCalled();
+    expect(removeStoredFile).toHaveBeenCalledWith("/files/x.jpg");
+  });
+
+  it("does not cap the dedicated cover photo (kind=cover)", async () => {
+    dbMock.provider.update.mockResolvedValue({});
+    const res = await postPhoto({ kind: "cover" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ coverPhoto: "/files/x.jpg" });
+    expect(dbMock.workPhoto.count).not.toHaveBeenCalled();
+    expect(dbMock.$transaction).not.toHaveBeenCalled();
   });
 });
 

@@ -34,6 +34,11 @@ const { dbMock } = vi.hoisted(() => ({
     // the job / response when its text matches the denylist.
     report: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
     $queryRaw: vi.fn(),
+    // Daily-cap count + insert run in one advisory-locked transaction (#647
+    // L5). tx === dbMock, so the route's tx.* calls hit the same mocks;
+    // $executeRaw is the advisory-lock acquisition.
+    $executeRaw: vi.fn(async () => 0),
+    $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(dbMock)),
   },
 }));
 vi.mock("../db", () => ({ db: dbMock }));
@@ -247,6 +252,10 @@ describe("POST /api/jobs (create)", () => {
         budget: null,
       }),
     });
+    // The daily-cap count + insert run inside one advisory-locked transaction
+    // so concurrent double-submits serialize and can't overshoot (#647 L5).
+    expect(dbMock.$transaction).toHaveBeenCalledTimes(1);
+    expect(dbMock.$executeRaw).toHaveBeenCalledTimes(1);
   });
 
   it("notifies matching providers (fan-out) after creating the job", async () => {
