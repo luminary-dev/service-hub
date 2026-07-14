@@ -126,11 +126,13 @@ App secrets (set with `gh secret set <NAME>`):
 
 - **Required**: `AUTH_SECRET`, `INTERNAL_API_SECRET`, `POSTGRES_PASSWORD`,
   `IDENTITY_DB_PASSWORD`, `PROVIDER_DB_PASSWORD`, `REVIEW_DB_PASSWORD`,
-  `JOB_DB_PASSWORD`, `NOTIFICATION_DB_PASSWORD`, `REDIS_PASSWORD` (#387 —
-  per-service DB roles + Redis
-  AUTH; **URL-interpolated**, so generate them with `openssl rand -hex 32`,
-  not base64), `WEB_ORIGIN`, `DOMAIN`. `docker-compose.prod.yml` guards each
-  with `${VAR:?}`, so the stack refuses to start if any is missing.
+  `JOB_DB_PASSWORD`, `NOTIFICATION_DB_PASSWORD`, `SEARCH_DB_PASSWORD`,
+  `TRUST_SAFETY_DB_PASSWORD`, `REDIS_PASSWORD` (#387 — per-service DB roles +
+  Redis AUTH; **URL-interpolated**, so generate them with
+  `openssl rand -hex 32`, not base64), `WEB_ORIGIN`, `DOMAIN`.
+  `docker-compose.prod.yml` guards each with `${VAR:?}`, so the stack refuses
+  to start if any is missing. `SEARCH_DB_PASSWORD` also needs the one-off
+  `search_db` bootstrap on an existing volume — see the PostGIS rollout below.
 - **Optional** (features degrade gracefully when unset): `ACME_EMAIL` (unset →
   defaults to `admin@${DOMAIN}`; an empty Caddyfile `email` argument would
   fail config load and crash-loop the only public entrypoint, #387),
@@ -234,16 +236,18 @@ longer means the whole stack:
 - **Network split** —
   - `edge`: Caddy ↔ web only. The public entry has no route to the gateway,
     the services, or the datastores.
-  - `backend` (`internal: true`): all eight services + postgres + redis. web
+  - `backend` (`internal: true`): all nine services + postgres + redis. web
     straddles `edge` + `backend` (Caddy reaches it; it reaches the gateway /
     chat / identity). Containers on **only** `backend` (gateway,
     provider/review/job, postgres, redis) have **no route to the internet**.
   - `egress`: a plain bridge granting outbound internet to the four services
     that call external APIs — identity (OAuth token exchange), notification
     (Resend), media (R2), chat (Anthropic). It publishes no ports.
+    search-service is deliberately backend-only: it calls no external APIs
+    (map tiles/geocoding are fetched by the browser, per the search RFC).
 - **Per-service DB roles** — each DB service connects as its own LOGIN role
-  (`identity` / `provider` / `review` / `job`) that **owns only its own
-  database**; `CONNECT` is revoked from `PUBLIC` on all four, so no service
+  (`identity` / `provider` / `review` / `job` / `search`) that **owns only its
+  own database**; `CONNECT` is revoked from `PUBLIC` on all five, so no service
   role can even open a connection to a peer's database. As the database owner
   each role still runs `prisma migrate deploy` (DDL in `public`, which
   Postgres 15+ hands to `pg_database_owner`) — including the migrations that
@@ -257,13 +261,17 @@ longer means the whole stack:
     database + object ownership, and applies the grants. It is idempotent,
     and the superuser keeps access throughout, so the safe rollout order is:
     set the new GitHub secrets → run the script against the **running old
-    stack** (exporting the five `*_DB_PASSWORD`s in the shell) → merge/deploy
+    stack** (exporting the seven `*_DB_PASSWORD`s in the shell) → merge/deploy
     the compose change. The same script is the live-prod pre-step for the
-    stateful notification-service release: it also creates `notification_db`
-    (idempotently) on a cluster that predates it, so set the
-    `NOTIFICATION_DB_PASSWORD` secret and run it once **before** deploying
-    that release. Running it after a failed boot works too — the DB
-    services just crash-loop until the roles exist.
+    stateful notification-service, the (dark-launch) trust-safety-service and
+    the search-service releases: it also creates `notification_db` /
+    `search_db` / `trust_safety_db` (idempotently) on a cluster that predates
+    them — plus `search_db`'s superuser-created PostGIS extension, which
+    requires the postgis compose image to already be running (see the PostGIS
+    rollout below) — so set the `NOTIFICATION_DB_PASSWORD` /
+    `SEARCH_DB_PASSWORD` / `TRUST_SAFETY_DB_PASSWORD` secrets and run it once
+    **before** deploying those releases. Running it after a failed boot works
+    too — the DB services just crash-loop until the roles exist.
 - **Redis AUTH** — `requirepass` from `REDIS_PASSWORD`; the gateway and
   identity carry it in `REDIS_URL` (`redis://default:<password>@redis:6379` —
   `default` is the ACL user `requirepass` sets the password for).
@@ -274,6 +282,44 @@ longer means the whole stack:
   takes the value verbatim and an empty argument fails config load, which
   would crash-loop the only public entrypoint. CI validates the Caddyfile
   (`caddy validate`) in the `compose-config` job.
+
+## PostGIS + search_db rollout (search & discovery RFC)
+
+search-service's index lives in `search_db` with the **PostGIS** extension, so
+the cluster image is `postgis/postgis:16-3.5-alpine` (digest-pinned) instead
+of `postgres:16-alpine`. What that means operationally:
+
+- **The image swap is data-safe.** Same Postgres 16 major → same data-dir
+  format; the existing `pgdata` volume mounts unchanged and the image only
+  adds the extension packages. Recreating the postgres container on the new
+  image is an ordinary `up -d`. PostGIS objects exist only inside `search_db`,
+  so rolling the image back to `postgres:16-alpine` stays possible right up
+  until `search_db` is created (after that, the cluster still starts on the
+  old image but `search_db` won't load the extension's shared library).
+  Rehearse against a restored backup per [BACKUPS.md](BACKUPS.md) if in doubt.
+- **PostGIS needs superuser bootstrap.** `CREATE EXTENSION postgis` is not a
+  trusted extension, and the `search` role merely owns its database — so the
+  extension is created by the superuser: `deploy/postgres-init.sh` does it on
+  a **fresh** volume; for the **existing** prod volume (initdb never re-runs)
+  run **`deploy/migrate-db-roles.sh` once** — idempotent; it creates the
+  `search` LOGIN role, `search_db` (owned by it, CONNECT revoked from PUBLIC)
+  and the extension, alongside the other services' roles/databases.
+  search-service's first migration repeats `CREATE EXTENSION IF NOT EXISTS
+  postgis` as a no-op (and creates `pg_trgm` itself — that one is trusted).
+- **Rollout order for the existing prod volume:**
+  1. Set the `SEARCH_DB_PASSWORD` GitHub secret (`openssl rand -hex 32`).
+  2. Deploy (or manually apply) the compose change so the postgres container
+     runs the postgis image — the running stack is unaffected.
+  3. `SEARCH_DB_PASSWORD=… ./deploy/migrate-db-roles.sh` against the running
+     stack (role + database + extension; safe to re-run — the other roles'
+     passwords are read from the postgres container's environment).
+  4. Deploy the stack that starts search-service; its `start:migrate` applies
+     the index schema and the daily reindex sweep populates it
+     ([OPERATIONS.md](OPERATIONS.md)).
+  If search-service boots before step 3 it just crash-loops until the
+  database exists — same failure mode as the #387 role migration.
+- `search_db` is **excluded from backups** on purpose — it is a derived,
+  rebuildable index; see [BACKUPS.md](BACKUPS.md).
 
 ## Edge access logs (#527)
 

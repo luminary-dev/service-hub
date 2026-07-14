@@ -4,6 +4,7 @@ import { getLocale } from "@/lib/locale";
 import { getTheme } from "@/lib/theme";
 import { dict } from "@/lib/i18n";
 import { localizedHref } from "@/lib/links";
+import NotificationBell from "./NotificationBell";
 import UserMenu from "./UserMenu";
 import LanguageToggle from "./LanguageToggle";
 import ThemeToggle from "./ThemeToggle";
@@ -63,7 +64,12 @@ export default async function Navbar() {
             <span aria-hidden className="mx-1 h-5 w-px bg-ink-300" />
           </div>
           {session ? (
-            <UserMenu name={session.name} role={session.role} avatarUrl={session.avatar} />
+            <>
+              {/* In-app notification center (#394) — outside the md:hidden
+                  utility cluster so the bell stays reachable on mobile. */}
+              <NotificationBell />
+              <UserMenu name={session.name} role={session.role} avatarUrl={session.avatar} />
+            </>
           ) : (
             <>
               <Link

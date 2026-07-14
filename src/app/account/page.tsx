@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
-import { FaIdCard, FaInbox, FaMagnifyingGlass, FaRegHeart, FaRegStar, type IconType } from "@/components/icons";
+import { FaBell, FaIdCard, FaInbox, FaMagnifyingGlass, FaRegHeart, FaRegStar, type IconType } from "@/components/icons";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
@@ -19,6 +19,8 @@ import EmptyState from "@/components/ui/EmptyState";
 import AccountDetails from "@/components/AccountDetails";
 import CloseProviderProfile from "@/components/CloseProviderProfile";
 import SavedSearches, { SavedSearchItem } from "@/components/SavedSearches";
+import NotificationPreferences from "@/components/NotificationPreferences";
+import type { NotificationPreferenceDTO } from "@/lib/notifications";
 
 // Caching (#57): session-gated and must reflect the user's own writes
 // immediately — stays fully dynamic (no-store).
@@ -92,13 +94,17 @@ export default async function AccountPage() {
   const [session, locale] = await Promise.all([getSession(), getLocale()]);
   if (!session) redirect(await loginNext("/account"));
 
-  const [favorites, savedSearchData, inquiriesData, reviewsData, meData] =
+  const [favorites, savedSearchData, notifPrefData, inquiriesData, reviewsData, meData] =
     await Promise.all([
       apiJson<{ providerIds: string[] }>("/api/favorites"),
       // Saved searches (#516) are customer-only; other roles get a 403.
       session.role === "CUSTOMER"
         ? apiJson<{ savedSearches: SavedSearchDTO[] }>("/api/saved-searches")
         : null,
+      // Notification preferences (#394) — the full catalog × channel matrix.
+      apiJson<{ preferences: NotificationPreferenceDTO[] }>(
+        "/api/notification-preferences"
+      ),
       apiJson<{ inquiries: AccountInquiry[] }>("/api/account/inquiries"),
       apiJson<{ reviews: AccountReview[] }>("/api/account/reviews"),
       apiJson<{
@@ -289,6 +295,27 @@ export default async function AccountPage() {
             <SavedSearches initial={savedSearchItems} />
           </section>
         )}
+
+        {/* Notification preferences (#394) — per-type email / in-app toggles
+            for the catalog events; auth/security emails are never listed. */}
+        <section className="mt-14">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <SectionHeading
+              code="NTF"
+              icon={FaBell}
+              title={t.notifications.prefsTitle}
+            />
+            <Link
+              href={localizedHref("/account/notifications", locale)}
+              className="text-sm font-medium text-brand-600 hover:text-brand-700"
+            >
+              {t.notifications.viewAll}
+            </Link>
+          </div>
+          <NotificationPreferences
+            initial={notifPrefData?.preferences ?? null}
+          />
+        </section>
 
         <div className="mt-14 grid items-start gap-10 lg:grid-cols-2">
           <section>

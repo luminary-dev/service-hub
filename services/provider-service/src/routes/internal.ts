@@ -15,7 +15,15 @@ import {
 } from "../lib/field-rules";
 import { getOrigin } from "../lib/http";
 import { notifySavedSearchMatches } from "../lib/saved-search-alerts";
+import {
+  buildIndexDocument,
+  deleteProviderIndex,
+  INDEX_SERVICE_SELECT,
+  syncProviderIndex,
+  syncProviderIndexByUser,
+} from "../lib/search-index";
 import { removeStoredFile, sweepMedia } from "../lib/storage";
+import { cardInclude, categoryImageMap, toCardDTO } from "./providers";
 
 export const internalRoutes = new Hono();
 
@@ -182,6 +190,9 @@ internalRoutes.post("/internal/providers", async (c) => {
       },
       getOrigin(c)
     );
+    // Search-index push (search RFC §4.2): same fire-and-forget pattern as the
+    // alert fan-out above — never on the registration critical path.
+    void syncProviderIndex(provider.id);
     return c.json({ id: provider.id });
   } catch (e) {
     // userId is unique: a retried/concurrent registration for the same user
@@ -222,6 +233,10 @@ internalRoutes.post("/internal/providers/by-user/:userId/deactivate", async (c) 
     where: { id: provider.id },
     data: { suspended: true },
   });
+  // Suspended rows are DELETED from the search index (never flagged), so a
+  // hidden profile can't leak through /api/search — the sync sees the
+  // committed suspended row and issues the delete. Best-effort (RFC §4.2).
+  void syncProviderIndex(provider.id);
   return c.json({ ok: true, deactivated: true });
 });
 
@@ -247,6 +262,8 @@ internalRoutes.post("/internal/providers/by-user/:userId/reactivate", async (c) 
       where: { id: provider.id },
       data: { suspended: false },
     });
+    // Back into the search index (best-effort, RFC §4.2).
+    void syncProviderIndex(provider.id);
   }
   return c.json({ ok: true, reactivated: true });
 });
@@ -318,6 +335,12 @@ internalRoutes.post("/internal/providers/contact", async (c) => {
       where: { userId: parsed.data.userId },
       data,
     });
+    // contactName is indexed for free-text search — mirror a name change into
+    // the search index too (best-effort; email/phone aren't indexed but the
+    // full-document push is idempotent either way).
+    if (data.contactName !== undefined) {
+      void syncProviderIndexByUser(parsed.data.userId);
+    }
   }
   return c.json({ ok: true });
 });
@@ -389,6 +412,61 @@ internalRoutes.get("/internal/providers", async (c) => {
   return c.json({ providers });
 });
 
+// Card hydration for the search-service query plane (search RFC §4.1): the
+// SAME card DTO the public browse builds (services/photos includes, category
+// cover fallback), batched by ids. Rating fields come back null/0 here —
+// search-service overlays its own denormalized aggregates (it already ranks
+// on them). Suspended providers are excluded (defense in depth; they are also
+// deleted from the index). Order is not meaningful — the caller re-orders by
+// its ranked ids.
+internalRoutes.get("/internal/providers/cards", async (c) => {
+  const ids = (c.req.query("ids") ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, MAX_BATCH_IDS);
+  const rows = ids.length
+    ? await db.provider.findMany({
+        where: { id: { in: ids }, suspended: false },
+        include: cardInclude,
+      })
+    : [];
+  const catImages = await categoryImageMap();
+  const cards = rows.map((p) => toCardDTO(p, undefined, catImages));
+  return c.json({ cards });
+});
+
+// Reindex export for the search-service sweep (search RFC §4.2): every
+// non-suspended provider as a full index document (the exact shape the push
+// path PUTs — lib/search-index.ts), id-cursor paginated. The sweep upserts
+// everything returned and deletes index rows absent from the walk, so
+// suspended/erased providers age out even when their push was lost.
+const EXPORT_DEFAULT_TAKE = 100;
+const EXPORT_MAX_TAKE = 500;
+
+internalRoutes.get("/internal/providers/export", async (c) => {
+  const rawTake = Math.floor(Number(c.req.query("take")));
+  const take =
+    Number.isFinite(rawTake) && rawTake >= 1
+      ? Math.min(rawTake, EXPORT_MAX_TAKE)
+      : EXPORT_DEFAULT_TAKE;
+  const cursor = c.req.query("cursor") || undefined;
+  const rows = await db.provider.findMany({
+    where: { suspended: false },
+    include: { services: { select: INDEX_SERVICE_SELECT } },
+    orderBy: { id: "asc" },
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    take: take + 1,
+  });
+  const hasMore = rows.length > take;
+  if (hasMore) rows.length = take;
+  const providers = rows.map((p) => ({ id: p.id, ...buildIndexDocument(p) }));
+  return c.json({
+    providers,
+    nextCursor: hasMore ? rows[rows.length - 1]!.id : null,
+  });
+});
+
 // Review gating (review-service): has this user ever sent this provider an
 // inquiry? Anonymous inquiries carry userId=null, so they never match.
 internalRoutes.get("/internal/inquiries/exists", async (c) => {
@@ -421,6 +499,9 @@ internalRoutes.post("/internal/users/:id/erase", async (c) => {
   });
   if (provider) {
     await db.provider.delete({ where: { id: provider.id } });
+    // The row is gone, so the read-back sync can't run — delete the index
+    // document directly (best-effort; the sweep also prunes erased rows).
+    void deleteProviderIndex(provider.id);
     for (const f of [
       ...provider.photos.map((p) => p.url),
       ...provider.verificationDocs.map((d) => d.url),

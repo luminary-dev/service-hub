@@ -30,6 +30,15 @@ const { dbMock, storageMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("../db", () => ({ db: dbMock }));
+// Search-index pushes (search RFC) are fired (not awaited) from these routes.
+vi.mock("../lib/search-index", async (importOriginal) => ({
+  // buildIndexDocument stays real — the export endpoint tests below pin the
+  // document shape; only the network-touching sync fns are stubbed.
+  ...(await importOriginal<typeof import("../lib/search-index")>()),
+  syncProviderIndex: vi.fn(() => Promise.resolve()),
+  syncProviderIndexByUser: vi.fn(() => Promise.resolve()),
+  deleteProviderIndex: vi.fn(() => Promise.resolve()),
+}));
 vi.mock("../lib/storage", () => storageMock);
 // Saved-search alert fan-out (#516) — fired (not awaited) from the create path.
 vi.mock("../lib/saved-search-alerts", () => ({
@@ -631,5 +640,125 @@ describe("POST /internal/users/:id/erase", () => {
     const res = await post("/internal/users/owner-1/erase");
     expect(res.status).toBe(200);
     expect(storageMock.removeStoredFile).not.toHaveBeenCalled();
+  });
+});
+
+// Search-service integration (search RFC §4.1/§4.2): the batched card
+// hydration the query plane calls, and the paginated full-document export the
+// reindex sweep walks.
+describe("GET /internal/providers/cards", () => {
+  const cardRow = {
+    id: "prov1",
+    userId: "owner-1",
+    contactName: "Nuwan Perera",
+    category: "mechanic",
+    headline: "Honest auto repairs",
+    headlineSi: null,
+    district: "Colombo",
+    serviceDistricts: ["Colombo"],
+    city: "Colombo",
+    experience: 5,
+    available: true,
+    awayUntil: null,
+    verificationStatus: "VERIFIED",
+    verifiedAt: new Date("2026-01-02T00:00:00Z"),
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+    avatarUrl: null,
+    coverPhoto: null,
+    photos: [],
+    services: [{ id: "s1", title: "Brake inspection", price: 2500, priceType: "VISIT" }],
+  };
+
+  it("returns browse-shaped cards with zeroed rating fields", async () => {
+    dbMock.provider.findMany.mockResolvedValue([cardRow]);
+    dbMock.category.findMany.mockResolvedValue([]);
+    const res = await get("/internal/providers/cards?ids=prov1,missing");
+    expect(res.status).toBe(200);
+    const { cards } = (await res.json()) as { cards: Record<string, unknown>[] };
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({
+      id: "prov1",
+      name: "Nuwan Perera",
+      fromPrice: 2500,
+      // search-service overlays its own aggregates over these defaults.
+      rating: null,
+      reviewCount: 0,
+    });
+    // Suspended rows are excluded at the query (defense in depth).
+    expect(dbMock.provider.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: { in: ["prov1", "missing"] }, suspended: false },
+      })
+    );
+  });
+
+  it("returns no cards without querying when no ids are given", async () => {
+    dbMock.category.findMany.mockResolvedValue([]);
+    const res = await get("/internal/providers/cards");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ cards: [] });
+    expect(dbMock.provider.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /internal/providers/export", () => {
+  const exportRow = (id: string) => ({
+    id,
+    userId: `user-${id}`,
+    contactName: "Nuwan Perera",
+    contactEmail: "nuwan@example.com",
+    contactPhone: "0771234501",
+    category: "mechanic",
+    headline: "Honest auto repairs",
+    bio: "A long bio.",
+    headlineSi: null,
+    bioSi: null,
+    city: "Colombo",
+    district: "Colombo",
+    serviceDistricts: ["Colombo"],
+    latitude: null,
+    longitude: null,
+    experience: 5,
+    available: true,
+    awayUntil: null,
+    suspended: false,
+    verificationStatus: "NONE",
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+    updatedAt: new Date("2026-07-01T00:00:00Z"),
+    services: [{ title: "Brake inspection", price: 2500 }],
+  });
+
+  it("exports full index documents (no contact PII) with cursor pagination", async () => {
+    // take=1 with two rows available → one document + a nextCursor.
+    dbMock.provider.findMany.mockResolvedValue([exportRow("a"), exportRow("b")]);
+    const res = await get("/internal/providers/export?take=1");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      providers: Record<string, unknown>[];
+      nextCursor: string | null;
+    };
+    expect(body.providers).toHaveLength(1);
+    expect(body.providers[0]).toMatchObject({
+      id: "a",
+      contactName: "Nuwan Perera",
+      serviceTitles: ["Brake inspection"],
+      servicePrices: [2500],
+    });
+    expect(JSON.stringify(body)).not.toContain("nuwan@example.com");
+    expect(JSON.stringify(body)).not.toContain("0771234501");
+    expect(body.nextCursor).toBe("a");
+    expect(dbMock.provider.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { suspended: false } })
+    );
+  });
+
+  it("ends the walk with a null cursor on the last page", async () => {
+    dbMock.provider.findMany.mockResolvedValue([exportRow("a")]);
+    const res = await get("/internal/providers/export?cursor=z");
+    const body = (await res.json()) as { nextCursor: string | null };
+    expect(body.nextCursor).toBeNull();
+    expect(dbMock.provider.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ cursor: { id: "z" }, skip: 1 })
+    );
   });
 });

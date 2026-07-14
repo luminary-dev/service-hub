@@ -144,11 +144,11 @@ a wrong credential lying in `.env`. No schema or data change.
 may be exposed. Coordinate with [BACKUPS.md](BACKUPS.md) — take a fresh
 `pg_dump` before rotating.
 
-## Per-service DB passwords (`IDENTITY_DB_PASSWORD` … `NOTIFICATION_DB_PASSWORD`, #387)
+## Per-service DB passwords (`IDENTITY_DB_PASSWORD` … `TRUST_SAFETY_DB_PASSWORD`, #387)
 
 **What they protect.** Each DB-owning service connects as its own
 least-privilege role (`identity` / `provider` / `review` / `job` /
-`notification`), whose
+`notification` / `trust_safety`), whose
 password is interpolated into that service's `DATABASE_URL` and passed to the
 `postgres` container for bootstrap/migration tooling.
 
@@ -161,7 +161,8 @@ re-run the idempotent role script with the new value(s) exported — it
 ```bash
 # On the prod host (only the vars you're rotating need to be exported):
 IDENTITY_DB_PASSWORD='<NEW>' PROVIDER_DB_PASSWORD='<OLD>' REVIEW_DB_PASSWORD='<OLD>' \
-JOB_DB_PASSWORD='<OLD>' NOTIFICATION_DB_PASSWORD='<OLD>' ./deploy/migrate-db-roles.sh
+JOB_DB_PASSWORD='<OLD>' NOTIFICATION_DB_PASSWORD='<OLD>' \
+TRUST_SAFETY_DB_PASSWORD='<OLD>' ./deploy/migrate-db-roles.sh
 
 gh secret set IDENTITY_DB_PASSWORD     # the same <NEW> value
 gh workflow run deploy.yml --ref prod  # re-renders DATABASE_URL, recreates the service

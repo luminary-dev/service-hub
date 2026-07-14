@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { db } from "../db";
 import { listProviderReviews, normalizeTake } from "../lib/provider-reviews";
 import { fetchRatingSummaries } from "../lib/rating-summary";
+import { pushRatingsToSearchIndex } from "../lib/search-index";
 import { removeStoredFile, sweepMedia } from "../lib/storage";
 
 export const internal = new Hono();
@@ -55,13 +56,21 @@ internal.post("/maintenance/sweep-orphans", async (c) => {
 // Idempotent: erasing an unknown user is a no-op 200.
 internal.post("/users/:id/erase", async (c) => {
   const userId = c.req.param("id");
-  const photos = await db.reviewPhoto.findMany({
-    where: { review: { userId } },
-    select: { url: true },
-  });
+  const [photos, reviews] = await Promise.all([
+    db.reviewPhoto.findMany({
+      where: { review: { userId } },
+      select: { url: true },
+    }),
+    // Captured before the delete so the search-index rating push below knows
+    // which providers' aggregates just changed.
+    db.review.findMany({ where: { userId }, select: { providerId: true } }),
+  ]);
   await db.review.deleteMany({ where: { userId } });
   for (const p of photos) {
     await removeStoredFile(p.url);
   }
+  // Recount every affected provider (search RFC §4.2, fire-and-forget; the
+  // helper dedupes ids).
+  void pushRatingsToSearchIndex(reviews.map((r) => r.providerId));
   return c.json({ ok: true });
 });

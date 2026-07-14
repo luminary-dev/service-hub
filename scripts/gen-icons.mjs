@@ -6,6 +6,7 @@ const MAP = {
   FaArrowRight: ["l", "arrow-right"],
   FaArrowUpRightFromSquare: ["l", "external-link"],
   FaBars: ["l", "menu"],
+  FaBell: ["l", "bell"],
   FaBolt: ["l", "zap"],
   FaBorderAll: ["l", "layout-grid"],
   FaBriefcase: ["l", "briefcase"],

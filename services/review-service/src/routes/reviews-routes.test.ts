@@ -53,6 +53,11 @@ const { dbMock } = vi.hoisted(() => ({
     $queryRaw: vi.fn(),
   },
 }));
+// Search-index rating pushes (search RFC) are fired (not awaited) from the
+// review write/moderation paths.
+vi.mock("../lib/search-index", () => ({
+  pushRatingsToSearchIndex: vi.fn(() => Promise.resolve()),
+}));
 vi.mock("../db", () => ({ db: dbMock }));
 vi.mock("../lib/notify", () => ({
   emitNotification: vi.fn().mockResolvedValue(undefined),
