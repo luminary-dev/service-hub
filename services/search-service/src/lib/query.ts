@@ -10,6 +10,15 @@ export const MAX_PAGE_SIZE = 24;
 export const MIN_RATING = 1;
 export const MAX_RATING = 5;
 
+// Deep-pagination guard (#657): `page` feeds the SQL OFFSET
+// (`(page - 1) * pageSize`), so an unbounded page number lets a caller force
+// Postgres to scan-and-discard an arbitrarily large prefix — a cheap-request /
+// expensive-server DoS. Cap it well beyond any real paging depth: 500 pages ×
+// 24 per page = 12,000 results, far deeper than the index (or any human) ever
+// walks. A crawler wanting more must narrow filters, not walk OFFSET. Kept in
+// lockstep with provider-service's browse cap (RFC §5.2).
+export const MAX_PAGE = 500;
+
 // Nearby defaults (RFC §5.1): capped radius, default 25 km, max 100 km.
 export const DEFAULT_RADIUS_KM = 25;
 export const MAX_RADIUS_KM = 100;
@@ -110,7 +119,7 @@ export function normalizeSearchQuery(params: {
   lng?: string | null;
   radiusKm?: string | null;
 }): SearchQuery {
-  const page = toPositiveInt(params.page, 1);
+  const page = Math.min(MAX_PAGE, toPositiveInt(params.page, 1));
   const pageSize = Math.min(
     MAX_PAGE_SIZE,
     toPositiveInt(params.pageSize ?? params.take, DEFAULT_PAGE_SIZE)

@@ -41,6 +41,10 @@ internal.get("/jobs/count", async (c) => {
   const count = await db.jobRequest.count({
     where: {
       status: "OPEN",
+      // Admin-hidden jobs (#376) are invisible to the board (jobs.ts), so the
+      // dashboard badge must exclude them too (#647) — otherwise the count
+      // overstates what a provider will actually see when they open the board.
+      hiddenAt: null,
       ...(category ? { category } : {}),
       ...(districts.length ? { district: { in: districts } } : {}),
       ...(excludeCustomerId ? { NOT: { customerId: excludeCustomerId } } : {}),

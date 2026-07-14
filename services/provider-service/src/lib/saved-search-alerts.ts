@@ -137,7 +137,14 @@ export async function notifySavedSearchMatches(
       notifiedIds.push(s.id);
     }
 
-    await s2s(NOTIFICATION_URL, "/internal/notifications/events", {
+    // #636: the cooldown stamp below marks these searches "already alerted for
+    // this window", so it must run ONLY after the notification actually landed.
+    // The raw s2s returns a Response even on a 4xx/5xx (it never throws for a
+    // non-ok status), so an unchecked call would stamp the cooldown even when
+    // the ingestion was rejected — burning the alert with nothing delivered.
+    // Throw on a non-ok status so the catch below skips the stamp, matching the
+    // comment intent above.
+    const eventsRes = await s2s(NOTIFICATION_URL, "/internal/notifications/events", {
       method: "POST",
       headers: { "x-origin": origin },
       body: JSON.stringify({
@@ -150,11 +157,21 @@ export async function notifySavedSearchMatches(
         link: `/providers/${provider.id}`,
       }),
     });
+    if (!eventsRes.ok) {
+      throw new Error(`saved-search notification ingestion failed: ${eventsRes.status}`);
+    }
 
-    await s2s(IDENTITY_URL, "/internal/saved-searches/notified", {
+    // Only stamp the cooldown once the send is confirmed accepted. A failure
+    // here logs (below) but the notification already landed, so the worst case
+    // is a duplicate alert on the next matching publish — acceptable, and far
+    // better than the reverse (a burned cooldown with nothing delivered).
+    const notifiedRes = await s2s(IDENTITY_URL, "/internal/saved-searches/notified", {
       method: "POST",
       body: JSON.stringify({ ids: notifiedIds }),
     });
+    if (!notifiedRes.ok) {
+      throw new Error(`saved-search cooldown stamp failed: ${notifiedRes.status}`);
+    }
   } catch (e) {
     log.error("saved-search alert fan-out failed", {
       context: "saved-search-alerts",

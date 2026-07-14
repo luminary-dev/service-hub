@@ -130,6 +130,39 @@ export async function deleteProviderIndex(providerId: string): Promise<void> {
   }
 }
 
+// Erasure variant (#640): account deletion is a compliance op, so the index
+// delete gets a single bounded retry with jitter — the same shape s2s applies
+// to idempotent reads, which it can't apply to a DELETE itself. Meant to be
+// AWAITED on the erase path (not fired-and-forgotten): a lone transient blip no
+// longer silently strands a public index document for a user who asked to be
+// erased. Still best-effort at the very end — the Provider row is already gone
+// and can't be rolled back, and the daily reindex sweep prunes any survivor —
+// so a final failure is logged, never thrown.
+export async function deleteProviderIndexWithRetry(
+  providerId: string
+): Promise<void> {
+  try {
+    await deleteFromIndex(providerId);
+    return;
+  } catch (e) {
+    log.warn("search index delete failed — retrying once (erase)", {
+      context: "search-index",
+      providerId,
+      err: e,
+    });
+  }
+  await new Promise((r) => setTimeout(r, 100 + Math.floor(Math.random() * 150)));
+  try {
+    await deleteFromIndex(providerId);
+  } catch (e) {
+    log.error("search index delete failed after retry (erase)", {
+      context: "search-index",
+      providerId,
+      err: e,
+    });
+  }
+}
+
 async function deleteFromIndex(providerId: string): Promise<void> {
   const res = await s2s(SEARCH_URL, `/internal/search/providers/${providerId}`, {
     method: "DELETE",

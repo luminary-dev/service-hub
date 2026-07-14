@@ -22,6 +22,13 @@ marking the suspension as admin-owned: the self-service downgrade → re-upgrade
 cycle (`leave-provider` → `complete-provider`) cannot lift it — unsuspending
 here is the only way an admin suspension ends.
 
+Unsuspend is refused for a profile the **owner** deactivated
+(`suspended=true` with `adminSuspended=false`, #644): relisting it here would
+override the owner's own choice to hide their profile, so only the owner can
+re-list one (by becoming a provider again). The single action returns 409; the
+bulk action relists only the ADMIN-suspended rows and reports the rest as
+`skipped` (all-ineligible → 409).
+
 **Detail** — `GET /api/admin/providers/{id}`: header with avatar, contact, the
 quality badge and breakdown, and the verify/suspend actions. Two panels:
 

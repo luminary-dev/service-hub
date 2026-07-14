@@ -15,6 +15,7 @@ vi.mock("../db", () => ({ db: dbMock }));
 import {
   buildIndexDocument,
   deleteProviderIndex,
+  deleteProviderIndexWithRetry,
   syncProviderIndex,
   syncProviderIndexByUser,
 } from "./search-index";
@@ -130,5 +131,25 @@ describe("deleteProviderIndex", () => {
     expect(fetchMock.mock.calls[0][1].method).toBe("DELETE");
     fetchMock.mockRejectedValue(new Error("search down"));
     await expect(deleteProviderIndex("p1")).resolves.toBeUndefined();
+  });
+});
+
+// #640: erasure is a compliance op, so the index delete gets a single bounded
+// retry (the plain s2s DELETE isn't auto-retried). Still best-effort at the
+// end — the Provider row is already gone.
+describe("deleteProviderIndexWithRetry", () => {
+  it("retries once after a transient failure, then succeeds", async () => {
+    fetchMock
+      .mockRejectedValueOnce(new Error("search blip"))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true })));
+    await expect(deleteProviderIndexWithRetry("p1")).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][1].method).toBe("DELETE");
+  });
+
+  it("swallows a failure that persists across the retry", async () => {
+    fetchMock.mockRejectedValue(new Error("search down"));
+    await expect(deleteProviderIndexWithRetry("p1")).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
