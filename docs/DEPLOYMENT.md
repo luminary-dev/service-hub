@@ -9,7 +9,7 @@ backups, monitoring) see [OPERATIONS.md](OPERATIONS.md).
   `dev → prod`. The push to `prod` is the deploy trigger.
 - **CD** — `.github/workflows/deploy.yml` builds and pushes an image per service +
   web to `ghcr.io/luminary-dev/service-hub-<name>` (tagged with the commit SHA;
-  `:prod` is re-pointed atomically once all nine builds succeed), then, if
+  `:prod` is re-pointed atomically once all eleven builds succeed), then, if
   enabled, redeploys the host over SSH with a health gate and automatic rollback.
 - **Releases** — `.github/workflows/release.yml`: a `v*` git tag publishes
   semver-tagged images and cuts a GitHub Release. Only tags pointing at commits
@@ -48,7 +48,7 @@ Triggered on **push to `prod`** (and `workflow_dispatch`). Three jobs:
 
 2. **`tag-prod`** — re-points every image's `:prod` tag at the new
    `:<commit-sha>` in one post-matrix job (`docker buildx imagetools create`, a
-   registry-side manifest copy). It only runs when **all nine** matrix builds
+   registry-side manifest copy). It only runs when **all eleven** matrix builds
    succeeded, so a partial matrix failure can never leave `:prod` as a
    mixed-version set (#573) — previously each leg moved its own `:prod` tag as
    it finished.
@@ -94,7 +94,7 @@ Triggered on **push to `prod`** (and `workflow_dispatch`). Three jobs:
      deployed and its predecessor** (kept on disk so rollback needs no
      re-pull), then `docker image prune -f` clears the now-dangling layers.
      Tagged images are never "dangling", so without the explicit `rmi` pass
-     each deploy's nine `:<sha>` images accumulated on the VPS forever.
+     each deploy's eleven `:<sha>` images accumulated on the VPS forever.
 
 ## Releases (`release.yml`)
 
@@ -138,8 +138,9 @@ App secrets (set with `gh secret set <NAME>`):
   fail config load and crash-loop the only public entrypoint, #387),
   `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `EMAIL_FROM`, `R2_ENDPOINT`,
   `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `GOOGLE_CLIENT_ID`,
-  `GOOGLE_CLIENT_SECRET` (Google social login #398 — both unset → the
-  "Continue with Google" button is hidden, password auth unaffected).
+  `GOOGLE_CLIENT_SECRET`, `FACEBOOK_CLIENT_ID`, `FACEBOOK_CLIENT_SECRET`
+  (social login #398 — a provider's pair unset → its "Continue with …"
+  button is hidden, password auth unaffected).
 
 Deploy/SSH secrets: `PROD_SSH_HOST`, `PROD_SSH_USER`, `PROD_SSH_KEY` (a deploy
 key), `PROD_APP_DIR` (the checkout path on the host), and
@@ -170,7 +171,7 @@ runtime variables and how each degrades when unset.
    ```
    Generate the secrets: `openssl rand -base64 32` for `AUTH_SECRET` and
    `INTERNAL_API_SECRET`; `openssl rand -hex 32` for `POSTGRES_PASSWORD`, the
-   five per-service `*_DB_PASSWORD`s and `REDIS_PASSWORD` (these are
+   seven per-service `*_DB_PASSWORD`s and `REDIS_PASSWORD` (these are
    interpolated into connection URLs, so they must stay URL-safe — hex is).
 4. Log in to GHCR so the host can pull the images:
    ```bash
@@ -182,6 +183,9 @@ runtime variables and how each degrades when unset.
    docker compose -f docker-compose.prod.yml exec identity-service \
      npm run create-admin -- --email you@baas.lk --password '...'
    ```
+   (`ADMIN_EMAIL`/`ADMIN_PASSWORD` env vars work too; pass `--support` for a
+   SUPPORT-tier account — see
+   [admin/notifications-and-bootstrap.md](admin/notifications-and-bootstrap.md).)
 
 Migrations **auto-apply on start**: each DB-owning service runs `start:migrate`
 (`prisma migrate deploy && node dist/index.js`) as its container command, so a

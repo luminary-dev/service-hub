@@ -19,7 +19,8 @@ plus the build output.
   `.next` tree is chowned to `node` so the non-root runtime can write its cache.
 - **Services** (`services/*/Dockerfile`) — `build` compiles TypeScript with
   `tsc`; `runtime` installs prod-only deps and copies `dist`.
-- **DB-owning services** (identity, provider, review, job, search) additionally keep the
+- **DB-owning services** (identity, provider, review, job, notification,
+  search, trust-safety) additionally keep the
   Prisma schema + migrations and the `prisma` CLI (a prod dependency) in the
   runtime stage, and start with **`start:migrate`** (`prisma migrate deploy &&
   node dist/index.js`). `npm ci --omit=dev`'s `postinstall` runs `prisma
@@ -30,7 +31,7 @@ Every image runs as the **non-root `node` user** (`USER node`).
 **Base images are pinned by digest** (#238): each `FROM` carries a
 `# dependabot: <tag>` comment plus the readable tag before the `@sha256:` digest,
 so a build is reproducible and Dependabot can bump the tag comment and digest
-together. Compose base images (`postgres:16-alpine`, `redis:7-alpine`,
+together. Compose base images (`postgis/postgis:16-3.5-alpine`, `redis:7-alpine`,
 `caddy:2-alpine` in `docker-compose.prod.yml`) are pinned the same way.
 
 **Dependabot** (`.github/dependabot.yml`) tracks three ecosystems weekly, for
@@ -97,7 +98,7 @@ These endpoints back the layered gates:
 exhaust the single VPS:
 
 - **`mem_limit`** per service — e.g. postgres `1g`, web `640m`, media/chat
-  `512m`, most services `384m`, notification/redis `256m`, caddy `128m`.
+  `512m`, most services `384m`, redis `256m`, caddy `128m`.
 - **Log rotation** (#240) — a shared `json-file` logging config with
   `max-size: 10m` and `max-file: 3` is merged into every service, so a chatty or
   crash-looping container can't fill the disk.
@@ -133,7 +134,7 @@ Runs on push and PR to `dev` and `prod`. Jobs:
   `healthcheck`/`mem_limit` would surface only then. `config` fully
   parses/interpolates without pulling images or starting containers, so it's a
   fast gate; the job supplies **dummy** values for the required `${VAR:?}` secrets
-  (`AUTH_SECRET`, `INTERNAL_API_SECRET`, `POSTGRES_PASSWORD`, the four
+  (`AUTH_SECRET`, `INTERNAL_API_SECRET`, `POSTGRES_PASSWORD`, the seven
   per-service `*_DB_PASSWORD`s, `REDIS_PASSWORD`, `WEB_ORIGIN`, `DOMAIN`) so
   interpolation succeeds — `ACME_EMAIL` is left unset to exercise its
   `admin@${DOMAIN}` compose default (#387) — and fails loudly if the file is
@@ -152,9 +153,12 @@ workflows follows one format: a **per-package** check is `<package> / <task>`
 (e.g. `web / typecheck`, `api-gateway / build`, `web / coverage`,
 `media-service / npm-audit`, `web / trivy-image`); a **repo-wide** check is a
 single lowercase-kebab name with no slash (`e2e`, `compose-config`, `trivy-fs`,
-`actionlint`). The 28 `<package> / {typecheck,test,build}` legs are the required
-status checks in the `dev`/`prod` rulesets — keep those exact names stable, and
-if you rename one, update the ruleset's required-checks list in the same change.
+`actionlint`). The per-package matrix produces 34 legs
+(`<package> / {typecheck,(lint,)test,build}`), and **all 34 are required status
+checks in both the `dev` and `prod` rulesets** — including the six
+`search-service` / `trust-safety-service` legs. Keep those exact names stable,
+and if you rename one, update the ruleset's required-checks list in the same
+change.
 
 See [TESTING.md](TESTING.md) for the test layers behind these jobs.
 
@@ -170,7 +174,8 @@ sh` install (a moving upstream branch).
 - **Trivy filesystem scan** — `trivy fs` over the lockfiles
   (CRITICAL/HIGH/MEDIUM). **Report-only**: uploads SARIF to the Security tab,
   never fails the build.
-- **Trivy image scan** (#238) — builds each of the ten images in its matrix and scans the
+- **Trivy image scan** (#238) — builds each of the eleven images in its matrix
+  (web + the 10 services) and scans the
   base-image / OS packages (`vuln-type: os`). **Gating**: fails the build on
   fixable HIGH/CRITICAL OS vulns (`severity: HIGH,CRITICAL`, `ignore-unfixed`,
   `exit-code: 1`); SARIF still uploads so all findings surface.
@@ -358,11 +363,13 @@ so `migrate deploy` stops erroring with P3005); fresh DBs never need it.
 | provider-service | 4002 | DB-owning |
 | review-service | 4003 | DB-owning |
 | job-service | 4004 | DB-owning |
-| notification-service | 4005 | email (Resend) |
+| notification-service | 4005 | DB-owning — in-app + email (Resend) |
 | media-service | 4006 | uploads (local disk or R2) |
 | chat-service | 4007 | holds the Anthropic key |
+| search-service | 4008 | DB-owning — derived search index (PostGIS) |
+| trust-safety-service | 4009 | DB-owning — unified reports + audit (dark launch) |
 | postgres | 5432 (host **5433**) | remapped so it won't clash with a local Postgres |
-| redis | 6379 | shared rate-limit windows + session-revocation list |
+| redis | 6379 | rate-limit windows + session-revocation list + email queue |
 
 In the **dev compose stack** every published port except web's `3000` is bound
 to **127.0.0.1** (#387): on shared wifi nobody else can reach Postgres (its dev
@@ -372,8 +379,8 @@ proxies `/api/*` to the gateway server-side, so that path suffices.
 
 In prod, service and datastore ports are **not** published — only Caddy binds
 80/443 on the host, and the compose networks are split edge/backend/egress
-(#387: Caddy reaches only web; gateway/provider/review/job + postgres + redis
-have no internet route; Redis requires AUTH and each DB service connects as its
+(#387: Caddy reaches only web; gateway/provider/review/job/search/trust-safety
++ postgres + redis have no internet route; Redis requires AUTH and each DB service connects as its
 own least-privilege role — see
 [DEPLOYMENT.md](DEPLOYMENT.md#network--datastore-isolation-387)).
 

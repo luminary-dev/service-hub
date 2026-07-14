@@ -32,12 +32,13 @@ docker compose up --build
 | provider-service | 4002 | `provider_db` — profiles, services, photos, inquiries, verification |
 | review-service | 4003 | `review_db` — reviews + review photos |
 | job-service | 4004 | `job_db` — job request board |
-| notification-service | 4005 | stateless — transactional email (Resend) |
+| notification-service | 4005 | `notification_db` — in-app notifications + transactional email (Resend) |
 | media-service | 4006 | stateless — upload bytes + sharp image processing |
 | chat-service | 4007 | stateless — Claude assistant (holds the LLM key) |
 | search-service | 4008 | `search_db` — derived provider search index (PostGIS geo + FTS) |
-| Postgres | **5433** on the host | one cluster, one database per service |
-| Redis | internal | shared rate-limit window |
+| trust-safety-service | 4009 | `trust_safety_db` — unified reports + moderation audit (dark launch) |
+| Postgres | **5433** on the host | one cluster, one database per data-owning service |
+| Redis | internal | rate-limit windows, session-revocation list, email queue |
 
 Postgres binds host port 5433 because many dev machines already run a local
 Postgres on 5432. In the Docker dev stack, every published port except web's

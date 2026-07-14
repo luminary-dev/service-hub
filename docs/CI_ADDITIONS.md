@@ -12,12 +12,13 @@ For the full current picture see [OPERATIONS.md](OPERATIONS.md); in short, on
 every PR/push to `dev`/`prod` we run:
 
 - **`ci.yml`** — per-package `typecheck` / `test` / `build` for web + the 10
-  services, web-only `lint`, a `coverage` ratchet (web + 10 services), and a
+  services, web-only `lint`, a `coverage` ratchet (web + 10 services), a
+  prod-compose validation (`compose-config`), and a
   PR-only compose **e2e smoke**. Concurrency-cancel + `timeout-minutes` on
   every job.
 - **`security-scan.yml`** — Trivy filesystem (deps, report-only), Trivy image
   (OS packages, **gating** on fixable HIGH/CRITICAL), and `npm audit`
-  (informational). Weekly cron + `workflow_dispatch`.
+  (**gating** on CRITICAL production-dependency advisories, #386). Weekly cron + `workflow_dispatch`.
 - **`actionlint.yml`** — workflow-YAML linting (shipping now, see below).
 - **CodeQL** — first-party static analysis of our own TS. Already enabled, but
   **not** as a workflow in this repo: it runs through GitHub's code-scanning

@@ -148,7 +148,7 @@ may be exposed. Coordinate with [BACKUPS.md](BACKUPS.md) — take a fresh
 
 **What they protect.** Each DB-owning service connects as its own
 least-privilege role (`identity` / `provider` / `review` / `job` /
-`notification` / `trust_safety`), whose
+`notification` / `search` / `trust_safety`), whose
 password is interpolated into that service's `DATABASE_URL` and passed to the
 `postgres` container for bootstrap/migration tooling.
 
@@ -161,7 +161,7 @@ re-run the idempotent role script with the new value(s) exported — it
 ```bash
 # On the prod host (only the vars you're rotating need to be exported):
 IDENTITY_DB_PASSWORD='<NEW>' PROVIDER_DB_PASSWORD='<OLD>' REVIEW_DB_PASSWORD='<OLD>' \
-JOB_DB_PASSWORD='<OLD>' NOTIFICATION_DB_PASSWORD='<OLD>' \
+JOB_DB_PASSWORD='<OLD>' NOTIFICATION_DB_PASSWORD='<OLD>' SEARCH_DB_PASSWORD='<OLD>' \
 TRUST_SAFETY_DB_PASSWORD='<OLD>' ./deploy/migrate-db-roles.sh
 
 gh secret set IDENTITY_DB_PASSWORD     # the same <NEW> value
@@ -173,9 +173,9 @@ gh workflow run deploy.yml --ref prod  # re-renders DATABASE_URL, recreates the 
 ## REDIS_PASSWORD (#387)
 
 **What it protects.** Redis AUTH (`requirepass`) over the gateway's rate-limit
-windows and the session-revocation list (#374). Consumed by the `redis`
-container (command flag + healthcheck) and by the gateway's and identity's
-`REDIS_URL`s.
+windows, the session-revocation list (#374) and notification-service's email
+delivery queue. Consumed by the `redis` container (command flag + healthcheck)
+and by the gateway's, identity's and notification's `REDIS_URL`s.
 
 **Rotation.** Standard procedure — unlike Postgres, the value lives only in
 the container config, so the redeploy's container recreation applies it
@@ -183,8 +183,9 @@ everywhere at once (`gh secret set REDIS_PASSWORD` with a URL-safe
 `openssl rand -hex 32` value → `gh workflow run deploy.yml --ref prod`).
 Recreating the `redis` container keeps `/data` (the `redis_data` volume), so
 the revocation list survives. During the seconds the consumers cycle, rate
-limiting falls back to per-instance in-memory and revocation checks fall back
-to the identity lookup — both by design.
+limiting falls back to per-instance in-memory, revocation checks fall back
+to the identity lookup, and notification email delivery degrades to
+one-attempt direct sends — all by design.
 
 ## Third-party API keys (optional secrets)
 

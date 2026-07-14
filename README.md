@@ -6,7 +6,7 @@ The customer-facing UI is bilingual — an EN/සිං toggle in the navbar swi
 
 ## Architecture
 
-The marketplace is built as **ten Hono services — an API gateway fronting nine backend microservices — with a Next.js 16 web app as a pure frontend**, all backed by Postgres and Redis. The web app never touches a database — it rewrites `/api/*` to the gateway, which verifies the JWT session cookie, enforces CSRF + rate limits, and fans requests out to the backend services over internal HTTP secured by a shared secret. The seven data-owning services (identity, provider, review, job, notification, search, trust-safety) each own their own Postgres database, and Redis backs the gateway's distributed rate limiter and the notification email queue. Full details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Narrative team documentation (onboarding, workflow, operations) lives on GitBook in [luminary-dev/service-hub-docs](https://github.com/luminary-dev/service-hub-docs).
+The marketplace is built as **ten Hono services — an API gateway fronting nine backend microservices — with a Next.js 16 web app as a pure frontend**, all backed by Postgres and Redis. The web app never touches a database — it rewrites `/api/*` to the gateway, which verifies the JWT session cookie, enforces CSRF + rate limits, and fans requests out to the backend services over internal HTTP secured by a shared secret. The seven data-owning services (identity, provider, review, job, notification, search, trust-safety) each own their own Postgres database, and Redis backs the gateway's distributed rate limiter and the notification email queue. Full details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Narrative team documentation (onboarding, workflow, operations) is published to GitBook directly from this repo's [docs/](docs/) tree (Git Sync via `.gitbook.yaml` + `docs/SUMMARY.md`).
 
 ```
 browser ── same-origin /api/* ──> Next.js web (:3000)
@@ -16,7 +16,7 @@ browser ── same-origin /api/* ──> Next.js web (:3000)
                                    ├── provider-service     (:4002)  profiles, services, photos, inquiries
                                    ├── review-service       (:4003)  reviews + review photos
                                    ├── job-service          (:4004)  job request board
-                                   ├── notification-service (:4005)  email (Resend)
+                                   ├── notification-service (:4005)  in-app + email notifications
                                    ├── media-service        (:4006)  image processing + file storage
                                    ├── chat-service         (:4007)  Claude assistant (holds the LLM key)
                                    ├── search-service       (:4008)  provider search + geo discovery index
@@ -35,7 +35,7 @@ browser ── same-origin /api/* ──> Next.js web (:3000)
 Prereqs: Node 22+, Docker.
 
 ```bash
-npm run setup      # scripts/setup.sh — install all packages, create .env files, start Postgres, push schemas, seed
+npm run setup      # scripts/setup.sh — install all packages, create .env files, start Postgres, run migrations, seed
 npm run dev:all    # scripts/dev-all.sh — run the gateway + all nine backend services + the web app (Ctrl-C stops everything)
 ```
 
@@ -48,8 +48,9 @@ docker compose up -d --build
 
 # The container images run as NODE_ENV=production, so the demo seed is an
 # explicit opt-in (unlike `npm run setup` above, which seeds for you). Seed the
-# five data services once the stack is up:
-for s in identity-service provider-service review-service job-service notification-service; do
+# six stateful services once the stack is up (search_db is a derived index —
+# migrated, not seeded):
+for s in identity-service provider-service review-service job-service notification-service trust-safety-service; do
   docker compose exec -e SEED_DEMO_DATA=true "$s" npm run db:seed
 done
 ```
@@ -124,7 +125,7 @@ services/
   provider-service/      providers, services, photos, inquiries    (provider_db)
   review-service/        reviews, review photos                    (review_db)
   job-service/           job requests + responses                  (job_db)
-  notification-service/  email templates + Resend delivery         (notification_db)
+  notification-service/  in-app notifications + email (Resend)     (notification_db)
   media-service/         image processing (sharp) + file storage   (R2 / local disk)
   chat-service/          Claude marketplace assistant (holds LLM key) (stateless)
   search-service/        provider search + geo discovery (PostGIS)  (search_db)
@@ -152,7 +153,7 @@ engineering contract (for humans and AI assistants alike) is in [CLAUDE.md](CLAU
 
 ## Documentation
 
-The monorepo `docs/` folder is the canonical technical + process reference; narrative team docs (onboarding, workflow) live on GitBook in [luminary-dev/service-hub-docs](https://github.com/luminary-dev/service-hub-docs).
+The monorepo `docs/` folder is the canonical technical + process reference — the team's GitBook space is published directly from it (Git Sync via `.gitbook.yaml` + `docs/SUMMARY.md`), so there is no separate docs repo.
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — service contracts, conventions, env vars, data flow
 - [docs/FEATURES.md](docs/FEATURES.md) — product feature reference, per surface
