@@ -90,8 +90,11 @@ logged** (compose polls it frequently; the lines would be pure noise).
 These endpoints back the layered gates:
 
 - **Compose healthchecks** — every service uses the shared node healthcheck
-  (`wget -qO- http://localhost:$PORT/healthz`); Postgres uses `pg_isready`, Redis
-  `redis-cli ping`. In prod the web app is probed the same way (its own
+  (`wget -qO- http://localhost:$PORT/healthz`); Postgres uses `pg_isready -h
+  127.0.0.1` — probed over **TCP**, not the local socket, so it can't report
+  healthy during the image's socket-only multi-DB init window and release
+  dependents before their `prisma migrate deploy` can actually connect (#686);
+  Redis `redis-cli ping`. In prod the web app is probed the same way (its own
   gateway-independent `/healthz` route — `/api/healthz` would be proxied to the
   gateway) and Caddy via its admin API (`http://localhost:2019/config/`, which
   works before DNS/ACME are in place), so the deploy gate covers the public
@@ -123,7 +126,7 @@ Runs on push and PR to `dev` and `prod`. Jobs:
 
 - **Fast per-package matrix** — `web` runs `typecheck / lint / test / build`;
   each of the ten services runs `typecheck / test / build`. `fail-fast:
-  false`, Node 22, npm cache.
+  false`, Node 24, npm cache.
 - **`coverage`** (#262) — per package (web + 10 services), runs `npm run coverage`
   (vitest v8 provider) and uploads the HTML/JSON report as an artifact plus a
   step-summary table. Thresholds are a **deliberately low ratchet floor
