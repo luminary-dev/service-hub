@@ -58,7 +58,6 @@ const emptyFilters: BrowseFilters = {
 function card(overrides: Partial<ProviderCardDTO>): ProviderCardDTO {
   return {
     id: "prov_1",
-    userId: "user_1",
     name: "Sunil Perera",
     category: "electrician",
     categoryImageUrl: null,

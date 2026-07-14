@@ -47,10 +47,10 @@ write bucket and vice versa.
 each verifies the current password and is therefore a guessing oracle for a
 hijacked session. The five abuse-report endpoints (#50, #376) share a single
 `report` bucket keyed per IP, since (message reports excepted) anonymous
-submissions are allowed and the IP budget is the main spam control. The phone-number reveal (`contactReveal`, #64) sits
-on its own per-IP budget: provider phone/WhatsApp numbers are withheld from the
+submissions are allowed and the IP budget is the main spam control. The contact reveal (`contactReveal`, #64/#655) sits
+on its own per-IP budget: provider phone/WhatsApp numbers **and the contact email** are withheld from the
 public directory payloads and fetched only on an explicit tap, so this limit is
-the main defence against a crawler harvesting the whole directory's numbers.
+the main defence against a crawler harvesting the whole directory's contact details.
 Change-email (`resend`, #505) reuses the email-sending budget because it fires a
 confirmation email to an attacker-*chosen* address on every call, so an
 unthrottled endpoint is a mail-bomb vector. The four image-upload endpoints
