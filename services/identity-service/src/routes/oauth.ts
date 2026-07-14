@@ -128,11 +128,23 @@ oauthRoutes.get("/oauth/:provider/callback", async (c) => {
 
     if (existingAccount) {
       user = existingAccount.user;
-    } else if (identity.email && identity.emailVerified) {
-      // 2. Verified email → link to an existing account or create a new one.
+    } else if (identity.email) {
+      // 2. The provider returned an email. Whether it may CLAIM a pre-existing
+      // account depends on whether the provider vouched for it.
       const email = identity.email.toLowerCase();
       const existingUser = await db.user.findUnique({ where: { email } });
       if (existingUser) {
+        // Auto-linking claims an account the person may not actually control,
+        // so it is gated on a provider-VERIFIED email (#635). Google supplies an
+        // explicit email_verified claim; Facebook exposes no verification signal
+        // (see lib/oauth.ts), so a Facebook-returned address is unverified and
+        // must NOT silently link to an existing (typically password) account —
+        // that was an account-takeover vector. Refuse and steer them to sign in
+        // with their existing method; they can add Facebook later once we can
+        // trust the address (a confirm-to-link flow is a tracked follow-up).
+        if (!identity.emailVerified) {
+          return fail("oauth_email");
+        }
         await db.account
           .create({
             data: { userId: existingUser.id, provider, providerAccountId: identity.providerAccountId },
@@ -147,6 +159,12 @@ oauthRoutes.get("/oauth/:provider/callback", async (c) => {
           });
         user = existingUser;
       } else {
+        // No collision → create a fresh account from the real address. It keeps
+        // that email so the user isn't stuck on a placeholder, but the address
+        // is only stamped emailVerified when the provider vouched for it
+        // (Google). An unverified email (Facebook) creates the account with
+        // emailVerified null; the user can confirm it later via change-email
+        // (#396). Either way this claims no existing account.
         isNew = true;
         user = await db.$transaction(async (tx) => {
           const created = await tx.user.create({
@@ -155,7 +173,7 @@ oauthRoutes.get("/oauth/:provider/callback", async (c) => {
               passwordHash: null,
               name: identity.name?.slice(0, 80) || email.split("@")[0],
               role: "CUSTOMER",
-              emailVerified: new Date(),
+              emailVerified: identity.emailVerified ? new Date() : null,
             },
           });
           await tx.account.create({

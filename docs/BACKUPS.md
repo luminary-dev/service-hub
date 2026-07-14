@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | identity_db, provider_db, review_db, job_db, notification_db, trust_safety_db | compose `postgres` (one cluster) | `scripts/backup-dbs.sh` (logical `pg_dump -Fc` per DB) |
 | search_db | compose `postgres` (same cluster) | deliberately NOT backed up — it is a **derived, rebuildable search index** (search & discovery RFC): after any restore, repopulate it with search-service's `POST /internal/search/reindex` (with the internal secret) instead of restoring a dump |
-| Uploaded images | `provider_uploads` / `review_uploads` volumes (or Cloudflare R2 when the `R2_*` vars are set) | volume tar (below); R2 is durable managed storage |
+| Uploaded images | `provider_uploads` / `review_uploads` volumes (or Cloudflare R2 when the `R2_*` vars are set) | **automatic** (#663): in local-disk mode `scripts/backup-dbs.sh` tars both volumes into the snapshot and ships them offsite with the dumps; when R2 is configured the tar is skipped (R2 is durable managed storage). See [Upload volumes](#upload-volumes) |
 | Redis rate-limit windows + session-revocation list | `redis` (prod `redis_data` volume) | deliberately NOT backed up — rate-limit windows are ephemeral, and the revocation list (#374) mirrors identity_db's `sessionVersion` (covered above). The volume keeps it across container recreation (#571); after a total Redis loss the gateway falls back to the identity lookup until versions are re-published on the next bump |
 
 ## Policy
@@ -14,7 +14,8 @@
 - **Cadence**: nightly at 02:17 UTC on the prod host. `/etc/cron.d/service-hub-backup` (installed once with `sudo ./scripts/install-backup-cron.sh`, #389) runs `scripts/backup-cron.sh`: dump → offsite copy → restore-verify → heartbeat ping. The backup script targets the prod compose project (`docker-compose.prod.yml`) by default; for a local dev backup run `COMPOSE_FILE=docker-compose.yml ./scripts/backup-dbs.sh`.
 - **Retention**: newest 14 snapshots locally, newest 30 offsite (`RETENTION` / `REMOTE_RETENTION` env override); only `YYYYMMDDTHHMMSSZ` snapshot dirs are pruned, so anything else you keep in `BACKUP_DIR` or the bucket is left alone.
 - **Offsite**: `backup-dbs.sh` ships every snapshot to a **dedicated** Cloudflare R2 bucket through a dockerized rclone when the `BACKUP_R2_*` vars are set — and the scheduled path (`backup-cron.sh`) refuses to run without them, so the schedule can't silently degrade to local-only. Use a separate bucket + API token from the media uploads' `R2_*` credentials (least privilege: the token is scoped to the backups bucket only).
-- **Restore verification**: every nightly run restores the fresh snapshot into a scratch Postgres container and row-counts each service's main table (`scripts/verify-backup.sh` — fails loudly on a missing/corrupt dump or an empty `User` table; `notification_db`'s `Notification` and `trust_safety_db`'s `Report` counts may legitimately be zero, so only identity's zero-rows case is fatal). CI's `e2e` job exercises the same backup → restore-verify path on every PR. Still walk the full runbook below as a quarterly drill.
+- **Uploaded images** (#663): in **local-disk media mode** `backup-dbs.sh` tars the `provider_uploads` / `review_uploads` volumes into the same snapshot dir as the dumps (through a throwaway `alpine` container mounting each volume read-only), so the offsite copy + retention ship and prune them with everything else; when the media **`R2_*`** vars are set the images already live in Cloudflare R2 (durable managed storage) and the tar is skipped. The mode + volume names are read from the **running media-service container** (the media `R2_*` creds are not in `.backup.env`), and each run logs which path applied. If a run ends with **no** media coverage — neither R2 nor a successful tar — it warns loudly, and the scheduled path (`backup-cron.sh`, which sets `REQUIRE_MEDIA_COVERAGE=1`) **fails the run** so the heartbeat's `/fail` alert fires, mirroring the offsite-copy refusal.
+- **Restore verification**: every nightly run restores the fresh snapshot into a scratch Postgres container and row-counts each service's main table (`scripts/verify-backup.sh` — fails loudly on a missing/corrupt dump or an empty `User` table; `notification_db`'s `Notification` and `trust_safety_db`'s `Report` counts may legitimately be zero, so only identity's zero-rows case is fatal). It also validates any upload-volume tar in the snapshot is a readable gzip archive (absent tars are fine — R2 mode or none configured). CI's `e2e` job exercises the same backup → restore-verify path on every PR. Still walk the full runbook below as a quarterly drill.
 - **Alerting**: a dead-man's-switch. `backup-cron.sh` pings `BACKUP_HEARTBEAT_URL` only after backup + offsite + verification all succeed (`<url>/fail` on failure — healthchecks.io semantics). Point it at a heartbeat monitor with a ~26 h grace period so a missed or failed nightly raises an alert instead of being discovered mid-disaster.
 
 ## Nightly automation setup (one-time per host)
@@ -52,11 +53,16 @@ Each nightly run appends a few KB to `backups/backup.log`; truncate it whenever 
 
 ## Upload volumes
 
-Local-disk uploads live in named Docker volumes. Docker prefixes volume names with the compose project, and prod runs as project `service-hub-prod` (`docker-compose.prod.yml`), so on the prod host the volumes are `service-hub-prod_provider_uploads` / `service-hub-prod_review_uploads` (dev: `service-hub_…`). Snapshot alongside the DB dumps when running self-hosted:
+Local-disk uploads live in named Docker volumes prefixed by the compose project — prod runs as project `service-hub-prod` (`docker-compose.prod.yml`), so the volumes are `service-hub-prod_provider_uploads` / `service-hub-prod_review_uploads` (dev: `service-hub_…`).
+
+**These are backed up automatically (#663)** — you no longer tar them by hand. When media is in local-disk mode, `backup-dbs.sh` resolves the compose project from the running media-service container (so no name is hardcoded), tars each volume into the snapshot dir via a throwaway `alpine` container, and the existing offsite copy + retention carry them along with the DB dumps. When the media `R2_*` vars are set the images are in Cloudflare R2 (durable managed storage) and the tar is skipped. A run that would leave uploads with no coverage warns loudly, and the scheduled path fails (see the **Uploaded images** bullet under [Policy](#policy)).
+
+**Restoring uploads** (local-disk mode): pull the snapshot (offsite if the host is gone), then untar each volume back through a throwaway container — the media-service in the target stack must be stopped or restarted afterwards so it re-reads the disk:
 
 ```bash
-docker run --rm -v service-hub-prod_provider_uploads:/data -v "$PWD/backups":/out alpine \
-  tar czf /out/<stamp>/provider_uploads.tgz -C /data .
+docker run --rm -v service-hub-prod_provider_uploads:/data \
+  -v "$PWD/backups/<stamp>":/in alpine \
+  sh -c 'cd /data && tar xzf /in/provider_uploads.tgz'
+# repeat for review_uploads, then:
+docker compose -f docker-compose.prod.yml restart media-service
 ```
-
-(Repeat for `service-hub-prod_review_uploads`.) When the `R2_*` vars are set, uploads live in Cloudflare R2 (durable managed storage) and need no self-managed backup.

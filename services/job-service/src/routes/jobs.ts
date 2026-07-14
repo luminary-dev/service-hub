@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { db } from "../db";
 import { moderateContent } from "../lib/auto-report";
 import { getAuth, getLocale, getOrigin, s2s } from "../lib/http";
+import { advisoryXactLock } from "../lib/locks";
 import { log } from "../lib/log";
 import { emitNotification } from "../lib/notify";
 import { jobSchema, jobResponseSchema } from "../lib/job-schema";
@@ -105,29 +106,39 @@ jobs.post("/", async (c) => {
     return c.json({ error: "Verify your email address to post a job" }, 403);
   }
 
-  const postedToday = await db.jobRequest.count({
-    where: {
-      customerId: auth.userId,
-      createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-    },
+  // The daily-cap count + insert run inside one transaction under a per-user
+  // advisory lock, so a concurrent double-submit can't race the count check and
+  // overshoot MAX_JOBS_PER_DAY (a plain transaction wouldn't serialize the two
+  // — see lib/locks). A capped attempt returns null and never reaches the write
+  // or the fan-out below.
+  const job = await db.$transaction(async (tx) => {
+    await advisoryXactLock(tx, "job-post", auth.userId);
+
+    const postedToday = await tx.jobRequest.count({
+      where: {
+        customerId: auth.userId,
+        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+      },
+    });
+    if (postedToday >= MAX_JOBS_PER_DAY) return null;
+
+    return tx.jobRequest.create({
+      data: {
+        customerId: auth.userId,
+        category: parsed.data.category,
+        district: parsed.data.district,
+        title: parsed.data.title,
+        description: parsed.data.description,
+        budget: parsed.data.budget ?? null,
+      },
+    });
   });
-  if (postedToday >= MAX_JOBS_PER_DAY) {
+  if (!job) {
     return c.json(
       { error: "You've reached the daily job posting limit. Try again tomorrow." },
       429
     );
   }
-
-  const job = await db.jobRequest.create({
-    data: {
-      customerId: auth.userId,
-      category: parsed.data.category,
-      district: parsed.data.district,
-      title: parsed.data.title,
-      description: parsed.data.description,
-      budget: parsed.data.budget ?? null,
-    },
-  });
 
   // Content filter (#375): AFTER the write on purpose — the post stays
   // visible and a filter hit only queues a SYSTEM report for admin triage.

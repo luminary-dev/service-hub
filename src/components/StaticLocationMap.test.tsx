@@ -12,6 +12,7 @@ const props = {
   longitude: 79.8612,
   alt: "Map showing the approximate location of Nimal Perera",
   linkLabel: "View on OpenStreetMap",
+  contributorsLabel: "contributors",
 };
 
 describe("StaticLocationMap (#48)", () => {

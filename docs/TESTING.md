@@ -37,6 +37,10 @@ CI (`.github/workflows/ci.yml`) runs on pushes and PRs to `dev` and `prod`, in
 five jobs:
 
 - **`web`** — a matrix of `typecheck` / `lint` / `test` / `build` for the web app.
+  `lint` includes the `i18next/no-literal-string` rule (error), which fails the
+  build on any hardcoded, untranslated JSX text in `src/app` / `src/components`
+  — route new copy through `src/lib/i18n.ts` instead (see
+  [Bilingual EN/SI](features/i18n-and-theme.md#guarding-against-hardcoded-strings)).
 - **`services`** — a matrix of `typecheck` / `test` / `build` across all ten
   service packages (identity, provider, review, job, notification, media, chat,
   search, trust-safety, api-gateway).

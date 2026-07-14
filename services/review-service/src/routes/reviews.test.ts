@@ -33,8 +33,15 @@ vi.mock("../lib/search-index", () => ({
 }));
 vi.mock("../db", () => ({
   db: {
+    // The write runs in an interactive transaction that first takes a
+    // per-(provider,user) advisory lock ($executeRaw) and, when photos are
+    // attached, re-checks the cap via tx.review.findUnique (#647 L5).
     $transaction: (fn: (tx: unknown) => unknown) =>
-      fn({ review: { upsert }, reviewPhoto: { createMany } }),
+      fn({
+        $executeRaw: vi.fn(async () => 0),
+        review: { upsert, findUnique: reviewFindUnique },
+        reviewPhoto: { createMany },
+      }),
     review: { upsert, findUnique: reviewFindUnique },
     reviewPhoto: { createMany },
     report: { findFirst: reportFindFirst, create: reportCreate, update: reportUpdate },
