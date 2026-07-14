@@ -11,13 +11,14 @@ report-only and are promoted to a required check only once they're proven quiet.
 For the full current picture see [OPERATIONS.md](OPERATIONS.md); in short, on
 every PR/push to `dev`/`prod` we run:
 
-- **`ci.yml`** — per-package `typecheck` / `test` / `build` for web + the 8
-  services, web-only `lint`, a `coverage` ratchet (web + 8 services), and a
+- **`ci.yml`** — per-package `typecheck` / `test` / `build` for web + the 10
+  services, web-only `lint`, a `coverage` ratchet (web + 10 services), a
+  prod-compose validation (`compose-config`), and a
   PR-only compose **e2e smoke**. Concurrency-cancel + `timeout-minutes` on
   every job.
 - **`security-scan.yml`** — Trivy filesystem (deps, report-only), Trivy image
   (OS packages, **gating** on fixable HIGH/CRITICAL), and `npm audit`
-  (informational). Weekly cron + `workflow_dispatch`.
+  (**gating** on CRITICAL production-dependency advisories, #386). Weekly cron + `workflow_dispatch`.
 - **`actionlint.yml`** — workflow-YAML linting (shipping now, see below).
 - **CodeQL** — first-party static analysis of our own TS. Already enabled, but
   **not** as a workflow in this repo: it runs through GitHub's code-scanning
@@ -41,7 +42,7 @@ findings (Security tab, PR comment, or log) without blocking.
 | 2 | **CodeQL query-suite upgrade** | CodeQL is already on via default setup, but with the `default` query suite; bumping default setup to the **extended** suite adds the security-extended queries. This is a repo-settings toggle (Security → Code scanning → default setup), *not* a workflow — an advanced-config workflow would conflict with default setup. | Low (settings, no code) | Report | Quick win |
 | 3 | **Commit / PR-title lint (Conventional Commits)** | CLAUDE.md already *requires* Conventional-Commit PR titles; a check enforces the contract instead of trusting review. | Low | Gate (PR title) | Quick win |
 | 4 | **Docs link checker (lychee)** | The `docs/` tree is GitBook-synced and leans heavily on **relative** links (see `SUMMARY.md`, `README.md` index); a broken relative link silently breaks the published nav. | Low | Report first, then gate | Quick win |
-| 5 | **Service-side ESLint** | Only **web** has a `lint` script today — none of the 8 services do. Adding a shared flat-config + `lint` script closes a real gap in backend code quality. | Medium (per-service config + fixing existing violations) | Gate once clean | Later |
+| 5 | **Service-side ESLint** | Only **web** has a `lint` script today — none of the 10 services do. Adding a shared flat-config + `lint` script closes a real gap in backend code quality. | Medium (per-service config + fixing existing violations) | Gate once clean | Later |
 | 6 | **Coverage summary PR comment** | `coverage` already produces `coverage-summary.json` per package + a step-summary; surfacing the deltas as a sticky PR comment makes the ratchet visible without opening the run. | Low | Report | Quick win |
 | 7 | **dependency-review-action** | On PRs, flags newly-added deps with known vulns or disallowed licenses *before* merge — complements Trivy/`npm audit`, which scan the whole tree post-hoc. | Low | Gate (PR-only, new deps only) | Quick win |
 | 8 | **Re-enable actionlint's shellcheck** | actionlint bundles shellcheck for `run:` blocks; it's currently disabled because the existing workflows trip 6 benign SC2016 false-positives (`gh`/GraphQL `$var` in single quotes) + one SC2034. Suppress those inline, then drop `-shellcheck=`. | Low | Gate | Quick win |
@@ -52,7 +53,7 @@ findings (Security tab, PR comment, or log) without blocking.
 ## Notes on accuracy to this repo
 
 - **Only `web` is linted.** Confirmed: the root `package.json` has a `lint`
-  script (`eslint`) and `eslint` + `eslint-config-next` devDeps; none of the 8
+  script (`eslint`) and `eslint` + `eslint-config-next` devDeps; none of the 10
   `services/*/package.json` define a `lint` script (they have `typecheck` /
   `test` / `build` / `coverage`). Item 5 is a genuine gap, not a duplicate.
 - **CodeQL is already on — via default setup, not a workflow.** GitHub's

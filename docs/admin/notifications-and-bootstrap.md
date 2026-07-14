@@ -32,7 +32,7 @@ ADMIN_EMAIL=you@baas.lk ADMIN_PASSWORD='...' npm run create-admin
 ```
 
 Script: `services/identity-service/prisma/create-admin.js`. Password must be
-6–100 chars (bcrypt cost 10). Pass `--support` to create/promote a **SUPPORT**
+6–100 chars (bcrypt cost 10); `--name` (or `ADMIN_NAME`) sets the display name. Pass `--support` to create/promote a **SUPPORT**
 account instead of ADMIN (`npm run create-admin -- --email ops@baas.lk
 --password '…' --support`). If the email already exists it **promotes the
 account to the chosen tier, resets the password, and bumps `sessionVersion`**

@@ -86,7 +86,7 @@ risk.
 trust work. The gateway (and any service calling a peer) stamps it as the
 `x-internal-secret` header; every service validates it with a constant-time
 compare before trusting the forwarded `x-user-*` identity headers. It is read by
-**all eight services and the web app** (web reaches identity directly for the
+**all ten services and the web app** (web reaches identity directly for the
 session-revocation check). See [AUTHZ.md](AUTHZ.md).
 
 **Blast radius.** There is **one** accepted value per service — the code holds a
@@ -115,7 +115,7 @@ but rotate anyway).
 
 **What it protects.** The `postgres` superuser password. Since the
 per-service DB roles landed (#387) it no longer appears in any `DATABASE_URL`
-— the five DB-owning services connect as their own roles (below). The
+— the seven DB-owning services connect as their own roles (below). The
 superuser remains for cluster administration and the backup tooling
 (`scripts/backup-dbs.sh` execs `pg_dump -U postgres` over the container's
 local socket, which trusts local connections, so backups don't even read the
@@ -148,7 +148,7 @@ may be exposed. Coordinate with [BACKUPS.md](BACKUPS.md) — take a fresh
 
 **What they protect.** Each DB-owning service connects as its own
 least-privilege role (`identity` / `provider` / `review` / `job` /
-`notification` / `trust_safety`), whose
+`notification` / `search` / `trust_safety`), whose
 password is interpolated into that service's `DATABASE_URL` and passed to the
 `postgres` container for bootstrap/migration tooling.
 
@@ -161,7 +161,7 @@ re-run the idempotent role script with the new value(s) exported — it
 ```bash
 # On the prod host (only the vars you're rotating need to be exported):
 IDENTITY_DB_PASSWORD='<NEW>' PROVIDER_DB_PASSWORD='<OLD>' REVIEW_DB_PASSWORD='<OLD>' \
-JOB_DB_PASSWORD='<OLD>' NOTIFICATION_DB_PASSWORD='<OLD>' \
+JOB_DB_PASSWORD='<OLD>' NOTIFICATION_DB_PASSWORD='<OLD>' SEARCH_DB_PASSWORD='<OLD>' \
 TRUST_SAFETY_DB_PASSWORD='<OLD>' ./deploy/migrate-db-roles.sh
 
 gh secret set IDENTITY_DB_PASSWORD     # the same <NEW> value
@@ -173,9 +173,9 @@ gh workflow run deploy.yml --ref prod  # re-renders DATABASE_URL, recreates the 
 ## REDIS_PASSWORD (#387)
 
 **What it protects.** Redis AUTH (`requirepass`) over the gateway's rate-limit
-windows and the session-revocation list (#374). Consumed by the `redis`
-container (command flag + healthcheck) and by the gateway's and identity's
-`REDIS_URL`s.
+windows, the session-revocation list (#374) and notification-service's email
+delivery queue. Consumed by the `redis` container (command flag + healthcheck)
+and by the gateway's, identity's and notification's `REDIS_URL`s.
 
 **Rotation.** Standard procedure — unlike Postgres, the value lives only in
 the container config, so the redeploy's container recreation applies it
@@ -183,8 +183,9 @@ everywhere at once (`gh secret set REDIS_PASSWORD` with a URL-safe
 `openssl rand -hex 32` value → `gh workflow run deploy.yml --ref prod`).
 Recreating the `redis` container keeps `/data` (the `redis_data` volume), so
 the revocation list survives. During the seconds the consumers cycle, rate
-limiting falls back to per-instance in-memory and revocation checks fall back
-to the identity lookup — both by design.
+limiting falls back to per-instance in-memory, revocation checks fall back
+to the identity lookup, and notification email delivery degrades to
+one-attempt direct sends — all by design.
 
 ## Third-party API keys (optional secrets)
 
@@ -242,7 +243,7 @@ After any rotation, confirm the deploy went green and the stack is healthy:
    the admin dashboard). No `403 Forbidden` in
    `docker compose -f docker-compose.prod.yml logs api-gateway`.
 5. **DB connectivity** (after `POSTGRES_PASSWORD` or a `*_DB_PASSWORD`) — the
-   five DB services stay `healthy`; no `authentication failed` lines in their
+   seven DB services stay `healthy`; no `authentication failed` lines in their
    logs. After `REDIS_PASSWORD`: no `NOAUTH`/`WRONGPASS` lines from the
    gateway or identity.
 6. **Feature check** (after a third-party key) — send a test email / do an
