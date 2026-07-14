@@ -25,6 +25,15 @@ import { getProviderIdByUser } from "../lib/providers";
 
 export const adminImpersonationRoutes = new Hono();
 
+// The admin-tier role set (ADMIN + SUPPORT) as a pure role-string predicate.
+// http.ts's isSupportOrAdmin encodes the same set but reads the *caller's*
+// forwarded header; here we need to test a *target user's* role, so the check
+// lives as a local predicate rather than hardcoding the strings at the call
+// site (kept in sync with lib/http.ts's isSupportOrAdmin).
+function isAdminTierRole(role: string | null | undefined): boolean {
+  return role === "ADMIN" || role === "SUPPORT";
+}
+
 // ---------------------------------------------------------------------------
 // POST /api/admin/impersonate/end
 //
@@ -107,8 +116,10 @@ adminImpersonationRoutes.post("/:userId", async (c) => {
     return c.json({ error: "Cannot impersonate your own account" }, 400);
   }
   // Defense in depth beyond the ADMIN-only gate above: never let one admin
-  // session ride in as another admin.
-  if (target.role === "ADMIN") {
+  // session ride in as another admin of EITHER tier (#654). isAdminTierRole
+  // covers ADMIN and SUPPORT, so a SUPPORT target is refused just like an
+  // ADMIN — a SUPPORT session is still admin-tier and must not be assumable.
+  if (isAdminTierRole(target.role)) {
     return c.json({ error: "Cannot impersonate an admin account" }, 400);
   }
 
