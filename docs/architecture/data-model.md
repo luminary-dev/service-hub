@@ -59,8 +59,8 @@
   null; validated against a Sri Lanka bounding box (5.7–10.1 lat, 79.4–82.1
   lng in `lib/field-rules.ts`). District centroids are never substituted for
   a missing pin, and the public detail payloads include the pair only when
-  set. Plain floats for now — the RFC's search index (phase 2, PostGIS)
-  derives a geography column from them. The
+  set. Plain floats here — search-service's index (phase 2, PostGIS)
+  derives its geography column from them. The
   free-text pitch is bilingual (#515):
   `headline`/`bio` (English, required) plus **optional nullable**
   `headlineSi`/`bioSi` (Sinhala variants) — the public payload prefers the SI
@@ -110,6 +110,21 @@
   which JSON-serialize as *strings*, so each service converts back to a plain
   number at every JSON edge (`lib/money.ts` in both services) — API payloads
   carry money as JSON **numbers**, exactly as before the migration.
+- **search-service** (`search_db`, PostGIS): `ProviderIndex` — one row per
+  **publicly visible** provider, a **derived, rebuildable** search document
+  (search & discovery RFC): the browse fields (`contactName`, category,
+  bilingual pitch, city, district + `serviceDistricts`), flattened
+  `serviceTitles`/`servicePrices` (+ `minPrice`), availability/verification/
+  experience, mirrored `latitude`/`longitude`, and denormalized
+  `ratingAvg`/`ratingCount` (pushed by review-service). Generated columns
+  (hand-written migration): `location geography(Point,4326)` (GiST; ST_DWithin
+  + KNN) and `tsv_en`/`tsv_si` tsvectors ('english' config with stemming for
+  EN; 'simple' for SI — no Sinhala stemmer exists — with pg_trgm indexes on
+  the raw columns as the substring fallback). **No contact PII** (no
+  phone/email columns) and no `suspended` flag — suspended/erased providers
+  are deleted from the index, so no query can leak a hidden profile.
+  provider-service remains the source of truth; this database is excluded
+  from backups and rebuilt by the reindex sweep.
 - **notification-service**: stateless; owns the en/si email templates ported
   from `src/lib/email.ts`.
 - **media-service** / **chat-service**: stateless (no DB).

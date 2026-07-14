@@ -5,6 +5,7 @@
 | Data | Where it lives | Covered by |
 | --- | --- | --- |
 | identity_db, provider_db, review_db, job_db | compose `postgres` (one cluster) | `scripts/backup-dbs.sh` (logical `pg_dump -Fc` per DB) |
+| search_db | compose `postgres` (same cluster) | deliberately NOT backed up — it is a **derived, rebuildable search index** (search & discovery RFC): after any restore, repopulate it with search-service's `POST /internal/search/reindex` (with the internal secret) instead of restoring a dump |
 | Uploaded images | `provider_uploads` / `review_uploads` volumes (or Cloudflare R2 when the `R2_*` vars are set) | volume tar (below); R2 is durable managed storage |
 | Redis rate-limit windows + session-revocation list | `redis` (prod `redis_data` volume) | deliberately NOT backed up — rate-limit windows are ephemeral, and the revocation list (#374) mirrors identity_db's `sessionVersion` (covered above). The volume keeps it across container recreation (#571); after a total Redis loss the gateway falls back to the identity lookup until versions are re-published on the next bump |
 
@@ -44,7 +45,10 @@ Each nightly run appends a few KB to `backups/backup.log`; truncate it whenever 
    `docker compose -f docker-compose.prod.yml restart provider-service`
    (on prod the stack runs under `docker-compose.prod.yml` — a bare `docker compose` resolves the default dev file and finds nothing; for a local dev restore use `docker compose restart provider-service`).
 4. Cross-service consistency: databases are dumped at (nearly) the same instant, but references are plain string IDs — after a partial restore, rows referencing entities created after the snapshot degrade gracefully (that is the S2S design: hydration falls back, existence is checked at write time). Prefer restoring **all four** databases from the **same** snapshot unless you're recovering a single-database fault.
-5. Verify: `npm run e2e` against the stack, and spot-check `/providers` + a profile page.
+5. Rebuild the search index (it is derived, not restored — see the table above). On prod the service ports aren't published, so run it inside the container:
+   `docker compose -f docker-compose.prod.yml exec search-service wget -qO- --header "x-internal-secret: $INTERNAL_API_SECRET" --post-data= http://localhost:4008/internal/search/reindex`
+   (dev: `curl -X POST -H "x-internal-secret: dev-internal-secret" localhost:4008/internal/search/reindex`). Otherwise `/api/search/*` serves pre-restore data until the next scheduled sweep.
+6. Verify: `npm run e2e` against the stack, and spot-check `/providers` + a profile page.
 
 ## Upload volumes
 

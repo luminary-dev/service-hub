@@ -1,4 +1,10 @@
-export type ServiceName = "identity" | "provider" | "review" | "job" | "media";
+export type ServiceName =
+  | "identity"
+  | "provider"
+  | "review"
+  | "job"
+  | "media"
+  | "search";
 
 export type ResolvedRoute = { service: ServiceName; path: string };
 
@@ -161,6 +167,14 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
     return { service: "identity", path: pathname };
   }
 
+  // Provider search & geo discovery (search RFC phase 2). `/api/providers`
+  // browse deliberately stays on provider-service below until the web has
+  // migrated to /api/search/providers and it has soaked — this routing table
+  // is the single cut-over point.
+  if (pathname.startsWith("/api/search/")) {
+    return { service: "search", path: pathname };
+  }
+
   if (
     pathname === "/api/providers" ||
     pathname.startsWith("/api/providers/") ||
@@ -212,5 +226,7 @@ export function serviceUrl(service: ServiceName): string {
       return process.env.JOB_SERVICE_URL ?? "http://localhost:4004";
     case "media":
       return process.env.MEDIA_SERVICE_URL ?? "http://localhost:4006";
+    case "search":
+      return process.env.SEARCH_SERVICE_URL ?? "http://localhost:4008";
   }
 }

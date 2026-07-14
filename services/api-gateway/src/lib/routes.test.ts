@@ -223,6 +223,19 @@ describe("resolveRoute (routing table)", () => {
     expect(resolveRoute("/api/stats")).toEqual({ service: "provider", path: "/api/stats" });
   });
 
+  it("routes /api/search/* to search-service (search RFC phase 2)", () => {
+    expect(resolveRoute("/api/search/providers")).toEqual({
+      service: "search",
+      path: "/api/search/providers",
+    });
+    expect(resolveRoute("/api/search/providers/nearby")).toEqual({
+      service: "search",
+      path: "/api/search/providers/nearby",
+    });
+    // Browse deliberately stays on provider-service until the web migrates.
+    expect(resolveRoute("/api/providers")?.service).toBe("provider");
+  });
+
   it("routes categories to provider-service", () => {
     expect(resolveRoute("/api/categories")).toEqual({
       service: "provider",

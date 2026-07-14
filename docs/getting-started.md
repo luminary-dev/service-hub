@@ -11,7 +11,7 @@
 git clone https://github.com/luminary-dev/service-hub.git
 cd service-hub
 npm run setup      # installs all packages, creates .env files, starts Postgres, pushes schemas, seeds
-npm run dev:all    # runs the gateway + all seven backend services + the web app (Ctrl-C stops everything)
+npm run dev:all    # runs the gateway + all eight backend services + the web app (Ctrl-C stops everything)
 ```
 
 Open http://localhost:3000.
@@ -35,6 +35,7 @@ docker compose up --build
 | notification-service | 4005 | stateless — transactional email (Resend) |
 | media-service | 4006 | stateless — upload bytes + sharp image processing |
 | chat-service | 4007 | stateless — Claude assistant (holds the LLM key) |
+| search-service | 4008 | `search_db` — derived provider search index (PostGIS geo + FTS) |
 | Postgres | **5433** on the host | one cluster, one database per service |
 | Redis | internal | shared rate-limit window |
 

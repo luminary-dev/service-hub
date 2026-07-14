@@ -22,6 +22,7 @@ x-service-env: &service-env
   NOTIFICATION_SERVICE_URL: http://notification-service:4005
   MEDIA_SERVICE_URL: http://media-service:4006
   CHAT_SERVICE_URL: http://chat-service:4007
+  SEARCH_SERVICE_URL: http://search-service:4008
 
 # Probe failures during start_period don't count against the retry budget
 # (#568) — without it a boot longer than ~100s marked the container unhealthy
@@ -68,8 +69,14 @@ services:
   postgres:
     # Base image pinned by digest (#238); Dependabot's docker ecosystem bumps
     # the tag comment + digest together.
-    # dependabot: postgres:16-alpine
-    image: postgres:16-alpine@sha256:e013e867e712fec275706a6c51c966f0bb0c93cfa8f51000f85a15f9865a28cb
+    # PostGIS-enabled Postgres 16 (search & discovery RFC): same PG16 data-dir
+    # format as the previous postgres:16-alpine, so the existing pgdata volume
+    # mounts unchanged — the image only adds the extension packages. PostGIS
+    # itself exists only inside search_db, so rolling the image back stays
+    # possible until search-service ships. Rollout order for an existing
+    # volume: see docs/DEPLOYMENT.md (deploy/add-search-db.sh).
+    # dependabot: postgis/postgis:16-3.5-alpine
+    image: postgis/postgis:16-3.5-alpine@sha256:becb8d49a20a2c1fcce1b154e853e1ea1a19cd5de99310852888b998694ec2ea
     mem_limit: 1g
     <<: [*restart, *logging, *hardening]
     # The entrypoint starts as root to chown/chmod the data dir and the socket
@@ -94,6 +101,7 @@ services:
       PROVIDER_DB_PASSWORD: ${PROVIDER_DB_PASSWORD:?PROVIDER_DB_PASSWORD is required}
       REVIEW_DB_PASSWORD: ${REVIEW_DB_PASSWORD:?REVIEW_DB_PASSWORD is required}
       JOB_DB_PASSWORD: ${JOB_DB_PASSWORD:?JOB_DB_PASSWORD is required}
+      SEARCH_DB_PASSWORD: ${SEARCH_DB_PASSWORD:?SEARCH_DB_PASSWORD is required}
     volumes:
       - pgdata:/var/lib/postgresql/data
       # Least-privilege bootstrap (#387): unlike the dev scripts/init-db.sql
@@ -224,6 +232,24 @@ services:
         condition: service_healthy
     healthcheck: *db-healthcheck
 
+  search-service:
+    image: ghcr.io/luminary-dev/service-hub-search-service:${IMAGE_TAG:-prod}
+    mem_limit: 384m
+    <<: [*restart, *logging, *hardening]
+    # TODO read_only: verify writable paths (runs `prisma migrate deploy` on
+    # boot — same unverified migration-engine temp behaviour as identity).
+    environment:
+      <<: *service-env
+      PORT: 4008
+      DATABASE_URL: postgresql://search:${SEARCH_DB_PASSWORD:?}@postgres:5432/search_db
+    # backend only — it calls no external APIs (RFC §7: map tiles/geocoding are
+    # fetched by the browser, never by this service), so no egress.
+    networks: [backend]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck: *db-healthcheck
+
   notification-service:
     image: ghcr.io/luminary-dev/service-hub-notification-service:${IMAGE_TAG:-prod}
     mem_limit: 256m
@@ -325,6 +351,8 @@ services:
       job-service:
         condition: service_healthy
       notification-service:
+        condition: service_healthy
+      search-service:
         condition: service_healthy
     healthcheck: *node-healthcheck
 

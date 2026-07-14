@@ -20,8 +20,10 @@ Public entry. Responsibilities:
    and `POST /api/providers/:id/reviews` → review;
    `POST /api/providers/:id/report`, `POST /api/photos/:id/report`,
    `POST /api/reviews/:id/report`, `POST /api/jobs/:id/report` and
-   `POST /api/messages/:id/report` (#376) → report. 429 body/headers identical
-   to the monolith (`Retry-After`).
+   `POST /api/messages/:id/report` (#376) → report; `GET /api/search/*` →
+   search (the first rate-limited READ — the search endpoints are a query
+   engine a scraper could walk, so they carry their own per-IP budget). 429
+   body/headers identical to the monolith (`Retry-After`).
 3. **Session / identity headers** (`lib/proxy.ts#buildUpstreamHeaders`): strip
    any client-sent trusted headers first (`GATEWAY_HEADERS`: `x-user-id`,
    `x-user-role`, `x-user-name`, `x-impersonated-by`, `x-internal-secret`,
@@ -60,6 +62,9 @@ Public entry. Responsibilities:
    - `/api/messages/:id/report` → provider (inquiry-message abuse reports,
      #376)
    - `/api/auth/*`, `/api/favorites*` → identity
+   - `/api/search/*` → search (provider search + geo discovery; `/api/providers`
+     browse deliberately stays on provider-service until the web migrates —
+     this table is the single cut-over point, search RFC §5.2)
    - `/api/providers*`, `/api/provider/*`, `/api/inquiries/*`,
      `/api/categories`, `/api/stats` → provider
    - `/api/jobs*` → job
@@ -114,4 +119,10 @@ by service:
   the actual inquiry write happens out-of-band when the user confirms the card
   in the web app (a normal authenticated `POST /api/providers/:id/inquiries`),
   never as a model-invoked action (#202).
+- **search-service (:4008)** — the provider search & geo-discovery query plane
+  (`/api/search/providers`, `/api/search/providers/nearby`): a derived PostGIS
+  index over public provider card data, fed by S2S pushes from provider- and
+  review-service and a daily reindex sweep (see the
+  [search & discovery RFC](../rfcs/search-discovery-service.md)). Card DTOs are
+  hydrated back from provider-service, so display data stays single-sourced.
 

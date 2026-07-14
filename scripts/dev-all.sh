@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the full stack in dev mode: Postgres (docker) + all eight services + web.
+# Run the full stack in dev mode: Postgres (docker) + all nine services + web.
 # Ctrl-C stops everything.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -21,7 +21,7 @@ if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -f .env ]; then
 fi
 export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
 
-SERVICES=(identity-service provider-service review-service job-service notification-service media-service chat-service api-gateway)
+SERVICES=(identity-service provider-service review-service job-service notification-service media-service chat-service search-service api-gateway)
 
 pids=()
 cleanup() {

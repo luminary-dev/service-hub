@@ -16,6 +16,7 @@ import {
 import { fetchProviderReviews, fetchRatings, fetchRatingsResult } from "../lib/clients";
 import { computeQualityScore } from "../lib/quality-score";
 import { log } from "../lib/log";
+import { syncProviderIndex } from "../lib/search-index";
 import {
   buildAdminProvidersWhere,
   normalizeAdminListQuery,
@@ -263,6 +264,10 @@ adminRoutes.patch("/api/admin/providers/:id", async (c) => {
 
   await db.provider.update({ where: { id }, data });
   await logAudit(c, parsed.data.action, "PROVIDER", id);
+  // Search-index sync (search RFC §4.2): suspend deletes the document (the
+  // index only holds public rows), unsuspend/verify/unverify re-push it.
+  // Fire-and-forget, best-effort.
+  void syncProviderIndex(id);
   return c.json({ ok: true });
 });
 
@@ -301,6 +306,9 @@ adminRoutes.patch("/api/admin/providers", async (c) => {
   // single-provider PATCH above so bulk actions leave the same trail.
   const action = parsed.data.suspended ? "suspend" : "unsuspend";
   await Promise.all(affected.map((p) => logAudit(c, action, "PROVIDER", p.id)));
+  // Search-index sync per affected row (bounded ≤200): bulk suspend deletes
+  // the documents, bulk unsuspend re-pushes them. Best-effort (RFC §4.2).
+  for (const p of affected) void syncProviderIndex(p.id);
   return c.json({ ok: true, count });
 });
 
@@ -336,6 +344,10 @@ adminRoutes.patch("/api/admin/verifications/:id", async (c) => {
     },
   });
   await logAudit(c, approved ? "verify" : "reject-verification", "PROVIDER", id);
+
+  // verificationStatus is indexed (verified boost in the recommended sort) —
+  // best-effort push (search RFC §4.2).
+  void syncProviderIndex(id);
 
   return c.json({ status: approved ? "VERIFIED" : "REJECTED" });
 });
@@ -382,6 +394,10 @@ adminRoutes.patch("/api/admin/verifications", async (c) => {
   await Promise.all(
     affected.map((p) => logAudit(c, auditAction, "PROVIDER", p.id))
   );
+
+  // verificationStatus is indexed — best-effort push per transitioned row
+  // (bounded ≤200, search RFC §4.2).
+  for (const p of affected) void syncProviderIndex(p.id);
 
   return c.json({ status: approved ? "VERIFIED" : "REJECTED", count });
 });

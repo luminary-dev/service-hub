@@ -3,6 +3,7 @@ import {
   checkRateLimit,
   resolveClientIp,
   trustedProxyHops,
+  LIMITED_GET_ROUTES,
   LIMITED_ROUTES,
   RATE_LIMITS,
 } from "./rate-limit";
@@ -174,6 +175,31 @@ describe("LIMITED_ROUTES", () => {
     );
     expect(match("/api/provider/photos/order")).toBeUndefined();
     expect(match("/api/account/profile")).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LIMITED_GET_ROUTES: the first rate-limited reads — /api/search/* is a query
+// engine a scraper could walk, so it carries its own per-IP budget (search
+// RFC §5). The GET table is separate from the POST table on purpose: no GET
+// may ever consume a write bucket, and vice versa.
+// ---------------------------------------------------------------------------
+describe("LIMITED_GET_ROUTES", () => {
+  const match = (path: string) =>
+    LIMITED_GET_ROUTES.find((r) => r.pattern.test(path));
+
+  it.each(["/api/search/providers", "/api/search/providers/nearby"])(
+    "rate-limits %s on the search budget",
+    (path) => {
+      const route = match(path);
+      expect(route?.name).toBe("search");
+      expect(route?.rule).toBe(RATE_LIMITS.search);
+    }
+  );
+
+  it("does not throttle other reads", () => {
+    expect(match("/api/providers")).toBeUndefined();
+    expect(match("/api/categories")).toBeUndefined();
   });
 });
 

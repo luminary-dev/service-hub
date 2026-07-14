@@ -19,7 +19,7 @@ plus the build output.
   `.next` tree is chowned to `node` so the non-root runtime can write its cache.
 - **Services** (`services/*/Dockerfile`) — `build` compiles TypeScript with
   `tsc`; `runtime` installs prod-only deps and copies `dist`.
-- **DB-owning services** (identity, provider, review, job) additionally keep the
+- **DB-owning services** (identity, provider, review, job, search) additionally keep the
   Prisma schema + migrations and the `prisma` CLI (a prod dependency) in the
   runtime stage, and start with **`start:migrate`** (`prisma migrate deploy &&
   node dist/index.js`). `npm ci --omit=dev`'s `postinstall` runs `prisma
@@ -243,6 +243,36 @@ card per work item; pull requests are **not** separate cards.
 
 GitHub's **built-in "auto-add" workflow must stay OFF** so this workflow is the
 single sync path.
+
+## Search index maintenance (search & discovery RFC)
+
+search-service's `search_db` is a **derived, rebuildable index** over provider
+data. Writes keep it fresh in seconds (provider-service pushes full documents,
+review-service pushes rating aggregates — both fire-and-forget), and a
+**reindex sweep** self-heals anything a dropped push missed (bounded
+staleness ≤ the sweep interval):
+
+```bash
+# Run daily from ops cron on the prod host (ports aren't published, so exec
+# into the container; wget is busybox's, present in the image):
+docker compose -f docker-compose.prod.yml exec -T search-service \
+  wget -qO- --header "x-internal-secret: $INTERNAL_API_SECRET" \
+  --post-data= http://localhost:4008/internal/search/reindex
+# → { "indexed": n, "skipped": 0, "deleted": m }
+
+# Drift metric — compare `indexed` against provider-service's non-suspended
+# count; a growing gap between sweeps means pushes are being dropped:
+docker compose -f docker-compose.prod.yml exec -T search-service \
+  wget -qO- --header "x-internal-secret: $INTERNAL_API_SECRET" \
+  http://localhost:4008/internal/search/stats
+```
+
+The sweep fails loudly (502, `{ "error": "Reindex failed" }`) when
+provider-service or review-service is unreachable — an outage is never
+mistaken for an empty source, so it can't wipe the index. After a database
+restore, run the sweep immediately (see [BACKUPS.md](BACKUPS.md) — `search_db`
+itself is deliberately not backed up). On a fresh dev stack the index starts
+empty until the first reindex (`scripts/e2e-smoke.sh` runs one).
 
 ## Backups
 

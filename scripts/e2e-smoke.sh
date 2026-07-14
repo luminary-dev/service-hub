@@ -38,7 +38,7 @@ req() { # req <jar> <method> <path> [curl args...]
 }
 
 echo "== Health =="
-for port in 4000 4001 4002 4003 4004 4005 4006; do
+for port in 4000 4001 4002 4003 4004 4005 4006 4008; do
   check "healthz :$port" "$(curl -sS "http://localhost:$port/healthz")" '"ok":true'
 done
 
@@ -53,6 +53,47 @@ check "providers have ratings" "$(echo "$LIST" | jq -r '.providers[0].rating != 
 PROV_ID=$(echo "$LIST" | jq -r '.providers[0].id')
 check "provider detail page" "$(curl -sS "$WEB/providers/$PROV_ID")" "Baas"
 check "stats endpoint" "$(req anon GET "/api/stats" | jq -r '.providerCount')" "6"
+
+echo "== Search service (index + browse parity) =="
+# The index is derived and starts empty — populate it from the seeded source
+# of truth first (the sweep the ops cron runs daily). 4008 is loopback-bound.
+check "search reindex" "$(curl -sS -X POST "http://localhost:4008/internal/search/reindex" \
+  -H "x-internal-secret: ${INTERNAL_API_SECRET:-dev-internal-secret}" | jq -r '.indexed >= 6')" "true"
+
+# Shadow-compare /api/search/providers against /api/providers (search RFC
+# phase 2 parity): same filters must select the same providers. Ordered
+# comparison only where the sort is fully deterministic on the seed data
+# (sort=price — distinct fromPrices); elsewhere ties (equal ratings/createdAt
+# ms) make order legitimately unstable, so the ID SETS are compared.
+parity_set() { # parity_set <name> <query-string>
+  local browse search
+  browse=$(req anon GET "/api/providers?$2" | jq -cS '[.providers[].id] | sort')
+  search=$(req anon GET "/api/search/providers?$2" | jq -cS '[.providers[].id] | sort')
+  check "parity (set): $1" "$search" "$browse"
+}
+parity_ordered() { # parity_ordered <name> <query-string>
+  local browse search
+  browse=$(req anon GET "/api/providers?$2" | jq -c '[.providers[].id]')
+  search=$(req anon GET "/api/search/providers?$2" | jq -c '[.providers[].id]')
+  check "parity (ordered): $1" "$search" "$browse"
+}
+parity_set "no filters" "pageSize=24"
+parity_set "category" "category=mechanic&pageSize=24"
+parity_set "district membership" "district=Colombo&pageSize=24"
+parity_set "available only" "availableOnly=1&pageSize=24"
+parity_set "price range" "priceMin=2000&priceMax=7000&pageSize=24"
+parity_set "rating minimum" "ratingMin=5&pageSize=24"
+parity_set "free text" "q=garden&pageSize=24"
+parity_ordered "price sort" "sort=price&pageSize=24"
+check "parity: totals" "$(req anon GET "/api/search/providers" | jq -r '.total')" \
+  "$(req anon GET "/api/providers" | jq -r '.total')"
+
+# Geo (RFC §5.1): the seed pins two Colombo-area providers; a 25 km radius
+# from Colombo Fort finds both, nearest first with a distance on each card.
+NEARBY=$(req anon GET "/api/search/providers/nearby?lat=6.9271&lng=79.8612&radiusKm=25")
+check "nearby finds pinned providers" "$(echo "$NEARBY" | jq -r '.total')" "2"
+check "nearby carries distanceKm" "$(echo "$NEARBY" | jq -r '.providers[0].distanceKm != null')" "true"
+check "nearby requires coordinates" "$(req anon GET "/api/search/providers/nearby" | jq -r '.error')" "lat and lng are required"
 
 echo "== Auth =="
 check "login admin" "$(req admin POST "/api/auth/login" -H 'content-type: application/json' \

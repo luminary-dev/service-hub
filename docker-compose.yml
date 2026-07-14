@@ -9,16 +9,21 @@ x-service-env: &service-env
   NOTIFICATION_SERVICE_URL: http://notification-service:4005
   MEDIA_SERVICE_URL: http://media-service:4006
   CHAT_SERVICE_URL: http://chat-service:4007
+  SEARCH_SERVICE_URL: http://search-service:4008
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # PostGIS-enabled Postgres 16 (search & discovery RFC): same PG16 data-dir
+    # format as the previous postgres:16-alpine — the pgdata volume mounts
+    # unchanged; the image only adds the extension packages search_db needs
+    # (CREATE EXTENSION postgis requires them present in the image).
+    image: postgis/postgis:16-3.5-alpine
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
       # 5433 on the host: many dev machines already run a local Postgres on 5432.
-      # Loopback-bound (#387) — like every service port below (4000-4007), so on
+      # Loopback-bound (#387) — like every service port below (4000-4008), so on
       # shared wifi nobody else can reach Postgres (well-known dev password) or
       # hit a service directly with the dev internal secret and forged x-user-*
       # headers. Only web (:3000) stays LAN-reachable, for phone testing.
@@ -152,6 +157,19 @@ services:
       - "127.0.0.1:4007:4007"
     healthcheck: *node-healthcheck
 
+  search-service:
+    build: ./services/search-service
+    environment:
+      <<: *service-env
+      PORT: 4008
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/search_db
+    ports:
+      - "127.0.0.1:4008:4008"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck: *node-healthcheck
+
   redis:
     image: redis:7-alpine
     healthcheck:
@@ -186,6 +204,8 @@ services:
       job-service:
         condition: service_healthy
       notification-service:
+        condition: service_healthy
+      search-service:
         condition: service_healthy
     healthcheck: *node-healthcheck
 

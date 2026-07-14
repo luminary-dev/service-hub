@@ -64,8 +64,21 @@ required OSM attribution. The pin is captured with a Leaflet picker in the
 register wizard and the dashboard profile form (`LocationPicker` — optional,
 pre-centered on the district centroid, with manual coordinate inputs as the
 keyboard path); coordinates are validated to a Sri Lanka bounding box and are
-only ever real pins — district centroids are never substituted. Map search /
-"near me" itself ships with the RFC's search-service (phases 2–3).
+only ever real pins — district centroids are never substituted.
+
+### search-service (RFC phase 2 — API live, web still on browse)
+
+The RFC's **search-service** (:4008) is deployed: a derived PostGIS index over
+public provider card data serving `GET /api/search/providers` (a superset of
+browse — same params, envelope and card DTO, plus `lat`/`lng`/`radiusKm` and
+`sort=distance`, with fully DB-side rating filter/sort and no candidate cap)
+and `GET /api/search/providers/nearby` (ST_DWithin radius + nearest-first over
+pinned providers, `distanceKm` on every card). provider-service pushes index
+documents S2S on every indexed write, review-service pushes rating aggregates,
+and a daily reindex sweep self-heals drift; `scripts/e2e-smoke.sh`
+shadow-compares search against browse for parity. **The web still queries
+`/api/providers`** — the browse cut-over plus the map view / "near me" UI is
+phase 3 of the [RFC](../rfcs/search-discovery-service.md).
 
 ### Open Graph images
 

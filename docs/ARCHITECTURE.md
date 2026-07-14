@@ -1,7 +1,7 @@
 # Service Hub — Microservice Architecture
 
-Service Hub (Baas.lk) is split into **seven backend services** plus an API
-gateway (eight Hono services in all), with the Next.js 16 app as a pure frontend. This repo is the
+Service Hub (Baas.lk) is split into **eight backend services** plus an API
+gateway (nine Hono services in all), with the Next.js 16 app as a pure frontend. This repo is the
 **canonical monorepo**; each service under `services/` is also mirrored to its
 own repository in the `luminary-dev` org via `git subtree` (see
 `scripts/sync-service-repos.sh`).
@@ -20,19 +20,25 @@ browser ── same-origin /api/* ──> Next.js web (:3000)
      ├── job-service          (:4004)  job_db        jobs/responses/job-reports/admin
      ├── notification-service (:4005)  (no db)        email templates (internal-only)
      ├── media-service        (:4006)  (no db)        upload bytes + sharp; serves /files/*
-     └── chat-service         (:4007)  (no db)        streaming Claude assistant
+     ├── chat-service         (:4007)  (no db)        streaming Claude assistant
+     └── search-service       (:4008)  search_db     provider search + geo discovery (derived index)
 ```
 
-Infra: one **Postgres 16** cluster (host port 5433 → container 5432) holding
-four databases (`identity_db`, `provider_db`, `review_db`, `job_db`), and
-**Redis 7** (gateway rate-limit window). Each service owns its database — no
-service touches another's tables; cross-service data access goes through
+Infra: one **Postgres 16** cluster with **PostGIS** (image
+`postgis/postgis:16-3.5-alpine`; host port 5433 → container 5432) holding five
+databases (`identity_db`, `provider_db`, `review_db`, `job_db`, `search_db`),
+and **Redis 7** (gateway rate-limit window). Each service owns its database —
+no service touches another's tables; cross-service data access goes through
 internal HTTP endpoints. notification/media/chat are stateless (no DB).
+`search_db` is special: a **derived, rebuildable index** over provider data
+(the [search & discovery RFC](rfcs/search-discovery-service.md)) — provider-
+and review-service push documents/ratings into it S2S, a daily reindex sweep
+self-heals drift, and it is deliberately excluded from backups.
 
 The gateway never routes to notification-service (internal-only) or
 chat-service (the web app proxies `/agent/chat` straight to it — the gateway
 buffers, and a direct stream does not). Its `ServiceName` union is
-`identity | provider | review | job | media`.
+`identity | provider | review | job | media | search`.
 
 ## In detail
 

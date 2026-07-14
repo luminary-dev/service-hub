@@ -15,6 +15,7 @@ import {
   validateImage,
 } from "../lib/storage";
 import { fetchRatingSummary } from "../lib/rating-summary";
+import { pushRatingsToSearchIndex } from "../lib/search-index";
 import {
   MAX_REVIEW_PHOTOS,
   REVIEW_DIMENSIONS,
@@ -236,6 +237,9 @@ reviews.post("/api/providers/:id/reviews", async (c) => {
   // visible and a filter hit only queues a SYSTEM report for admin triage.
   await moderateContent("REVIEW", reviewId, { comment: parsed.data.comment });
 
+  // Search-index rating push (search RFC §4.2) — fire-and-forget, best-effort.
+  void pushRatingsToSearchIndex([id]);
+
   return c.json({ ok: true });
 });
 
@@ -372,11 +376,20 @@ reviews.delete("/api/admin/reviews/:id", async (c) => {
     return c.json({ error: "Forbidden" }, 403);
   }
   const id = c.req.param("id");
+  // Resolve the provider before the write so the search-index rating push
+  // below has its target even though updateMany itself returns no rows.
+  const review = await db.review.findUnique({
+    where: { id },
+    select: { providerId: true },
+  });
   await db.review.updateMany({
     where: { id },
     data: { deletedAt: new Date() },
   });
   await logAudit(c, "delete-review", "REVIEW", id);
+  // A soft-deleted review leaves the aggregates — push the recount (search
+  // RFC §4.2, fire-and-forget).
+  if (review) void pushRatingsToSearchIndex([review.providerId]);
   return c.json({ ok: true });
 });
 
@@ -386,7 +399,13 @@ reviews.patch("/api/admin/reviews/:id/restore", async (c) => {
     return c.json({ error: "Forbidden" }, 403);
   }
   const id = c.req.param("id");
+  const review = await db.review.findUnique({
+    where: { id },
+    select: { providerId: true },
+  });
   await db.review.updateMany({ where: { id }, data: { deletedAt: null } });
   await logAudit(c, "restore-review", "REVIEW", id);
+  // Restoring re-enters the aggregates — push the recount (search RFC §4.2).
+  if (review) void pushRatingsToSearchIndex([review.providerId]);
   return c.json({ ok: true });
 });

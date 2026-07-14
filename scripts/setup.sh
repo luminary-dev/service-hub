@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-SERVICES=(identity-service provider-service review-service job-service notification-service media-service chat-service api-gateway)
+SERVICES=(identity-service provider-service review-service job-service notification-service media-service chat-service search-service api-gateway)
 DB_SERVICES=(identity-service provider-service review-service job-service)
 
 echo "==> Installing web app dependencies"
@@ -31,6 +31,15 @@ for s in "${DB_SERVICES[@]}"; do
   echo "==> Pushing schema + seeding services/$s"
   (cd "services/$s" && npm run db:migrate && npm run db:seed)
 done
+
+# search-service owns a derived index, not seed data: migrate only. Its
+# search_db (+ the PostGIS extension) is created by scripts/init-db.sql on a
+# FRESH postgres volume — if this fails on a pre-existing dev volume, run
+# ./scripts/dev-reset.sh (local data is disposable). Populate the index from
+# the seeded providers afterwards via the reindex sweep (needs the stack up):
+#   curl -X POST -H "x-internal-secret: dev-internal-secret" localhost:4008/internal/search/reindex
+echo "==> Migrating services/search-service (derived index — no seed)"
+(cd "services/search-service" && npm run db:migrate)
 
 echo
 echo "Setup complete. Start everything with: ./scripts/dev-all.sh"

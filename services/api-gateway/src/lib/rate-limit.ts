@@ -22,6 +22,11 @@ export const RATE_LIMITS = {
   // filling out a photo gallery in one sitting, tight enough to blunt an
   // attacker hammering the re-encode path.
   upload: { limit: 20, windowMs: 15 * 60_000 },
+  // Search queries (/api/search/*): generous enough for a human paging and
+  // refining filters (each results page is one GET), tight enough to blunt a
+  // scraper walking the whole index. The only GET budget — searches are the
+  // gateway's first rate-limited reads (see LIMITED_GET_ROUTES).
+  search: { limit: 60, windowMs: 60_000 },
 } as const;
 
 // In-memory sliding-window store. This state is per-instance and resets on
@@ -363,10 +368,20 @@ export const LIMITED_ROUTES: { pattern: RegExp; name: string; rule: RateRule }[]
   { pattern: /^\/api\/admin\/categories\/image$/, name: "upload", rule: RATE_LIMITS.upload },
 ];
 
+// Rate-limited GET routes. Reads were historically unthrottled (the write
+// budgets above are the abuse surface), but /api/search/* is a query engine —
+// a scraper can walk the whole directory through it — so it gets a per-IP
+// budget of its own (search RFC §5).
+export const LIMITED_GET_ROUTES: { pattern: RegExp; name: string; rule: RateRule }[] = [
+  { pattern: /^\/api\/search\//, name: "search", rule: RATE_LIMITS.search },
+];
+
 export async function rateLimitMiddleware(c: Context, next: Next) {
-  if (c.req.method === "POST") {
+  const method = c.req.method;
+  if (method === "POST" || method === "GET") {
     const pathname = new URL(c.req.url).pathname;
-    for (const route of LIMITED_ROUTES) {
+    const table = method === "POST" ? LIMITED_ROUTES : LIMITED_GET_ROUTES;
+    for (const route of table) {
       if (route.pattern.test(pathname)) {
         const limited = await rateLimit(c, route.name, route.rule);
         if (limited) return limited;

@@ -42,11 +42,14 @@ providersRoutes.get("/api/categories", async (c) => {
   return c.json({ categories: rows });
 });
 
-type CardRow = Prisma.ProviderGetPayload<{
+export type CardRow = Prisma.ProviderGetPayload<{
   include: { services: true; photos: true };
 }>;
 
-const cardInclude = {
+// Exported for the S2S card hydration endpoint (routes/internal.ts): the
+// search-service query plane returns ranked ids and hydrates the SAME card
+// DTO from here, so display data stays single-sourced (search RFC §4.1).
+export const cardInclude = {
   services: { orderBy: { price: "asc" as const }, take: 1 },
   photos: {
     where: { deletedAt: null },
@@ -70,7 +73,7 @@ const CATEGORY_IMAGE_TTL_MS = 60_000;
 let categoryImageCache: Map<string, string | null> | null = null;
 let categoryImageExpiresAt = 0;
 
-async function categoryImageMap(): Promise<Map<string, string | null>> {
+export async function categoryImageMap(): Promise<Map<string, string | null>> {
   const now = Date.now();
   if (categoryImageCache && categoryImageExpiresAt > now) return categoryImageCache;
   const rows = await db.category.findMany({
@@ -87,7 +90,7 @@ export function __resetCategoryImageCache() {
   categoryImageExpiresAt = 0;
 }
 
-function toCardDTO(
+export function toCardDTO(
   p: CardRow,
   r: RatingEntry | undefined,
   categoryImages?: Map<string, string | null>
