@@ -8,8 +8,8 @@
 # migrations and the `prisma` CLI (a prod dependency) so `start:migrate` can run
 # `prisma migrate deploy` before booting. `npm ci --omit=dev`'s postinstall runs
 # `prisma generate`, so the client is generated against this stage's node_modules.
-# dependabot: node:26-alpine
-FROM node:26-alpine@sha256:e88a35be04478413b7c71c455cd9865de9b9360e1f43456be5951032d7ac1a66 AS build
+# dependabot: node:24-alpine
+FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS build
 WORKDIR /app
 
 COPY package.json package-lock.json prisma.config.ts ./
@@ -19,8 +19,8 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# dependabot: node:26-alpine
-FROM node:26-alpine@sha256:e88a35be04478413b7c71c455cd9865de9b9360e1f43456be5951032d7ac1a66 AS runtime
+# dependabot: node:24-alpine
+FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
