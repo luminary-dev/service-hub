@@ -1,0 +1,125 @@
+name: compose-image-digests
+
+# Dependabot's `docker` ecosystem only rewrites `FROM` refs in Dockerfiles — it
+# never reads the `image:` refs in docker-compose*.yml (#664). So the third-party
+# base images pinned by digest in docker-compose.prod.yml (postgis, redis, caddy)
+# would silently drift from their upstream tags forever, and a base-layer CVE fix
+# published under the same readable tag would never surface as work.
+#
+# This job closes that gap the same way Dependabot would for a Dockerfile: weekly
+# (matching the Dependabot cadence) it resolves each pinned tag to its current
+# upstream manifest digest and compares it to the digest we've pinned. On drift
+# it opens (or comments on) a tracking issue with the exact new digest to paste
+# in, so bumping stays a deliberate, reviewed edit — no auto-commit to the file
+# that fronts the only public entrypoint. It is a NOTIFIER, never a mutator.
+on:
+  schedule:
+    # Mondays 05:30 UTC — ahead of the security-scan weekly sweep (06:00) so a
+    # fresh base image is already flagged when that scan runs.
+    - cron: "30 5 * * 1"
+  workflow_dispatch:
+
+# Cancel superseded runs per ref; mirrors ci.yml / security-scan.yml.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read the repo; open/comment on the drift-tracking issue. Nothing else.
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-digests:
+    name: check-digests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      COMPOSE_FILE: docker-compose.prod.yml
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Compare pinned compose digests against upstream
+        run: |
+          set -euo pipefail
+
+          # Every third-party base image is pinned as `image: <tag>@sha256:<digest>`.
+          # Our own GHCR images use `${IMAGE_TAG}` and carry no digest, so the
+          # `@sha256:` filter selects exactly the external base images to watch.
+          mapfile -t refs < <(grep -hE '^[[:space:]]*image:[[:space:]]*[^[:space:]]+@sha256:' "$COMPOSE_FILE" \
+            | sed -E 's/^[[:space:]]*image:[[:space:]]*//')
+
+          if [ "${#refs[@]}" -eq 0 ]; then
+            echo "No digest-pinned compose base images found — nothing to check." >&2
+            exit 1
+          fi
+
+          drift=""
+          errors=""
+          for ref in "${refs[@]}"; do
+            tag="${ref%@*}"        # e.g. redis:7-alpine
+            pinned="${ref#*@}"     # e.g. sha256:...
+            echo "==> $tag"
+            echo "    pinned:   $pinned"
+            # `imagetools inspect` reads the registry with no auth for public
+            # images; .Manifest.Digest is the digest the tag currently resolves
+            # to (the multi-arch index), which is what we pin after the `@`.
+            if ! upstream="$(docker buildx imagetools inspect "$tag" --format '{{.Manifest.Digest}}' 2>/dev/null)"; then
+              echo "    WARN: could not resolve upstream digest (registry error / rate limit)"
+              errors+="- \`$tag\` — could not be resolved this run (transient registry error)"$'\n'
+              continue
+            fi
+            echo "    upstream: $upstream"
+            if [ "$pinned" != "$upstream" ]; then
+              echo "    DRIFT"
+              drift+="- \`$tag\`"$'\n'"  - pinned:   \`$pinned\`"$'\n'"  - upstream: \`$upstream\`"$'\n'
+            else
+              echo "    up to date"
+            fi
+          done
+
+          {
+            echo "TITLE=[DEVOPS] Compose base-image digest drift"
+            echo "DRIFT<<EOF"
+            echo "$drift"
+            echo "EOF"
+            echo "ERRORS<<EOF"
+            echo "$errors"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Open or update the drift issue
+        if: env.DRIFT != ''
+        run: |
+          set -euo pipefail
+          body="$(cat <<EOF
+          One or more base images pinned in \`$COMPOSE_FILE\` have drifted from the
+          upstream tag they track. Dependabot does not watch compose \`image:\` refs
+          (#664), so update them by hand: bump the \`@sha256:\` digest (and the
+          \`# dependabot: <tag>\` comment if the tag moved) to the upstream value
+          below, then open a PR. See docs/OPERATIONS.md → "Container images".
+
+          ## Drifted images
+          ${DRIFT}
+          _Detected by \`.github/workflows/compose-image-digests.yml\` on $(date -u +%Y-%m-%dT%H:%MZ)._
+          EOF
+          )"
+
+          existing="$(gh issue list --state open --search "$TITLE in:title" \
+            --json number --jq '.[0].number' 2>/dev/null || true)"
+
+          if [ -n "$existing" ]; then
+            echo "Updating existing issue #$existing"
+            gh issue comment "$existing" --body "$body"
+          else
+            echo "Opening a new drift issue"
+            gh issue create --title "$TITLE" --body "$body" --label devops \
+              || gh issue create --title "$TITLE" --body "$body"
+          fi
+
+      - name: Note transient resolution errors
+        if: env.ERRORS != ''
+        run: |
+          echo "::warning::Some base images could not be resolved this run:"
+          printf '%s\n' "$ERRORS"
