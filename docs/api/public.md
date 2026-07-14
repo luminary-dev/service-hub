@@ -112,7 +112,10 @@ shared params the two endpoints return the same providers (shadow-compared in
 `scripts/e2e-smoke.sh`). Free-text `q` additionally gets tsvector matches
 (English stemming; `simple` for Sinhala), so a stemmed word can return a
 superset of browse's substring matches. Rate-limited per IP (`search` bucket —
-the gateway's only GET budget).
+the gateway's only GET budget). `page` is clamped to a maximum of **500** (#657):
+it feeds the SQL `OFFSET`, so an unbounded page number would let a caller force
+Postgres to scan-and-discard an arbitrarily large prefix (a deep-pagination
+DoS); 500 pages is far deeper than the index — or any human — ever walks.
 
 | Method + path | Auth | Summary |
 |---|---|---|

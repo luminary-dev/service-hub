@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Nightly backup entrypoint (#389) — the target of the cron entry written by
 # install-backup-cron.sh. Loads the host-local .backup.env (offsite credentials
-# + heartbeat URL), then chains: dump all 4 DBs + offsite copy + retention
+# + heartbeat URL), then chains: dump all 6 service DBs (search_db excluded — a
+# derived, rebuildable index) + offsite copy + retention
 # (backup-dbs.sh) → restore-verify tonight's snapshot (verify-backup.sh) →
 # success ping. Any failure pings <url>/fail instead and exits non-zero, so a
 # dead-man's-switch monitor on BACKUP_HEARTBEAT_URL alerts on a missed or

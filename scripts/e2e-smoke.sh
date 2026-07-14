@@ -19,7 +19,7 @@ PASS=0
 FAIL=0
 
 echo "== Reseeding databases =="
-for s in identity-service provider-service review-service job-service notification-service; do
+for s in identity-service provider-service review-service job-service notification-service trust-safety-service; do
   (cd "services/$s" && npm run --silent db:seed >/dev/null) || echo "warn: reseed $s failed"
 done
 
@@ -38,7 +38,11 @@ req() { # req <jar> <method> <path> [curl args...]
 }
 
 echo "== Health =="
-for port in 4000 4001 4002 4003 4004 4005 4006 4008; do
+# Probe every backend service 4000-4009 (gateway + the nine services, including
+# chat on 4007 and the dark-launched trust-safety on 4009 — both are booted and
+# loopback-published in the dev compose stack even though trust-safety isn't
+# routed through the gateway yet).
+for port in 4000 4001 4002 4003 4004 4005 4006 4007 4008 4009; do
   check "healthz :$port" "$(curl -sS "http://localhost:$port/healthz")" '"ok":true'
 done
 
