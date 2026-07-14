@@ -74,7 +74,10 @@ type FullReview = {
 
 type FullProvider = {
   id: string;
-  userId: string;
+  // Owner identity (#655): the API only includes this when the viewer is the
+  // owner (their own id) or an admin — anonymous/third-party payloads omit it,
+  // so the owner check below is false for everyone but the owner.
+  userId?: string;
   category: string;
   headline: string;
   bio: string;
@@ -100,17 +103,19 @@ type FullProvider = {
   suspended: boolean;
   verificationStatus: string;
   avatarUrl: string | null;
-  // Phone numbers are withheld from the public payload (#64): we only learn
-  // whether each exists, then reveal the digits on demand via ContactLinks.
+  // Phone numbers AND the email are withheld from the public payload
+  // (#64/#655): we only learn whether each exists, then reveal the real values
+  // on demand via ContactLinks.
   hasPhone: boolean;
   hasWhatsapp: boolean;
   hasPhone2: boolean;
+  hasEmail: boolean;
   facebook: string | null;
   instagram: string | null;
   tiktok: string | null;
   youtube: string | null;
   website: string | null;
-  user: { name: string; email: string | null };
+  user: { name: string };
   services: {
     id: string;
     title: string;
@@ -411,6 +416,7 @@ export default async function ProviderProfilePage({
               hasPhone={provider.hasPhone}
               hasWhatsapp={provider.hasWhatsapp}
               hasPhone2={provider.hasPhone2}
+              hasEmail={provider.hasEmail}
               facebook={provider.facebook}
               instagram={provider.instagram}
               tiktok={provider.tiktok}
