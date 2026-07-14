@@ -2,7 +2,8 @@ import { Hono } from "hono";
 import { db } from "../db";
 import { logAudit } from "../lib/audit";
 import { moderateContent } from "../lib/auto-report";
-import { getAuth, s2s } from "../lib/http";
+import { getAuth, getLocale, getOrigin, s2s } from "../lib/http";
+import { emitNotification } from "../lib/notify";
 import {
   listProviderReviews,
   normalizeTake,
@@ -24,8 +25,17 @@ import {
 } from "../lib/validation";
 
 const PROVIDER_SERVICE_URL = process.env.PROVIDER_SERVICE_URL ?? "http://localhost:4002";
+const IDENTITY_SERVICE_URL =
+  process.env.IDENTITY_SERVICE_URL ?? "http://localhost:4001";
 
-type ProviderSummary = { id: string; userId: string; suspended: boolean };
+// `contactEmail` (optional for rollout safety against an older provider-service)
+// addresses the owner's new-review notification.
+type ProviderSummary = {
+  id: string;
+  userId: string;
+  suspended: boolean;
+  contactEmail?: string;
+};
 
 // Review gate (#25): a review must be backed by a real interaction — the
 // reviewer having sent this provider an inquiry through the platform. The
@@ -240,6 +250,19 @@ reviews.post("/api/providers/:id/reviews", async (c) => {
   // Search-index rating push (search RFC §4.2) — fire-and-forget, best-effort.
   void pushRatingsToSearchIndex([id]);
 
+  // Tell the provider a review was published on their profile (#393): in-app
+  // + email via the notification event — best-effort, never fails the review.
+  // The owner's userId/contactEmail rode in on the summary fetched above.
+  await emitNotification({
+    type: "NEW_REVIEW",
+    recipients: [
+      { userId: provider.userId, email: provider.contactEmail, locale: getLocale(c) },
+    ],
+    payload: { reviewerName: auth.name, rating: parsed.data.rating },
+    link: `/providers/${id}`,
+    origin: getOrigin(c),
+  });
+
   return c.json({ ok: true });
 });
 
@@ -252,12 +275,12 @@ async function gateReviewResponse(
   reviewId: string,
   userId: string
 ): Promise<
-  | { ok: true; review: { id: string } }
+  | { ok: true; review: { id: string; userId: string; providerId: string } }
   | { ok: false; status: 403 | 404 | 502; error: string }
 > {
   const review = await db.review.findUnique({
     where: { id: reviewId },
-    select: { id: true, providerId: true, deletedAt: true },
+    select: { id: true, userId: true, providerId: true, deletedAt: true },
   });
   // Soft-deleted reviews 404 like missing ones — the public page hides them,
   // and a response to a moderated review would be invisible anyway.
@@ -291,7 +314,10 @@ async function gateReviewResponse(
       error: "Only the reviewed provider can respond",
     };
   }
-  return { ok: true, review: { id: review.id } };
+  return {
+    ok: true,
+    review: { id: review.id, userId: review.userId, providerId: review.providerId },
+  };
 }
 
 // Create-or-edit (upsert — one response per review, so posting again replaces
@@ -313,11 +339,49 @@ reviews.post("/api/reviews/:id/response", async (c) => {
     return c.json({ error: "Invalid input" }, 400);
   }
 
+  // Checked before the upsert so only a FIRST response notifies the reviewer —
+  // editing the reply must not re-ping them on every save.
+  const existing = await db.reviewResponse.findUnique({
+    where: { reviewId: gate.review.id },
+    select: { id: true },
+  });
+
   await db.reviewResponse.upsert({
     where: { reviewId: gate.review.id },
     create: { reviewId: gate.review.id, text: parsed.data.text },
     update: { text: parsed.data.text },
   });
+
+  if (!existing) {
+    // Tell the review's author the provider replied (#393): in-app + email via
+    // the notification event — best-effort, never fails the response. The
+    // author's email is hydrated from identity (a failed lookup degrades to
+    // in-app only); providerName is the caller's identity-header name, which
+    // the provider's public contactName mirrors (#553).
+    let email: string | undefined;
+    try {
+      const res = await s2s(
+        IDENTITY_SERVICE_URL,
+        `/internal/users?ids=${encodeURIComponent(gate.review.userId)}`
+      );
+      if (res.ok) {
+        const data = (await res.json()) as {
+          users?: { id: string; email: string }[];
+        };
+        email = data.users?.find((u) => u.id === gate.review.userId)?.email;
+      }
+    } catch {
+      // degrade to in-app only
+    }
+    await emitNotification({
+      type: "REVIEW_RESPONSE",
+      recipients: [{ userId: gate.review.userId, email, locale: getLocale(c) }],
+      payload: { providerName: auth.name },
+      link: `/providers/${gate.review.providerId}`,
+      origin: getOrigin(c),
+    });
+  }
+
   return c.json({ ok: true });
 });
 

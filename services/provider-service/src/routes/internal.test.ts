@@ -399,10 +399,10 @@ describe("GET /internal/providers/matching (#501 lead-gen fan-out)", () => {
     expect(dbMock.provider.findMany).not.toHaveBeenCalled();
   });
 
-  it("returns matching providers' contact emails, scoped + not-suspended + capped", async () => {
+  it("returns matching providers' userId + contact email, scoped + not-suspended + capped", async () => {
     dbMock.provider.findMany.mockResolvedValue([
-      { id: "p1", contactName: "Jane", contactEmail: "jane@example.com" },
-      { id: "p2", contactName: "Sam", contactEmail: "sam@example.com" },
+      { id: "p1", userId: "u1", contactName: "Jane", contactEmail: "jane@example.com" },
+      { id: "p2", userId: "u2", contactName: "Sam", contactEmail: "sam@example.com" },
     ]);
     const res = await get(
       "/internal/providers/matching?category=plumbing&district=Colombo&excludeUserId=owner-1"
@@ -410,12 +410,13 @@ describe("GET /internal/providers/matching (#501 lead-gen fan-out)", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
       providers: [
-        { id: "p1", contactName: "Jane", contactEmail: "jane@example.com" },
-        { id: "p2", contactName: "Sam", contactEmail: "sam@example.com" },
+        { id: "p1", userId: "u1", contactName: "Jane", contactEmail: "jane@example.com" },
+        { id: "p2", userId: "u2", contactName: "Sam", contactEmail: "sam@example.com" },
       ],
     });
     // Mirrors the board's scoping: category equality + served-set membership
-    // (#502), suspended excluded, poster excluded, capped.
+    // (#502), suspended excluded, poster excluded, capped. `userId` addresses
+    // the in-app half of the NEW_JOB_MATCH notification.
     expect(dbMock.provider.findMany).toHaveBeenCalledWith({
       where: {
         category: "plumbing",
@@ -423,15 +424,15 @@ describe("GET /internal/providers/matching (#501 lead-gen fan-out)", () => {
         suspended: false,
         NOT: { userId: "owner-1" },
       },
-      select: { id: true, contactName: true, contactEmail: true },
+      select: { id: true, userId: true, contactName: true, contactEmail: true },
       take: 200,
     });
   });
 
   it("dedupes providers that share a contact email", async () => {
     dbMock.provider.findMany.mockResolvedValue([
-      { id: "p1", contactName: "Jane", contactEmail: "shared@example.com" },
-      { id: "p2", contactName: "Sam", contactEmail: "SHARED@example.com" },
+      { id: "p1", userId: "u1", contactName: "Jane", contactEmail: "shared@example.com" },
+      { id: "p2", userId: "u2", contactName: "Sam", contactEmail: "SHARED@example.com" },
     ]);
     const res = await get(
       "/internal/providers/matching?category=plumbing&district=Colombo"

@@ -22,6 +22,7 @@ const { dbMock } = vi.hoisted(() => ({
     },
     report: {
       count: vi.fn(),
+      findUnique: vi.fn(),
       findMany: vi.fn(),
       updateMany: vi.fn(),
       groupBy: vi.fn(),
@@ -64,11 +65,16 @@ vi.mock("../lib/clients", () => ({
   fetchRatingsResult: vi.fn().mockResolvedValue({ ok: true, ratings: {} }),
   fetchProviderReviews: vi.fn().mockResolvedValue({ reviews: [], nextCursor: null }),
 }));
+vi.mock("../lib/notify", () => ({
+  emitNotification: vi.fn().mockResolvedValue(undefined),
+}));
 
 import { app } from "../app";
 import { fetchRatingsResult } from "../lib/clients";
+import { emitNotification } from "../lib/notify";
 
 const fetchRatingsResultMock = vi.mocked(fetchRatingsResult);
+const emitNotificationMock = vi.mocked(emitNotification);
 
 const SECRET = "dev-internal-secret";
 
@@ -104,6 +110,7 @@ beforeEach(() => {
   dbMock.provider.updateMany.mockResolvedValue({ count: 0 });
   dbMock.provider.groupBy.mockResolvedValue([]);
   dbMock.report.count.mockResolvedValue(0);
+  dbMock.report.findUnique.mockResolvedValue(null);
   dbMock.report.findMany.mockResolvedValue([]);
   dbMock.report.updateMany.mockResolvedValue({ count: 1 });
   dbMock.report.groupBy.mockResolvedValue([]);
@@ -334,6 +341,47 @@ describe("PATCH /api/admin/verifications/:id (ADMIN)", () => {
     expect(await res.json()).toEqual({ status: "REJECTED" });
     const arg = dbMock.provider.update.mock.calls[0][0];
     expect(arg.data.rejectionReason).toBe("blurry NIC");
+  });
+
+  // Verification decision notification (#393): the owner hears about the
+  // outcome in-app + by email through the generic ingestion event.
+  it("approve emits VERIFICATION_APPROVED to the owner", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({
+      id: "p1",
+      userId: "owner-1",
+      contactEmail: "n@baas.lk",
+    });
+    await req("/api/admin/verifications/p1", {
+      method: "PATCH",
+      body: { action: "approve" },
+      role: "ADMIN",
+    });
+    expect(emitNotificationMock).toHaveBeenCalledWith({
+      type: "VERIFICATION_APPROVED",
+      recipients: [{ userId: "owner-1", email: "n@baas.lk" }],
+      payload: {},
+      link: "/dashboard",
+      origin: expect.any(String),
+    });
+  });
+
+  it("reject emits VERIFICATION_REJECTED with the reason", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({
+      id: "p1",
+      userId: "owner-1",
+      contactEmail: "n@baas.lk",
+    });
+    await req("/api/admin/verifications/p1", {
+      method: "PATCH",
+      body: { action: "reject", reason: "blurry NIC" },
+      role: "ADMIN",
+    });
+    expect(emitNotificationMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "VERIFICATION_REJECTED",
+        payload: { reason: "blurry NIC" },
+      })
+    );
   });
 });
 
@@ -600,6 +648,43 @@ describe("report moderation is open to SUPPORT (isSupportOrAdmin)", () => {
       role: "SUPPORT",
     });
     expect(res.status).toBe(404);
+    expect(emitNotificationMock).not.toHaveBeenCalled();
+  });
+
+  // REPORT_RESOLVED notification: the reporter hears their report was
+  // actioned (in-app only in v1). Anonymous/SYSTEM reports carry no
+  // reporterId and emit nothing.
+  it("resolving a USER report emits REPORT_RESOLVED to the reporter", async () => {
+    dbMock.report.findUnique.mockResolvedValue({
+      reporterId: "cust-9",
+      targetType: "PROVIDER",
+    });
+    const res = await req("/api/admin/reports/r1", {
+      method: "PATCH",
+      body: { status: "RESOLVED" },
+      role: "SUPPORT",
+    });
+    expect(res.status).toBe(200);
+    expect(emitNotificationMock).toHaveBeenCalledWith({
+      type: "REPORT_RESOLVED",
+      recipients: [{ userId: "cust-9" }],
+      payload: { targetType: "PROVIDER", status: "RESOLVED" },
+      link: "/",
+    });
+  });
+
+  it("resolving an anonymous/SYSTEM report (no reporterId) emits nothing", async () => {
+    dbMock.report.findUnique.mockResolvedValue({
+      reporterId: null,
+      targetType: "PROVIDER",
+    });
+    const res = await req("/api/admin/reports/r1", {
+      method: "PATCH",
+      body: { status: "DISMISSED" },
+      role: "SUPPORT",
+    });
+    expect(res.status).toBe(200);
+    expect(emitNotificationMock).not.toHaveBeenCalled();
   });
 });
 
@@ -770,6 +855,58 @@ describe("bulk moderation records one audit entry per affected target", () => {
     });
     expect(dbMock.adminAuditLog.create).toHaveBeenCalledOnce();
     expect(dbMock.adminAuditLog.create.mock.calls[0][0].data.action).toBe("dismiss-report");
+  });
+
+  it("PATCH /api/admin/verifications (bulk) emits one batched owner notification", async () => {
+    dbMock.provider.findMany.mockResolvedValue([
+      { id: "p1", userId: "owner-1", contactEmail: "a@baas.lk" },
+      { id: "p2", userId: "owner-2", contactEmail: "b@baas.lk" },
+    ]);
+    dbMock.provider.updateMany.mockResolvedValue({ count: 2 });
+    await req("/api/admin/verifications", {
+      method: "PATCH",
+      body: { ids: ["p1", "p2"], action: "approve" },
+      role: "ADMIN",
+    });
+    expect(emitNotificationMock).toHaveBeenCalledTimes(1);
+    expect(emitNotificationMock).toHaveBeenCalledWith({
+      type: "VERIFICATION_APPROVED",
+      recipients: [
+        { userId: "owner-1", email: "a@baas.lk" },
+        { userId: "owner-2", email: "b@baas.lk" },
+      ],
+      payload: {},
+      link: "/dashboard",
+      origin: expect.any(String),
+    });
+  });
+
+  it("PATCH /api/admin/reports (bulk) batches REPORT_RESOLVED per target type, skipping SYSTEM/anonymous", async () => {
+    dbMock.report.findMany.mockResolvedValue([
+      { id: "r1", reporterId: "cust-1", targetType: "PROVIDER" },
+      { id: "r2", reporterId: "cust-2", targetType: "WORK_PHOTO" },
+      { id: "r3", reporterId: "cust-3", targetType: "PROVIDER" },
+      { id: "r4", reporterId: null, targetType: "PROVIDER" }, // SYSTEM/anonymous
+    ]);
+    dbMock.report.updateMany.mockResolvedValue({ count: 4 });
+    await req("/api/admin/reports", {
+      method: "PATCH",
+      body: { ids: ["r1", "r2", "r3", "r4"], status: "RESOLVED" },
+      role: "ADMIN",
+    });
+    expect(emitNotificationMock).toHaveBeenCalledTimes(2);
+    expect(emitNotificationMock).toHaveBeenCalledWith({
+      type: "REPORT_RESOLVED",
+      recipients: [{ userId: "cust-1" }, { userId: "cust-3" }],
+      payload: { targetType: "PROVIDER", status: "RESOLVED" },
+      link: "/",
+    });
+    expect(emitNotificationMock).toHaveBeenCalledWith({
+      type: "REPORT_RESOLVED",
+      recipients: [{ userId: "cust-2" }],
+      payload: { targetType: "WORK_PHOTO", status: "RESOLVED" },
+      link: "/",
+    });
   });
 
   it("a logging failure never fails the bulk action (best-effort)", async () => {

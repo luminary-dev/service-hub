@@ -123,7 +123,7 @@ eventRoutes.post("/events", async (c) => {
 // POST /internal/users/:id/erase — account-deletion fan-out from
 // identity-service (same contract as provider/review/job). Deletes the user's
 // notifications and preference overrides. Idempotent: erasing an unknown user
-// is a no-op 200. (identity starts calling this in the emitter-migration PR.)
+// is a no-op 200.
 export const internalUsers = new Hono();
 
 internalUsers.post("/:id/erase", async (c) => {

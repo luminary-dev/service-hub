@@ -1,11 +1,23 @@
 # Email setup (verification, password reset & notifications)
 
-Transactional email is owned by **notification-service** (`services/notification-service`,
-`:4005`) — a stateless service that renders the templates (EN + SI) and sends
-them via [Resend](https://resend.com). Sibling services call it over S2S
-(`POST /internal/email/*`); nothing else touches email. See the
-[service README](../services/notification-service/README.md) for the endpoint
-and template list.
+Email is owned by **notification-service** (`services/notification-service`,
+`:4005`), which renders the templates (EN + SI) and sends them via
+[Resend](https://resend.com). It arrives on two paths, both S2S — nothing else
+touches email:
+
+- **Auth/security messages** (verify, password reset, change-email,
+  account-exists, email-change-attempt) keep dedicated
+  `POST /internal/email/*` routes. They are not notifications and can never be
+  muted by preferences.
+- **Marketplace notifications** (inquiry, thread reply, new review, review
+  response, verification decisions, job match/response, saved-search match)
+  flow through the generic `POST /internal/notifications/events` ingestion
+  endpoint, which writes the in-app feed inline and queues the email sends
+  behind per-user notification preferences (Redis queue with retries; see
+  `docs/api/internal.md`).
+
+See the [service README](../services/notification-service/README.md) for the
+endpoint and template list.
 
 > **Status: not delivering to real users until a sending domain is verified.**
 > The code is deployed and works end to end, but with no `RESEND_API_KEY` (and no
@@ -48,26 +60,17 @@ and template list.
 - Email links use the origin the gateway forwards as `x-origin` (falling back to
   `WEB_ORIGIN`), so links point at the right host per environment.
 - Related code: `services/notification-service/src/lib/email.ts` (templates +
-  Resend/console send), `src/routes/email.ts` (endpoints). Callers:
-  identity-service (verify / password-reset / change-email #396),
-  provider-service (inquiry and new-provider-match #516), job-service
-  (job-response and new-job #501).
-- **`POST /internal/email/new-job` (#501)** is a fan-out, not a single-recipient
-  send: job-service resolves the matching providers once and passes the whole
-  `{ recipients: string[], url, jobTitle, district, locale? }` list, and the
-  route sends one copy of the EN/SI "new matching job" template per recipient
-  (deduped). It acks `202 { ok, accepted }` immediately and sends in the
-  background (#557) — up to 200 sequential sends can't fit the caller's 5s S2S
-  budget — logging the delivered count when the batch completes. A single
-  failed send does not abort the batch. Job posting itself is gated on a
-  verified email plus a per-account daily cap (#556), so an unverified or
-  spamming account never reaches this fan-out.
-- **`POST /internal/email/new-provider-match` (#516)** is the reverse-direction
-  fan-out with the same contract: provider-service resolves the customers whose
-  saved search matches a newly published provider and passes
-  `{ recipients: string[], url, providerName, district, locale? }`; the route
-  sends one copy of the EN/SI "new match for your saved search" template per
-  recipient (deduped), acking `202 { ok, accepted }` and delivering in the
-  background. Recipients are bounded upstream (verified customer emails only,
-  ≤200, one alert per saved search per 24 h — see
-  `docs/features/saved-searches.md`).
+  Resend/console send), `src/routes/email.ts` (auth endpoints),
+  `src/routes/events.ts` + `src/lib/queue.ts` (marketplace-event ingestion +
+  delivery queue). Auth-mail callers: identity-service (verify /
+  password-reset / change-email #396 / account-exists #498 /
+  email-change-attempt #503).
+- **Marketplace notification emails** are queued per recipient by the events
+  endpoint (one `notify:email` job each, EN/SI template chosen from the
+  recipient's `locale`) and only for recipients whose `NotificationPreference`
+  has email enabled. Fan-outs stay bounded upstream: `NEW_JOB_MATCH` ≤200
+  matched providers per job (posting is gated on a verified email + daily cap,
+  #556), `SAVED_SEARCH_MATCH` ≤200 saved-search owners with one alert per
+  search per 24 h (#516 — see `docs/features/saved-searches.md`). A failed
+  send retries 3 times with backoff, then drops with a logged error — email
+  remains best-effort.

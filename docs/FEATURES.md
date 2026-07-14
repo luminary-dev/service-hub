@@ -27,7 +27,7 @@ The user-facing flows are split into focused pages:
   interaction badge.
 - **[Favorites](features/favorites.md)** — saving providers.
 - **[Saved searches & alerts](features/saved-searches.md)** — saving a
-  providers search and getting emailed when a new professional matches.
+  providers search and getting notified when a new professional matches.
 - **[In-app notifications](features/notifications.md)** — the navbar bell,
   the `/account/notifications` feed, and per-type delivery preferences.
 - **[AI chat assistant](features/chat.md)** — the marketplace concierge.

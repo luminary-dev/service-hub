@@ -45,8 +45,8 @@ export const PAYLOAD_SCHEMAS: Record<NotificationType, z.ZodType> = {
   }),
 };
 
-// Fan-out cap — mirrors the existing /internal/email/new-job contract (and
-// provider-service's MAX_MATCHING_PROVIDERS / MAX_ALERT_RECIPIENTS).
+// Fan-out cap — mirrors provider-service's MAX_MATCHING_PROVIDERS /
+// MAX_ALERT_RECIPIENTS (and the retired /internal/email/new-job contract).
 export const MAX_RECIPIENTS = 200;
 
 const recipientSchema = z.object({

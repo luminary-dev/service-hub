@@ -10,6 +10,7 @@ afterEach(() => vi.unstubAllGlobals());
 const PROVIDER = "http://localhost:4002";
 const REVIEW = "http://localhost:4003";
 const JOB = "http://localhost:4004";
+const NOTIFICATION = "http://localhost:4005";
 
 function stubFetch(statusFor: (url: string) => number) {
   const fetchMock = vi.fn(
@@ -25,17 +26,18 @@ function stubFetch(statusFor: (url: string) => number) {
 }
 
 describe("eraseUserData", () => {
-  it("erases review + job first and the provider profile last", async () => {
+  it("erases review + job + notification first and the provider profile last", async () => {
     const fetchMock = stubFetch(() => 200);
     await expect(eraseUserData("u1", "prov-1")).resolves.toBeUndefined();
 
     const urls = fetchMock.mock.calls.map((call) => String(call[0]));
-    expect(urls).toHaveLength(3);
-    expect(urls.slice(0, 2).sort()).toEqual([
+    expect(urls).toHaveLength(4);
+    expect(urls.slice(0, 3).sort()).toEqual([
       `${REVIEW}/internal/users/u1/erase`,
       `${JOB}/internal/users/u1/erase`,
+      `${NOTIFICATION}/internal/users/u1/erase`,
     ]);
-    expect(urls[2]).toBe(`${PROVIDER}/internal/users/u1/erase`);
+    expect(urls[3]).toBe(`${PROVIDER}/internal/users/u1/erase`);
   });
 
   it("passes the providerId to the job erase", async () => {
@@ -59,6 +61,14 @@ describe("eraseUserData", () => {
   it("does NOT erase the provider profile when the review erase fails", async () => {
     const fetchMock = stubFetch((url) => (url.startsWith(REVIEW) ? 502 : 200));
     await expect(eraseUserData("u1", null)).rejects.toThrow(/502/);
+
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls.some((u) => u.startsWith(PROVIDER))).toBe(false);
+  });
+
+  it("does NOT erase the provider profile when the notification erase fails", async () => {
+    const fetchMock = stubFetch((url) => (url.startsWith(NOTIFICATION) ? 500 : 200));
+    await expect(eraseUserData("u1", "prov-1")).rejects.toThrow(/500/);
 
     const urls = fetchMock.mock.calls.map((call) => String(call[0]));
     expect(urls.some((u) => u.startsWith(PROVIDER))).toBe(false);

@@ -45,16 +45,14 @@ Internal (S2S):
 | `POST` | `/internal/email/change-email` | `{ to, url, locale? }` | `200 { ok: true, delivered: boolean }` |
 | `POST` | `/internal/email/account-exists` | `{ to, url, locale? }` | `200 { ok: true, delivered: boolean }` |
 | `POST` | `/internal/email/email-change-attempt` | `{ to, url, locale? }` | `200 { ok: true, delivered: boolean }` |
-| `POST` | `/internal/email/inquiry` | `{ to, url, customerName, locale? }` | `200 { ok: true, delivered: boolean }` |
-| `POST` | `/internal/email/job-response` | `{ to, url, providerName, jobTitle, locale? }` | `200 { ok: true, delivered: boolean }` |
-| `POST` | `/internal/email/new-job` | `{ recipients: string[], url, jobTitle, district, locale? }` | `202 { ok: true, accepted }` (sends in the background, #557) |
-| `POST` | `/internal/email/new-provider-match` | `{ recipients: string[], url, providerName, district, locale? }` | `202 { ok: true, accepted }` (sends in the background) |
 
 - `type` is one of the ten catalog `NotificationType`s (see
   `prisma/schema.prisma`); `payload` is zod-validated per type and stored
   denormalized — the web renders the sentence from `type` + `payload` at read
-  time. The five auth email routes are permanent; the four marketplace email
-  routes remain until their callers migrate to `/internal/notifications/events`.
+  time. The five auth email routes are permanent (they are not notifications
+  and take no preferences); every marketplace event — inquiry, thread reply,
+  reviews, verification decisions, job match/response, saved-search match,
+  report resolution — arrives via `/internal/notifications/events`.
 - `locale` is `"en"` or `"si"`; it defaults to `"en"` and any other value is
   coerced to `"en"`.
 - Invalid bodies return `400 { "error": "Invalid input" }`.

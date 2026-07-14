@@ -2,13 +2,10 @@
 // hydration degrades gracefully (per the shared conventions) — a failing peer
 // must never take down a provider page.
 import { s2s } from "./http";
-import { log } from "./log";
 
 const IDENTITY_URL = process.env.IDENTITY_SERVICE_URL ?? "http://localhost:4001";
 const REVIEW_URL = process.env.REVIEW_SERVICE_URL ?? "http://localhost:4003";
 const JOB_URL = process.env.JOB_SERVICE_URL ?? "http://localhost:4004";
-const NOTIFICATION_URL =
-  process.env.NOTIFICATION_SERVICE_URL ?? "http://localhost:4005";
 
 export type RatingEntry = { rating: number; count: number };
 
@@ -139,25 +136,6 @@ export async function syncIdentityProfile(
     });
   } catch {
     // best-effort
-  }
-}
-
-// notification-service POST /internal/email/inquiry — tells the provider they
-// received an inquiry. Best-effort: a mail failure must never fail the
-// inquiry itself (mirrors job-service's job-response email).
-export async function sendInquiryEmail(args: {
-  to: string;
-  url: string;
-  customerName: string;
-  locale: "en" | "si";
-}): Promise<void> {
-  try {
-    await s2s(NOTIFICATION_URL, "/internal/email/inquiry", {
-      method: "POST",
-      body: JSON.stringify(args),
-    });
-  } catch (e) {
-    log.error("notification failed", { context: "inquiry", err: e });
   }
 }
 

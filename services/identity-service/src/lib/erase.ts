@@ -1,5 +1,5 @@
 // Account-deletion fan-out (#123): identity-service is the orchestrator, the
-// peers each own an idempotent POST /internal/users/:id/erase. All three must
+// peers each own an idempotent POST /internal/users/:id/erase. All four must
 // succeed before the local User row goes — a failure throws and the caller
 // returns 502 WITHOUT deleting anything locally, so the user can simply retry
 // (peer erases are idempotent no-ops the second time).
@@ -10,6 +10,8 @@ const PROVIDER_SERVICE_URL =
 const REVIEW_SERVICE_URL =
   process.env.REVIEW_SERVICE_URL ?? "http://localhost:4003";
 const JOB_SERVICE_URL = process.env.JOB_SERVICE_URL ?? "http://localhost:4004";
+const NOTIFICATION_SERVICE_URL =
+  process.env.NOTIFICATION_SERVICE_URL ?? "http://localhost:4005";
 
 export async function eraseUserData(
   userId: string,
@@ -31,6 +33,12 @@ export async function eraseUserData(
     s2s(JOB_SERVICE_URL, `/internal/users/${id}/erase`, {
       method: "POST",
       body: JSON.stringify({ providerId }),
+    }),
+    // notification-service drops the user's feed + preference overrides. No
+    // ordering constraint — nothing else depends on it.
+    s2s(NOTIFICATION_SERVICE_URL, `/internal/users/${id}/erase`, {
+      method: "POST",
+      body: "{}",
     }),
   ]);
 

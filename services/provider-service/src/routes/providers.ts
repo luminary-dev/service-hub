@@ -11,9 +11,9 @@ import {
   fetchProviderReviews,
   fetchRatings,
   fetchReviewCount,
-  sendInquiryEmail,
   type RatingEntry,
 } from "../lib/clients";
+import { emitNotification } from "../lib/notify";
 import { isEffectivelyAvailable } from "../lib/availability";
 import { slPhone } from "../lib/field-rules";
 import { moneyToNumber, moneyToNumberOrNull } from "../lib/money";
@@ -565,12 +565,16 @@ providersRoutes.post("/api/providers/:id/inquiries", async (c) => {
   });
 
   // Tell the provider (denormalized contactEmail) — best-effort, never fails
-  // the inquiry.
-  await sendInquiryEmail({
-    to: provider.contactEmail,
-    url: `${getOrigin(c)}/dashboard`,
-    customerName: parsed.data.name,
-    locale: getLocale(c),
+  // the inquiry. In-app + email flow through the notification event (#394);
+  // the link lands on the new thread, not just the dashboard.
+  await emitNotification({
+    type: "NEW_INQUIRY",
+    recipients: [
+      { userId: provider.userId, email: provider.contactEmail, locale: getLocale(c) },
+    ],
+    payload: { customerName: parsed.data.name },
+    link: `/dashboard/inquiries/${inquiry.id}`,
+    origin: getOrigin(c),
   });
 
   return c.json({ inquiry });

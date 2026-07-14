@@ -16,7 +16,9 @@ review-service.
   than silently allowing an unverified review. Every review that passes the
   gate is therefore stamped **Verified**.
 - **One review per (provider, customer)** — re-submitting replaces the rating
-  and comment (1–5 stars, comment 3–1000 chars) and appends photos.
+  and comment (1–5 stars, comment 3–1000 chars) and appends photos. The
+  provider owner gets a best-effort `NEW_REVIEW` notification (#393 — in-app +
+  email via notification-service's events endpoint).
 - **Optional per-dimension sub-ratings (#528).** Alongside the mandatory
   overall star, a reviewer can *optionally* score four aspects — **quality**,
   **punctuality**, **value** and **communication** — each 1–5. They are
@@ -39,7 +41,9 @@ review-service.
   /api/reviews/{id}/response`. Ownership is verified server-side over S2S
   (fail-loud on the write path); suspended providers cannot respond. The reply
   renders under the review for every visitor, localized, and hides with the
-  review when it is soft-deleted (and cascades on hard delete).
+  review when it is soft-deleted (and cascades on hard delete). A **first**
+  response sends the review's author a best-effort `REVIEW_RESPONSE`
+  notification (edits stay silent).
 - Each review can be reported (`POST /api/reviews/{id}/report`). Admins moderate
   reviews from the [reports queue](../admin/moderation.md#reports-queue) and provider detail
   view (soft delete + restore).

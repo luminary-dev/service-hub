@@ -13,6 +13,7 @@ const { dbMock } = vi.hoisted(() => ({
     jobResponse: { findMany: vi.fn() },
     report: {
       count: vi.fn(),
+      findUnique: vi.fn(),
       findMany: vi.fn(),
       findFirst: vi.fn(),
       create: vi.fn(),
@@ -24,8 +25,12 @@ const { dbMock } = vi.hoisted(() => ({
   },
 }));
 vi.mock("../db", () => ({ db: dbMock }));
+vi.mock("../lib/notify", () => ({
+  emitNotification: vi.fn().mockResolvedValue(undefined),
+}));
 
 import { app } from "../app";
+import { emitNotification } from "../lib/notify";
 
 const SECRET = "dev-internal-secret";
 type Role = "ADMIN" | "SUPPORT" | "CUSTOMER" | "PROVIDER" | null;
@@ -68,6 +73,7 @@ function reportRow(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   dbMock.report.count.mockResolvedValue(0);
+  dbMock.report.findUnique.mockResolvedValue(null);
   dbMock.report.findMany.mockResolvedValue([]);
   dbMock.report.updateMany.mockResolvedValue({ count: 1 });
   dbMock.report.findFirst.mockResolvedValue(null);
@@ -260,6 +266,37 @@ describe("PATCH /api/admin/job-reports/:id", () => {
     });
     expect(res.status).toBe(400);
   });
+
+  // REPORT_RESOLVED notification: the reporter hears their report was
+  // actioned (in-app only in v1); SYSTEM/anonymous reports emit nothing.
+  it("emits REPORT_RESOLVED to a USER reporter", async () => {
+    dbMock.report.findUnique.mockResolvedValue(
+      reportRow({ reporterId: "cust-9", targetType: "JOB_RESPONSE" })
+    );
+    const res = await req("/api/admin/job-reports/rep1", {
+      method: "PATCH",
+      body: { status: "RESOLVED" },
+      role: "SUPPORT",
+    });
+    expect(res.status).toBe(200);
+    expect(emitNotification).toHaveBeenCalledWith({
+      type: "REPORT_RESOLVED",
+      recipients: [{ userId: "cust-9" }],
+      payload: { targetType: "JOB_RESPONSE", status: "RESOLVED" },
+      link: "/",
+    });
+  });
+
+  it("emits nothing for a SYSTEM report (no reporterId)", async () => {
+    dbMock.report.findUnique.mockResolvedValue(reportRow()); // reporterId: null
+    const res = await req("/api/admin/job-reports/rep1", {
+      method: "PATCH",
+      body: { status: "DISMISSED" },
+      role: "SUPPORT",
+    });
+    expect(res.status).toBe(200);
+    expect(emitNotification).not.toHaveBeenCalled();
+  });
 });
 
 describe("PATCH /api/admin/job-reports (bulk)", () => {
@@ -293,6 +330,34 @@ describe("PATCH /api/admin/job-reports (bulk)", () => {
         reason: null,
       },
     ]);
+  });
+
+  it("batches REPORT_RESOLVED per target type, skipping SYSTEM/anonymous reporters", async () => {
+    dbMock.report.findMany.mockResolvedValue([
+      { id: "rep1", reporterId: "cust-1", targetType: "JOB" },
+      { id: "rep2", reporterId: "cust-2", targetType: "JOB_RESPONSE" },
+      { id: "rep3", reporterId: null, targetType: "JOB" }, // SYSTEM/anonymous
+    ]);
+    dbMock.report.updateMany.mockResolvedValue({ count: 3 });
+    const res = await req("/api/admin/job-reports", {
+      method: "PATCH",
+      body: { ids: ["rep1", "rep2", "rep3"], status: "RESOLVED" },
+      role: "ADMIN",
+    });
+    expect(res.status).toBe(200);
+    expect(emitNotification).toHaveBeenCalledTimes(2);
+    expect(emitNotification).toHaveBeenCalledWith({
+      type: "REPORT_RESOLVED",
+      recipients: [{ userId: "cust-1" }],
+      payload: { targetType: "JOB", status: "RESOLVED" },
+      link: "/",
+    });
+    expect(emitNotification).toHaveBeenCalledWith({
+      type: "REPORT_RESOLVED",
+      recipients: [{ userId: "cust-2" }],
+      payload: { targetType: "JOB_RESPONSE", status: "RESOLVED" },
+      link: "/",
+    });
   });
 });
 
