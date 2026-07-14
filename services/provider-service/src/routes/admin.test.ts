@@ -269,7 +269,11 @@ describe("PATCH /api/admin/providers/:id (ADMIN actions)", () => {
 
   // #550: this is the single path that lifts an ADMIN suspension.
   it("unsuspend clears both suspended and adminSuspended", async () => {
-    dbMock.provider.findUnique.mockResolvedValue({ id: "p1", suspended: true });
+    dbMock.provider.findUnique.mockResolvedValue({
+      id: "p1",
+      suspended: true,
+      adminSuspended: true,
+    });
     const res = await req("/api/admin/providers/p1", {
       method: "PATCH",
       body: { action: "unsuspend" },
@@ -280,6 +284,24 @@ describe("PATCH /api/admin/providers/:id (ADMIN actions)", () => {
       where: { id: "p1" },
       data: { suspended: false, adminSuspended: false },
     });
+  });
+
+  // #644: an admin unsuspend must NOT relist a profile the *owner* deactivated
+  // (suspended=true, adminSuspended=false) — only the owner re-lists that.
+  it("refuses to unsuspend an owner-deactivated profile (409, no write)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({
+      id: "p1",
+      suspended: true,
+      adminSuspended: false,
+    });
+    const res = await req("/api/admin/providers/p1", {
+      method: "PATCH",
+      body: { action: "unsuspend" },
+      role: "ADMIN",
+    });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/deactivated by its owner/i);
+    expect(dbMock.provider.update).not.toHaveBeenCalled();
   });
 
   it("verify sets VERIFIED + verifiedAt", async () => {
@@ -318,9 +340,68 @@ describe("PATCH /api/admin/providers/:id (ADMIN actions)", () => {
   });
 });
 
+// #644: bulk unsuspend must relist only genuine ADMIN suspensions; a profile
+// its owner deactivated (adminSuspended=false) stays hidden and is reported
+// back as `skipped`.
+describe("PATCH /api/admin/providers (bulk unsuspend, #644)", () => {
+  it("relists only adminSuspended rows and reports the rest as skipped", async () => {
+    dbMock.provider.findMany.mockResolvedValue([
+      { id: "p1", adminSuspended: true },
+      { id: "p2", adminSuspended: false },
+    ]);
+    dbMock.provider.updateMany.mockResolvedValue({ count: 1 });
+    const res = await req("/api/admin/providers", {
+      method: "PATCH",
+      body: { ids: ["p1", "p2"], suspended: false },
+      role: "ADMIN",
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, count: 1, skipped: 1 });
+    // Only the eligible id is written, and both flags are cleared.
+    expect(dbMock.provider.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["p1"] } },
+      data: { suspended: false, adminSuspended: false },
+    });
+  });
+
+  it("409s (no write) when every selected row was owner-deactivated", async () => {
+    dbMock.provider.findMany.mockResolvedValue([
+      { id: "p1", adminSuspended: false },
+      { id: "p2", adminSuspended: false },
+    ]);
+    const res = await req("/api/admin/providers", {
+      method: "PATCH",
+      body: { ids: ["p1", "p2"], suspended: false },
+      role: "ADMIN",
+    });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ count: 0, skipped: 2 });
+    expect(dbMock.provider.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("bulk suspend still suspends every matched row (unchanged)", async () => {
+    dbMock.provider.findMany.mockResolvedValue([{ id: "p1" }, { id: "p2" }]);
+    dbMock.provider.updateMany.mockResolvedValue({ count: 2 });
+    const res = await req("/api/admin/providers", {
+      method: "PATCH",
+      body: { ids: ["p1", "p2"], suspended: true },
+      role: "ADMIN",
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, count: 2 });
+    expect(dbMock.provider.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["p1", "p2"] } },
+      data: { suspended: true, adminSuspended: true },
+    });
+  });
+});
+
 describe("PATCH /api/admin/verifications/:id (ADMIN)", () => {
   it("approve → VERIFIED", async () => {
-    dbMock.provider.findUnique.mockResolvedValue({ id: "p1" });
+    dbMock.provider.findUnique.mockResolvedValue({
+      id: "p1",
+      verificationStatus: "PENDING",
+    });
     const res = await req("/api/admin/verifications/p1", {
       method: "PATCH",
       body: { action: "approve" },
@@ -331,7 +412,10 @@ describe("PATCH /api/admin/verifications/:id (ADMIN)", () => {
   });
 
   it("reject → REJECTED and stores the reason", async () => {
-    dbMock.provider.findUnique.mockResolvedValue({ id: "p1" });
+    dbMock.provider.findUnique.mockResolvedValue({
+      id: "p1",
+      verificationStatus: "PENDING",
+    });
     const res = await req("/api/admin/verifications/p1", {
       method: "PATCH",
       body: { action: "reject", reason: "blurry NIC" },
@@ -343,6 +427,23 @@ describe("PATCH /api/admin/verifications/:id (ADMIN)", () => {
     expect(arg.data.rejectionReason).toBe("blurry NIC");
   });
 
+  // #647: a submission that's no longer PENDING (already actioned, or a stale
+  // client racing another admin) is refused with 409 and never re-flipped.
+  it("409s when the submission is no longer PENDING (no write, no notify)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({
+      id: "p1",
+      verificationStatus: "VERIFIED",
+    });
+    const res = await req("/api/admin/verifications/p1", {
+      method: "PATCH",
+      body: { action: "reject", reason: "too late" },
+      role: "ADMIN",
+    });
+    expect(res.status).toBe(409);
+    expect(dbMock.provider.update).not.toHaveBeenCalled();
+    expect(emitNotificationMock).not.toHaveBeenCalled();
+  });
+
   // Verification decision notification (#393): the owner hears about the
   // outcome in-app + by email through the generic ingestion event.
   it("approve emits VERIFICATION_APPROVED to the owner", async () => {
@@ -350,6 +451,7 @@ describe("PATCH /api/admin/verifications/:id (ADMIN)", () => {
       id: "p1",
       userId: "owner-1",
       contactEmail: "n@baas.lk",
+      verificationStatus: "PENDING",
     });
     await req("/api/admin/verifications/p1", {
       method: "PATCH",
@@ -370,6 +472,7 @@ describe("PATCH /api/admin/verifications/:id (ADMIN)", () => {
       id: "p1",
       userId: "owner-1",
       contactEmail: "n@baas.lk",
+      verificationStatus: "PENDING",
     });
     await req("/api/admin/verifications/p1", {
       method: "PATCH",
@@ -782,8 +885,10 @@ describe("bulk moderation records one audit entry per affected target", () => {
     ]);
   });
 
-  it("PATCH /api/admin/providers (bulk unsuspend) logs 'unsuspend'", async () => {
-    dbMock.provider.findMany.mockResolvedValue([{ id: "p1" }]);
+  it("PATCH /api/admin/providers (bulk unsuspend) logs 'unsuspend' for admin-suspended rows", async () => {
+    // Only a genuine ADMIN suspension is relisted (#644), so it must carry
+    // adminSuspended=true to be eligible and audited.
+    dbMock.provider.findMany.mockResolvedValue([{ id: "p1", adminSuspended: true }]);
     dbMock.provider.updateMany.mockResolvedValue({ count: 1 });
     await req("/api/admin/providers", {
       method: "PATCH",

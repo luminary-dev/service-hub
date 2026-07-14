@@ -92,11 +92,41 @@ describe("FilterBar", () => {
   });
 
   it("keeps the recommended sort out of the URL", () => {
-    renderBar({ category: "plumber" });
+    // Start from a non-default sort so blur has a real change to commit, then
+    // switch back to recommended — it must navigate but drop the sort param.
+    renderBar({ category: "plumber", sort: "rating" });
     const sort = screen.getByLabelText(t.browse.sortLabel);
-    // Re-selecting the default sort should not add a sort param.
     fireEvent.change(sort, { target: { value: "recommended" } });
     fireEvent.blur(sort, { target: { value: "recommended" } });
+    expect(push).toHaveBeenCalledTimes(1);
     expect(push.mock.calls[0][0]).not.toContain("sort=");
+  });
+
+  it("does not navigate on blur when the sort is unchanged (#658)", () => {
+    renderBar({ category: "plumber", sort: "rating" });
+    const sort = screen.getByLabelText(t.browse.sortLabel);
+    // Tabbing through the select without picking a new option fires blur but
+    // must not navigate (it would silently reset pagination otherwise).
+    fireEvent.blur(sort, { target: { value: "rating" } });
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("preserves the current page when only the sort changes (#658)", () => {
+    renderBar({ category: "plumber", sort: "recommended", page: 3 });
+    const sort = screen.getByLabelText(t.browse.sortLabel);
+    fireEvent.change(sort, { target: { value: "rating" } });
+    fireEvent.blur(sort, { target: { value: "rating" } });
+    const dest = push.mock.calls[0][0] as string;
+    expect(dest).toContain("sort=rating");
+    expect(dest).toContain("page=3");
+  });
+
+  it("resets pagination when a filter (not sort) changes", () => {
+    // A category/search change drops `page` even when one was set — a new
+    // filter should land the user back on page 1.
+    renderBar({ category: "plumber", page: 3 });
+    fireEvent.click(screen.getByLabelText(t.browse.availableOnly));
+    const dest = push.mock.calls.at(-1)![0] as string;
+    expect(dest).not.toContain("page=");
   });
 });

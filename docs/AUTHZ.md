@@ -32,7 +32,11 @@ A user authenticates with **email + password** (bcrypt) or **social login**
 identity-service mints the same `sh_session` JWT — social login only resolves an
 identity; roles, revocation (`sessionVersion`), and S2S trust are unchanged.
 Each provider is a small adapter (`src/lib/oauth.ts`): Google uses PKCE + an
-OIDC id_token; Facebook uses no PKCE and a Graph-API profile lookup.
+OIDC id_token; Facebook uses no PKCE and a Graph-API profile lookup. Both entry
+points honor the same **per-account lockout** (the shared `lockedUntil` column —
+failed-login window or an admin lock): a locked account is refused a session on
+social login just as on password login (#641), bounced back to
+`/login?error=oauth_locked`.
 
 - Linked social identities live in the `Account` table (`(provider,
   providerAccountId)` → `userId`); a user may hold both a password and one or
@@ -315,8 +319,10 @@ their perspective (#234). Implemented in
   pages see the target's identity with `impersonatedBy` set (for the "viewing
   as" banner).
 - **Guardrails.** An admin cannot impersonate their own account, and cannot
-  impersonate another `ADMIN` account (defence in depth — one admin session
-  never rides in as another).
+  impersonate another **admin-tier** account — `ADMIN` **or** `SUPPORT` (#654,
+  defence in depth: one admin session never rides in as another admin, of
+  either tier). The check reuses the `isAdminTierRole` role predicate in
+  `lib/http.ts` rather than a hardcoded `=== "ADMIN"` string.
 - **Logged.** Every start writes an `ImpersonationLog` row (`adminId`,
   `targetUserId`, `startedAt`); `/end` best-effort stamps `endedAt` on the open
   row. This is a standalone log for the feature and is intended to be reconciled

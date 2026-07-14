@@ -28,6 +28,7 @@ import {
   getProviderIdByUser,
   ProviderAdminSuspendedError,
   reactivateProviderProfile,
+  resolveProviderIdByUser,
   resolveProviderIdForErase,
   syncContactToProvider,
 } from "../lib/providers";
@@ -74,6 +75,7 @@ vi.mock("../lib/providers", () => ({
   deactivateProviderProfile: vi.fn(),
   eraseProviderProfile: vi.fn(),
   reactivateProviderProfile: vi.fn(),
+  resolveProviderIdByUser: vi.fn(async () => null),
   resolveProviderIdForErase: vi.fn(async () => null),
   syncContactToProvider: vi.fn(),
 }));
@@ -140,6 +142,10 @@ beforeEach(() => {
   // Default: the caller has no provider profile. Per-test overrides set an id
   // (provider deletion) or reject (transient S2S failure).
   vi.mocked(resolveProviderIdForErase).mockResolvedValue(null);
+  // Default: complete-provider's fail-loud lookup finds no existing profile, so
+  // it takes the create branch. Re-upgrade tests set an id; the fail-loud test
+  // rejects it.
+  vi.mocked(resolveProviderIdByUser).mockResolvedValue(null);
 });
 
 // ---------------------------------------------------------------------------
@@ -158,7 +164,7 @@ describe("POST /api/auth/verify-email", () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "expired" });
     // Nothing to delete when the token was never found.
-    expect(db.emailVerificationToken.delete).not.toHaveBeenCalled();
+    expect(db.emailVerificationToken.deleteMany).not.toHaveBeenCalled();
   });
 
   it("looks the token up by its hash, never the raw value", async () => {
@@ -178,7 +184,8 @@ describe("POST /api/auth/verify-email", () => {
     const res = await post("/api/auth/verify-email", { token: "abc" });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "expired" });
-    expect(db.emailVerificationToken.delete).toHaveBeenCalledWith({
+    // deleteMany (not delete): idempotent so a double-submit can't 500 (#647).
+    expect(db.emailVerificationToken.deleteMany).toHaveBeenCalledWith({
       where: { id: "t1" },
     });
   });
@@ -492,7 +499,8 @@ describe("POST /api/auth/reset-password", () => {
       password: STRONG_PASSWORD,
     });
     expect(res.status).toBe(400);
-    expect(db.passwordResetToken.delete).toHaveBeenCalledWith({
+    // deleteMany (not delete): idempotent so a double-submit can't 500 (#647).
+    expect(db.passwordResetToken.deleteMany).toHaveBeenCalledWith({
       where: { id: "t1" },
     });
     expect(db.user.update).not.toHaveBeenCalled();
@@ -621,10 +629,23 @@ describe("POST /api/auth/logout-all", () => {
     expect(db.user.update).not.toHaveBeenCalled();
   });
 
-  it("401s when the sessionVersion bump fails (unknown user)", async () => {
-    db.user.update.mockRejectedValue(new Error("not found"));
+  it("401s when the user row is gone (P2025 — deleted out from under the session)", async () => {
+    db.user.update.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("Record not found", {
+        code: "P2025",
+        clientVersion: "test",
+      })
+    );
     const res = await post("/api/auth/logout-all", {}, AUTH_HEADERS);
     expect(res.status).toBe(401);
+  });
+
+  // #647 L8: a DB outage must surface as 500, not be masked as a 401 — masking
+  // it would sign users out on a transient blip and hide the incident.
+  it("500s when the bump fails on a generic DB error (not masked as 401)", async () => {
+    db.user.update.mockRejectedValue(new Error("connection reset"));
+    const res = await post("/api/auth/logout-all", {}, AUTH_HEADERS);
+    expect(res.status).toBe(500);
   });
 
   it("bumps sessionVersion to revoke every session, then re-issues this one", async () => {
@@ -1001,7 +1022,7 @@ describe("POST /api/auth/complete-provider", () => {
       name: "Ann",
       role: "CUSTOMER",
     });
-    vi.mocked(getProviderIdByUser).mockResolvedValue("prov-1");
+    vi.mocked(resolveProviderIdByUser).mockResolvedValue("prov-1");
     db.user.update.mockResolvedValue({
       id: "u1",
       name: "Ann",
@@ -1027,11 +1048,30 @@ describe("POST /api/auth/complete-provider", () => {
       name: "Ann",
       role: "CUSTOMER",
     });
-    vi.mocked(getProviderIdByUser).mockResolvedValue("prov-1");
+    vi.mocked(resolveProviderIdByUser).mockResolvedValue("prov-1");
     vi.mocked(reactivateProviderProfile).mockRejectedValue(new Error("peer down"));
 
     const res = await post("/api/auth/complete-provider", providerBody, AUTH_HEADERS);
     expect(res.status).toBe(502);
+    expect(db.user.update).not.toHaveBeenCalled();
+  });
+
+  // #643: a transient blip in the create-vs-reactivate lookup must abort with
+  // 502 and NO role flip — never fall through to the create branch and orphan
+  // an existing profile hidden while the account becomes a PROVIDER.
+  it("502s (no role flip) when the create-vs-reactivate lookup fails", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "a@b.lk",
+      name: "Ann",
+      role: "CUSTOMER",
+    });
+    vi.mocked(resolveProviderIdByUser).mockRejectedValue(new Error("peer down"));
+
+    const res = await post("/api/auth/complete-provider", providerBody, AUTH_HEADERS);
+    expect(res.status).toBe(502);
+    expect(createProviderProfile).not.toHaveBeenCalled();
+    expect(reactivateProviderProfile).not.toHaveBeenCalled();
     expect(db.user.update).not.toHaveBeenCalled();
   });
 
@@ -1045,7 +1085,7 @@ describe("POST /api/auth/complete-provider", () => {
       name: "Ann",
       role: "CUSTOMER",
     });
-    vi.mocked(getProviderIdByUser).mockResolvedValue("prov-1");
+    vi.mocked(resolveProviderIdByUser).mockResolvedValue("prov-1");
     vi.mocked(reactivateProviderProfile).mockRejectedValue(
       new ProviderAdminSuspendedError()
     );

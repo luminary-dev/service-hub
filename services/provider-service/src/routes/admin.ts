@@ -241,6 +241,25 @@ adminRoutes.patch("/api/admin/providers/:id", async (c) => {
     return c.json({ error: "Invalid action" }, 400);
   }
 
+  // Owner-deactivated profiles (#403: `suspended=true` with `adminSuspended=false`)
+  // must not be relisted by an admin unsuspend (#644) — that would override the
+  // owner's own choice to hide their profile. Only the owner can re-list one
+  // (via the reactivate S2S path). Genuine ADMIN suspensions
+  // (`adminSuspended=true`) are still lifted here, as before.
+  if (
+    parsed.data.action === "unsuspend" &&
+    provider.suspended &&
+    !provider.adminSuspended
+  ) {
+    return c.json(
+      {
+        error:
+          "This profile was deactivated by its owner and can only be relisted by them",
+      },
+      409
+    );
+  }
+
   const data: Record<string, unknown> = {};
   switch (parsed.data.action) {
     case "verify":
@@ -293,24 +312,56 @@ adminRoutes.patch("/api/admin/providers", async (c) => {
   }
 
   const where = { id: { in: parsed.data.ids } };
-  // Capture the ids actually matched before the write so the audit trail
-  // records real targets (not the raw request list, which may include ids
-  // that no longer exist).
-  const affected = await db.provider.findMany({ where, select: { id: true } });
-  const { count } = await db.provider.updateMany({
+
+  if (parsed.data.suspended) {
+    // Suspend: an admin-owned suspension on every matched row. Capture the ids
+    // actually matched before the write so the audit trail records real targets
+    // (not the raw request list, which may include ids that no longer exist).
+    const affected = await db.provider.findMany({ where, select: { id: true } });
+    const { count } = await db.provider.updateMany({
+      where,
+      // adminSuspended mirrors suspended for the same reason as the
+      // single-provider PATCH above (#550).
+      data: { suspended: true, adminSuspended: true },
+    });
+    await Promise.all(affected.map((p) => logAudit(c, "suspend", "PROVIDER", p.id)));
+    // Search-index sync per affected row (bounded ≤200): suspend deletes the
+    // documents. Best-effort (RFC §4.2).
+    for (const p of affected) void syncProviderIndex(p.id);
+    return c.json({ ok: true, count });
+  }
+
+  // Unsuspend: only genuine ADMIN suspensions (`adminSuspended=true`) may be
+  // relisted (#644). Owner-deactivated rows (`adminSuspended=false`) are left
+  // hidden — the owner alone re-lists those — and reported back as `skipped`
+  // so the caller knows they weren't lifted.
+  const matched = await db.provider.findMany({
     where,
-    // adminSuspended mirrors suspended here for the same reason as the
-    // single-provider PATCH above (#550).
-    data: { suspended: parsed.data.suspended, adminSuspended: parsed.data.suspended },
+    select: { id: true, adminSuspended: true },
   });
-  // Audit trail (#227): one entry per affected provider, mirroring the
-  // single-provider PATCH above so bulk actions leave the same trail.
-  const action = parsed.data.suspended ? "suspend" : "unsuspend";
-  await Promise.all(affected.map((p) => logAudit(c, action, "PROVIDER", p.id)));
-  // Search-index sync per affected row (bounded ≤200): bulk suspend deletes
-  // the documents, bulk unsuspend re-pushes them. Best-effort (RFC §4.2).
-  for (const p of affected) void syncProviderIndex(p.id);
-  return c.json({ ok: true, count });
+  const eligible = matched.filter((p) => p.adminSuspended);
+  const skipped = matched.length - eligible.length;
+  if (eligible.length === 0) {
+    return c.json(
+      {
+        error:
+          "None of the selected profiles were suspended by an admin; owner-deactivated profiles can only be relisted by their owner",
+        count: 0,
+        skipped,
+      },
+      409
+    );
+  }
+  const eligibleIds = eligible.map((p) => p.id);
+  const { count } = await db.provider.updateMany({
+    where: { id: { in: eligibleIds } },
+    data: { suspended: false, adminSuspended: false },
+  });
+  await Promise.all(eligible.map((p) => logAudit(c, "unsuspend", "PROVIDER", p.id)));
+  // Search-index sync per relisted row (bounded ≤200): unsuspend re-pushes the
+  // document. Best-effort (RFC §4.2).
+  for (const p of eligible) void syncProviderIndex(p.id);
+  return c.json({ ok: true, count, skipped });
 });
 
 const verificationActionSchema = z.object({
@@ -333,6 +384,15 @@ adminRoutes.patch("/api/admin/verifications/:id", async (c) => {
   const parsed = verificationActionSchema.safeParse(body);
   if (!parsed.success) {
     return c.json({ error: "Invalid action" }, 400);
+  }
+
+  // Only a still-PENDING submission can be decided (#647), matching the bulk
+  // variant's `verificationStatus: "PENDING"` where-clause. Without this a
+  // stale client (or a double-click racing another admin) could re-flip an
+  // already-actioned row — re-verifying a since-rejected provider, or wiping a
+  // verified badge back to REJECTED — and re-fire the owner notification.
+  if (provider.verificationStatus !== "PENDING") {
+    return c.json({ error: "This verification is no longer pending" }, 409);
   }
 
   const approved = parsed.data.action === "approve";
@@ -866,93 +926,112 @@ adminRoutes.patch("/api/admin/reports", async (c) => {
 // ---------------------------------------------------------------------------
 const FLAG_QUALITY_BELOW = 40;
 const FLAG_OPEN_USER_REPORTS_AT = 3;
+// Page size for the roster sweep (#639): the run walks providers in id-ordered
+// pages rather than loading the whole non-suspended set into memory at once.
+const FLAG_PAGE_SIZE = 500;
 
 adminRoutes.post("/api/admin/flagging/run", async (c) => {
   if (!isFullAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
-  const providers = await db.provider.findMany({
-    where: { suspended: false },
-    select: { id: true },
-  });
-  if (providers.length === 0) {
-    return c.json({ flagged: 0 });
-  }
+  // Cursor-paginated sweep (#639): each page is scored independently — its own
+  // grouped report counts + ratings fetch scoped to just that page's ids — and
+  // flagged in one createMany, so peak memory is bounded by FLAG_PAGE_SIZE
+  // instead of the roster size. The id cursor reuses the export walk's pattern.
+  let cursor: string | undefined;
+  let flaggedTotal = 0;
 
-  const providerIds = providers.map((p) => p.id);
-
-  // Open USER-report counts per provider, providers already carrying an OPEN
-  // SYSTEM flag (dedupe set), and rating/reviewCount — all as grouped/batched
-  // queries rather than one-per-provider.
-  const [userReportGroups, systemFlagGroups, ratingsResult] = await Promise.all([
-    db.report.groupBy({
-      by: ["targetId"],
-      where: {
-        targetType: "PROVIDER",
-        targetId: { in: providerIds },
-        status: "OPEN",
-        source: "USER",
-      },
-      _count: { _all: true },
-    }),
-    db.report.groupBy({
-      by: ["targetId"],
-      where: {
-        targetType: "PROVIDER",
-        targetId: { in: providerIds },
-        status: "OPEN",
-        source: "SYSTEM",
-      },
-      _count: { _all: true },
-    }),
-    fetchRatingsResult(providerIds),
-  ]);
-
-  const openUserReportsById = new Map(
-    userReportGroups.map((g) => [g.targetId, g._count._all])
-  );
-  const alreadyFlagged = new Set(systemFlagGroups.map((g) => g.targetId));
-
-  // The quality-score signal is only trustworthy when ratings hydrated fully.
-  // On a review-service outage `fetchRatings` degrades to "no reviews" for every
-  // provider, which is indistinguishable from a genuine zero-review provider —
-  // acting on it would flag healthy providers with bogus SYSTEM reports (#366).
-  // So when the ratings fetch was incomplete, drop the quality trigger for this
-  // run and flag on report volume alone (which needs no peer).
-  const { ok: ratingsOk, ratings } = ratingsResult;
-
-  const toFlag = providers.filter((p) => {
-    if (alreadyFlagged.has(p.id)) return false;
-    const openUserReportCount = openUserReportsById.get(p.id) ?? 0;
-    if (openUserReportCount >= FLAG_OPEN_USER_REPORTS_AT) return true;
-    if (!ratingsOk) return false;
-    const { qualityScore } = computeQualityScore({
-      rating: ratings[p.id]?.rating ?? 0,
-      reviewCount: ratings[p.id]?.count ?? 0,
-      openReportCount: openUserReportCount,
+  for (;;) {
+    const providers = await db.provider.findMany({
+      where: { suspended: false },
+      select: { id: true },
+      orderBy: { id: "asc" },
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      take: FLAG_PAGE_SIZE,
     });
-    return qualityScore < FLAG_QUALITY_BELOW;
-  });
+    if (providers.length === 0) break;
 
-  if (toFlag.length === 0) {
-    return c.json({ flagged: 0 });
+    const providerIds = providers.map((p) => p.id);
+
+    // Open USER-report counts per provider, providers already carrying an OPEN
+    // SYSTEM flag (dedupe set), and rating/reviewCount — all as grouped/batched
+    // queries scoped to this page rather than one-per-provider.
+    const [userReportGroups, systemFlagGroups, ratingsResult] = await Promise.all([
+      db.report.groupBy({
+        by: ["targetId"],
+        where: {
+          targetType: "PROVIDER",
+          targetId: { in: providerIds },
+          status: "OPEN",
+          source: "USER",
+        },
+        _count: { _all: true },
+      }),
+      db.report.groupBy({
+        by: ["targetId"],
+        where: {
+          targetType: "PROVIDER",
+          targetId: { in: providerIds },
+          status: "OPEN",
+          source: "SYSTEM",
+        },
+        _count: { _all: true },
+      }),
+      fetchRatingsResult(providerIds),
+    ]);
+
+    const openUserReportsById = new Map(
+      userReportGroups.map((g) => [g.targetId, g._count._all])
+    );
+    const alreadyFlagged = new Set(systemFlagGroups.map((g) => g.targetId));
+
+    // The quality-score signal is only trustworthy when ratings hydrated fully.
+    // On a review-service outage `fetchRatings` degrades to "no reviews" for every
+    // provider, which is indistinguishable from a genuine zero-review provider —
+    // acting on it would flag healthy providers with bogus SYSTEM reports (#366).
+    // So when the ratings fetch was incomplete, drop the quality trigger for this
+    // run and flag on report volume alone (which needs no peer).
+    const { ok: ratingsOk, ratings } = ratingsResult;
+
+    const toFlag = providers.filter((p) => {
+      if (alreadyFlagged.has(p.id)) return false;
+      const openUserReportCount = openUserReportsById.get(p.id) ?? 0;
+      if (openUserReportCount >= FLAG_OPEN_USER_REPORTS_AT) return true;
+      if (!ratingsOk) return false;
+      const { qualityScore } = computeQualityScore({
+        rating: ratings[p.id]?.rating ?? 0,
+        reviewCount: ratings[p.id]?.count ?? 0,
+        openReportCount: openUserReportCount,
+      });
+      return qualityScore < FLAG_QUALITY_BELOW;
+    });
+
+    if (toFlag.length > 0) {
+      await db.report.createMany({
+        data: toFlag.map((p) => ({
+          targetType: "PROVIDER",
+          targetId: p.id,
+          reporterId: null,
+          reason: "auto-flag: low quality score / high report volume",
+          status: "OPEN",
+          source: "SYSTEM",
+        })),
+      });
+      flaggedTotal += toFlag.length;
+    }
+
+    if (providers.length < FLAG_PAGE_SIZE) break;
+    cursor = providers[providers.length - 1]!.id;
   }
 
-  await db.report.createMany({
-    data: toFlag.map((p) => ({
-      targetType: "PROVIDER",
-      targetId: p.id,
-      reporterId: null,
-      reason: "auto-flag: low quality score / high report volume",
-      status: "OPEN",
-      source: "SYSTEM",
-    })),
-  });
+  // Only a run that actually flagged something leaves an audit entry (a no-op
+  // sweep is noise), matching the original single-shot behavior.
+  if (flaggedTotal > 0) {
+    await logAudit(c, "run-flagging", "PROVIDER", "batch", `flagged ${flaggedTotal}`);
+  }
 
-  await logAudit(c, "run-flagging", "PROVIDER", "batch", `flagged ${toFlag.length}`);
-
-  return c.json({ flagged: toFlag.length });
+  return c.json({ flagged: flaggedTotal });
 });
 
 // ---------------------------------------------------------------------------

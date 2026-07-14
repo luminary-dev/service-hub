@@ -64,15 +64,14 @@ export async function getProviderIdByUser(
   }
 }
 
-// Account-deletion resolver (#360): the user's provider id, needed by the job
-// erase to delete their JobResponses (PII, keyed by provider id — only this
-// orchestrator can resolve it). Unlike getProviderIdByUser above, this is a
-// WRITE-path gate and must NOT degrade to null on failure: a `res.ok` body with
-// `provider: null` legitimately means "no provider profile", but any non-ok
-// status or transport error throws so delete-account returns 502 and deletes
-// nothing, rather than silently proceeding to erase the User while leaving the
-// provider's job responses (PII) behind.
-export async function resolveProviderIdForErase(
+// Fail-loud provider-id resolver. Same lookup as getProviderIdByUser above, but
+// a WRITE-path gate: it must NOT degrade to null on failure. A `res.ok` body
+// with `provider: null` legitimately means "no provider profile", but any
+// non-ok status or transport error throws so the caller can abort (502) rather
+// than act on a false null. Used wherever a null result drives a branch that
+// would be wrong under a transient blip (delete-account erase #360,
+// complete-provider create-vs-reactivate #643).
+export async function resolveProviderIdByUser(
   userId: string
 ): Promise<string | null> {
   const res = await s2s(
@@ -86,11 +85,26 @@ export async function resolveProviderIdForErase(
   return data.provider?.id ?? null;
 }
 
+// Account-deletion resolver (#360): the user's provider id, needed by the job
+// erase to delete their JobResponses (PII, keyed by provider id — only this
+// orchestrator can resolve it). Thin fail-loud alias so delete-account returns
+// 502 and deletes nothing on a lookup failure, rather than silently proceeding
+// to erase the User while leaving the provider's job responses (PII) behind.
+export async function resolveProviderIdForErase(
+  userId: string
+): Promise<string | null> {
+  return resolveProviderIdByUser(userId);
+}
+
 // Existence check for favorites. The summary endpoint always answers 200 with
 // `{ provider: null }` for an unknown id, so existence is decided by the body,
 // not the status. Any non-ok status is an upstream failure and must throw so
 // the caller returns 502 (writes fail loudly) rather than a misleading 404 that
 // silently drops the favorite when provider-service is merely degraded.
+//
+// A suspended profile counts as NOT found (#646): it is hidden from every
+// public surface, so favoriting it must 404 exactly like a missing id per the
+// #361 contract, not silently succeed against an invisible provider.
 export async function providerExists(providerId: string): Promise<boolean> {
   const res = await s2s(
     PROVIDER_SERVICE_URL,
@@ -99,8 +113,10 @@ export async function providerExists(providerId: string): Promise<boolean> {
   if (!res.ok) {
     throw new Error(`provider summary lookup failed: ${res.status}`);
   }
-  const data = (await res.json()) as { provider: { id: string } | null };
-  return data.provider !== null;
+  const data = (await res.json()) as {
+    provider: { id: string; suspended: boolean } | null;
+  };
+  return data.provider !== null && !data.provider.suspended;
 }
 
 // Self-service downgrade (#403): hide the caller's provider profile from public
