@@ -13,17 +13,19 @@ vi.mock("../lib/http", async (importActual) => {
 // outcome before (or instead of) any write. `$transaction` runs the callback
 // against a stub tx so the happy path can complete without Postgres. Defined
 // via vi.hoisted so the (hoisted) vi.mock factory below can reference them.
-const { upsert, createMany, reportFindFirst, reportCreate, reportUpdate } = vi.hoisted(
-  () => ({
+const { upsert, createMany, reviewFindUnique, reportFindFirst, reportCreate, reportUpdate } =
+  vi.hoisted(() => ({
     upsert: vi.fn(async (_args: unknown) => ({ id: "rev_1" })),
     createMany: vi.fn(async (_args: unknown) => ({ count: 0 })),
+    // First-publish check for the NEW_REVIEW notification (#L6): null = no
+    // existing review, so a first publish notifies; a row = an edit, silent.
+    reviewFindUnique: vi.fn(async (_args: unknown): Promise<unknown> => null),
     // Content filter (#375): the auto-report path checks for an existing OPEN
     // SYSTEM report before filing one. Default: none exists.
     reportFindFirst: vi.fn(async (_args: unknown): Promise<unknown> => null),
     reportCreate: vi.fn(async (_args: unknown) => ({ id: "rep_1" })),
     reportUpdate: vi.fn(async (_args: unknown) => ({ id: "rep_1" })),
-  })
-);
+  }));
 // Search-index rating pushes (search RFC) are fired (not awaited) from the
 // review write/moderation paths.
 vi.mock("../lib/search-index", () => ({
@@ -33,7 +35,7 @@ vi.mock("../db", () => ({
   db: {
     $transaction: (fn: (tx: unknown) => unknown) =>
       fn({ review: { upsert }, reviewPhoto: { createMany } }),
-    review: { upsert, findUnique: vi.fn() },
+    review: { upsert, findUnique: reviewFindUnique },
     reviewPhoto: { createMany },
     report: { findFirst: reportFindFirst, create: reportCreate, update: reportUpdate },
   },
@@ -107,6 +109,7 @@ beforeEach(() => {
   s2sMock.mockReset();
   upsert.mockClear();
   createMany.mockClear();
+  reviewFindUnique.mockClear();
   reportFindFirst.mockClear();
   reportCreate.mockClear();
   reportUpdate.mockClear();
@@ -182,6 +185,17 @@ describe("POST /api/providers/:id/reviews — interaction gate (#25)", () => {
     wireS2s({ interaction: "none" });
     const res = await postReview();
     expect(res.status).toBe(403);
+    expect(emitNotification).not.toHaveBeenCalled();
+  });
+
+  // #L6: editing an existing review must not re-ping the provider on every
+  // save — only the first publish notifies (mirrors the response route).
+  it("does NOT re-emit NEW_REVIEW when the review already existed (edit)", async () => {
+    wireS2s({ interaction: "exists" });
+    reviewFindUnique.mockResolvedValueOnce({ id: "rev_1" });
+    const res = await postReview();
+    expect(res.status).toBe(200);
+    expect(upsert).toHaveBeenCalledTimes(1);
     expect(emitNotification).not.toHaveBeenCalled();
   });
 });

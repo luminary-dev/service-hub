@@ -136,8 +136,9 @@
   no row = both `emailEnabled`/`inAppEnabled` on). The transactional auth
   emails (verify, password-reset, change-email, account-exists,
   email-change-attempt) are deliberately NOT in the enum and can never be
-  muted. Retention is opportunistic: each ingestion sweeps the recipient's
-  READ rows older than 90 days beyond their newest 200 (no cron). The service
+  muted. Retention is opportunistic: each ingestion sweeps the recipients'
+  READ rows older than 90 days beyond their newest 200 (no cron) in a single
+  batched window-function delete for the whole recipient set (#637). The service
   also owns the en/si email templates ported from `src/lib/email.ts` and the
   Redis-backed email delivery queue (`notify:email` / `notify:processing`,
   BRPOPLPUSH worker with a processing-list reclaim sweep, 3 attempts at
