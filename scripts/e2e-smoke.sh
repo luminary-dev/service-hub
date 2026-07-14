@@ -19,7 +19,7 @@ PASS=0
 FAIL=0
 
 echo "== Reseeding databases =="
-for s in identity-service provider-service review-service job-service; do
+for s in identity-service provider-service review-service job-service notification-service; do
   (cd "services/$s" && npm run --silent db:seed >/dev/null) || echo "warn: reseed $s failed"
 done
 

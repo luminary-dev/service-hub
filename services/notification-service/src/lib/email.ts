@@ -276,6 +276,120 @@ export function newProviderMatchEmail(
   };
 }
 
+// Thread-reply notification (#393, RFC stateful-notification-service): sent to
+// the OTHER party of an inquiry thread when a new message lands. `senderName`
+// is user-controlled and escaped for the body; the subject is a plain-text
+// header so the raw value is used there (same convention as inquiryEmail).
+export function threadReplyEmail(
+  url: string,
+  senderName: string,
+  locale: Locale = "en"
+) {
+  const si = locale === "si";
+  const name = escapeHtml(senderName);
+  return {
+    subject: si
+      ? `${senderName} ගෙන් නව පණිවිඩයක්`
+      : `New message from ${senderName}`,
+    html: layout(
+      si ? "ඔබට නව පණිවිඩයක්" : "You have a new message",
+      si
+        ? `${name} ඔබේ Baas.lk විමසීම් සංවාදයට නව පණිවිඩයක් එවා ඇත. එය කියවා පිළිතුරු දීමට පිවිසෙන්න.`
+        : `${name} sent a new message in your inquiry conversation on Baas.lk. Log in to read and reply.`,
+      si ? "පණිවිඩය බලන්න" : "View message",
+      url
+    ),
+  };
+}
+
+// New-review notification (#393): sent to the reviewed profile's owner when a
+// review is published. `reviewerName` is user-controlled and escaped for the
+// body; `rating` is validated 1–5 upstream.
+export function newReviewEmail(
+  url: string,
+  reviewerName: string,
+  rating: number,
+  locale: Locale = "en"
+) {
+  const si = locale === "si";
+  const name = escapeHtml(reviewerName);
+  return {
+    subject: si
+      ? `${reviewerName} ඔබේ පැතිකඩට සමාලෝචනයක් තැබීය`
+      : `${reviewerName} left a review on your profile`,
+    html: layout(
+      si ? "ඔබට නව සමාලෝචනයක්" : "You have a new review",
+      si
+        ? `${name} ඔබේ Baas.lk පැතිකඩට තරු ${rating}ක සමාලෝචනයක් තැබීය. එය කියවා ප්‍රසිද්ධ පිළිතුරක් පළ කිරීමට පිවිසෙන්න.`
+        : `${name} left a ${rating}-star review on your Baas.lk profile. Log in to read it and post a public reply.`,
+      si ? "සමාලෝචනය බලන්න" : "View review",
+      url
+    ),
+  };
+}
+
+// Review-response notification (RFC): sent to a review's author when the
+// reviewed provider posts a public reply. `providerName` is user-controlled
+// and escaped for the body.
+export function reviewResponseEmail(
+  url: string,
+  providerName: string,
+  locale: Locale = "en"
+) {
+  const si = locale === "si";
+  const name = escapeHtml(providerName);
+  return {
+    subject: si
+      ? `${providerName} ඔබේ සමාලෝචනයට පිළිතුරු දුන්නා`
+      : `${providerName} replied to your review`,
+    html: layout(
+      si ? "ඔබේ සමාලෝචනයට පිළිතුරක්" : "A reply to your review",
+      si
+        ? `${name} ඔබ Baas.lk හි තැබූ සමාලෝචනයට ප්‍රසිද්ධ පිළිතුරක් පළ කර ඇත. ඔවුන් පැවසූ දේ බලන්න.`
+        : `${name} posted a public reply to the review you left on Baas.lk. Take a look at what they said.`,
+      si ? "පිළිතුර බලන්න" : "View reply",
+      url
+    ),
+  };
+}
+
+// Verification decision notifications (#393): static bilingual bodies, no
+// user-controlled values (the rejection reason is shown in-app, not embedded
+// in the email).
+export function verificationApprovedEmail(url: string, locale: Locale = "en") {
+  const si = locale === "si";
+  return {
+    subject: si
+      ? "ඔබේ Baas.lk තහවුරු කිරීම අනුමත විය"
+      : "Your Baas.lk verification was approved",
+    html: layout(
+      si ? "ඔබ තහවුරු වී ඇත" : "You're verified",
+      si
+        ? "ඔබේ තහවුරු කිරීමේ ලේඛන අනුමත විය — ඔබේ පැතිකඩෙහි දැන් තහවුරු කළ ලාංඡනය පෙන්වයි. එය ඔබේ සේවාවන් කෙරෙහි ගනුදෙනුකරුවන්ගේ විශ්වාසය වැඩි කරයි."
+        : "Your verification documents were approved — your profile now shows the verified badge, which helps customers trust your services.",
+      si ? "ඔබේ පැතිකඩ බලන්න" : "View your profile",
+      url
+    ),
+  };
+}
+
+export function verificationRejectedEmail(url: string, locale: Locale = "en") {
+  const si = locale === "si";
+  return {
+    subject: si
+      ? "ඔබේ Baas.lk තහවුරු කිරීම අනුමත නොවීය"
+      : "Your Baas.lk verification was not approved",
+    html: layout(
+      si ? "තහවුරු කිරීම අනුමත නොවීය" : "Verification not approved",
+      si
+        ? "මෙවර ඔබේ තහවුරු කිරීමේ ලේඛන අනුමත කළ නොහැකි විය. හේතුව බලා නැවත ඉදිරිපත් කිරීමට ඔබේ උපකරණ පුවරුවට පිවිසෙන්න."
+        : "We couldn't approve your verification documents this time. Log in to your dashboard to see the reason and resubmit.",
+      si ? "උපකරණ පුවරුවට යන්න" : "Go to dashboard",
+      url
+    ),
+  };
+}
+
 export function jobResponseEmail(
   url: string,
   providerName: string,

@@ -5,7 +5,8 @@
 # scripts never re-run, so this script converges a live cluster to the same
 # state postgres-init.sh gives a fresh one:
 #
-#   - one LOGIN role per service (identity / provider / review / job);
+#   - one LOGIN role per service (identity / provider / review / job /
+#     notification);
 #   - each role owns its own database and every object in it (tables,
 #     sequences, views, enum types — all that Prisma migrations create);
 #   - CONNECT revoked from PUBLIC, granted only to the owning role.
@@ -17,8 +18,13 @@
 # That makes the rollout order safe: run this against the RUNNING old stack
 # first, then deploy the compose change that switches the DATABASE_URLs.
 #
-#   IDENTITY_DB_PASSWORD=… PROVIDER_DB_PASSWORD=… \
-#   REVIEW_DB_PASSWORD=… JOB_DB_PASSWORD=… ./deploy/migrate-db-roles.sh
+#   IDENTITY_DB_PASSWORD=… PROVIDER_DB_PASSWORD=… REVIEW_DB_PASSWORD=… \
+#   JOB_DB_PASSWORD=… NOTIFICATION_DB_PASSWORD=… ./deploy/migrate-db-roles.sh
+#
+# notification_db (RFC stateful-notification-service) may not exist yet on a
+# cluster that predates the stateful notification-service — it is created here
+# (idempotently) before its role/ownership migration, so this script remains
+# the single live-prod pre-step for the release that ships the service.
 #
 # Passwords are read from this shell's environment first (use the exact values
 # set as GitHub secrets; they land in DATABASE_URLs, so generate them URL-safe:
@@ -55,6 +61,8 @@ migrate() {
 SELECT format('CREATE ROLE %I LOGIN', :'role')
   WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'role') \gexec
 ALTER ROLE :"role" LOGIN PASSWORD :'password';
+SELECT format('CREATE DATABASE %I OWNER %I', :'db', :'role')
+  WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'db') \gexec
 ALTER DATABASE :"db" OWNER TO :"role";
 REVOKE CONNECT ON DATABASE :"db" FROM PUBLIC;
 GRANT CONNECT ON DATABASE :"db" TO :"role";
@@ -82,6 +90,7 @@ migrate identity identity_db "${IDENTITY_DB_PASSWORD:-}"
 migrate provider provider_db "${PROVIDER_DB_PASSWORD:-}"
 migrate review review_db "${REVIEW_DB_PASSWORD:-}"
 migrate job job_db "${JOB_DB_PASSWORD:-}"
+migrate notification notification_db "${NOTIFICATION_DB_PASSWORD:-}"
 
 echo "Done. Each service database is now owned by its own least-privilege role."
 echo "The superuser URLs keep working, so deploy the #387 compose change whenever ready."

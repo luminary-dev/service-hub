@@ -94,6 +94,7 @@ services:
       PROVIDER_DB_PASSWORD: ${PROVIDER_DB_PASSWORD:?PROVIDER_DB_PASSWORD is required}
       REVIEW_DB_PASSWORD: ${REVIEW_DB_PASSWORD:?REVIEW_DB_PASSWORD is required}
       JOB_DB_PASSWORD: ${JOB_DB_PASSWORD:?JOB_DB_PASSWORD is required}
+      NOTIFICATION_DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD:?NOTIFICATION_DB_PASSWORD is required}
     volumes:
       - pgdata:/var/lib/postgresql/data
       # Least-privilege bootstrap (#387): unlike the dev scripts/init-db.sql
@@ -226,20 +227,32 @@ services:
 
   notification-service:
     image: ghcr.io/luminary-dev/service-hub-notification-service:${IMAGE_TAG:-prod}
-    mem_limit: 256m
+    mem_limit: 384m
     <<: [*restart, *logging, *hardening]
-    # Stateless — sends mail via the Resend API and writes nothing to disk.
-    read_only: true
-    tmpfs:
-      - /tmp
+    # TODO read_only: verify writable paths. Stateful since the RFC
+    # (notification_db): runs `prisma migrate deploy` on boot — same unverified
+    # migration-engine temp behaviour as the other four DB services, so the
+    # rootfs is left writable for now (parity with identity/provider/review/job).
     environment:
       <<: *service-env
       PORT: 4005
+      DATABASE_URL: postgresql://notification:${NOTIFICATION_DB_PASSWORD:?}@postgres:5432/notification_db
+      # Email delivery queue (BRPOPLPUSH + retries, RFC); Redis down → degraded
+      # one-attempt direct sends (in-app rows are written inline either way).
+      # `default` is the ACL user requirepass sets the password for (Redis 6+);
+      # naming it explicitly keeps secret scanners from reading the ${...}
+      # placeholder as a hardcoded ":password@" credential.
+      REDIS_URL: redis://default:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM:-}
     # egress: sends transactional mail via the Resend API.
     networks: [backend, egress]
-    healthcheck: *node-healthcheck
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck: *db-healthcheck
 
   media-service:
     image: ghcr.io/luminary-dev/service-hub-media-service:${IMAGE_TAG:-prod}
