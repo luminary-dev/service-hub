@@ -15,7 +15,7 @@ echo "==> Building + starting a fresh stack…"
 docker compose up -d --build --wait
 
 echo "==> Seeding demo data (SEED_DEMO_DATA=true; prod images refuse otherwise)…"
-for s in identity-service provider-service review-service job-service notification-service; do
+for s in identity-service provider-service review-service job-service notification-service trust-safety-service; do
   docker compose exec -T -e SEED_DEMO_DATA=true "$s" npm run db:seed || echo "warn: seed $s failed"
 done
 
