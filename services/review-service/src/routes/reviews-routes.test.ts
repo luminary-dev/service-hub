@@ -8,6 +8,7 @@
 // abuse-report creation, and the admin review-reports queue with its
 // SUPPORT/ADMIN authorization. Prisma + the media storage helper are mocked and
 // s2s is stubbed per path — no live DB or network.
+import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Keep lib/http real (so requireInternalSecret + getAuth run) but stub s2s.
@@ -627,6 +628,27 @@ describe("POST /api/reviews/:id/report (abuse reports)", () => {
       data: { reason: "fake", details: null },
     });
     expect(dbMock.report.create).not.toHaveBeenCalled();
+  });
+
+  it("treats the unique-constraint race (P2002) as idempotent success", async () => {
+    // Both concurrent requests miss the findFirst dedupe, both try to create;
+    // the partial unique index (#651) rejects the loser with P2002, which the
+    // handler swallows into the same 200 rather than a 500.
+    dbMock.review.findUnique.mockResolvedValue({ id: "rev1", deletedAt: null });
+    dbMock.report.findFirst.mockResolvedValue(null);
+    dbMock.report.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("unique", {
+        code: "P2002",
+        clientVersion: "7",
+      })
+    );
+    const res = await req(
+      "/api/reviews/rev1/report",
+      { method: "POST", body: JSON.stringify({ reason: "fake" }) },
+      { "x-user-id": REVIEWER_ID }
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
   });
 });
 

@@ -13,11 +13,14 @@ model Review {
   id         String   @id @default(cuid())
   providerId String
   userId     String
+  // 1–5, enforced by the DB CHECK `Review_rating_check` (#649, hand-written —
+  // Prisma doesn't model CHECKs) as well as the API-edge validator.
   rating     Int
   // Optional per-dimension sub-ratings (#528): each 1–5 when the reviewer set
   // it, null when left blank. The overall `rating` above stays AUTHORITATIVE
   // for ranking/sorting — these only feed the profile's rating breakdown and
-  // are averaged over their non-null values in the ratings summary.
+  // are averaged over their non-null values in the ratings summary. Each is
+  // guarded by a `<dim> IS NULL OR <dim> BETWEEN 1 AND 5` CHECK (#649).
   quality       Int?
   punctuality   Int?
   value         Int?
@@ -86,6 +89,12 @@ model Report {
   @@index([targetType, targetId])
   // Report queue orders newest-first (#369).
   @@index([createdAt])
+  // #651: a PARTIAL unique index `Report_open_reporter_key` on
+  // ("targetType","targetId","reporterId") WHERE status='OPEN' AND
+  // reporterId IS NOT NULL enforces one OPEN report per (target, reporter).
+  // Prisma's DSL can't express a filtered unique index, so it lives only in the
+  // hand-written migration (20260714141000_report_open_dedup); the create
+  // handler catches the P2002 as idempotent success.
 }
 
 // Provider's public reply to a review (#395): at most one per review

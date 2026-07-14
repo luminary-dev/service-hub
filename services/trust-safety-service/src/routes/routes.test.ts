@@ -6,6 +6,7 @@
 // Prisma is mocked and s2s is stubbed — no live DB or network; the owner
 // /internal/moderation/* endpoints don't exist yet (dark launch), so every
 // S2S interaction is asserted against the RFC-specified contract.
+import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Keep lib/http real (so requireInternalSecret + getAuth + role gates run)
@@ -151,6 +152,27 @@ describe("public report submission", () => {
       data: { reason: "scam", details: null },
     });
     expect(dbMock.report.create).not.toHaveBeenCalled();
+  });
+
+  it("treats the unique-constraint race (P2002) as idempotent success", async () => {
+    // Both concurrent requests miss the findFirst dedupe, both try to create;
+    // the partial unique index (#651) rejects the loser with P2002, which the
+    // handler swallows into the same 200 rather than a 500.
+    s2sMock.mockResolvedValue(json({ exists: true, visible: true }));
+    dbMock.report.findFirst.mockResolvedValue(null);
+    dbMock.report.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("unique", {
+        code: "P2002",
+        clientVersion: "7",
+      })
+    );
+    const res = await req("/api/reviews/rev_1/report", {
+      method: "POST",
+      body: { reason: "scam", details: "" },
+      user: { id: "user_1" },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
   });
 
   it("rejects an invalid payload with 400", async () => {

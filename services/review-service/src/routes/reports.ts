@@ -2,6 +2,7 @@
 // the reports on them (provider profiles and work photos are reported at
 // provider-service). The public endpoint takes an OPTIONAL session: anonymous
 // visitors can report too; the gateway rate-limits it (the "report" budget).
+import { Prisma } from "@prisma/client";
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
@@ -62,15 +63,25 @@ reports.post("/api/reviews/:id/report", async (c) => {
     }
   }
 
-  await db.report.create({
-    data: {
-      targetType: "REVIEW",
-      targetId: id,
-      reporterId: auth?.userId ?? null,
-      reason,
-      details,
-    },
-  });
+  try {
+    await db.report.create({
+      data: {
+        targetType: "REVIEW",
+        targetId: id,
+        reporterId: auth?.userId ?? null,
+        reason,
+        details,
+      },
+    });
+  } catch (e) {
+    // Lost the race with a concurrent report from the same user for the same
+    // review: the partial unique index `Report_open_reporter_key` (#651) fired.
+    // The other request already filed the OPEN report, so this is idempotent
+    // success, not a 500.
+    if (!(e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002")) {
+      throw e;
+    }
+  }
   return c.json({ ok: true });
 });
 
