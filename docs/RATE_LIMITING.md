@@ -200,13 +200,33 @@ bot filter — deliberately **not** a third-party CAPTCHA (see below).
   sent**. An empty/absent field is a normal submission (other clients, e.g. the
   chat agent, simply omit it). The client control only carries the value; the
   gate lives in the service.
-- **Why honeypot over CAPTCHA for v0.1.** A CAPTCHA (e.g. Cloudflare Turnstile)
-  needs an external provider, a site key, and a server-side secret — a separate
-  infrastructure/privacy decision, and the repo is public with runtime secrets
-  kept out of the tree. The honeypot is zero-dependency, zero-config, and has no
-  false positives for real users, so it is the right first line for v0.1.
-  Turnstile remains a future option if abuse escalates, layered on top of (not
-  replacing) the honeypot and the per-IP limit.
+- **Why honeypot over CAPTCHA for the inquiry form.** A CAPTCHA (e.g. Cloudflare
+  Turnstile) needs an external provider, a site key, and a server-side secret — a
+  separate infrastructure/privacy decision, and the repo is public with runtime
+  secrets kept out of the tree. For the anonymous inquiry form the honeypot is
+  zero-dependency, zero-config, and has no false positives for real users, so it
+  stays the first line there. Turnstile is layered **on top of** (not replacing)
+  the honeypot and the per-IP limit where it earns its keep.
+
+## Bot protection on registration (Cloudflare Turnstile, #633)
+
+Registration auto-logs-in a new signup, so its response still differs from the
+one a taken email gets — a residual enumeration oracle the per-IP `authSignup`
+limit (10/hr) only *slows*. `POST /api/auth/register` is therefore gated behind
+**Cloudflare Turnstile**, an actual bot barrier the throttle can't be.
+
+- **Server-side + authoritative.** When `TURNSTILE_SECRET_KEY` is set,
+  `identity-service` verifies the widget token via Cloudflare's siteverify
+  (`identity-service/src/lib/turnstile.ts`) before any account work — a
+  missing/invalid token is a `400`, a siteverify outage a retryable `503` (fail
+  closed). The web signup forms render the widget only when
+  `NEXT_PUBLIC_TURNSTILE_SITE_KEY` is set and include the token in the request.
+- **Optional and graceful.** With the keys unset (dev/local, or a deploy before
+  keys are provisioned) verification is skipped and registration behaves exactly
+  as before — so it ships safely ahead of key provisioning. See
+  [`../SECURITY.md`](../SECURITY.md) for the env vars and [`AUTHZ.md`](AUTHZ.md)
+  for the enumeration model. Login/forgot-password (already uniform-response)
+  could get the same widget later if abuse warrants it.
 - **Timing trap — deliberately skipped.** Rejecting implausibly fast
   submissions was considered but not implemented: the only stateless signal is a
   client-supplied render timestamp, which is both trivially forgeable and prone

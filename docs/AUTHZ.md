@@ -72,6 +72,24 @@ return. (A genuinely new signup still creates the account and returns its
 session, exactly as before — the same "success reveals nothing you didn't
 already cause" property login has.)
 
+**Registration keeps auto-login, so a residual oracle is blunted with bot
+protection (#633).** Because a brand-new signup is auto-logged-in (a `sh_session`
+cookie + a `{ user, providerId }` body) while a taken/duplicate email gets the
+cookie-less `{ ok: true }`, the two responses are *not* byte-identical — a caller
+can still, in principle, tell a fresh email from a taken one. Rather than removing
+the auto-login (a UX regression), we gate the endpoint behind **Cloudflare
+Turnstile** so the oracle cannot be *scripted* at scale on top of the existing
+10/hr/IP throttle. When `TURNSTILE_SECRET_KEY` is set, `POST /api/auth/register`
+requires a valid widget token (verified via Cloudflare's siteverify in
+`identity-service/src/lib/turnstile.ts`) before any account work; a
+missing/invalid token is a `400`, a siteverify outage a retryable `503` (fail
+closed). It **degrades gracefully**: with the secret unset (dev/local, or a
+deploy before keys are provisioned) verification is skipped and registration
+behaves exactly as before. The web signup forms render the widget only when
+`NEXT_PUBLIC_TURNSTILE_SITE_KEY` is set. Login and forgot-password could get the
+same treatment later; they are already uniform-response, so this lands on
+registration first. See [`../SECURITY.md`](../SECURITY.md) for the env config.
+
 The same closure covers the **authenticated** change-email entry point (#503):
 `POST /api/account/email/change` no longer 409s a target address that belongs to
 another account. It returns the same generic `200 { ok: true }` whether or not

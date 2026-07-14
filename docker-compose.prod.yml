@@ -181,7 +181,11 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       FACEBOOK_CLIENT_ID: ${FACEBOOK_CLIENT_ID:-}
       FACEBOOK_CLIENT_SECRET: ${FACEBOOK_CLIENT_SECRET:-}
-    # egress: OAuth code exchange calls Google/Facebook token endpoints.
+      # Registration bot protection (#633) — optional; unset → Turnstile
+      # verification is skipped and registration behaves as before.
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
+    # egress: OAuth code exchange calls Google/Facebook token endpoints, and
+    # Turnstile siteverify (challenges.cloudflare.com) when enabled.
     networks: [backend, egress]
     depends_on:
       postgres:
@@ -417,6 +421,9 @@ services:
       GATEWAY_URL: http://api-gateway:4000
       AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required}
       NEXT_PUBLIC_SITE_URL: ${WEB_ORIGIN:?WEB_ORIGIN is required}
+      # Registration bot protection (#633) — optional public site key, read at
+      # request time and passed to the signup forms; unset → no widget rendered.
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
       CHAT_SERVICE_URL: http://chat-service:4007
       INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:?INTERNAL_API_SECRET is required}
       # Session-revocation check for page gating (src/lib/session-version.ts) —

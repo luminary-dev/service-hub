@@ -65,6 +65,9 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       FACEBOOK_CLIENT_ID: ${FACEBOOK_CLIENT_ID:-}
       FACEBOOK_CLIENT_SECRET: ${FACEBOOK_CLIENT_SECRET:-}
+      # Registration bot protection (#633) — optional; unset → verification is
+      # skipped (registration behaves as before).
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
     ports:
       - "127.0.0.1:4001:4001"
     depends_on:
@@ -255,6 +258,9 @@ services:
       GATEWAY_URL: http://api-gateway:4000
       AUTH_SECRET: ${AUTH_SECRET:-dev-only-secret}
       NEXT_PUBLIC_SITE_URL: ${WEB_ORIGIN:-http://localhost:3000}
+      # Registration bot protection (#633) — optional public site key; unset →
+      # the signup forms render no widget.
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
       # The web app proxies /agent/chat to chat-service (which holds the LLM
       # key); it needs the URL + internal secret to reach that internal service.
       CHAT_SERVICE_URL: http://chat-service:4007

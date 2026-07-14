@@ -1096,6 +1096,12 @@ const en = {
     offering: "Offering services instead?",
     joinPro: "Join as a professional",
   },
+  // Bot-protection widget on the signup forms (#633). Only shown when a
+  // Turnstile site key is configured; otherwise the forms submit as before.
+  turnstile: {
+    label: "Verify you're human",
+    required: "Please complete the verification to continue.",
+  },
   footer: {
     tagline:
       "Connecting Sri Lankan homes and businesses with trusted local professionals.",
@@ -2430,6 +2436,10 @@ const si: Dict = {
     failed: "ලියාපදිංචිය අසාර්ථකයි. නැවත උත්සාහ කරන්න.",
     offering: "සේවා සපයන්නෙක්ද?",
     joinPro: "වෘත්තිකයෙක් ලෙස එක්වන්න",
+  },
+  turnstile: {
+    label: "ඔබ මිනිසෙක් බව තහවුරු කරන්න",
+    required: "ඉදිරියට යාමට කරුණාකර තහවුරු කිරීම සම්පූර්ණ කරන්න.",
   },
   footer: {
     tagline:
