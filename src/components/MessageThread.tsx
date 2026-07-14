@@ -41,6 +41,11 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
   const [sendError, setSendError] = useState(false);
   const lastSeenRef = useRef<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const logRef = useRef<HTMLDivElement>(null);
+  // Whether the user is parked near the bottom of the log. Starts true so the
+  // first load scrolls to the latest; a poll only auto-scrolls if the user
+  // hasn't scrolled up to read history (#661).
+  const nearBottomRef = useRef(true);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     const after = lastSeenRef.current;
@@ -82,16 +87,36 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
     // on an unmounted thread (#377).
     const controller = new AbortController();
     load(controller.signal);
-    const timer = setInterval(() => load(controller.signal), POLL_MS);
+    // Only poll while the tab is visible, and refetch on focus, so a
+    // backgrounded thread stops hitting the network (mirrors NotificationBell,
+    // #661).
+    const onFocus = () => load(controller.signal);
+    window.addEventListener("focus", onFocus);
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") load(controller.signal);
+    }, POLL_MS);
     return () => {
       clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
       controller.abort();
     };
   }, [load]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: "end" });
+    // Don't yank a reader who has scrolled up to review history back down on
+    // every poll — only follow new messages when they're already at the
+    // bottom (#661).
+    if (nearBottomRef.current) {
+      bottomRef.current?.scrollIntoView({ block: "end" });
+    }
   }, [thread?.messages.length]);
+
+  function onLogScroll() {
+    const el = logRef.current;
+    if (!el) return;
+    nearBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
@@ -154,6 +179,8 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
       </div>
 
       <div
+        ref={logRef}
+        onScroll={onLogScroll}
         role="log"
         aria-label={t.messages.threadWith(counterpart)}
         className="flex-1 space-y-3 overflow-y-auto px-5 py-4"

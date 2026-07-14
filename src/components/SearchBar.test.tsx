@@ -55,4 +55,17 @@ describe("SearchBar", () => {
 
     expect(push).toHaveBeenCalledWith("/providers?");
   });
+
+  it("renders admin-managed categories passed as a prop (#659)", () => {
+    render(
+      <SearchBar
+        categories={[
+          { slug: "welding", labelEn: "Welding", labelSi: "වෑල්ඩින්", icon: null },
+        ]}
+      />
+    );
+    // A managed category outside the static seed list shows up in the select.
+    const option = screen.getByRole("option", { name: "Welding" });
+    expect((option as HTMLOptionElement).value).toBe("welding");
+  });
 });

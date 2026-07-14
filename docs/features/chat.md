@@ -39,6 +39,10 @@ inquiry, which the customer then sends themselves, in English or Sinhala.
   treats tool-result data as untrusted (it can never send an inquiry — only the
   user's tap on the card does). It won't negotiate prices or bookings, keeps
   replies short, and answers in Sinhala when the locale is `si`.
+- **Where it mounts.** The floating widget is a customer-facing concierge, so
+  the root layout renders it only for **signed-out visitors and `CUSTOMER`
+  sessions** — `PROVIDER`, `ADMIN`, and `SUPPORT` sessions never see it, since
+  it has no purpose in the provider dashboard or the admin console (#662).
 - **Session-gated & rate-limited.** The web proxy requires a signed-in session
   (401 otherwise) and enforces a per-user sliding window of **15 requests / 60 s**
   (429 on exceed). The widget handles the 401 for signed-out visitors by showing
