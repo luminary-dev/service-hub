@@ -38,7 +38,7 @@ using the shared `s2s()` helper (one bounded retry on idempotent GETs).
 | `GET /internal/providers/export?cursor=&take=` | Reindex export for search-service's sweep (search RFC §4.2): every **non-suspended** provider as a full index document (the exact shape the push path PUTs), id-cursor paginated (`take` default 100, max 500) → `{ providers, nextCursor }`. No contact PII beyond the display name. |
 | `GET /internal/inquiries/exists?providerId=&userId=` | Review gate — has this user inquired with this provider? → `{ exists }`. |
 | `GET /internal/providers/:id/summary` | Existence/suspended check (favorites, reviews) — always 200 → `{ provider: { id, userId, suspended, contactEmail } \| null }` (`contactEmail` lets review-service address the owner's `NEW_REVIEW` notification). |
-| `POST /internal/users/:id/erase` | Account-deletion fan-out: delete the user's provider + files + sent inquiries. Idempotent. |
+| `POST /internal/users/:id/erase` | Account-deletion fan-out: hard-delete the user's provider row + owned children (services/photos/docs) + files + search-index doc, and delete the inquiries this user *sent*. Inquiries the provider *received* are the customers' data — the `Inquiry → Provider` FK is `ON DELETE SET NULL` (#650), so deleting the provider detaches them (`providerId → null`, thread preserved) instead of cascade-deleting the customer's history. Idempotent. |
 | `POST /internal/maintenance/sweep-orphans` | Remove stored files no row references, in the `provider` **and** `category` namespaces (#555, ops tooling). Media tables are walked in id/slug-ordered pages, not loaded whole (#639). |
 
 ### review-service

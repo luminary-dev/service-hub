@@ -644,6 +644,32 @@ describe("POST /internal/users/:id/erase", () => {
     expect(res.status).toBe(200);
     expect(storageMock.removeStoredFile).not.toHaveBeenCalled();
   });
+
+  it("preserves the customers' received inquiries — only purges the ones this user sent (#650)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({
+      id: "prov1",
+      avatarUrl: null,
+      coverPhoto: null,
+      photos: [],
+      verificationDocs: [],
+    });
+    dbMock.provider.delete.mockResolvedValue({ id: "prov1" });
+    dbMock.inquiry.deleteMany.mockResolvedValue({ count: 0 });
+
+    const res = await post("/internal/users/owner-1/erase");
+    expect(res.status).toBe(200);
+    // The provider row is deleted (its PII goes); the DB's ON DELETE SET NULL FK
+    // detaches the inquiries it RECEIVED — the handler never deletes by
+    // providerId. The only inquiry delete is scoped to the inquiries this user
+    // SENT (their own data).
+    expect(dbMock.inquiry.deleteMany).toHaveBeenCalledTimes(1);
+    expect(dbMock.inquiry.deleteMany).toHaveBeenCalledWith({
+      where: { userId: "owner-1" },
+    });
+    expect(dbMock.provider.delete).toHaveBeenCalledWith({
+      where: { id: "prov1" },
+    });
+  });
 });
 
 // Search-service integration (search RFC §4.1/§4.2): the batched card

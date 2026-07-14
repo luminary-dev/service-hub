@@ -52,8 +52,12 @@ type ReportBase = {
 type ProviderReport = ReportBase & {
   targetType: "PROVIDER" | "WORK_PHOTO" | "INQUIRY" | "MESSAGE";
   target: {
-    providerId: string;
-    providerName: string;
+    // Nullable for INQUIRY/MESSAGE targets once the provider is erased (#650):
+    // the inquiry/message survives detached, so the queue still shows the report
+    // but with a "Deleted provider" label and no profile link. PROVIDER and
+    // WORK_PHOTO targets are the provider's own content and always carry these.
+    providerId: string | null;
+    providerName: string | null;
     suspended?: boolean;
     photoUrl?: string;
     caption?: string | null;
@@ -373,7 +377,7 @@ export default function AdminReportsList({
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="truncate text-sm font-medium text-ink-800">
-                        {r.target.providerName}
+                        {r.target.providerName ?? t.deletedProvider}
                       </p>
                       <span className="chip bg-ink-100 text-ink-500">
                         {r.target.sender === "PROVIDER"
@@ -402,12 +406,16 @@ export default function AdminReportsList({
                         role={role}
                       />
                     )}
-                    <Link
-                      href={`/admin/providers/${r.target.providerId}`}
-                      className="text-sm font-semibold text-brand-700 transition-colors duration-200 ease-snap hover:text-brand-800"
-                    >
-                      {t.moderate}
-                    </Link>
+                    {/* The provider profile is gone once erased (#650), so the
+                        moderate link only shows while the provider still exists. */}
+                    {r.target.providerId && (
+                      <Link
+                        href={`/admin/providers/${r.target.providerId}`}
+                        className="text-sm font-semibold text-brand-700 transition-colors duration-200 ease-snap hover:text-brand-800"
+                      >
+                        {t.moderate}
+                      </Link>
+                    )}
                   </div>
                 </div>
               ) : r.service === "provider" && r.targetType === "INQUIRY" ? (
@@ -417,18 +425,22 @@ export default function AdminReportsList({
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-ink-800">
-                      {r.target.customerName} → {r.target.providerName}
+                      {r.target.customerName} →{" "}
+                      {r.target.providerName ?? t.deletedProvider}
                     </p>
                     <p className="mt-1 line-clamp-3 text-sm text-ink-600">
                       {r.target.message}
                     </p>
                   </div>
-                  <Link
-                    href={`/admin/providers/${r.target.providerId}`}
-                    className="shrink-0 text-sm font-semibold text-brand-700 transition-colors duration-200 ease-snap hover:text-brand-800"
-                  >
-                    {t.moderate}
-                  </Link>
+                  {/* Provider profile gone once erased (#650) — hide the link. */}
+                  {r.target.providerId && (
+                    <Link
+                      href={`/admin/providers/${r.target.providerId}`}
+                      className="shrink-0 text-sm font-semibold text-brand-700 transition-colors duration-200 ease-snap hover:text-brand-800"
+                    >
+                      {t.moderate}
+                    </Link>
+                  )}
                 </div>
               ) : r.service === "review" ? (
                 <div className="flex flex-wrap items-start justify-between gap-3">

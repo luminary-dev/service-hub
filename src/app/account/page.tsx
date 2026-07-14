@@ -33,7 +33,9 @@ type AccountInquiry = {
   createdAt: string;
   respondedAt: string | null;
   unreadCount: number;
-  provider: { id: string; name: string; category: string; suspended: boolean };
+  // Null once the provider is erased (#650): the inquiry survives detached, so
+  // the row renders a "Deleted provider" label with no profile link.
+  provider: { id: string; name: string; category: string; suspended: boolean } | null;
 };
 
 type SavedSearchDTO = {
@@ -336,7 +338,11 @@ export default async function AccountPage() {
                   <li key={i.id} className="tech-corners card p-5">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        {i.provider.suspended ? (
+                        {i.provider === null ? (
+                          <span className="font-semibold text-ink-500">
+                            {t.messages.deletedProvider}
+                          </span>
+                        ) : i.provider.suspended ? (
                           <span className="font-semibold text-ink-900">
                             {i.provider.name}
                           </span>
@@ -351,9 +357,11 @@ export default async function AccountPage() {
                             {i.provider.name}
                           </Link>
                         )}
-                        <p className="mt-0.5 text-sm text-ink-500">
-                          {categoryLabelLoc(i.provider.category, locale)}
-                        </p>
+                        {i.provider !== null && (
+                          <p className="mt-0.5 text-sm text-ink-500">
+                            {categoryLabelLoc(i.provider.category, locale)}
+                          </p>
+                        )}
                       </div>
                       <div className="flex items-center gap-2">
                         <span

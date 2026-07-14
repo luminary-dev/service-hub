@@ -71,4 +71,26 @@ describe("GET /api/account/inquiries", () => {
       unreadCount: 0,
     });
   });
+
+  it("keeps a detached inquiry after its provider is erased, provider: null (#650)", async () => {
+    // Provider erased → Inquiry.providerId SET NULL → provider === null. The
+    // customer's history survives; the DTO carries provider: null so the
+    // account page renders a "Deleted provider" row with no profile link.
+    dbMock.inquiry.findMany.mockResolvedValue([
+      {
+        id: "inq1",
+        message: "Need a plumber",
+        status: "RESPONDED",
+        createdAt: new Date("2026-01-01"),
+        respondedAt: new Date("2026-01-02"),
+        customerLastReadAt: null,
+        providerLastReadAt: null,
+        provider: null,
+      },
+    ]);
+    const res = await req({ userId: "u1" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.inquiries[0]).toMatchObject({ id: "inq1", provider: null });
+  });
 });

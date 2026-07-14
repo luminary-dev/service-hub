@@ -761,8 +761,11 @@ adminRoutes.get("/api/admin/reports", async (c) => {
       const i = inquiryById.get(r.targetId);
       if (i) {
         target = {
+          // Both null once the provider is erased (#650): the inquiry survives
+          // detached, so the queue still shows the report with a "Deleted
+          // provider" label and no profile link.
           providerId: i.providerId,
-          providerName: i.provider.contactName,
+          providerName: i.provider?.contactName ?? null,
           customerName: i.name,
           message: i.message,
         };
@@ -774,8 +777,10 @@ adminRoutes.get("/api/admin/reports", async (c) => {
       if (m) {
         target = {
           messageId: m.id,
+          // Both null once the provider is erased (#650) — see the INQUIRY
+          // branch above; the thread message survives detached.
           providerId: m.inquiry.providerId,
-          providerName: m.inquiry.provider.contactName,
+          providerName: m.inquiry.provider?.contactName ?? null,
           sender: m.sender,
           body: m.body,
           removed: m.deletedAt !== null,

@@ -164,6 +164,18 @@ describe("GET /api/inquiries/:id/messages — thread party gate", () => {
       })
     );
   });
+
+  it("the customer still reads a thread whose provider was erased (#650)", async () => {
+    // Provider erased → Inquiry.providerId SET NULL → provider === null. The
+    // customer keeps access; the header carries provider: null so the client
+    // renders a "Deleted provider" counterpart.
+    dbMock.inquiry.findUnique.mockResolvedValue(inquiryRow({ provider: null }));
+    const res = await req("/api/inquiries/inq1/messages", { role: "CUSTOMER", userId: "cust-1" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.party).toBe("CUSTOMER");
+    expect(body.inquiry.provider).toBeNull();
+  });
 });
 
 describe("POST /api/inquiries/:id/messages", () => {

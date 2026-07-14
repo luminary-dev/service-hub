@@ -203,6 +203,23 @@ describe("MessageThread", () => {
     );
   });
 
+  it("renders a 'Deleted provider' counterpart when the provider was erased (#650)", async () => {
+    // Provider erased → the thread survives detached, header carries
+    // provider: null. The customer still sees their conversation.
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...threadFixture, inquiry: { ...threadFixture.inquiry, provider: null } }),
+    });
+    renderThread();
+
+    expect(
+      await screen.findByRole("heading", {
+        name: t.threadWith(t.deletedProvider),
+      })
+    ).toBeTruthy();
+    expect(screen.getByText("Yes, I can come on Monday.")).toBeTruthy();
+  });
+
   it("shows a send-failure alert when the POST fails", async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
