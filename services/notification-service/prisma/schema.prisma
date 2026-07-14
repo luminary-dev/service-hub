@@ -1,0 +1,49 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// The ten marketplace event types (RFC: stateful-notification-service):
+//   NEW_INQUIRY, THREAD_REPLY, NEW_REVIEW, REVIEW_RESPONSE,
+//   VERIFICATION_APPROVED, VERIFICATION_REJECTED, NEW_JOB_MATCH, JOB_RESPONSE,
+//   SAVED_SEARCH_MATCH, REPORT_RESOLVED.
+// `type` is a plain string (never a native enum, #648), the allowed set
+// enforced by DB CHECK constraints (`Notification_type_check` /
+// `NotificationPreference_type_check`, hand-written — Prisma doesn't diff them)
+// and by the `NOTIFICATION_TYPES` zod enum in lib/events.ts at the API edge.
+// Transactional/security emails (verify, password-reset, change-email,
+// account-exists, email-change-attempt) are deliberately NOT in this set —
+// they are not notifications, take no preferences, and can never be muted.
+
+// Render at read time, store data not prose: `payload` holds the facts
+// ({ providerName, rating }, { jobTitle, district }, …) and the web app
+// renders the sentence from type + payload via its i18n layer, so a user who
+// switches EN↔SI sees their whole feed in the new language. userId references
+// an identity-service User — plain string, no FK across service boundaries.
+model Notification {
+  id        String            @id @default(cuid())
+  userId    String            // recipient — identity-service User id, no FK
+  type      String            // one of NOTIFICATION_TYPES — enforced by CHECK (#648)
+  payload   Json              // small, denormalized: names/titles needed to render
+  link      String            // relative path, e.g. /account/inquiries/abc123
+  readAt    DateTime?
+  createdAt DateTime          @default(now())
+
+  @@index([userId, createdAt(sort: Desc)]) // list page
+  @@index([userId, readAt]) // unread count
+}
+
+// Sparse overrides: no row = both channels on. Only the catalog types above
+// are preference-gated.
+model NotificationPreference {
+  id           String           @id @default(cuid())
+  userId       String
+  type         String           // one of NOTIFICATION_TYPES — enforced by CHECK (#648)
+  emailEnabled Boolean          @default(true)
+  inAppEnabled Boolean          @default(true)
+
+  @@unique([userId, type])
+}

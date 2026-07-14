@@ -9,6 +9,7 @@ import { isSvg } from "@/lib/image";
 import { formatDate, formatLKR } from "@/lib/format";
 import {
   dict,
+  bilingualText,
   categoryLabelLoc,
   districtLabelLoc,
   priceTypeLabelLoc,
@@ -28,7 +29,15 @@ export type ProviderCardDTO = {
   // has no cover/work photo of their own.
   categoryImageUrl: string | null;
   headline: string;
+  // Optional Sinhala headline (#515); rendered under the `si` locale with an
+  // English fallback via bilingualText. Optional on the DTO so existing
+  // fixtures/consumers need no churn.
+  headlineSi?: string | null;
   district: string;
+  // Multi-district service area (#502); always includes `district`. Optional
+  // on the DTO so existing fixtures/consumers need no churn — the card itself
+  // keeps showing the home district only.
+  serviceDistricts?: string[];
   city: string;
   experience: number;
   // `available` is the EFFECTIVE availability (the service already folds the
@@ -46,6 +55,13 @@ export type ProviderCardDTO = {
   fromPriceType: string | null;
   rating: number | null;
   reviewCount: number;
+  // Map pin (#48, search RFC phase 3), present only when the provider has
+  // dropped one. Optional so existing fixtures/consumers need no churn.
+  latitude?: number;
+  longitude?: number;
+  // 1-decimal km from the search point — only on geo results
+  // (`/api/search/providers/nearby`); renders as a distance note on the card.
+  distanceKm?: number;
 };
 
 export default function ProviderCard({
@@ -132,21 +148,33 @@ export default function ProviderCard({
               <h3 className="flex items-center gap-1.5 truncate font-display text-base font-semibold text-ink-900 transition-colors duration-200 group-hover:text-brand-700">
                 <span className="truncate">{p.name}</span>
                 {verified && (
-                  <FaCircleCheck
-                    className="h-4 w-4 shrink-0 text-brand-600"
+                  // The icon itself is decorative (aria-hidden); the wrapper
+                  // carries the accessible name + a real tooltip (#559).
+                  <span
+                    role="img"
+                    aria-label={t.card.verified}
                     title={t.card.verified}
-                  />
+                    className="flex shrink-0 items-center"
+                  >
+                    <FaCircleCheck className="h-4 w-4 text-brand-600" />
+                  </span>
                 )}
               </h3>
               <p className="mt-0.5 truncate font-mono text-[11px] uppercase tracking-wider text-ink-500">
                 {p.city} · {districtLabelLoc(p.district, locale)}
                 {p.experience > 0 && <> · {t.card.yrs(p.experience)}</>}
               </p>
+              {/* Distance from the searched point (#48) — geo results only. */}
+              {p.distanceKm !== undefined && (
+                <p className="mt-0.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-brand-700">
+                  {t.card.kmAway(p.distanceKm)}
+                </p>
+              )}
             </div>
           </div>
 
           <p className="mt-3 line-clamp-2 text-sm leading-relaxed text-ink-600">
-            {p.headline}
+            {bilingualText(p.headline, p.headlineSi, locale)}
           </p>
 
           <div className="mt-4 flex items-center justify-between border-t border-dashed border-ink-300 pt-3.5">

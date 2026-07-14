@@ -52,12 +52,27 @@ export async function getSession(): Promise<SessionPayload | null> {
         algorithms: ["HS256"],
       });
       if (typeof payload.impersonatedBy === "string") {
-        return {
-          userId: payload.userId as string,
-          role: payload.role as string,
-          name: payload.name as string,
-          impersonatedBy: payload.impersonatedBy,
-        };
+        const targetSv = typeof payload.sv === "number" ? payload.sv : 0;
+        const adminSv =
+          typeof payload.impersonatedBySv === "number"
+            ? payload.impersonatedBySv
+            : 0;
+        // Revocation, mirroring the gateway (#358): both the impersonated
+        // target AND the impersonating admin must still have a current session
+        // version. If the admin was force-logged-out / reset their password,
+        // the impersonation is dead — fall through to the admin's own
+        // sh_session (which, if also revoked, then yields no session).
+        if (
+          (await sessionVersionOk(payload.userId as string, targetSv)) &&
+          (await sessionVersionOk(payload.impersonatedBy, adminSv))
+        ) {
+          return {
+            userId: payload.userId as string,
+            role: payload.role as string,
+            name: payload.name as string,
+            impersonatedBy: payload.impersonatedBy,
+          };
+        }
       }
     } catch {
       // Invalid/expired impersonation cookie — fall through to sh_session.

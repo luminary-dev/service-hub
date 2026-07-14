@@ -2,11 +2,13 @@
 // the reports on them (provider profiles and work photos are reported at
 // provider-service). The public endpoint takes an OPTIONAL session: anonymous
 // visitors can report too; the gateway rate-limits it (the "report" budget).
+import { Prisma } from "@prisma/client";
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
 import { logAudit } from "../lib/audit";
 import { getAuth, isSupportOrAdmin } from "../lib/http";
+import { emitNotification } from "../lib/notify";
 import { normalizePagination, sliceOpenClosed } from "../lib/pagination";
 
 export const reports = new Hono();
@@ -61,15 +63,25 @@ reports.post("/api/reviews/:id/report", async (c) => {
     }
   }
 
-  await db.report.create({
-    data: {
-      targetType: "REVIEW",
-      targetId: id,
-      reporterId: auth?.userId ?? null,
-      reason,
-      details,
-    },
-  });
+  try {
+    await db.report.create({
+      data: {
+        targetType: "REVIEW",
+        targetId: id,
+        reporterId: auth?.userId ?? null,
+        reason,
+        details,
+      },
+    });
+  } catch (e) {
+    // Lost the race with a concurrent report from the same user for the same
+    // review: the partial unique index `Report_open_reporter_key` (#651) fired.
+    // The other request already filed the OPEN report, so this is idempotent
+    // success, not a 500.
+    if (!(e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002")) {
+      throw e;
+    }
+  }
   return c.json({ ok: true });
 });
 
@@ -232,6 +244,12 @@ reports.patch("/api/admin/review-reports/:id", async (c) => {
   }
 
   const id = c.req.param("id");
+  // Loaded before the write so the resolve notification below can address the
+  // reporter (updateMany returns only a count).
+  const report = await db.report.findUnique({
+    where: { id },
+    select: { reporterId: true, targetType: true },
+  });
   // Audit trail (#223): stamp who closed the report and when.
   const { count } = await db.report.updateMany({
     where: { id },
@@ -250,6 +268,16 @@ reports.patch("/api/admin/review-reports/:id", async (c) => {
     "REPORT",
     id
   );
+  // Tell the reporter their report was actioned — in-app only in v1 (no email
+  // template); anonymous and SYSTEM reports carry no reporterId and skip.
+  if (report?.reporterId) {
+    await emitNotification({
+      type: "REPORT_RESOLVED",
+      recipients: [{ userId: report.reporterId }],
+      payload: { targetType: report.targetType, status: parsed.data.status },
+      link: "/",
+    });
+  }
   return c.json({ ok: true });
 });
 
@@ -275,13 +303,36 @@ reports.patch("/api/admin/review-reports", async (c) => {
     return c.json({ error: "Invalid input" }, 400);
   }
 
+  const where = { id: { in: parsed.data.ids } };
+  // Capture the ids actually matched before the write so the audit log records
+  // real targets (unknown ids in the request list are skipped by updateMany)
+  // and the resolve notifications below can address the reporters.
+  const affected = await db.report.findMany({
+    where,
+    select: { id: true, reporterId: true, targetType: true },
+  });
   const { count } = await db.report.updateMany({
-    where: { id: { in: parsed.data.ids } },
+    where,
     data: {
       status: parsed.data.status,
       resolvedBy: auth?.userId ?? null,
       resolvedAt: new Date(),
     },
+  });
+  // Audit trail (#227): one entry per affected report, mirroring the
+  // single-report PATCH above so bulk actions leave the same trail.
+  const action =
+    parsed.data.status === "RESOLVED" ? "resolve-report" : "dismiss-report";
+  await Promise.all(affected.map((r) => logAudit(c, action, "REPORT", r.id)));
+  // Tell the reporters (in-app only in v1) — one batched event (this queue
+  // only holds REVIEW reports); anonymous/SYSTEM reports skip.
+  await emitNotification({
+    type: "REPORT_RESOLVED",
+    recipients: affected
+      .filter((r) => r.reporterId)
+      .map((r) => ({ userId: r.reporterId as string })),
+    payload: { targetType: LOCAL_TARGET_TYPE, status: parsed.data.status },
+    link: "/",
   });
   return c.json({ ok: true, count });
 });
@@ -305,6 +356,12 @@ reports.get("/api/admin/review-audit-log", async (c) => {
   const from = c.req.query("from");
   const to = c.req.query("to");
 
+  // A date-only value (e.g. "2026-07-12") parses to midnight UTC. As a `gte`
+  // lower bound that is exactly what we want, but as an `lte` upper bound it
+  // would exclude every entry from the named day — so snap it to end-of-day
+  // UTC. A full ISO datetime is honored verbatim on both bounds.
+  const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
   const createdAt: { gte?: Date; lte?: Date } = {};
   if (from) {
     const d = new Date(from);
@@ -312,7 +369,10 @@ reports.get("/api/admin/review-audit-log", async (c) => {
   }
   if (to) {
     const d = new Date(to);
-    if (!Number.isNaN(d.getTime())) createdAt.lte = d;
+    if (!Number.isNaN(d.getTime())) {
+      if (DATE_ONLY.test(to)) d.setUTCHours(23, 59, 59, 999);
+      createdAt.lte = d;
+    }
   }
 
   const entries = await db.adminAuditLog.findMany({

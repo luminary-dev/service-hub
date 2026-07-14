@@ -13,6 +13,31 @@
   `prisma/migrations/` (baseline `0_init`); dev DBs created before the baseline
   run `scripts/baseline-migrations.sh` once. Reference scaffold:
   `services/identity-service/`.
+- **Migration hygiene** (hand-written migrations, applied on start via
+  `prisma migrate deploy`):
+  - **Never edit or rename a migration that has already been applied.** Prisma
+    records each migration's checksum; any change to an applied migration (SQL
+    or directory name) is detected as drift and the service refuses to boot.
+    Fixes and follow-ups always land as a **new** migration.
+  - **Unique, correctly-ordered timestamps.** Each new migration directory is
+    `YYYYMMDDHHMMSS_snake_summary` with a timestamp strictly greater than every
+    existing one in that service (list the dirs and pick past the max). Migrations
+    apply in lexical order, so duplicate or out-of-order timestamps make the
+    apply order ambiguous.
+  - **Idempotent DDL.** Guard every statement so a re-run is a no-op:
+    `ADD COLUMN IF NOT EXISTS`, `DROP … IF EXISTS`, `CREATE INDEX IF NOT EXISTS`,
+    guarded `CREATE`. New columns that must be `NOT NULL` carry a `DEFAULT` so
+    existing rows backfill.
+  - **Known, accepted offenders** (predate this convention; **not** editable
+    without checksum drift, so left as-is): provider-service has four migrations
+    sharing the timestamp `20260707120000` (`admin_audit_log`,
+    `report_resolution_audit`, `report_source`, `verification_rejection_reason`)
+    and review-service has two (`admin_audit_log`, `report_resolution_audit`);
+    review-service's `20260708100000_review_provider_created_index` uses a bare
+    `DROP INDEX` (no `IF EXISTS`) and several early provider-service migrations
+    (`inquiry_messaging`, `reports`, `admin_audit_log`, …) use bare
+    `CREATE INDEX` (no `IF NOT EXISTS`). These already applied cleanly on every
+    environment; new migrations must not repeat the pattern.
 - **Logging**: structured JSON on stdout, one line per event —
   `{ level, time, service, msg, ...fields }` via the canonical
   `src/lib/logging.ts` (identical copy in every service incl. the gateway; each
@@ -22,14 +47,23 @@
   (client-sent values are stripped — it's on the trusted `GATEWAY_HEADERS`
   list) and propagates it upstream so one id follows a request across services.
   Errors go through `log.error(msg, { context, err })` — no bare
-  `console.error`.
+  `console.error` or `console.log` (startup/shutdown lines in `src/index.ts`
+  included; the one deliberate exception is notification-service's dev-only
+  email dump when `RESEND_API_KEY` is unset, which is meant for human eyes).
+  Errors outside a request are the last-resort hooks' job: every
+  `src/index.ts` calls `installProcessErrorHandlers(log)` (from the same
+  canonical `logging.ts`), which logs `uncaughtException` /
+  `unhandledRejection` as one structured line and then exits 1 — Node's
+  fail-fast default, but with a parseable line first. An error-monitoring
+  backend can later hook `onError` + these handlers without touching call
+  sites.
 - **Error shape**: `{ "error": string }`. Success shapes match the monolith.
-- **Health**: `GET /healthz`. The **four DB services** (identity, provider,
-  review, job) run it as a **readiness probe** — `SELECT 1` raced against a 2s
-  timeout, returning `503 { ok: false, service, db: "down" }` if Postgres is
-  unreachable so the orchestrator can depool the instance; success is
-  `200 { ok: true, service }`. gateway, chat, notification and media return the
-  static `200 { ok: true, service }`. Used by compose healthchecks and the E2E
+- **Health**: `GET /healthz`. The **seven DB services** (identity, provider,
+  review, job, notification, search, trust-safety) run it as a **readiness probe** — `SELECT 1` raced
+  against a 2s timeout, returning `503 { ok: false, service, db: "down" }` if
+  Postgres is unreachable so the orchestrator can depool the instance; success
+  is `200 { ok: true, service }`. gateway, chat and media return the static
+  `200 { ok: true, service }`. Used by compose healthchecks and the E2E
   script.
 - **Internal auth**: every request from the gateway or another service carries
   `x-internal-secret: $INTERNAL_API_SECRET`. A middleware
@@ -58,10 +92,13 @@
   identity-service; verified by the gateway and by the web app (page gating).
 - **Session revocation**: `sv` is `User.sessionVersion` at mint time. Identity
   bumps the version on password change/reset, `POST /api/auth/logout-all`, and
-  admin force-logout; the gateway rejects tokens minted before the current
-  version (checked via `GET identity /internal/users/:id/session-version`,
-  cached 60s per user, fail-open on identity outage). Tokens minted before this
-  scheme count as version 0. The web app's page-gating verifier is a soft
+  admin force-logout / lock / role change; the gateway rejects tokens minted
+  before the current version. It resolves the current version from a shared
+  Redis revocation list first (`revocation:<userId>`, published best-effort on
+  every bump — authoritative, survives an identity outage, #374), falling back
+  to `GET identity /internal/users/:id/session-version` (cached 60s per user,
+  fail-open on identity outage) when Redis has no entry. Tokens minted before
+  this scheme count as version 0. The web app's page-gating verifier is a soft
   check — every data/state request goes through the gateway, the enforcement
-  point.
+  point. See [AUTHZ.md](../AUTHZ.md#session-revocation-374).
 

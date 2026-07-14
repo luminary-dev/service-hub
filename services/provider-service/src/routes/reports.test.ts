@@ -2,12 +2,14 @@
 // visitors can report), so the auth surface is about the signed-in dedupe
 // path — one OPEN report per (user, target), refreshed on re-report — versus
 // anonymous reports which always create a fresh row. Prisma is mocked.
+import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { dbMock } = vi.hoisted(() => ({
   dbMock: {
     provider: { findUnique: vi.fn() },
     workPhoto: { findUnique: vi.fn() },
+    inquiryMessage: { findUnique: vi.fn() },
     report: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
   },
 }));
@@ -93,6 +95,23 @@ describe("POST /api/providers/:id/report", () => {
     });
     expect(dbMock.report.create).not.toHaveBeenCalled();
   });
+
+  it("treats the unique-constraint race (P2002) as idempotent success", async () => {
+    // Both concurrent requests miss the findFirst dedupe, both try to create;
+    // the partial unique index (#651) rejects the loser with P2002, which the
+    // handler swallows into the same 200 rather than a 500.
+    dbMock.provider.findUnique.mockResolvedValue({ id: "p1" });
+    dbMock.report.findFirst.mockResolvedValue(null);
+    dbMock.report.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("unique", {
+        code: "P2002",
+        clientVersion: "7",
+      })
+    );
+    const res = await req("/api/providers/p1/report", { body: valid, userId: "u1" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+  });
 });
 
 describe("POST /api/photos/:id/report", () => {
@@ -112,5 +131,76 @@ describe("POST /api/photos/:id/report", () => {
       targetType: "WORK_PHOTO",
       targetId: "ph1",
     });
+  });
+});
+
+// Thread messages (#376) are private: only the two thread parties may report
+// one. Everyone else — anonymous, or an unrelated signed-in user — gets the
+// same 404 as a missing message, so message ids can't be probed.
+describe("POST /api/messages/:id/report", () => {
+  // Message in the thread of an inquiry filed by "cust-1" against the
+  // provider owned by "prov-owner".
+  function messageRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "m1",
+      deletedAt: null,
+      inquiry: { userId: "cust-1", provider: { userId: "prov-owner" } },
+      ...overrides,
+    };
+  }
+  const valid = { reason: "scam", details: "asked me to pay outside the app" };
+
+  it("404 when the message is unknown", async () => {
+    dbMock.inquiryMessage.findUnique.mockResolvedValue(null);
+    const res = await req("/api/messages/nope/report", { body: valid, userId: "cust-1" });
+    expect(res.status).toBe(404);
+    expect(dbMock.report.create).not.toHaveBeenCalled();
+  });
+
+  it("404 for an anonymous caller (threads are private)", async () => {
+    dbMock.inquiryMessage.findUnique.mockResolvedValue(messageRow());
+    const res = await req("/api/messages/m1/report", { body: valid });
+    expect(res.status).toBe(404);
+    expect(dbMock.report.create).not.toHaveBeenCalled();
+  });
+
+  it("404 for a signed-in user who is not a thread party", async () => {
+    dbMock.inquiryMessage.findUnique.mockResolvedValue(messageRow());
+    const res = await req("/api/messages/m1/report", { body: valid, userId: "stranger" });
+    expect(res.status).toBe(404);
+    expect(dbMock.report.create).not.toHaveBeenCalled();
+  });
+
+  it("404 when the message was already removed by moderation", async () => {
+    dbMock.inquiryMessage.findUnique.mockResolvedValue(
+      messageRow({ deletedAt: new Date() })
+    );
+    const res = await req("/api/messages/m1/report", { body: valid, userId: "cust-1" });
+    expect(res.status).toBe(404);
+    expect(dbMock.report.create).not.toHaveBeenCalled();
+  });
+
+  it("the customer party files a MESSAGE report", async () => {
+    dbMock.inquiryMessage.findUnique.mockResolvedValue(messageRow());
+    dbMock.report.findFirst.mockResolvedValue(null);
+    const res = await req("/api/messages/m1/report", { body: valid, userId: "cust-1" });
+    expect(res.status).toBe(200);
+    expect(dbMock.report.create.mock.calls[0][0].data).toMatchObject({
+      targetType: "MESSAGE",
+      targetId: "m1",
+      reporterId: "cust-1",
+    });
+  });
+
+  it("the provider party can report too, with the same dedupe refresh", async () => {
+    dbMock.inquiryMessage.findUnique.mockResolvedValue(messageRow());
+    dbMock.report.findFirst.mockResolvedValue({ id: "existing" });
+    const res = await req("/api/messages/m1/report", { body: valid, userId: "prov-owner" });
+    expect(res.status).toBe(200);
+    expect(dbMock.report.update).toHaveBeenCalledWith({
+      where: { id: "existing" },
+      data: { reason: "scam", details: "asked me to pay outside the app" },
+    });
+    expect(dbMock.report.create).not.toHaveBeenCalled();
   });
 });

@@ -26,7 +26,9 @@ model Category {
 
 // userId references a User owned by identity-service; no FK across service
 // boundaries. Contact fields are denormalized from the user at registration
-// and kept in sync on profile updates (S2S PATCH to identity).
+// and kept in sync both ways: provider-side profile edits PATCH identity;
+// identity-side account/email changes mirror back via
+// POST /internal/providers/contact (#553).
 model Provider {
   id           String  @id @default(cuid())
   userId       String  @unique
@@ -37,8 +39,35 @@ model Provider {
   category   String
   headline   String
   bio        String
+  // Optional Sinhala variants of the free-text pitch (#515). Providers may
+  // author their headline/bio in Sinhala as well as English; public rendering
+  // prefers the SI variant under the `si` locale and falls back to the English
+  // original when absent. Nullable + additive — English stays the required
+  // source of truth. Per-service SI titles are a deliberate follow-up.
+  headlineSi String?
+  bioSi      String?
   district   String
+  // Multi-district service area (#502): every district the provider serves,
+  // always including the primary `district` (which stays the home base shown
+  // on cards). Backfilled to [district] by migration 20260714090000; capped at
+  // MAX_SERVICE_DISTRICTS (5) in lib/field-rules.ts. Browse filtering and the
+  // job board/fan-out match on membership in this set. NO DB default (#653):
+  // the invariant "always includes the primary district" means an empty set is
+  // never valid, so callers MUST supply it (normalizeServiceDistricts does) and
+  // a `cardinality(...) > 0` CHECK (`Provider_serviceDistricts_nonempty_check`,
+  // hand-written — Prisma doesn't model CHECKs) enforces it at the DB level.
+  serviceDistricts String[]
   city       String
+  // Optional map-pin coordinates (#48, search & discovery RFC phase 1),
+  // captured via the web's Leaflet picker. Both set or both null — the routes
+  // enforce the pair plus a Sri Lanka bounding box (lib/field-rules.ts), and a
+  // DB CHECK `Provider_geo_pair_check` ((latitude IS NULL) = (longitude IS
+  // NULL), #652, hand-written) guarantees the pair invariant server-side too.
+  // Plain floats for now; the RFC's search index (phase 2) derives a PostGIS
+  // geography column from them. District centroids are never substituted —
+  // an unpinned provider simply has no coordinates.
+  latitude  Float?
+  longitude Float?
   experience Int     @default(0)
   whatsapp   String?
   phone2     String?
@@ -59,6 +88,11 @@ model Provider {
   // automatically once the date passes; no cron needed.
   awayUntil  DateTime?
   suspended  Boolean @default(false)
+  // Suspension origin (#550). `suspended` alone drives public visibility for
+  // both ADMIN moderation and the self-service downgrade (#403); this marks it
+  // as an ADMIN suspension, which only the admin unsuspend action clears — the
+  // self-service /internal reactivate path refuses while it is set.
+  adminSuspended Boolean @default(false)
   // NONE | PENDING | VERIFIED | REJECTED
   verificationStatus String    @default("NONE")
   verifiedAt         DateTime?
@@ -77,6 +111,8 @@ model Provider {
   // ranking; district-only browsing is a separate path.
   @@index([category, district])
   @@index([district])
+  // District filters/matching are membership tests on the service-area set.
+  @@index([serviceDistricts(ops: ArrayOps)], type: Gin)
   @@index([createdAt])
   // Admin verification queue filters by status (#369).
   @@index([verificationStatus])
@@ -99,7 +135,10 @@ model Service {
   provider    Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
   title       String
   description String?
-  price       Float
+  // Whole LKR rupees (#371). DECIMAL, not double precision: currency must
+  // compare and sort exactly. Route code converts the Decimal back to a plain
+  // number at every JSON edge (see lib/money.ts).
+  price       Decimal  @db.Decimal(12, 2)
   priceType   String   @default("FIXED")
 
   @@index([providerId])
@@ -125,13 +164,18 @@ model WorkPhoto {
 
 // Abuse reports (#50) on content this service owns (providers and work
 // photos). Each content-owning service keeps the reports on its own content —
-// review-service has the same-shaped model for reviews. reporterId references
-// a User owned by identity-service (plain string, nullable — anonymous
-// visitors can report). No FK to the target either: a report must survive its
-// target being deleted so admins can still see what happened.
+// review-service has the same-shaped model for reviews (#370): both carry the
+// identical field set — `source` (USER|SYSTEM) and the `updatedAt` transition
+// timestamp included. reporterId references a User owned by identity-service
+// (plain string, nullable — anonymous visitors can report). No FK to the
+// target either: a report must survive its target being deleted so admins can
+// still see what happened.
 model Report {
   id         String  @id @default(cuid())
-  // "PROVIDER" | "WORK_PHOTO"
+  // "PROVIDER" | "WORK_PHOTO" | "MESSAGE" | "INQUIRY". MESSAGE rows (#376)
+  // are user reports on individual thread messages; INQUIRY rows (#375) are
+  // only ever SYSTEM-created by the write-time content filter on
+  // inquiry/thread text.
   targetType String
   targetId   String
   reporterId String?
@@ -142,9 +186,14 @@ model Report {
   status     String   @default("OPEN")
   // "USER" | "SYSTEM" (#232): USER reports come from the public report flow
   // above; SYSTEM reports are auto-created by POST /api/admin/flagging/run
-  // when a provider crosses a report-count or rating threshold.
+  // when a provider crosses a report-count or rating threshold, and by the
+  // write-time content filter (#375) on profile/service/inquiry/thread text.
   source     String   @default("USER")
   createdAt  DateTime @default(now())
+  // Last-transition timestamp (#370): auto-stamped on every write (status
+  // resolve/dismiss, source change), so admins can sort/audit by recency of
+  // action rather than only creation.
+  updatedAt  DateTime @updatedAt
   // Audit trail (#223): admin userId + timestamp stamped when a report
   // transitions to RESOLVED or DISMISSED. Both null while OPEN.
   resolvedBy String?
@@ -155,6 +204,12 @@ model Report {
   @@index([targetType, targetId])
   // Report queue orders newest-first (#369).
   @@index([createdAt])
+  // #651: a PARTIAL unique index `Report_open_reporter_key` on
+  // ("targetType","targetId","reporterId") WHERE status='OPEN' AND
+  // reporterId IS NOT NULL enforces one OPEN report per (target, reporter).
+  // Prisma's DSL can't express a filtered unique index, so it lives only in the
+  // hand-written migration (20260714140000_report_open_dedup); the fileReport
+  // handler catches the P2002 as idempotent success.
 }
 
 // userId references a User owned by identity-service (plain string, nullable —
@@ -179,6 +234,10 @@ model Inquiry {
   customerLastReadAt DateTime?
   providerLastReadAt DateTime?
   createdAt   DateTime  @default(now())
+  // Last-transition timestamp (#370): auto-stamped on every write (status
+  // change, respondedAt stamp, read-marker updates) so the dashboard inbox can
+  // reason about recency of activity, not just creation time.
+  updatedAt   DateTime  @updatedAt
   messages    InquiryMessage[]
 
   @@index([providerId])
@@ -196,6 +255,11 @@ model InquiryMessage {
   inquiry   Inquiry  @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
   sender    String // "CUSTOMER" | "PROVIDER"
   body      String
+  // Moderation soft delete (#376): set by admin takedown of a reported
+  // message, cleared by restore. Thread reads and unread counts filter it;
+  // the row survives so the action is reversible and the reports queue can
+  // still show what was removed.
+  deletedAt DateTime?
   createdAt DateTime @default(now())
 
   @@index([inquiryId, createdAt])

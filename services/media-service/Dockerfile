@@ -3,7 +3,7 @@
 # `node` user. Base image pinned by digest for reproducible builds; the
 # `# dependabot: <tag>` comment + the tag before the digest let Dependabot's
 # docker ecosystem bump both together.
-# dependabot: node:22-alpine
+# dependabot: node:26-alpine
 FROM node:26-alpine@sha256:e88a35be04478413b7c71c455cd9865de9b9360e1f43456be5951032d7ac1a66 AS build
 WORKDIR /app
 
@@ -13,13 +13,13 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# dependabot: node:22-alpine
+# dependabot: node:26-alpine
 FROM node:26-alpine@sha256:e88a35be04478413b7c71c455cd9865de9b9360e1f43456be5951032d7ac1a66 AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev && npm cache clean --force
 # sharp (#351): npm can silently drop a platform-specific *optional* dependency
 # on a transient fetch error, which intermittently left the prebuilt libvips
 # binary out of the image and crashed the service at boot with ERR_DLOPEN_FAILED.

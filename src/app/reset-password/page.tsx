@@ -4,9 +4,12 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { FaCircleCheck } from "@/components/icons";
-import { useT } from "@/components/I18nProvider";
+import { useLocale, useT } from "@/components/I18nProvider";
+import { localizedHref } from "@/lib/links";
 import PasswordInput from "@/components/PasswordInput";
 import { Field } from "@/components/ui/Field";
+import { FormError, useFieldErrors } from "@/components/ui/FormError";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/constants";
 
 function ResetForm() {
   const params = useSearchParams();
@@ -15,7 +18,9 @@ function ResetForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
+  const { fieldErrors, show } = useFieldErrors();
   const t = useT();
+  const locale = useLocale();
 
   if (!token) {
     return <InvalidLink />;
@@ -23,8 +28,18 @@ function ResetForm() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
     setError("");
+    if (
+      show(
+        password.length < PASSWORD_MIN_LENGTH
+          ? {
+              "reset-password": t.fieldErrors.passwordMin(PASSWORD_MIN_LENGTH),
+            }
+          : {},
+      )
+    )
+      return;
+    setLoading(true);
     try {
       const res = await fetch("/api/auth/reset-password", {
         method: "POST",
@@ -55,7 +70,7 @@ function ResetForm() {
         <p className="mt-2 text-sm leading-relaxed text-ink-600">
           {t.reset.doneBody}
         </p>
-        <Link href="/login" className="btn-primary mt-6">
+        <Link href={localizedHref("/login", locale)} className="btn-primary mt-6">
           {t.reset.signIn}
         </Link>
       </div>
@@ -80,26 +95,26 @@ function ResetForm() {
           <span className="font-bold tabular-nums text-ink-700">PWD-02</span>
           <span className="text-brand-700">RESET</span>
         </div>
-        <form onSubmit={submit} className="space-y-4 p-6">
+        {/* noValidate: validation happens in JS so the error is localized,
+            inline and linked to the field (#378), not a browser bubble. */}
+        <form onSubmit={submit} noValidate className="space-y-4 p-6">
           <Field
             label={t.reset.password}
             htmlFor="reset-password"
             help={t.reset.passwordHint}
+            error={fieldErrors["reset-password"]}
           >
             <PasswordInput
               id="reset-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              minLength={6}
+              minLength={PASSWORD_MIN_LENGTH}
+              maxLength={PASSWORD_MAX_LENGTH}
               autoComplete="new-password"
             />
           </Field>
-          {error && (
-            <p role="alert" className="text-sm text-red-600">
-              {error}
-            </p>
-          )}
+          <FormError>{error}</FormError>
           <button
             type="submit"
             disabled={loading}
@@ -115,6 +130,7 @@ function ResetForm() {
 
 function InvalidLink() {
   const t = useT();
+  const locale = useLocale();
   return (
     <div className="tech-corners card flex flex-col items-center border-ink-300 p-8 text-center">
       <h1 className="text-xl font-semibold text-ink-900">
@@ -123,7 +139,7 @@ function InvalidLink() {
       <p className="mt-2 text-sm leading-relaxed text-ink-600">
         {t.reset.invalidBody}
       </p>
-      <Link href="/forgot-password" className="btn-primary mt-6">
+      <Link href={localizedHref("/forgot-password", locale)} className="btn-primary mt-6">
         {t.reset.requestNew}
       </Link>
     </div>

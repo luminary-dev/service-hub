@@ -1,7 +1,7 @@
 # Service Hub — Microservice Architecture
 
-Service Hub (Baas.lk) is split into **seven backend services** plus an API
-gateway (eight Hono services in all), with the Next.js 16 app as a pure frontend. This repo is the
+Service Hub (Baas.lk) is split into **nine backend services** plus an API
+gateway (ten Hono services in all), with the Next.js 16 app as a pure frontend. This repo is the
 **canonical monorepo**; each service under `services/` is also mirrored to its
 own repository in the `luminary-dev` org via `git subtree` (see
 `scripts/sync-service-repos.sh`).
@@ -14,25 +14,36 @@ browser ── same-origin /api/* ──> Next.js web (:3000)
    │
    gateway (only public entry) verifies sh_session JWT, forwards identity
    headers (x-user-id / x-user-role / x-user-name) + x-internal-secret and routes to:
-     ├── identity-service     (:4001)  identity_db   User/auth/favorites/admin-users/impersonation
-     ├── provider-service     (:4002)  provider_db   providers/categories/inquiries/reports/admin
-     ├── review-service       (:4003)  review_db     reviews/review-reports/admin
-     ├── job-service          (:4004)  job_db        jobs/responses/admin
-     ├── notification-service (:4005)  (no db)        email templates (internal-only)
-     ├── media-service        (:4006)  (no db)        upload bytes + sharp; serves /files/*
-     └── chat-service         (:4007)  (no db)        streaming Claude assistant
+     ├── identity-service     (:4001)  identity_db      User/auth/favorites/saved-searches/admin-users/impersonation
+     ├── provider-service     (:4002)  provider_db      providers/categories/inquiries/reports/admin
+     ├── review-service       (:4003)  review_db        reviews/review-reports/admin
+     ├── job-service          (:4004)  job_db           jobs/responses/job-reports/admin
+     ├── notification-service (:4005)  notification_db  in-app notifications/preferences + email delivery (Redis queue)
+     ├── media-service        (:4006)  (no db)           upload bytes + sharp; serves /files/*
+     ├── chat-service         (:4007)  (no db)           streaming Claude assistant
+     ├── search-service       (:4008)  search_db        provider search + geo discovery (derived index)
+     └── trust-safety-service (:4009)  trust_safety_db  unified reports/audit (DARK — no routes yet)
 ```
 
-Infra: one **Postgres 16** cluster (host port 5433 → container 5432) holding
-four databases (`identity_db`, `provider_db`, `review_db`, `job_db`), and
-**Redis 7** (gateway rate-limit window). Each service owns its database — no
-service touches another's tables; cross-service data access goes through
-internal HTTP endpoints. notification/media/chat are stateless (no DB).
+Infra: one **Postgres 16** cluster with **PostGIS** (image
+`postgis/postgis:16-3.5-alpine`; host port 5433 → container 5432) holding
+seven databases (`identity_db`, `provider_db`, `review_db`, `job_db`,
+`notification_db`, `search_db`, `trust_safety_db`), and **Redis 7** (gateway
+rate-limit window + notification-service's email delivery queue). Each service
+owns its database — no service touches another's tables; cross-service data
+access goes through internal HTTP endpoints. media/chat are stateless (no DB).
+`search_db` is special: a **derived, rebuildable index** over provider data
+(the [search & discovery RFC](rfcs/search-discovery-service.md)) — provider-
+and review-service push documents/ratings into it S2S, a daily reindex sweep
+self-heals drift, and it is deliberately excluded from backups.
 
-The gateway never routes to notification-service (internal-only) or
-chat-service (the web app proxies `/agent/chat` straight to it — the gateway
-buffers, and a direct stream does not). Its `ServiceName` union is
-`identity | provider | review | job | media`.
+The gateway never routes to chat-service (the web app proxies `/agent/chat`
+straight to it — the gateway buffers, and a direct stream does not). Its
+`ServiceName` union is `identity | provider | review | job | notification |
+media | search | trust-safety` — **trust-safety is wired but dark**:
+`resolveRoute` never returns it until the trust & safety cutover PR flips the
+report/moderation paths to it ([RFC](rfcs/trust-safety-service.md), phase 1 of
+the phased rollout).
 
 ## In detail
 

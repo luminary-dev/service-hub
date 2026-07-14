@@ -3,13 +3,31 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { DISTRICTS, PRICE_TYPES } from "@/lib/constants";
+import { useEffect, useRef, useState } from "react";
+import {
+  DISTRICTS,
+  MAX_SERVICE_DISTRICTS,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  PRICE_TYPES,
+} from "@/lib/constants";
 import { categoryOptionLabel, type CategoryOption } from "@/lib/categories";
 import { districtLabelLoc, priceTypeLabelLoc } from "@/lib/i18n";
+import { localizedHref } from "@/lib/links";
 import { useLocale, useT } from "@/components/I18nProvider";
+import { ConsentCheckbox } from "@/components/LegalConsent";
 import PasswordInput from "@/components/PasswordInput";
 import CategoryIcon from "@/components/CategoryIcon";
+import LocationPicker from "@/components/LocationPicker";
+import ServiceDistrictsPicker from "@/components/ServiceDistrictsPicker";
+import type { GeoPoint } from "@/lib/geo";
+import {
+  ErrorSummary,
+  FormError,
+  isValidEmail,
+  useFieldErrors,
+  type FieldErrors,
+} from "@/components/ui/FormError";
 
 type ServiceInput = {
   title: string;
@@ -41,10 +59,25 @@ export default function ProviderRegisterForm({
   const [step, setStep] = useState(minStep);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // Per-step validation errors keyed by field id, rendered as a focus-managed
+  // summary with in-page links and mirrored onto the offending fields via
+  // aria-invalid/aria-describedby (#378).
+  const { fieldErrors, setFieldErrors, errorProps } = useFieldErrors();
   const router = useRouter();
   const locale = useLocale();
-  const r = useT().providerReg;
+  const t = useT();
+  const r = t.providerReg;
   const STEPS = r.steps;
+
+  // On step change (not initial mount) move focus to the panel heading so
+  // keyboard users land at the top of the new step and screen readers
+  // announce it (#564).
+  const stepHeadingRef = useRef<HTMLHeadingElement>(null);
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (mountedRef.current) stepHeadingRef.current?.focus();
+    else mountedRef.current = true;
+  }, [step]);
 
   const [form, setForm] = useState({
     name: "",
@@ -54,6 +87,8 @@ export default function ProviderRegisterForm({
     category: "",
     headline: "",
     bio: "",
+    headlineSi: "",
+    bioSi: "",
     district: "",
     city: "",
     experience: "0",
@@ -68,6 +103,14 @@ export default function ProviderRegisterForm({
   const [services, setServices] = useState<ServiceInput[]>([
     { ...emptyService },
   ]);
+  // Extra served districts beyond the home district (#502) — the home
+  // district is pinned by the picker and unioned in at submit time.
+  const [serviceDistricts, setServiceDistricts] = useState<string[]>([]);
+  // Optional map pin (#48): null means "no pin" — the picker only ever hands
+  // back a complete in-bounds pair, so submit sends both coordinates or
+  // neither.
+  const [location, setLocation] = useState<GeoPoint | null>(null);
+  const [agree, setAgree] = useState(false);
 
   function set(field: string, value: string) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -79,46 +122,59 @@ export default function ProviderRegisterForm({
     );
   }
 
-  function validateStep(): string {
+  function validateStep(): FieldErrors {
+    const errs: FieldErrors = {};
     if (step === 0) {
-      if (form.name.trim().length < 2) return r.errName;
-      if (!/^\S+@\S+\.\S+$/.test(form.email)) return r.errEmail;
-      if (form.phone.trim().length < 9) return r.errPhone;
-      if (form.password.length < 6) return r.errPassword;
+      if (form.name.trim().length < 2) errs["pr-name"] = r.errName;
+      if (!isValidEmail(form.email)) errs["pr-email"] = r.errEmail;
+      if (form.phone.trim().length < 9) errs["pr-phone"] = r.errPhone;
+      if (form.password.length < PASSWORD_MIN_LENGTH)
+        errs["pr-password"] = r.errPassword;
     }
     if (step === 1) {
-      if (!form.category) return r.errCategory;
-      if (form.headline.trim().length < 5) return r.errHeadline;
-      if (form.bio.trim().length < 20) return r.errBio;
-      if (!form.district) return r.errDistrict;
-      if (!form.city.trim()) return r.errCity;
+      // Authed mode skips step 0, so the (required) phone is collected and
+      // validated here instead (#552).
+      if (authed && form.phone.trim().length < 9)
+        errs["pr-phone"] = r.errPhone;
+      if (!form.category) errs["pr-category"] = r.errCategory;
+      if (form.headline.trim().length < 5) errs["pr-headline"] = r.errHeadline;
+      if (form.bio.trim().length < 20) errs["pr-bio"] = r.errBio;
+      if (!form.district) errs["pr-district"] = r.errDistrict;
+      // Served-set cap (#502): the picker disables further picks at the cap,
+      // so this only trips if the state drifts — mirrors the server's guard.
+      if (
+        [form.district, ...serviceDistricts.filter((d) => d !== form.district)]
+          .length > MAX_SERVICE_DISTRICTS
+      )
+        errs["pr-service-districts"] = t.serviceDistricts.limitReached;
+      if (!form.city.trim()) errs["pr-city"] = r.errCity;
     }
     if (step === 3) {
-      if (services.length === 0) return r.errServiceCount;
-      for (const s of services) {
-        if (s.title.trim().length < 2) return r.errServiceTitle;
-        if (!s.price || Number(s.price) <= 0) return r.errServicePrice;
-      }
+      if (services.length === 0) errs["pr-services"] = r.errServiceCount;
+      services.forEach((s, i) => {
+        if (s.title.trim().length < 2)
+          errs[`pr-service-${i}-title`] = r.errServiceTitle(i + 1);
+        if (!s.price || Number(s.price) <= 0)
+          errs[`pr-service-${i}-price`] = r.errServicePrice(i + 1);
+      });
+      if (!agree) errs["pr-agree"] = t.legal.errAgree;
     }
-    return "";
+    return errs;
   }
 
   function next() {
-    const err = validateStep();
-    if (err) {
-      setError(err);
-      return;
-    }
+    const errs = validateStep();
+    setFieldErrors(errs);
+    if (Object.keys(errs).length > 0) return;
     setError("");
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   }
 
   async function submit() {
-    const err = validateStep();
-    if (err) {
-      setError(err);
-      return;
-    }
+    if (loading) return;
+    const errs = validateStep();
+    setFieldErrors(errs);
+    if (Object.keys(errs).length > 0) return;
     setLoading(true);
     setError("");
     // Shared profile fields. In authed mode name/email/password/role are
@@ -129,8 +185,21 @@ export default function ProviderRegisterForm({
       category: form.category,
       headline: form.headline.trim(),
       bio: form.bio.trim(),
+      // Optional Sinhala variants (#515) — send undefined when blank so the
+      // API stores null.
+      headlineSi: form.headlineSi.trim() || undefined,
+      bioSi: form.bioSi.trim() || undefined,
       district: form.district,
+      // Full served set (#502): home district first, extras after.
+      serviceDistricts: [
+        form.district,
+        ...serviceDistricts.filter((d) => d !== form.district),
+      ],
       city: form.city.trim(),
+      // Optional map pin (#48) — omitted entirely (undefined → dropped by
+      // JSON.stringify) when the provider skipped it.
+      latitude: location?.latitude,
+      longitude: location?.longitude,
       experience: Number(form.experience) || 0,
       whatsapp: form.whatsapp.trim(),
       phone2: form.phone2.trim(),
@@ -166,7 +235,7 @@ export default function ProviderRegisterForm({
         },
       );
       if (res.ok) {
-        router.push("/dashboard?welcome=1");
+        router.push(localizedHref("/dashboard?welcome=1", locale));
         router.refresh();
       } else {
         const data = await res.json().catch(() => ({}));
@@ -220,8 +289,13 @@ export default function ProviderRegisterForm({
               const done = i < step;
               const active = i === step;
               return (
-                <li key={label} className="relative">
+                <li
+                  key={label}
+                  className="relative"
+                  aria-current={active ? "step" : undefined}
+                >
                   <span
+                    aria-hidden
                     className={`absolute -left-[38px] flex h-7 w-7 items-center justify-center rounded-sm border-2 font-mono text-[10px] font-bold transition ${
                       done
                         ? "border-brand-600 bg-brand-600 text-white dark:text-ink-50"
@@ -238,6 +312,9 @@ export default function ProviderRegisterForm({
                     }`}
                   >
                     {label}
+                    {done && (
+                      <span className="sr-only"> ({r.stepCompleted})</span>
+                    )}
                   </span>
                 </li>
               );
@@ -248,14 +325,14 @@ export default function ProviderRegisterForm({
           <figure className="tech-corners relative mt-8 hidden aspect-[4/3] overflow-hidden border border-ink-300 lg:block">
             <Image
               src="/images/workers/electrician-1.jpg"
-              alt="A tradesperson at work in Sri Lanka"
+              alt={r.asideWorkerAlt}
               fill
               sizes="320px"
               className="object-cover"
             />
             <div className="blueprint-grid pointer-events-none absolute inset-0 opacity-25 mix-blend-overlay" />
             <span className="absolute left-2 top-2 rounded-sm bg-brand-700 px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-white dark:text-ink-50">
-              Registry
+              {r.asideBadge}
             </span>
           </figure>
         </aside>
@@ -264,13 +341,35 @@ export default function ProviderRegisterForm({
         <div>
           <div className="tech-corners overflow-hidden rounded-lg border border-ink-300 bg-surface">
             <div className="flex items-center justify-between border-b border-ink-200 bg-ink-100 px-5 py-3 font-mono text-[11px] uppercase tracking-[0.12em]">
-              <span className="font-bold tabular-nums text-ink-700">
+              <span aria-hidden className="font-bold tabular-nums text-ink-700">
                 {String(step + 1).padStart(2, "0")} /{" "}
                 {String(STEPS.length).padStart(2, "0")}
               </span>
-              <span className="text-brand-700">{STEPS[step]}</span>
+              {/* Focus target on step change (#564): the sr-only text reads
+                  the full "Step n of N" context the visual chrome splits up. */}
+              <h2
+                ref={stepHeadingRef}
+                tabIndex={-1}
+                className="text-brand-700 focus:outline-none"
+              >
+                <span className="sr-only">
+                  {r.stepOf(step + 1, STEPS.length, STEPS[step])}
+                </span>
+                <span aria-hidden>{STEPS[step]}</span>
+              </h2>
             </div>
-            <div className="p-6">
+            {/* One <form> per step: Continue/Create is its submit button, so
+                Enter in a field advances the wizard (#564). Validation stays
+                in JS for localized messages, hence noValidate. */}
+            <form
+              className="p-6"
+              noValidate
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (step < STEPS.length - 1) next();
+                else void submit();
+              }}
+            >
         {step === 0 && (
           <div className="space-y-4">
             <div>
@@ -283,6 +382,7 @@ export default function ProviderRegisterForm({
                 value={form.name}
                 onChange={(e) => set("name", e.target.value)}
                 placeholder={r.fullNamePh}
+                {...errorProps("pr-name")}
               />
             </div>
             <div>
@@ -296,6 +396,7 @@ export default function ProviderRegisterForm({
                 value={form.email}
                 onChange={(e) => set("email", e.target.value)}
                 autoComplete="email"
+                {...errorProps("pr-email")}
               />
             </div>
             <div>
@@ -309,6 +410,7 @@ export default function ProviderRegisterForm({
                 placeholder="07X XXX XXXX"
                 value={form.phone}
                 onChange={(e) => set("phone", e.target.value)}
+                {...errorProps("pr-phone")}
               />
               <p className="mt-1 text-xs text-ink-500">{r.phoneHint}</p>
             </div>
@@ -320,7 +422,10 @@ export default function ProviderRegisterForm({
                 id="pr-password"
                 value={form.password}
                 onChange={(e) => set("password", e.target.value)}
+                minLength={PASSWORD_MIN_LENGTH}
+                maxLength={PASSWORD_MAX_LENGTH}
                 autoComplete="new-password"
+                {...errorProps("pr-password")}
               />
             </div>
           </div>
@@ -328,6 +433,23 @@ export default function ProviderRegisterForm({
 
         {step === 1 && (
           <div className="space-y-4">
+            {authed && (
+              <div>
+                <label className="label" htmlFor="pr-phone">
+                  {r.phone}
+                </label>
+                <input
+                  id="pr-phone"
+                  className="input"
+                  type="tel"
+                  placeholder="07X XXX XXXX"
+                  value={form.phone}
+                  onChange={(e) => set("phone", e.target.value)}
+                  {...errorProps("pr-phone")}
+                />
+                <p className="mt-1 text-xs text-ink-500">{r.phoneHint}</p>
+              </div>
+            )}
             <div>
               {/* The category picker is a group of toggle buttons, not a
                   single field — a <label> has nothing to point at, so the
@@ -335,10 +457,18 @@ export default function ProviderRegisterForm({
               <span className="label" id="pr-category-label">
                 {r.serviceQuestion}
               </span>
+              {/* id + tabIndex let the error-summary link land focus here;
+                  aria-invalid is not valid on `group`, so only the error text
+                  is linked via aria-describedby. */}
               <div
                 role="group"
+                id="pr-category"
+                tabIndex={-1}
                 aria-labelledby="pr-category-label"
-                className="grid grid-cols-2 gap-2 sm:grid-cols-3"
+                aria-describedby={
+                  fieldErrors["pr-category"] ? "pr-category-error" : undefined
+                }
+                className="grid grid-cols-2 gap-2 focus:outline-none sm:grid-cols-3"
               >
                 {categories.map((c) => (
                   <button
@@ -376,6 +506,7 @@ export default function ProviderRegisterForm({
                 onChange={(e) => set("headline", e.target.value)}
                 placeholder={r.headlinePh}
                 maxLength={120}
+                {...errorProps("pr-headline")}
               />
             </div>
             <div>
@@ -388,7 +519,39 @@ export default function ProviderRegisterForm({
                 value={form.bio}
                 onChange={(e) => set("bio", e.target.value)}
                 placeholder={r.aboutPh}
+                {...errorProps("pr-bio")}
               />
+            </div>
+            {/* Optional Sinhala variants (#515): shown to visitors browsing in
+                Sinhala; English stays the required source of truth. */}
+            <div>
+              <label className="label" htmlFor="pr-headline-si">
+                {r.headlineSi}
+              </label>
+              <input
+                id="pr-headline-si"
+                className="input"
+                value={form.headlineSi}
+                onChange={(e) => set("headlineSi", e.target.value)}
+                placeholder={r.headlineSiPh}
+                maxLength={120}
+                lang="si"
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="pr-bio-si">
+                {r.aboutSi}
+              </label>
+              <textarea
+                id="pr-bio-si"
+                className="input min-h-32 resize-y"
+                value={form.bioSi}
+                onChange={(e) => set("bioSi", e.target.value)}
+                placeholder={r.aboutSiPh}
+                maxLength={2000}
+                lang="si"
+              />
+              <p className="mt-1 text-xs text-ink-500">{r.sinhalaOptional}</p>
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
               <div>
@@ -400,6 +563,7 @@ export default function ProviderRegisterForm({
                   className="input"
                   value={form.district}
                   onChange={(e) => set("district", e.target.value)}
+                  {...errorProps("pr-district")}
                 >
                   <option value="">{r.selectPlaceholder}</option>
                   {DISTRICTS.map((d) => (
@@ -419,6 +583,7 @@ export default function ProviderRegisterForm({
                   value={form.city}
                   onChange={(e) => set("city", e.target.value)}
                   placeholder={r.townCityPh}
+                  {...errorProps("pr-city")}
                 />
               </div>
               <div>
@@ -436,6 +601,22 @@ export default function ProviderRegisterForm({
                 />
               </div>
             </div>
+            {/* Multi-district service area (#502). */}
+            <ServiceDistrictsPicker
+              id="pr-service-districts"
+              primary={form.district}
+              value={serviceDistricts}
+              onChange={setServiceDistricts}
+              hasError={Boolean(fieldErrors["pr-service-districts"])}
+            />
+            {/* Optional map pin (#48): pre-centered on the chosen district's
+                centroid; entirely skippable. */}
+            <LocationPicker
+              id="pr-location"
+              value={location}
+              onChange={setLocation}
+              district={form.district}
+            />
           </div>
         )}
 
@@ -533,7 +714,7 @@ export default function ProviderRegisterForm({
         )}
 
         {step === 3 && (
-          <div className="space-y-4">
+          <div id="pr-services" tabIndex={-1} className="space-y-4">
             <p className="text-sm text-ink-500">{r.servicesIntro}</p>
             {services.map((s, i) => (
               <div key={i} className="rounded-sm border border-ink-300 bg-ink-50 p-4">
@@ -557,11 +738,13 @@ export default function ProviderRegisterForm({
                 </div>
                 <div className="mt-2 space-y-3">
                   <input
+                    id={`pr-service-${i}-title`}
                     className="input"
                     placeholder={r.serviceTitlePh}
                     aria-label={r.serviceTitlePh}
                     value={s.title}
                     onChange={(e) => setService(i, "title", e.target.value)}
+                    {...errorProps(`pr-service-${i}-title`)}
                   />
                   <input
                     className="input"
@@ -575,6 +758,7 @@ export default function ProviderRegisterForm({
                   <div className="flex gap-3">
                     <div className="flex-1">
                       <input
+                        id={`pr-service-${i}-price`}
                         className="input"
                         type="number"
                         min={1}
@@ -582,11 +766,12 @@ export default function ProviderRegisterForm({
                         aria-label={r.pricePh}
                         value={s.price}
                         onChange={(e) => setService(i, "price", e.target.value)}
+                        {...errorProps(`pr-service-${i}-price`)}
                       />
                     </div>
                     <select
                       className="input w-36"
-                      aria-label={r.serviceN(i + 1)}
+                      aria-label={r.priceType}
                       value={s.priceType}
                       onChange={(e) =>
                         setService(i, "priceType", e.target.value)
@@ -613,14 +798,21 @@ export default function ProviderRegisterForm({
                 {r.addAnother}
               </button>
             )}
+            <ConsentCheckbox
+              id="pr-agree"
+              checked={agree}
+              onChange={setAgree}
+              {...errorProps("pr-agree")}
+            />
           </div>
         )}
 
-        {error && (
-          <p role="alert" className="mt-4 text-sm text-red-600">
-            {error}
-          </p>
-        )}
+        <ErrorSummary
+          title={t.fieldErrors.summaryTitle}
+          errors={fieldErrors}
+          className="mt-4"
+        />
+        <FormError className="mt-4">{error}</FormError>
 
         <div className="mt-6 flex items-center justify-between">
           {step > minStep ? (
@@ -628,6 +820,7 @@ export default function ProviderRegisterForm({
               type="button"
               onClick={() => {
                 setError("");
+                setFieldErrors({});
                 setStep((s) => Math.max(s - 1, minStep));
               }}
               className="btn-ghost"
@@ -638,27 +831,22 @@ export default function ProviderRegisterForm({
             <span />
           )}
           {step < STEPS.length - 1 ? (
-            <button type="button" onClick={next} className="btn-primary">
+            <button type="submit" className="btn-primary">
               {r.continue}
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={submit}
-              disabled={loading}
-              className="btn-primary"
-            >
+            <button type="submit" disabled={loading} className="btn-primary">
               {loading ? r.creating : r.create}
             </button>
           )}
             </div>
-            </div>
+            </form>
           </div>
 
           <p className="mt-6 text-center text-sm text-ink-500">
             {r.alreadyHave}{" "}
             <Link
-              href="/login"
+              href={localizedHref("/login", locale)}
               className="font-semibold text-brand-600 hover:text-brand-700"
             >
               {r.signIn}

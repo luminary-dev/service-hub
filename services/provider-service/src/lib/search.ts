@@ -24,6 +24,10 @@ export function buildSearchWhere(
     OR: [
       { headline: { contains: query, mode: "insensitive" } },
       { bio: { contains: query, mode: "insensitive" } },
+      // Bilingual pitch (#515): a Sinhala query ILIKE-matches the optional
+      // Sinhala headline/bio too. Backed by the same pg_trgm GIN indexes.
+      { headlineSi: { contains: query, mode: "insensitive" } },
+      { bioSi: { contains: query, mode: "insensitive" } },
       { city: { contains: query, mode: "insensitive" } },
       { contactName: { contains: query, mode: "insensitive" } },
       { services: { some: { title: { contains: query, mode: "insensitive" } } } },
@@ -57,14 +61,18 @@ export function buildBrowseWhere(
   f: BrowseFilters,
   now: Date = new Date()
 ): Prisma.ProviderWhereInput {
-  const price: Prisma.FloatFilter = {
+  const price: Prisma.DecimalFilter = {
     ...(f.priceMin != null ? { gte: f.priceMin } : {}),
     ...(f.priceMax != null ? { lte: f.priceMax } : {}),
   };
   return {
     suspended: false,
     ...(f.category ? { category: f.category } : {}),
-    ...(f.district ? { district: f.district } : {}),
+    // Multi-district service area (#502): a district filter matches any
+    // provider whose served set contains it, not only those based there.
+    // Every row carries the set (backfilled to [district] by migration
+    // 20260714090000), backed by the GIN index on serviceDistricts.
+    ...(f.district ? { serviceDistricts: { has: f.district } } : {}),
     ...(f.availableOnly
       ? {
           available: true,

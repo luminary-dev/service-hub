@@ -140,7 +140,8 @@ corner brackets on a panel), `.hazard` (animated caution stripes), `.hairline`
 
 The "UI 2.0" registry-style primitives extracted from the redesign. Prefer
 composing these over re-implementing the markup. All are server-safe (no
-interactivity of their own):
+interactivity of their own) except `Dialog` and `RouteError`, which are client
+components:
 
 - **`PageHeader`** — the blueprint-grid header band: a mono uppercase eyebrow
   (with an optional solid `bg-brand-700` `tag`), an `h1` title, an optional
@@ -156,3 +157,48 @@ interactivity of their own):
   `.label` with a control plus optional help/error text (error takes
   precedence and is announced via `role="alert"`). `FormRow` lays 2–3 `Field`s
   side by side (single column on mobile).
+- **`FormError` / `ErrorSummary` / `useFieldErrors`** (one module,
+  `FormError.tsx`) — inline field-error text wired to its control via
+  `aria-describedby`/`aria-invalid`, the focus-managed top-of-form
+  `ErrorSummary` linking to the offending fields, and the hook that keeps the
+  per-field error map (and moves focus to the first invalid control) behind
+  both (#378 — the failure-side counterpart of `FormSuccess`).
+- **`Dialog`** (client) — the one modal implementation: fixed overlay, focus
+  trap, scroll lock, Escape-to-close, initial-focus + focus-restore. Render it
+  only while open (`{open && <Dialog …>}`). Panel mode (`panelClassName`)
+  centers a `role="dialog"` panel whose inner clicks don't close (the report
+  modal); bare mode puts the dialog role on the overlay itself (the photo
+  lightbox). `isolate` stops Escape/click/touch from reaching a dialog
+  underneath when modals stack. Never hand-roll `aria-modal` markup — compose
+  this.
+- **`Skeleton` / `SkeletonList`** — loading placeholders for `loading.tsx`
+  files and in-component fetch states. `Skeleton` is one shimmer block
+  (`tone="strong"` → `bg-ink-200` for headings/avatars, default soft →
+  `bg-ink-100`; shape via `className`); the nearest container carries
+  `animate-pulse` so card borders shimmer too. `SkeletonList` is the standard
+  card-row list (avatar, two lines, trailing pill).
+- **`Pagination`** — the prev/next pager under paginated listings: a labelled
+  `<nav>` landmark, `.btn-secondary` links around a "Page X of Y" readout,
+  hidden on single-page results. Callers build hrefs (`hrefFor`) so filters
+  and the `/si` locale prefix are preserved; pass `label` when one page hosts
+  two pagers (the jobs board).
+- **`RouteError`** (client) — the shared error-boundary UI (icon, localized
+  message, retry + go-home). Every `error.tsx` re-exports it.
+
+## Route states & feedback conventions
+
+- **Loading:** every data-fetching route segment has a `loading.tsx` composed
+  from `Skeleton`/`SkeletonList` that mirrors the page's real layout. Nested
+  segments with their own shape (e.g. the inquiry message threads) get their
+  own file so navigation doesn't flash the parent's skeleton.
+- **Errors:** `error.tsx` boundaries exist at the root and at the `account/`,
+  `dashboard/`, `admin/` and `providers/[id]/` segments (all re-exporting
+  `RouteError`), so a throw retries in place with the surrounding layout
+  intact instead of bubbling to the global boundary.
+- **Empty states:** anything with nothing to show renders `EmptyState` — no
+  bare `.card` divs or lone paragraphs.
+- **Form success:** a terminal success replaces the form with `FormSuccess`
+  (`role="status"` + focus moved to the heading, #510/#543); background
+  actions that keep the page (saves, deletes, reports) confirm via
+  `ToastProvider` toasts; redirect only when the flow genuinely moves
+  (e.g. login). Don't mix patterns within one form.

@@ -15,7 +15,7 @@ cd "$(dirname "$0")/.."
 BRANCH="${1:-main}"
 ORG="luminary-dev"
 REPO_PREFIX="service-hub-"
-SERVICES=(identity-service provider-service review-service job-service notification-service media-service chat-service api-gateway)
+SERVICES=(identity-service provider-service review-service job-service notification-service media-service chat-service search-service trust-safety-service api-gateway)
 
 for s in "${SERVICES[@]}"; do
   echo "==> Syncing services/$s -> $ORG/$REPO_PREFIX$s ($BRANCH)"

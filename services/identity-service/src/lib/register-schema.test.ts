@@ -133,6 +133,66 @@ describe("registerSchema — PROVIDER", () => {
     ).toBe(false);
   });
 
+  // Multi-district service area (#502): optional, at most 5 valid districts;
+  // the route unions the home district in and re-checks the cap.
+  it("accepts an omitted or valid serviceDistricts list", () => {
+    expect(registerSchema.safeParse(validProvider).success).toBe(true);
+    expect(
+      registerSchema.safeParse({
+        ...validProvider,
+        serviceDistricts: ["Colombo", "Gampaha", "Kalutara"],
+      }).success
+    ).toBe(true);
+  });
+
+  it("rejects an unknown district in serviceDistricts", () => {
+    expect(
+      registerSchema.safeParse({
+        ...validProvider,
+        serviceDistricts: ["Colombo", "Atlantis"],
+      }).success
+    ).toBe(false);
+  });
+
+  it("rejects more than 5 serviceDistricts", () => {
+    expect(
+      registerSchema.safeParse({
+        ...validProvider,
+        serviceDistricts: [
+          "Colombo",
+          "Gampaha",
+          "Kalutara",
+          "Kandy",
+          "Galle",
+          "Matara",
+        ],
+      }).success
+    ).toBe(false);
+  });
+
+  // Geo capture (#48): the optional map pin must sit inside the Sri Lanka
+  // bounding box; the both-or-neither pair rule lives in the route.
+  it("accepts an omitted or in-bounds map pin", () => {
+    expect(registerSchema.safeParse(validProvider).success).toBe(true);
+    expect(
+      registerSchema.safeParse({
+        ...validProvider,
+        latitude: 6.9271,
+        longitude: 79.8612,
+      }).success
+    ).toBe(true);
+  });
+
+  it("rejects coordinates outside the Sri Lanka bounding box", () => {
+    expect(
+      registerSchema.safeParse({
+        ...validProvider,
+        latitude: 51.5072,
+        longitude: -0.1276,
+      }).success
+    ).toBe(false);
+  });
+
   it("rejects out-of-range experience", () => {
     expect(
       registerSchema.safeParse({ ...validProvider, experience: 61 }).success

@@ -3,18 +3,31 @@ import Link from "next/link";
 import Image from "next/image";
 import { FaArrowRight } from "@/components/icons";
 import { apiJson } from "@/lib/api";
-import { CATEGORIES, DISTRICTS } from "@/lib/constants";
-import { dict, categoryLabelLoc, districtLabelLoc } from "@/lib/i18n";
+import { DISTRICTS } from "@/lib/constants";
+import { categoryOptionLabel } from "@/lib/categories";
+import { fetchCategoryOptions } from "@/lib/categories-server";
+import { dict, districtLabelLoc } from "@/lib/i18n";
 import { languageAlternates, localizedHref } from "@/lib/links";
 import { getLocale, getUrlLocale } from "@/lib/locale";
+import { siteOpenGraph } from "@/lib/seo";
 import { getSession } from "@/lib/auth";
+import { SITE_NAME, SITE_URL } from "@/lib/site";
+import CategoryIcon from "@/components/CategoryIcon";
 import ProviderCard, { ProviderCardDTO } from "@/components/ProviderCard";
 import SearchBar from "@/components/SearchBar";
 import HeroSlider from "@/components/HeroSlider";
 import InView from "@/components/InView";
+import JsonLd from "@/components/JsonLd";
 
 export async function generateMetadata(): Promise<Metadata> {
-  return { alternates: languageAlternates("/", await getUrlLocale()) };
+  const [locale, urlLocale] = await Promise.all([getLocale(), getUrlLocale()]);
+  return {
+    alternates: languageAlternates("/", urlLocale),
+    // Defining openGraph replaces the root layout's wholesale (shallow
+    // merge), so this carries the full site block plus an og:url that
+    // matches the canonical ("/" or "/si", #379).
+    openGraph: siteOpenGraph(locale, urlLocale, "/"),
+  };
 }
 
 const TICKER_DISTRICTS = [
@@ -41,9 +54,42 @@ function Marker({ code, children }: { code: string; children: React.ReactNode })
   );
 }
 
+// Site-wide structured data for the homepage (#514). The WebSite node carries a
+// SearchAction so Google can surface a sitelinks searchbox that deep-links into
+// our provider search (/providers?q=…). The Organization node advertises the
+// brand identity. sameAs (socials) is omitted deliberately — we have no
+// canonical social profiles to point at yet, and inventing them would be wrong.
+const HOME_JSON_LD = [
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: SITE_NAME,
+    url: SITE_URL,
+    potentialAction: {
+      "@type": "SearchAction",
+      target: {
+        "@type": "EntryPoint",
+        urlTemplate: `${SITE_URL}/providers?q={search_term_string}`,
+      },
+      "query-input": "required name=search_term_string",
+    },
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: SITE_NAME,
+    url: SITE_URL,
+    logo: `${SITE_URL}/icon.svg`,
+  },
+];
+
 export default async function HomePage() {
-  const [locale, listing, stats] = await Promise.all([
+  // None of these depend on one another, so run them together rather than
+  // tacking session/favorites on as a serial tail (#660). Only `favorites`
+  // depends on `session`, so it awaits afterwards.
+  const [locale, session, listing, stats, categories] = await Promise.all([
     getLocale(),
+    getSession(),
     apiJson<{ providers: ProviderCardDTO[] }>(
       "/api/providers?sort=newest&pageSize=6",
       { revalidate: 300 }
@@ -51,11 +97,12 @@ export default async function HomePage() {
     apiJson<{ providerCount: number; reviewCount: number }>("/api/stats", {
       revalidate: 300,
     }),
+    // Admin-managed categories (#561) — falls back to the static list inside.
+    fetchCategoryOptions({ revalidate: 300 }),
   ]);
   const t = dict[locale];
   const providerCount = stats?.providerCount ?? 0;
   const reviewCount = stats?.reviewCount ?? 0;
-  const session = await getSession();
   const favorites = session
     ? await apiJson<{ providerIds: string[] }>("/api/favorites")
     : null;
@@ -63,9 +110,9 @@ export default async function HomePage() {
 
   const featured: ProviderCardDTO[] = listing?.providers ?? [];
 
-  const tickerItems = CATEGORIES.slice(0, 8).map(
+  const tickerItems = categories.slice(0, 8).map(
     (c, i) =>
-      `${categoryLabelLoc(c.slug, locale)} · ${districtLabelLoc(
+      `${categoryOptionLabel(c, locale)} · ${districtLabelLoc(
         DISTRICTS.find((d) => d === TICKER_DISTRICTS[i]) ?? "Colombo",
         locale
       )}`
@@ -73,6 +120,7 @@ export default async function HomePage() {
 
   return (
     <div>
+      <JsonLd data={HOME_JSON_LD} />
       {/* -- STATUS / SPEC BAR ------------------------------------------ */}
       <div className="border-b border-ink-300 bg-ink-100">
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-500 sm:px-6">
@@ -91,7 +139,7 @@ export default async function HomePage() {
           </div>
           <span className="inline-flex flex-shrink-0 items-center gap-1.5 font-semibold text-brand-700">
             <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-brand-600" />
-            Online
+            {t.home.statusOnline}
           </span>
         </div>
       </div>
@@ -112,7 +160,7 @@ export default async function HomePage() {
             {/* Query console */}
             <div className="tech-corners mt-8 max-w-xl border border-ink-300 bg-surface p-4">
               <div className="eyebrow mb-3 !text-ink-500">{t.home.catHeading}</div>
-              <SearchBar />
+              <SearchBar categories={categories} />
               <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
                 <span className="font-mono uppercase tracking-wider text-ink-400">
                   {t.home.popular}
@@ -135,7 +183,7 @@ export default async function HomePage() {
             {/* Stat readout */}
             <p className="mt-7 flex items-center gap-2 font-mono text-sm text-ink-500">
               <span className="h-1.5 w-1.5 rounded-full bg-brand-600" />
-              {t.home.statsLine(providerCount, CATEGORIES.length, reviewCount)}
+              {t.home.statsLine(providerCount, categories.length, reviewCount)}
             </p>
           </div>
 
@@ -166,7 +214,7 @@ export default async function HomePage() {
             stagger
             className="mt-8 grid grid-cols-2 border-l border-t border-ink-200 sm:grid-cols-3 lg:grid-cols-4 gap-2"
           >
-            {CATEGORIES.map((c, i) => (
+            {categories.map((c, i) => (
               <Link
                 key={c.slug}
                 href={localizedHref(`/providers?category=${c.slug}`, locale)}
@@ -177,14 +225,18 @@ export default async function HomePage() {
                 {/* growing left accent bar */}
                 <span className="absolute inset-y-0 left-0 w-[3px] origin-top scale-y-0 bg-brand-600 transition-transform duration-300 ease-snap group-hover:scale-y-100" />
                 <span className="relative flex h-11 w-11 shrink-0 items-center justify-center border border-ink-300 bg-ink-50 transition-colors duration-300 group-hover:border-brand-600 group-hover:bg-brand-600">
-                  <c.icon className="h-5 w-5 text-brand-700 transition-[color,transform] duration-300 ease-snap group-hover:-rotate-6 group-hover:scale-110 group-hover:text-white" />
+                  <CategoryIcon
+                    slug={c.slug}
+                    icon={c.icon}
+                    className="h-5 w-5 text-brand-700 transition-[color,transform] duration-300 ease-snap group-hover:-rotate-6 group-hover:scale-110 group-hover:text-white"
+                  />
                 </span>
                 <span className="relative min-w-0 flex-1">
                   <span className="block font-mono text-[10px] uppercase tracking-wider text-ink-400 transition-colors duration-300 group-hover:text-brand-600">
                     TR-{String(i + 1).padStart(2, "0")}
                   </span>
                   <span className="block truncate font-semibold text-ink-900 transition-transform duration-300 ease-snap group-hover:translate-x-0.5 group-hover:text-brand-700">
-                    {categoryLabelLoc(c.slug, locale)}
+                    {categoryOptionLabel(c, locale)}
                   </span>
                 </span>
                 <FaArrowRight className="relative h-3.5 w-3.5 shrink-0 -translate-x-2 text-brand-600 opacity-0 transition-all duration-300 ease-snap group-hover:translate-x-0 group-hover:opacity-100" />
@@ -300,7 +352,10 @@ export default async function HomePage() {
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
-                <Link href="/register/provider" className="btn-primary !px-6 !py-3">
+                <Link
+                  href={localizedHref("/register/provider", locale)}
+                  className="btn-primary !px-6 !py-3"
+                >
                   {t.home.ctaCreate}
                 </Link>
                 <Link

@@ -19,7 +19,9 @@ async function sendEmail(
   path:
     | "/internal/email/verify"
     | "/internal/email/password-reset"
-    | "/internal/email/change-email",
+    | "/internal/email/change-email"
+    | "/internal/email/account-exists"
+    | "/internal/email/email-change-attempt",
   body: { to: string; url: string; locale: Locale }
 ) {
   const res = await s2s(NOTIFICATION_SERVICE_URL, path, {
@@ -100,4 +102,36 @@ export async function sendEmailChangeConfirmation(
   });
   const url = `${origin}/verify-email-change?token=${raw}`;
   await sendEmail("/internal/email/change-email", { to: newEmail, url, locale });
+}
+
+// Account-already-exists (#373): registration returns the same generic success
+// whether or not the email is taken, so it cannot be used to enumerate
+// accounts. When the address IS taken we send this out-of-band notice to the
+// real owner instead, nudging them to sign in / reset. No token or DB write —
+// the link just points at the sign-in page. Delivery errors propagate; the
+// caller fires this and-forgets it (like forgot-password) so the taken-email
+// branch isn't measurably slower.
+export async function sendAccountExistsEmail(
+  email: string,
+  origin: string,
+  locale: Locale = "en"
+) {
+  const url = `${origin}/login`;
+  await sendEmail("/internal/email/account-exists", { to: email, url, locale });
+}
+
+// Change-email attempt on a taken address (#503): the change-email endpoint
+// returns the same generic success whether or not the target address is already
+// registered, so it cannot be used to enumerate accounts. When the address IS
+// taken we do NOT start a change; instead we send this out-of-band notice to the
+// real owner — someone tried to move an account onto their address. No token or
+// DB write; the link points at sign-in. The caller fires this and-forgets it
+// (like forgot-password) so the taken-address branch isn't measurably slower.
+export async function sendEmailChangeAttemptNotice(
+  email: string,
+  origin: string,
+  locale: Locale = "en"
+) {
+  const url = `${origin}/login`;
+  await sendEmail("/internal/email/email-change-attempt", { to: email, url, locale });
 }

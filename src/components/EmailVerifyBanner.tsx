@@ -28,22 +28,31 @@ export default function EmailVerifyBanner() {
           {t.verify.bannerText}
         </p>
         {state === "sent" ? (
-          <span className="flex items-center gap-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-700">
+          <span
+            role="status"
+            className="flex items-center gap-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-700"
+          >
             <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-emerald-700" />
             {t.verify.bannerSent}
           </span>
         ) : (
-          <button
-            onClick={resend}
-            disabled={state === "sending"}
-            className="cursor-pointer rounded-md border border-amber-300 bg-surface px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.1em] text-amber-900 transition-colors duration-200 ease-snap hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:opacity-50"
-          >
-            {state === "sending"
-              ? t.verify.bannerSending
-              : state === "error"
-                ? t.verify.bannerError
+          <span className="flex flex-wrap items-center gap-3">
+            {/* Announce the failure instead of only relabelling the button (#565). */}
+            {state === "error" && (
+              <span role="alert" className="text-sm font-medium text-red-700">
+                {t.verify.bannerError}
+              </span>
+            )}
+            <button
+              onClick={resend}
+              disabled={state === "sending"}
+              className="cursor-pointer rounded-md border border-amber-300 bg-surface px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.1em] text-amber-900 transition-colors duration-200 ease-snap hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:opacity-50"
+            >
+              {state === "sending"
+                ? t.verify.bannerSending
                 : t.verify.bannerResend}
-          </button>
+            </button>
+          </span>
         )}
       </div>
     </div>

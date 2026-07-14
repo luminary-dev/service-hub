@@ -18,14 +18,34 @@ const { dbMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("./db", () => ({ db: dbMock }));
+// Keep lib/http real (so requireInternalSecret runs) but stub s2s — the erase
+// path resolves the erased user's providerId from provider-service over it.
+vi.mock("./lib/http", async (importActual) => {
+  const actual = await importActual<typeof import("./lib/http")>();
+  return { ...actual, s2s: vi.fn() };
+});
+// Search-index rating pushes (search RFC) are fired (not awaited) from the
+// review write/erase paths.
+vi.mock("./lib/search-index", () => ({
+  pushRatingsToSearchIndex: vi.fn(() => Promise.resolve()),
+}));
 vi.mock("./lib/storage", () => ({
   removeStoredFile: vi.fn().mockResolvedValue(undefined),
   sweepMedia: vi.fn().mockResolvedValue({ removed: 0, kept: 0 }),
 }));
 
 import { app } from "./app";
+import { s2s } from "./lib/http";
 
 const SECRET = "dev-internal-secret";
+const s2sMock = vi.mocked(s2s);
+
+function providerByUserResponse(provider: { id: string } | null) {
+  return new Response(JSON.stringify({ provider }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
 
 function req(path: string, init: RequestInit = {}, withSecret = true) {
   const headers: Record<string, string> = {
@@ -63,14 +83,41 @@ describe("internal secret enforcement", () => {
 });
 
 describe("GET /internal/ratings (batch summaries)", () => {
-  it("returns { ratings } keyed by providerId", async () => {
-    dbMock.review.groupBy.mockResolvedValue([
-      { providerId: "p1", _avg: { rating: 4.5 }, _count: { _all: 2 } },
-    ]);
+  it("returns each provider's overall average+count, dimension averages and star distribution", async () => {
+    // Two grouped queries back the summary (#528): the overall averages +
+    // per-dimension averages + count, and the per-star histogram.
+    dbMock.review.groupBy.mockImplementation(async (args: { by: string[] }) => {
+      if (args.by.includes("rating")) {
+        return [
+          { providerId: "p1", rating: 5, _count: { _all: 1 } },
+          { providerId: "p1", rating: 4, _count: { _all: 1 } },
+        ];
+      }
+      return [
+        {
+          providerId: "p1",
+          _avg: {
+            rating: 4.5,
+            quality: 5,
+            punctuality: 4,
+            value: null,
+            communication: 4.5,
+          },
+          _count: { _all: 2 },
+        },
+      ];
+    });
     const res = await req("/internal/ratings?providerIds=p1,p2");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
-      ratings: { p1: { rating: 4.5, count: 2 } },
+      ratings: {
+        p1: {
+          rating: 4.5,
+          count: 2,
+          dimensions: { quality: 5, punctuality: 4, value: null, communication: 4.5 },
+          distribution: { 1: 0, 2: 0, 3: 0, 4: 1, 5: 1 },
+        },
+      },
     });
   });
 
@@ -79,6 +126,17 @@ describe("GET /internal/ratings (batch summaries)", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ratings: {} });
     expect(dbMock.review.groupBy).not.toHaveBeenCalled();
+  });
+
+  it("caps the batch at MAX_BATCH_IDS (500) so a huge list can't force one giant IN (...)", async () => {
+    dbMock.review.groupBy.mockResolvedValue([]);
+    const ids = Array.from({ length: 600 }, (_, i) => `p${i}`).join(",");
+    const res = await req(`/internal/ratings?providerIds=${ids}`);
+    expect(res.status).toBe(200);
+    const call = dbMock.review.groupBy.mock.calls[0][0] as {
+      where: { providerId: { in: string[] } };
+    };
+    expect(call.where.providerId.in).toHaveLength(500);
   });
 });
 
@@ -101,12 +159,36 @@ describe("GET /internal/count", () => {
 });
 
 describe("POST /internal/users/:id/erase", () => {
-  it("returns { ok: true } and fans out the deletion", async () => {
+  beforeEach(() => {
     dbMock.reviewPhoto.findMany.mockResolvedValue([]);
+    dbMock.review.findMany.mockResolvedValue([]);
     dbMock.review.deleteMany.mockResolvedValue({ count: 0 });
+  });
+
+  it("deletes only the user's authored reviews when they are not a provider", async () => {
+    s2sMock.mockResolvedValue(providerByUserResponse(null));
     const res = await req("/internal/users/u1/erase", { method: "POST" });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
+    expect(dbMock.review.deleteMany).toHaveBeenCalledTimes(1);
+    expect(dbMock.review.deleteMany).toHaveBeenCalledWith({ where: { userId: "u1" } });
+  });
+
+  it("also deletes reviews received by the erased user's provider profile (#645)", async () => {
+    // ReviewResponse replies + received-review photos cascade with the review,
+    // so deleting the received reviews clears the provider's public replies too.
+    s2sMock.mockResolvedValue(providerByUserResponse({ id: "prov_9" }));
+    const res = await req("/internal/users/u1/erase", { method: "POST" });
+    expect(res.status).toBe(200);
+    expect(dbMock.review.deleteMany).toHaveBeenCalledWith({ where: { userId: "u1" } });
+    expect(dbMock.review.deleteMany).toHaveBeenCalledWith({ where: { providerId: "prov_9" } });
+  });
+
+  it("degrades to authored-only cleanup when provider-service is unreachable", async () => {
+    s2sMock.mockRejectedValue(new Error("ECONNREFUSED"));
+    const res = await req("/internal/users/u1/erase", { method: "POST" });
+    expect(res.status).toBe(200);
+    expect(dbMock.review.deleteMany).toHaveBeenCalledTimes(1);
     expect(dbMock.review.deleteMany).toHaveBeenCalledWith({ where: { userId: "u1" } });
   });
 });

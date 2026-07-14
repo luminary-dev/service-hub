@@ -4,12 +4,16 @@
 // path, and the public inquiry create path (anonymous allowed). Prisma and the
 // review/notification S2S clients are mocked — deterministic, no network.
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Prisma } from "@prisma/client";
 
 const { dbMock } = vi.hoisted(() => ({
   dbMock: {
     provider: { findMany: vi.fn(), findUnique: vi.fn(), count: vi.fn() },
     category: { findMany: vi.fn() },
     inquiry: { create: vi.fn(), findMany: vi.fn() },
+    // Content filter (#375): the auto-report path files a SYSTEM report on
+    // the inquiry when its text matches the denylist.
+    report: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
   },
 }));
 
@@ -18,10 +22,14 @@ vi.mock("../lib/clients", () => ({
   fetchRatings: vi.fn().mockResolvedValue({}),
   fetchProviderReviews: vi.fn().mockResolvedValue({ reviews: [], nextCursor: null }),
   fetchReviewCount: vi.fn().mockResolvedValue(0),
-  sendInquiryEmail: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("../lib/notify", () => ({
+  emitNotification: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { app } from "../app";
+import { __resetCategoryImageCache } from "./providers";
+import { emitNotification } from "../lib/notify";
 
 const SECRET = "dev-internal-secret";
 type Role = "ADMIN" | "SUPPORT" | "CUSTOMER" | "PROVIDER" | null;
@@ -59,6 +67,8 @@ function providerRow(overrides: Record<string, unknown> = {}) {
     headline: "Experienced plumber",
     district: "Colombo",
     city: "Colombo",
+    latitude: null,
+    longitude: null,
     experience: 20,
     available: true,
     awayUntil: null,
@@ -75,6 +85,7 @@ function providerRow(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  __resetCategoryImageCache();
   dbMock.category.findMany.mockResolvedValue([]);
   dbMock.provider.findMany.mockResolvedValue([]);
   dbMock.provider.count.mockResolvedValue(0);
@@ -102,6 +113,16 @@ describe("GET /api/providers/:id — suspended visibility gate", () => {
     expect(body.provider.hasPhone).toBe(true);
   });
 
+  it("never leaks admin rejectionReason to the public payload (#506)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(
+      providerRow({ verificationStatus: "REJECTED", rejectionReason: "blurry NIC" })
+    );
+    const res = await req("/api/providers/p1");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.provider).not.toHaveProperty("rejectionReason");
+  });
+
   it("hides a suspended provider from an anonymous visitor (404)", async () => {
     dbMock.provider.findUnique.mockResolvedValue(providerRow({ suspended: true }));
     const res = await req("/api/providers/p1");
@@ -126,6 +147,52 @@ describe("GET /api/providers/:id — suspended visibility gate", () => {
     dbMock.provider.findUnique.mockResolvedValue(null);
     const res = await req("/api/providers/nope");
     expect(res.status).toBe(404);
+  });
+
+  // Geo capture (#48): the map pin is public display data, but only when the
+  // provider actually set one — unpinned profiles carry no coordinate keys.
+  it("includes the map pin only when set (#48)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(
+      providerRow({ latitude: 6.9271, longitude: 79.8612 })
+    );
+    const res = await req("/api/providers/p1");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.provider.latitude).toBe(6.9271);
+    expect(body.provider.longitude).toBe(79.8612);
+  });
+
+  it("omits the coordinate keys entirely for an unpinned provider (#48)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(providerRow());
+    const res = await req("/api/providers/p1");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.provider).not.toHaveProperty("latitude");
+    expect(body.provider).not.toHaveProperty("longitude");
+  });
+
+  it("serializes Decimal service prices as JSON numbers (#371)", async () => {
+    // price is DECIMAL(12,2) in the DB, so Prisma hands the route Decimals —
+    // which would JSON-stringify as strings without the edge conversion.
+    dbMock.provider.findUnique.mockResolvedValue(
+      providerRow({
+        services: [
+          {
+            id: "s1",
+            providerId: "p1",
+            title: "Tap repair",
+            description: null,
+            price: new Prisma.Decimal("1500.00"),
+            priceType: "FIXED",
+          },
+        ],
+      })
+    );
+    const res = await req("/api/providers/p1");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.provider.services[0].price).toBe(1500);
+    expect(typeof body.provider.services[0].price).toBe("number");
   });
 });
 
@@ -152,6 +219,48 @@ describe("GET /api/providers/:id/full — suspended gate mirrors detail", () => 
     expect(body.provider).not.toHaveProperty("phone2");
     expect(body.provider.user).not.toHaveProperty("phone");
     expect(body.provider.hasPhone).toBe(true);
+  });
+
+  it("bounds the avgResponseMs sample to the most recent answered inquiries (#372)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(providerRow({ _count: { photos: 0 } }));
+    const res = await req("/api/providers/p1/full");
+    expect(res.status).toBe(200);
+    expect(dbMock.inquiry.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: { respondedAt: "desc" },
+        take: 200,
+      })
+    );
+  });
+
+  it("never leaks admin rejectionReason to the public profile payload (#506)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(
+      providerRow({
+        verificationStatus: "REJECTED",
+        rejectionReason: "blurry NIC",
+        _count: { photos: 0 },
+      })
+    );
+    const res = await req("/api/providers/p1/full");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.provider).not.toHaveProperty("rejectionReason");
+  });
+
+  it("includes the map pin only when set, like the detail route (#48)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(
+      providerRow({ latitude: 7.2906, longitude: 80.6337, _count: { photos: 0 } })
+    );
+    const pinned = await (await req("/api/providers/p1/full")).json();
+    expect(pinned.provider.latitude).toBe(7.2906);
+    expect(pinned.provider.longitude).toBe(80.6337);
+
+    dbMock.provider.findUnique.mockResolvedValue(
+      providerRow({ _count: { photos: 0 } })
+    );
+    const unpinned = await (await req("/api/providers/p1/full")).json();
+    expect(unpinned.provider).not.toHaveProperty("latitude");
+    expect(unpinned.provider).not.toHaveProperty("longitude");
   });
 });
 
@@ -206,6 +315,71 @@ describe("GET /api/providers?ids= (favorites)", () => {
         where: { id: { in: ["a", "b"] }, suspended: false },
       })
     );
+  });
+});
+
+describe("GET /api/providers — browse card money serialization (#371)", () => {
+  it("emits fromPrice/services[].price as numbers and price-sorts Decimal rows", async () => {
+    dbMock.provider.findMany.mockResolvedValue([
+      providerRow({
+        id: "pricey",
+        services: [
+          { id: "s2", title: "Big job", price: new Prisma.Decimal("12500.00"), priceType: "FIXED" },
+        ],
+      }),
+      providerRow({
+        id: "cheap",
+        services: [
+          { id: "s1", title: "Small job", price: new Prisma.Decimal("1500.00"), priceType: "FIXED" },
+        ],
+      }),
+    ]);
+    const res = await req("/api/providers?sort=price");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // The in-memory price sort compares plain numbers — Decimals must be
+    // converted before ranking, lowest starting price first.
+    expect(body.providers.map((p: { id: string }) => p.id)).toEqual(["cheap", "pricey"]);
+    expect(body.providers[0].fromPrice).toBe(1500);
+    expect(typeof body.providers[0].fromPrice).toBe("number");
+    expect(body.providers[0].services[0].price).toBe(1500);
+    expect(typeof body.providers[0].services[0].price).toBe("number");
+  });
+});
+
+describe("GET /api/providers — browse card map pin (#48)", () => {
+  it("includes the pin on pinned cards and omits the keys on unpinned ones", async () => {
+    dbMock.provider.findMany.mockResolvedValue([
+      providerRow({ id: "pinned", latitude: 6.9271, longitude: 79.8612 }),
+      providerRow({ id: "unpinned" }),
+    ]);
+    const res = await req("/api/providers");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const pinned = body.providers.find((p: { id: string }) => p.id === "pinned");
+    const unpinned = body.providers.find((p: { id: string }) => p.id === "unpinned");
+    // The same already-public pair the detail payloads carry — the map view
+    // (search RFC phase 3) places card markers from it.
+    expect(pinned.latitude).toBe(6.9271);
+    expect(pinned.longitude).toBe(79.8612);
+    expect(unpinned).not.toHaveProperty("latitude");
+    expect(unpinned).not.toHaveProperty("longitude");
+  });
+});
+
+describe("category cover map caching (#523)", () => {
+  const imageSelect = { select: { slug: true, imageUrl: true } };
+
+  it("memoizes the slug→imageUrl map across browse requests (one DB read)", async () => {
+    await req("/api/providers");
+    await req("/api/providers");
+    // Two browse requests, but the cover-image map is fetched from the DB only
+    // once within the TTL — the second request is served from the cache.
+    const imageMapCalls = dbMock.category.findMany.mock.calls.filter(
+      ([arg]) => arg?.select?.imageUrl === true
+    );
+    expect(imageMapCalls).toHaveLength(1);
+    expect(dbMock.category.findMany).toHaveBeenCalledWith(imageSelect);
   });
 });
 
@@ -298,5 +472,111 @@ describe("POST /api/providers/:id/inquiries", () => {
     });
     expect(res.status).toBe(400);
     expect(dbMock.inquiry.create).not.toHaveBeenCalled();
+  });
+
+  it("empty honeypot is treated as a real submission (#65)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({ id: "p1", contactEmail: "n@baas.lk" });
+    dbMock.inquiry.create.mockResolvedValue({ id: "inq1" });
+    const res = await req("/api/providers/p1/inquiries", {
+      method: "POST",
+      body: { ...valid, company: "" },
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.inquiry.create).toHaveBeenCalled();
+  });
+
+  it("silently drops a submission with the honeypot filled (#65)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({ id: "p1", contactEmail: "n@baas.lk" });
+    const res = await req("/api/providers/p1/inquiries", {
+      method: "POST",
+      body: { ...valid, company: "Acme Bots Ltd" },
+    });
+    // Success-shaped 200 so a bot can't detect the filter, but nothing is
+    // persisted and no provider email is sent.
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ inquiry: null });
+    expect(dbMock.inquiry.create).not.toHaveBeenCalled();
+    expect(emitNotification).not.toHaveBeenCalled();
+  });
+
+  // NEW_INQUIRY notification (#394): the provider owner gets an in-app +
+  // email notification through the generic ingestion event, addressed by
+  // userId + denormalized contactEmail, linking to the new thread.
+  it("emits a NEW_INQUIRY event to the provider owner on create", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({
+      id: "p1",
+      userId: "owner-1",
+      contactEmail: "n@baas.lk",
+    });
+    dbMock.inquiry.create.mockResolvedValue({ id: "inq1" });
+    const res = await req("/api/providers/p1/inquiries", { method: "POST", body: valid });
+    expect(res.status).toBe(200);
+    expect(emitNotification).toHaveBeenCalledWith({
+      type: "NEW_INQUIRY",
+      recipients: [{ userId: "owner-1", email: "n@baas.lk", locale: "en" }],
+      payload: { customerName: valid.name },
+      link: "/dashboard/inquiries/inq1",
+      origin: expect.any(String),
+    });
+  });
+
+  // Write-time content filter (#375): a denylist hit auto-files a SYSTEM
+  // report on the inquiry; the inquiry is still delivered (decision:
+  // auto-report and keep visible, never hard-block).
+  it("auto-files a SYSTEM INQUIRY report on a denylist hit, inquiry still created", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({ id: "p1", contactEmail: "n@baas.lk" });
+    dbMock.inquiry.create.mockResolvedValue({ id: "inq1" });
+    dbMock.report.findFirst.mockResolvedValue(null);
+    const res = await req("/api/providers/p1/inquiries", {
+      method: "POST",
+      body: { ...valid, message: "open the door you fucking crook, now" },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ inquiry: { id: "inq1" } });
+    expect(emitNotification).toHaveBeenCalled();
+    expect(dbMock.report.create).toHaveBeenCalledWith({
+      data: {
+        targetType: "INQUIRY",
+        targetId: "inq1",
+        reporterId: null,
+        reason: "auto-flag: content filter",
+        details: expect.stringContaining('matched "fucking" in message'),
+        source: "SYSTEM",
+      },
+    });
+  });
+
+  it("flags Singlish inquiry text too, without blocking the write", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({ id: "p1", contactEmail: "n@baas.lk" });
+    dbMock.inquiry.create.mockResolvedValue({ id: "inq1" });
+    dbMock.report.findFirst.mockResolvedValue(null);
+    const res = await req("/api/providers/p1/inquiries", {
+      method: "POST",
+      body: { ...valid, message: "mu hari ponnaya, wada karanne na kiyala kiyanna" },
+    });
+    expect(res.status).toBe(200);
+    const arg = dbMock.report.create.mock.calls[0][0] as { data: { details: string } };
+    expect(arg.data.details).toContain("ponnaya");
+  });
+
+  it("leaves the reports table untouched for a clean inquiry", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({ id: "p1", contactEmail: "n@baas.lk" });
+    dbMock.inquiry.create.mockResolvedValue({ id: "inq1" });
+    const res = await req("/api/providers/p1/inquiries", { method: "POST", body: valid });
+    expect(res.status).toBe(200);
+    expect(dbMock.report.findFirst).not.toHaveBeenCalled();
+    expect(dbMock.report.create).not.toHaveBeenCalled();
+  });
+
+  it("never fails the inquiry when the auto-report path throws (best-effort)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({ id: "p1", contactEmail: "n@baas.lk" });
+    dbMock.inquiry.create.mockResolvedValue({ id: "inq1" });
+    dbMock.report.findFirst.mockRejectedValue(new Error("db down"));
+    const res = await req("/api/providers/p1/inquiries", {
+      method: "POST",
+      body: { ...valid, message: "open the door you fucking crook, now" },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ inquiry: { id: "inq1" } });
   });
 });

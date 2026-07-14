@@ -7,8 +7,9 @@
 // app), so no session cookie is forwarded into the LLM-driven service. Kept
 // outside the gateway-proxied /api/* prefix because the gateway buffers; a
 // direct web→chat stream doesn't.
-import { cookies } from "next/headers";
 import { getSession } from "@/lib/auth";
+import { getLocale } from "@/lib/locale";
+import { rateLimited } from "./rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -18,29 +19,9 @@ const INTERNAL_API_SECRET =
   process.env.INTERNAL_API_SECRET ?? "dev-internal-secret";
 
 // The assistant drives a paid Claude tool loop, so the endpoint must not be
-// open to anonymous or unbounded traffic. Cap the request body and rate-limit
-// per user.
+// open to anonymous or unbounded traffic. Cap the request body; the per-user
+// rate limit lives in ./rate-limit.
 const MAX_BODY_BYTES = 256 * 1024;
-const RATE_LIMIT = 15; // requests per window
-const RATE_WINDOW_MS = 60_000;
-
-// Per-user sliding window. In-memory is fine for the single web instance we run
-// at v0.1; if the web tier is ever scaled out, move this behind the gateway's
-// Redis limiter.
-const hits = new Map<string, number[]>();
-function rateLimited(userId: string): boolean {
-  const now = Date.now();
-  const recent = (hits.get(userId) ?? []).filter(
-    (t) => now - t < RATE_WINDOW_MS
-  );
-  if (recent.length >= RATE_LIMIT) {
-    hits.set(userId, recent);
-    return true;
-  }
-  recent.push(now);
-  hits.set(userId, recent);
-  return false;
-}
 
 export async function POST(request: Request) {
   // Require a valid session — the assistant is not a public endpoint.
@@ -63,8 +44,12 @@ export async function POST(request: Request) {
     return Response.json({ error: "Message too large" }, { status: 413 });
   }
 
-  const cookieStore = await cookies();
-  const locale = cookieStore.get("lang")?.value === "si" ? "si" : "en";
+  // Reply in the UI's locale, matching the rest of the app: the /si URL prefix
+  // wins, then the `lang` cookie (src/lib/locale.ts). The client requests the
+  // /si-prefixed variant of this route on Sinhala URLs, so the proxy-owned
+  // x-locale header carries the URL locale through to getLocale() — a visitor
+  // on a shared /si link no longer gets English replies under a Sinhala UI.
+  const locale = await getLocale();
   const body = await request.text();
   if (body.length > MAX_BODY_BYTES) {
     return Response.json({ error: "Message too large" }, { status: 413 });

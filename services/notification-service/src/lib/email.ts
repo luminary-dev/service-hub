@@ -79,6 +79,14 @@ const T: Record<
     changeHeading: string;
     changeBody: string;
     changeButton: string;
+    existsSubject: string;
+    existsHeading: string;
+    existsBody: string;
+    existsButton: string;
+    attemptSubject: string;
+    attemptHeading: string;
+    attemptBody: string;
+    attemptButton: string;
   }
 > = {
   en: {
@@ -97,6 +105,16 @@ const T: Record<
     changeBody:
       "We received a request to change the email address on your Baas.lk account to this one. Confirm to complete the change. This link expires in 1 hour. If you did not request this, you can safely ignore this email — your address will not change.",
     changeButton: "Confirm new email",
+    existsSubject: "You already have a Baas.lk account",
+    existsHeading: "You already have an account",
+    existsBody:
+      "Someone tried to sign up for Baas.lk with this email address, but an account already exists. If it was you, sign in below — or reset your password if you have forgotten it. If it was not you, you can safely ignore this email; no new account was created and nothing has changed.",
+    existsButton: "Sign in",
+    attemptSubject: "Someone tried to use your Baas.lk email",
+    attemptHeading: "A change-email request used your address",
+    attemptBody:
+      "Someone tried to change the email address on a Baas.lk account to this one. If it was you, sign in and start the change from your account settings. If it was not you, you can safely ignore this email — nothing has changed and your account is unaffected.",
+    attemptButton: "Sign in",
   },
   si: {
     resetSubject: "ඔබේ Baas.lk මුරපදය යළි සකසන්න",
@@ -114,6 +132,16 @@ const T: Record<
     changeBody:
       "ඔබේ Baas.lk ගිණුමේ විද්‍යුත් තැපැල් ලිපිනය මෙයට වෙනස් කිරීමට ඉල්ලීමක් ලැබුණා. වෙනස්කම සම්පූර්ණ කිරීමට තහවුරු කරන්න. මෙම සබැඳිය පැය 1කින් කල් ඉකුත් වේ. ඔබ මෙය ඉල්ලා නොමැති නම්, මෙම විද්‍යුත් තැපෑල නොසලකා හැරිය හැක — ඔබේ ලිපිනය වෙනස් නොවේ.",
     changeButton: "නව විද්‍යුත් තැපෑල තහවුරු කරන්න",
+    existsSubject: "ඔබට දැනටමත් Baas.lk ගිණුමක් ඇත",
+    existsHeading: "ඔබට දැනටමත් ගිණුමක් ඇත",
+    existsBody:
+      "යමෙකු මෙම විද්‍යුත් තැපැල් ලිපිනය සමඟ Baas.lk සඳහා ලියාපදිංචි වීමට උත්සාහ කළ නමුත්, දැනටමත් ගිණුමක් පවතී. එය ඔබ නම්, පහතින් පිවිසෙන්න — නැතහොත් මුරපදය අමතක වී ඇත්නම් එය යළි සකසන්න. එය ඔබ නොවේ නම්, මෙම විද්‍යුත් තැපෑල නොසලකා හැරිය හැක; නව ගිණුමක් සෑදී නැත, කිසිවක් වෙනස් වී නැත.",
+    existsButton: "පිවිසෙන්න",
+    attemptSubject: "යමෙකු ඔබේ Baas.lk විද්‍යුත් තැපෑල භාවිතා කිරීමට උත්සාහ කළා",
+    attemptHeading: "විද්‍යුත් තැපෑල වෙනස් කිරීමේ ඉල්ලීමක් ඔබේ ලිපිනය භාවිතා කළා",
+    attemptBody:
+      "යමෙකු Baas.lk ගිණුමක විද්‍යුත් තැපැල් ලිපිනය මෙයට වෙනස් කිරීමට උත්සාහ කළා. එය ඔබ නම්, පිවිස ඔබේ ගිණුම් සැකසුම් තුළින් වෙනස්කම ආරම්භ කරන්න. එය ඔබ නොවේ නම්, මෙම විද්‍යුත් තැපෑල නොසලකා හැරිය හැක — කිසිවක් වෙනස් වී නැත, ඔබේ ගිණුමට බලපෑමක් නැත.",
+    attemptButton: "පිවිසෙන්න",
   },
 };
 
@@ -141,6 +169,32 @@ export function changeEmail(url: string, locale: Locale = "en") {
   };
 }
 
+// Account-already-exists (#373): sent when someone tries to register an email
+// that already has an account. Registration returns the same generic success
+// either way (anti-enumeration), so this out-of-band mail is how a genuine
+// owner learns of the attempt and is nudged to sign in / reset. `url` points at
+// the sign-in page.
+export function accountExistsEmail(url: string, locale: Locale = "en") {
+  const t = T[locale] ?? T.en;
+  return {
+    subject: t.existsSubject,
+    html: layout(t.existsHeading, t.existsBody, t.existsButton, url),
+  };
+}
+
+// Change-email attempt on a taken address (#503): the change-email endpoint
+// returns the same generic success whether or not the target address is already
+// registered (anti-enumeration), so this out-of-band mail is how the genuine
+// owner of a taken address learns someone tried to move an account onto it.
+// `url` points at the sign-in page.
+export function emailChangeAttemptEmail(url: string, locale: Locale = "en") {
+  const t = T[locale] ?? T.en;
+  return {
+    subject: t.attemptSubject,
+    html: layout(t.attemptHeading, t.attemptBody, t.attemptButton, url),
+  };
+}
+
 export function inquiryEmail(
   url: string,
   customerName: string,
@@ -160,6 +214,177 @@ export function inquiryEmail(
         ? `${name} ඔබේ Baas.lk පැතිකඩ හරහා විමසීමක් එවා ඇත. ඔවුන්ගේ පණිවිඩය සහ සම්බන්ධතා විස්තර බැලීමට ඔබේ උපකරණ පුවරුවට පිවිසෙන්න.`
         : `${name} sent you an inquiry through your Baas.lk profile. Log in to your dashboard to view their message and contact details.`,
       si ? "විමසීම බලන්න" : "View inquiry",
+      url
+    ),
+  };
+}
+
+// New-matching-job alert (#501): sent to every provider whose category +
+// district match a freshly posted job, so the lead-gen loop reaches them
+// instead of relying on them to browse the board. Mirrors jobResponseEmail's
+// bilingual structure; `jobTitle` is user-controlled and escaped for the body
+// (the subject is a plain-text header, so `district` is used raw there).
+export function newJobEmail(
+  url: string,
+  jobTitle: string,
+  district: string,
+  locale: Locale = "en"
+) {
+  const si = locale === "si";
+  const title = escapeHtml(jobTitle);
+  const area = escapeHtml(district);
+  return {
+    subject: si
+      ? `${district} හි ඔබට ගැලපෙන නව රැකියාවක්`
+      : `New job in ${district} matching your services`,
+    html: layout(
+      si ? "ඔබට ගැලපෙන නව රැකියාවක්" : "A new job matches your services",
+      si
+        ? `ඔබේ ප්‍රවර්ගයට සහ ${area} දිස්ත්‍රික්කයට ගැලපෙන "${title}" නමින් නව රැකියාවක් පළ කර ඇත. එය බලා ප්‍රතිචාර දැක්වීමට ඔබේ රැකියා පුවරුවට පිවිසෙන්න.`
+        : `A new job "${title}" was posted in ${area} matching your category. Log in to your job board to view it and respond.`,
+      si ? "රැකියාව බලන්න" : "View job",
+      url
+    ),
+  };
+}
+
+// Saved-search new-match alert (#516): sent to customers whose saved search
+// matches a newly published provider — the reverse direction of newJobEmail
+// above. `providerName`/`district` are user-controlled and escaped for the
+// body; the subject is a plain-text header so the raw values are used there.
+export function newProviderMatchEmail(
+  url: string,
+  providerName: string,
+  district: string,
+  locale: Locale = "en"
+) {
+  const si = locale === "si";
+  const name = escapeHtml(providerName);
+  const area = escapeHtml(district);
+  return {
+    subject: si
+      ? `ඔබේ සුරැකි සෙවුමට ගැලපෙන නව වෘත්තිකයෙක්`
+      : `New professional matching your saved search`,
+    html: layout(
+      si ? "ඔබේ සුරැකි සෙවුමට නව ගැලපීමක්" : "A new match for your saved search",
+      si
+        ? `${area} දිස්ත්‍රික්කයේ ${name} Baas.lk හා අලුතින් එක් වූ අතර ඔබේ සුරැකි සෙවුමකට ගැලපේ. ඔවුන්ගේ පැතිකඩ, සේවා සහ ගාස්තු බලන්න.`
+        : `${name} in ${area} just joined Baas.lk and matches one of your saved searches. Take a look at their profile, services and rates.`,
+      si ? "පැතිකඩ බලන්න" : "View profile",
+      url
+    ),
+  };
+}
+
+// Thread-reply notification (#393, RFC stateful-notification-service): sent to
+// the OTHER party of an inquiry thread when a new message lands. `senderName`
+// is user-controlled and escaped for the body; the subject is a plain-text
+// header so the raw value is used there (same convention as inquiryEmail).
+export function threadReplyEmail(
+  url: string,
+  senderName: string,
+  locale: Locale = "en"
+) {
+  const si = locale === "si";
+  const name = escapeHtml(senderName);
+  return {
+    subject: si
+      ? `${senderName} ගෙන් නව පණිවිඩයක්`
+      : `New message from ${senderName}`,
+    html: layout(
+      si ? "ඔබට නව පණිවිඩයක්" : "You have a new message",
+      si
+        ? `${name} ඔබේ Baas.lk විමසීම් සංවාදයට නව පණිවිඩයක් එවා ඇත. එය කියවා පිළිතුරු දීමට පිවිසෙන්න.`
+        : `${name} sent a new message in your inquiry conversation on Baas.lk. Log in to read and reply.`,
+      si ? "පණිවිඩය බලන්න" : "View message",
+      url
+    ),
+  };
+}
+
+// New-review notification (#393): sent to the reviewed profile's owner when a
+// review is published. `reviewerName` is user-controlled and escaped for the
+// body; `rating` is validated 1–5 upstream.
+export function newReviewEmail(
+  url: string,
+  reviewerName: string,
+  rating: number,
+  locale: Locale = "en"
+) {
+  const si = locale === "si";
+  const name = escapeHtml(reviewerName);
+  return {
+    subject: si
+      ? `${reviewerName} ඔබේ පැතිකඩට සමාලෝචනයක් තැබීය`
+      : `${reviewerName} left a review on your profile`,
+    html: layout(
+      si ? "ඔබට නව සමාලෝචනයක්" : "You have a new review",
+      si
+        ? `${name} ඔබේ Baas.lk පැතිකඩට තරු ${rating}ක සමාලෝචනයක් තැබීය. එය කියවා ප්‍රසිද්ධ පිළිතුරක් පළ කිරීමට පිවිසෙන්න.`
+        : `${name} left a ${rating}-star review on your Baas.lk profile. Log in to read it and post a public reply.`,
+      si ? "සමාලෝචනය බලන්න" : "View review",
+      url
+    ),
+  };
+}
+
+// Review-response notification (RFC): sent to a review's author when the
+// reviewed provider posts a public reply. `providerName` is user-controlled
+// and escaped for the body.
+export function reviewResponseEmail(
+  url: string,
+  providerName: string,
+  locale: Locale = "en"
+) {
+  const si = locale === "si";
+  const name = escapeHtml(providerName);
+  return {
+    subject: si
+      ? `${providerName} ඔබේ සමාලෝචනයට පිළිතුරු දුන්නා`
+      : `${providerName} replied to your review`,
+    html: layout(
+      si ? "ඔබේ සමාලෝචනයට පිළිතුරක්" : "A reply to your review",
+      si
+        ? `${name} ඔබ Baas.lk හි තැබූ සමාලෝචනයට ප්‍රසිද්ධ පිළිතුරක් පළ කර ඇත. ඔවුන් පැවසූ දේ බලන්න.`
+        : `${name} posted a public reply to the review you left on Baas.lk. Take a look at what they said.`,
+      si ? "පිළිතුර බලන්න" : "View reply",
+      url
+    ),
+  };
+}
+
+// Verification decision notifications (#393): static bilingual bodies, no
+// user-controlled values (the rejection reason is shown in-app, not embedded
+// in the email).
+export function verificationApprovedEmail(url: string, locale: Locale = "en") {
+  const si = locale === "si";
+  return {
+    subject: si
+      ? "ඔබේ Baas.lk තහවුරු කිරීම අනුමත විය"
+      : "Your Baas.lk verification was approved",
+    html: layout(
+      si ? "ඔබ තහවුරු වී ඇත" : "You're verified",
+      si
+        ? "ඔබේ තහවුරු කිරීමේ ලේඛන අනුමත විය — ඔබේ පැතිකඩෙහි දැන් තහවුරු කළ ලාංඡනය පෙන්වයි. එය ඔබේ සේවාවන් කෙරෙහි ගනුදෙනුකරුවන්ගේ විශ්වාසය වැඩි කරයි."
+        : "Your verification documents were approved — your profile now shows the verified badge, which helps customers trust your services.",
+      si ? "ඔබේ පැතිකඩ බලන්න" : "View your profile",
+      url
+    ),
+  };
+}
+
+export function verificationRejectedEmail(url: string, locale: Locale = "en") {
+  const si = locale === "si";
+  return {
+    subject: si
+      ? "ඔබේ Baas.lk තහවුරු කිරීම අනුමත නොවීය"
+      : "Your Baas.lk verification was not approved",
+    html: layout(
+      si ? "තහවුරු කිරීම අනුමත නොවීය" : "Verification not approved",
+      si
+        ? "මෙවර ඔබේ තහවුරු කිරීමේ ලේඛන අනුමත කළ නොහැකි විය. හේතුව බලා නැවත ඉදිරිපත් කිරීමට ඔබේ උපකරණ පුවරුවට පිවිසෙන්න."
+        : "We couldn't approve your verification documents this time. Log in to your dashboard to see the reason and resubmit.",
+      si ? "උපකරණ පුවරුවට යන්න" : "Go to dashboard",
       url
     ),
   };

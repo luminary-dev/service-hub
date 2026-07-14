@@ -9,16 +9,28 @@
 // JWT with the dev-fallback secret and set a cookie.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import bcrypt from "bcryptjs";
+import { Prisma } from "@prisma/client";
 import { Hono } from "hono";
 import { authRoutes } from "./auth";
 import { hashToken } from "../lib/tokens";
-import { sendVerificationEmail, sendPasswordResetEmail } from "../lib/verification";
+import { MAX_FAILED_LOGINS, LOCKOUT_MS } from "../lib/lockout";
+import {
+  sendAccountExistsEmail,
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+} from "../lib/verification";
 import { eraseUserData } from "../lib/erase";
+import { removeStoredFile } from "../lib/storage";
 import {
   createProviderProfile,
   deactivateProviderProfile,
+  eraseProviderProfile,
   getProviderIdByUser,
+  ProviderAdminSuspendedError,
   reactivateProviderProfile,
+  resolveProviderIdByUser,
+  resolveProviderIdForErase,
+  syncContactToProvider,
 } from "../lib/providers";
 
 // Stateful-enough Prisma double: canned per-test return values + call assertions
@@ -50,13 +62,22 @@ vi.mock("../db", () => ({ db }));
 vi.mock("../lib/verification", () => ({
   sendVerificationEmail: vi.fn(),
   sendPasswordResetEmail: vi.fn(),
+  sendAccountExistsEmail: vi.fn(),
 }));
 vi.mock("../lib/erase", () => ({ eraseUserData: vi.fn() }));
+vi.mock("../lib/storage", () => ({ removeStoredFile: vi.fn() }));
 vi.mock("../lib/providers", () => ({
+  // Stand-in for the real class: the route's instanceof (#550) and the test's
+  // throw both resolve to this same mocked export.
+  ProviderAdminSuspendedError: class ProviderAdminSuspendedError extends Error {},
   getProviderIdByUser: vi.fn(async () => null),
   createProviderProfile: vi.fn(),
   deactivateProviderProfile: vi.fn(),
+  eraseProviderProfile: vi.fn(),
   reactivateProviderProfile: vi.fn(),
+  resolveProviderIdByUser: vi.fn(async () => null),
+  resolveProviderIdForErase: vi.fn(async () => null),
+  syncContactToProvider: vi.fn(),
 }));
 vi.mock("../lib/audit", () => ({ logAudit: vi.fn() }));
 
@@ -113,7 +134,18 @@ beforeEach(() => {
   });
   vi.mocked(sendVerificationEmail).mockResolvedValue(undefined);
   vi.mocked(sendPasswordResetEmail).mockResolvedValue(undefined);
+  vi.mocked(sendAccountExistsEmail).mockResolvedValue(undefined);
   vi.mocked(eraseUserData).mockResolvedValue(undefined);
+  // Default: the compensating provider-erase (#359) resolves so register's
+  // best-effort `.catch()` has a promise to chain. Per-test overrides reject it.
+  vi.mocked(eraseProviderProfile).mockResolvedValue(undefined);
+  // Default: the caller has no provider profile. Per-test overrides set an id
+  // (provider deletion) or reject (transient S2S failure).
+  vi.mocked(resolveProviderIdForErase).mockResolvedValue(null);
+  // Default: complete-provider's fail-loud lookup finds no existing profile, so
+  // it takes the create branch. Re-upgrade tests set an id; the fail-loud test
+  // rejects it.
+  vi.mocked(resolveProviderIdByUser).mockResolvedValue(null);
 });
 
 // ---------------------------------------------------------------------------
@@ -132,7 +164,7 @@ describe("POST /api/auth/verify-email", () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "expired" });
     // Nothing to delete when the token was never found.
-    expect(db.emailVerificationToken.delete).not.toHaveBeenCalled();
+    expect(db.emailVerificationToken.deleteMany).not.toHaveBeenCalled();
   });
 
   it("looks the token up by its hash, never the raw value", async () => {
@@ -152,7 +184,8 @@ describe("POST /api/auth/verify-email", () => {
     const res = await post("/api/auth/verify-email", { token: "abc" });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "expired" });
-    expect(db.emailVerificationToken.delete).toHaveBeenCalledWith({
+    // deleteMany (not delete): idempotent so a double-submit can't 500 (#647).
+    expect(db.emailVerificationToken.deleteMany).toHaveBeenCalledWith({
       where: { id: "t1" },
     });
   });
@@ -313,6 +346,122 @@ describe("email normalization", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// POST /api/auth/login — failed-login lockout counter (security hardening)
+// ---------------------------------------------------------------------------
+// The counter must advance via an atomic DB increment, never a
+// read-modify-write from a pre-read snapshot: concurrent wrong-password
+// attempts would otherwise both read N and both write N+1, so a parallel
+// guesser advances the counter by 1 instead of N and reaches the lockout
+// threshold far more slowly than intended.
+describe("POST /api/auth/login (lockout counter)", () => {
+  const loginUser = {
+    id: "u1",
+    email: "a@b.lk",
+    name: "Test User",
+    role: "CUSTOMER",
+    passwordHash: currentHash,
+    failedLogins: 0,
+    lockedUntil: null,
+    sessionVersion: 0,
+    avatarUrl: null,
+  };
+
+  it("increments the failed-login counter atomically on a wrong password", async () => {
+    db.user.findUnique.mockResolvedValue({ ...loginUser, failedLogins: 2 });
+    // The atomic increment returns the resulting count; below threshold → no lock.
+    db.user.update.mockResolvedValueOnce({ failedLogins: 3 });
+
+    const res = await post("/api/auth/login", {
+      email: "a@b.lk",
+      password: "wrong-password",
+    });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "Invalid email or password" });
+
+    // The failure is recorded as an atomic increment, not an overwrite.
+    expect(db.user.update).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      data: { failedLogins: { increment: 1 } },
+      select: { failedLogins: true },
+    });
+    // Below the threshold: no lock is applied (only the increment ran).
+    expect(db.user.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("locks the account once the incremented count reaches the threshold", async () => {
+    db.user.findUnique.mockResolvedValue({
+      ...loginUser,
+      failedLogins: MAX_FAILED_LOGINS - 1,
+    });
+    // The increment tips the counter to the threshold.
+    db.user.update.mockResolvedValueOnce({ failedLogins: MAX_FAILED_LOGINS });
+    db.user.update.mockResolvedValueOnce({});
+
+    const res = await post("/api/auth/login", {
+      email: "a@b.lk",
+      password: "wrong-password",
+    });
+    expect(res.status).toBe(401);
+
+    // First call: atomic increment. Second call: set the lock window derived
+    // from the resulting count.
+    expect(db.user.update).toHaveBeenNthCalledWith(1, {
+      where: { id: "u1" },
+      data: { failedLogins: { increment: 1 } },
+      select: { failedLogins: true },
+    });
+    const lockCall = db.user.update.mock.calls[1][0] as {
+      where: { id: string };
+      data: { lockedUntil: Date };
+    };
+    expect(lockCall.where).toEqual({ id: "u1" });
+    expect(lockCall.data.lockedUntil).toBeInstanceOf(Date);
+    expect(lockCall.data.lockedUntil.getTime()).toBeGreaterThan(
+      Date.now() + LOCKOUT_MS - 5_000
+    );
+  });
+
+  it("returns the uniform 401 (no lock) for a locked account without touching the counter", async () => {
+    db.user.findUnique.mockResolvedValue({
+      ...loginUser,
+      failedLogins: MAX_FAILED_LOGINS,
+      lockedUntil: new Date(Date.now() + LOCKOUT_MS),
+    });
+    const res = await post("/api/auth/login", {
+      email: "a@b.lk",
+      password: CURRENT_PASSWORD,
+    });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "Invalid email or password" });
+    // Locked branch does not increment or reset the counter.
+    expect(db.user.update).not.toHaveBeenCalled();
+  });
+
+  it("resets the counter and lock on a successful login", async () => {
+    db.user.findUnique.mockResolvedValue({
+      ...loginUser,
+      failedLogins: 3,
+      lockedUntil: null,
+    });
+    db.user.update.mockResolvedValue({});
+
+    const res = await post("/api/auth/login", {
+      email: "a@b.lk",
+      password: CURRENT_PASSWORD,
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      user: { id: "u1", name: "Test User", role: "CUSTOMER" },
+      providerId: null,
+    });
+    expect(db.user.update).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      data: { failedLogins: 0, lockedUntil: null },
+    });
+  });
+});
+
 describe("POST /api/auth/reset-password", () => {
   it("400s when the new password fails the policy", async () => {
     const res = await post("/api/auth/reset-password", {
@@ -321,7 +470,7 @@ describe("POST /api/auth/reset-password", () => {
     });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({
-      error: "Password must be at least 6 characters.",
+      error: "Password must be at least 10 characters.",
     });
     expect(db.passwordResetToken.findUnique).not.toHaveBeenCalled();
   });
@@ -350,7 +499,8 @@ describe("POST /api/auth/reset-password", () => {
       password: STRONG_PASSWORD,
     });
     expect(res.status).toBe(400);
-    expect(db.passwordResetToken.delete).toHaveBeenCalledWith({
+    // deleteMany (not delete): idempotent so a double-submit can't 500 (#647).
+    expect(db.passwordResetToken.deleteMany).toHaveBeenCalledWith({
       where: { id: "t1" },
     });
     expect(db.user.update).not.toHaveBeenCalled();
@@ -407,7 +557,7 @@ describe("POST /api/auth/change-password", () => {
     );
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({
-      error: "New password must be between 6 and 100 characters.",
+      error: "New password must be between 10 and 100 characters.",
     });
   });
 
@@ -479,10 +629,23 @@ describe("POST /api/auth/logout-all", () => {
     expect(db.user.update).not.toHaveBeenCalled();
   });
 
-  it("401s when the sessionVersion bump fails (unknown user)", async () => {
-    db.user.update.mockRejectedValue(new Error("not found"));
+  it("401s when the user row is gone (P2025 — deleted out from under the session)", async () => {
+    db.user.update.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("Record not found", {
+        code: "P2025",
+        clientVersion: "test",
+      })
+    );
     const res = await post("/api/auth/logout-all", {}, AUTH_HEADERS);
     expect(res.status).toBe(401);
+  });
+
+  // #647 L8: a DB outage must surface as 500, not be masked as a 401 — masking
+  // it would sign users out on a transient blip and hide the incident.
+  it("500s when the bump fails on a generic DB error (not masked as 401)", async () => {
+    db.user.update.mockRejectedValue(new Error("connection reset"));
+    const res = await post("/api/auth/logout-all", {}, AUTH_HEADERS);
+    expect(res.status).toBe(500);
   });
 
   it("bumps sessionVersion to revoke every session, then re-issues this one", async () => {
@@ -501,6 +664,248 @@ describe("POST /api/auth/logout-all", () => {
     });
     // A fresh session cookie keeps the requester signed in.
     expect(res.headers.get("set-cookie")).toContain("sh_session=");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/register — account-enumeration hardening (#373)
+// ---------------------------------------------------------------------------
+// A taken email must be indistinguishable from a fresh one: the endpoint returns
+// the same generic { ok: true } and no 409, creates no duplicate user, and mails
+// the real owner an out-of-band "account already exists" notice instead. A fresh
+// email keeps the normal path (create + session + verification email).
+describe("POST /api/auth/register (anti-enumeration #373)", () => {
+  const customerBody = {
+    role: "CUSTOMER",
+    name: "New User",
+    email: "taken@b.lk",
+    password: STRONG_PASSWORD,
+    phone: "0771234567",
+  };
+
+  it("returns the generic success for a taken email without creating a duplicate", async () => {
+    db.user.findUnique.mockResolvedValue({ id: "existing", email: "taken@b.lk" });
+
+    const res = await post("/api/auth/register", customerBody);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    // No duplicate row, and no auto-login for a request that isn't the owner.
+    expect(db.user.create).not.toHaveBeenCalled();
+    expect(res.headers.get("set-cookie")).toBeNull();
+    // The real owner is notified out-of-band; the normal verification mail is not.
+    expect(sendAccountExistsEmail).toHaveBeenCalledWith(
+      "taken@b.lk",
+      expect.any(String),
+      "en"
+    );
+    expect(sendVerificationEmail).not.toHaveBeenCalled();
+  });
+
+  it("returns the same generic success when the unique-constraint race is lost (P2002)", async () => {
+    // Two concurrent signups pass the findUnique fast-path; the loser hits the
+    // unique constraint. That must land on the same anti-enumeration response.
+    db.user.findUnique.mockResolvedValue(null);
+    db.user.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "test",
+      })
+    );
+
+    const res = await post("/api/auth/register", customerBody);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(sendAccountExistsEmail).toHaveBeenCalledWith(
+      "taken@b.lk",
+      expect.any(String),
+      "en"
+    );
+    expect(res.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("runs the normal registration path for a brand-new email", async () => {
+    db.user.findUnique.mockResolvedValue(null);
+    db.user.create.mockResolvedValue({
+      id: "u-new",
+      email: "taken@b.lk",
+      name: "New User",
+      role: "CUSTOMER",
+      sessionVersion: 0,
+      avatarUrl: null,
+    });
+
+    const res = await post("/api/auth/register", customerBody);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      user: { id: "u-new", name: "New User", role: "CUSTOMER" },
+      providerId: null,
+    });
+    expect(db.user.create).toHaveBeenCalled();
+    // Normal path: session cookie issued, verification mail sent, no exists-mail.
+    expect(res.headers.get("set-cookie")).toContain("sh_session=");
+    expect(sendVerificationEmail).toHaveBeenCalledWith(
+      "u-new",
+      "taken@b.lk",
+      expect.any(String),
+      "en"
+    );
+    expect(sendAccountExistsEmail).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/register — provider orphan compensation (#359)
+// ---------------------------------------------------------------------------
+describe("POST /api/auth/register (provider compensation)", () => {
+  const registerBody = {
+    role: "PROVIDER",
+    name: "Ann Provider",
+    email: "ann@b.lk",
+    password: STRONG_PASSWORD,
+    phone: "0771234567",
+    category: "electrician",
+    headline: "Experienced electrician",
+    bio: "Twenty-plus characters of provider bio for validation.",
+    district: "Colombo",
+    city: "Colombo",
+    experience: 5,
+    services: [{ title: "Wiring", price: 1500, priceType: "FIXED" }],
+  };
+
+  it("502s and deletes the just-created user when provider creation fails", async () => {
+    db.user.findUnique.mockResolvedValue(null);
+    db.user.create.mockResolvedValue({
+      id: "u1",
+      email: "ann@b.lk",
+      name: "Ann Provider",
+      role: "PROVIDER",
+      sessionVersion: 0,
+    });
+    vi.mocked(createProviderProfile).mockRejectedValue(new Error("peer down"));
+
+    const res = await post("/api/auth/register", registerBody);
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Upstream service unavailable" });
+    // Compensation removes the orphaned user (no profile ⇒ useless row).
+    expect(db.user.delete).toHaveBeenCalledWith({ where: { id: "u1" } });
+  });
+
+  // #359: the provider-create throwing is ambiguous — provider-service may have
+  // committed the Provider row and only lost its *response* (a timeout).
+  // Deleting the user alone would then leave that Provider orphaned with a
+  // dangling userId, so compensation must also fire the idempotent erase.
+  it("erases the possibly-committed provider before deleting the user (lost-response path)", async () => {
+    db.user.findUnique.mockResolvedValue(null);
+    db.user.create.mockResolvedValue({
+      id: "u1",
+      email: "ann@b.lk",
+      name: "Ann Provider",
+      role: "PROVIDER",
+      sessionVersion: 0,
+    });
+    // Response lost after the row committed: identity sees a timeout, never the id.
+    vi.mocked(createProviderProfile).mockRejectedValue(new Error("timeout"));
+
+    const res = await post("/api/auth/register", registerBody);
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Upstream service unavailable" });
+    // Both cleanups run: erase any orphaned Provider row, then delete the user.
+    expect(eraseProviderProfile).toHaveBeenCalledWith("u1");
+    expect(db.user.delete).toHaveBeenCalledWith({ where: { id: "u1" } });
+  });
+
+  it("still returns a consistent 502 when the compensating provider-erase itself fails", async () => {
+    db.user.findUnique.mockResolvedValue(null);
+    db.user.create.mockResolvedValue({
+      id: "u1",
+      email: "ann@b.lk",
+      name: "Ann Provider",
+      role: "PROVIDER",
+      sessionVersion: 0,
+    });
+    vi.mocked(createProviderProfile).mockRejectedValue(new Error("peer down"));
+    // A failed orphan-erase is best-effort: logged, never escalated to a 500,
+    // and the user cleanup still proceeds.
+    vi.mocked(eraseProviderProfile).mockRejectedValue(new Error("erase down"));
+
+    const res = await post("/api/auth/register", registerBody);
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Upstream service unavailable" });
+    expect(db.user.delete).toHaveBeenCalledWith({ where: { id: "u1" } });
+  });
+
+  it("still returns a consistent 502 when the compensating delete itself fails", async () => {
+    db.user.findUnique.mockResolvedValue(null);
+    db.user.create.mockResolvedValue({
+      id: "u1",
+      email: "ann@b.lk",
+      name: "Ann Provider",
+      role: "PROVIDER",
+      sessionVersion: 0,
+    });
+    vi.mocked(createProviderProfile).mockRejectedValue(new Error("peer down"));
+    // A DB hiccup on cleanup must not turn the graceful 502 into a 500.
+    db.user.delete.mockRejectedValue(new Error("db down"));
+
+    const res = await post("/api/auth/register", registerBody);
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Upstream service unavailable" });
+    expect(db.user.delete).toHaveBeenCalledWith({ where: { id: "u1" } });
+  });
+
+  // Geo capture (#48): the pin pre-flight is a friendly 400 BEFORE the user
+  // row exists (mirrors the served-set check), and a full pair passes through
+  // to the provider-create payload.
+  it("400s a half-set map pin before creating the user", async () => {
+    db.user.findUnique.mockResolvedValue(null);
+    const res = await post("/api/auth/register", {
+      ...registerBody,
+      latitude: 6.9271,
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/both latitude and longitude/i);
+    expect(db.user.create).not.toHaveBeenCalled();
+    expect(createProviderProfile).not.toHaveBeenCalled();
+  });
+
+  it("passes a complete map pin through to the provider-create payload", async () => {
+    db.user.findUnique.mockResolvedValue(null);
+    db.user.create.mockResolvedValue({
+      id: "u1",
+      email: "ann@b.lk",
+      name: "Ann Provider",
+      role: "PROVIDER",
+      sessionVersion: 0,
+    });
+    vi.mocked(createProviderProfile).mockResolvedValue("prov1");
+
+    const res = await post("/api/auth/register", {
+      ...registerBody,
+      latitude: 6.9271,
+      longitude: 79.8612,
+    });
+    expect(res.status).toBe(200);
+    expect(createProviderProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ latitude: 6.9271, longitude: 79.8612 })
+    );
+  });
+
+  it("sends explicit nulls for an unpinned registration", async () => {
+    db.user.findUnique.mockResolvedValue(null);
+    db.user.create.mockResolvedValue({
+      id: "u1",
+      email: "ann@b.lk",
+      name: "Ann Provider",
+      role: "PROVIDER",
+      sessionVersion: 0,
+    });
+    vi.mocked(createProviderProfile).mockResolvedValue("prov1");
+
+    const res = await post("/api/auth/register", registerBody);
+    expect(res.status).toBe(200);
+    expect(createProviderProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ latitude: null, longitude: null })
+    );
   });
 });
 
@@ -554,6 +959,47 @@ describe("POST /api/auth/complete-provider", () => {
     expect(res.headers.get("set-cookie")).toContain("sh_session=");
   });
 
+  it("forwards the normalized served set (deduped, home district pinned) (#502)", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "a@b.lk",
+      name: "Ann",
+      role: "CUSTOMER",
+    });
+    vi.mocked(createProviderProfile).mockResolvedValue("prov-1");
+    db.user.update.mockResolvedValue({
+      id: "u1",
+      name: "Ann",
+      role: "PROVIDER",
+      sessionVersion: 1,
+    });
+
+    const res = await post(
+      "/api/auth/complete-provider",
+      { ...providerBody, serviceDistricts: ["Gampaha", "Colombo", "Gampaha"] },
+      AUTH_HEADERS
+    );
+    expect(res.status).toBe(200);
+    expect(createProviderProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ serviceDistricts: ["Colombo", "Gampaha"] })
+    );
+  });
+
+  it("400s before any write when the served set exceeds the cap (#502)", async () => {
+    const res = await post(
+      "/api/auth/complete-provider",
+      {
+        ...providerBody,
+        // 5 extras + the home district = 6 > MAX_SERVICE_DISTRICTS.
+        serviceDistricts: ["Gampaha", "Kalutara", "Kandy", "Galle", "Matara"],
+      },
+      AUTH_HEADERS
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/at most 5 districts/i);
+    expect(createProviderProfile).not.toHaveBeenCalled();
+  });
+
   it("409s an account that is already a provider", async () => {
     db.user.findUnique.mockResolvedValue({
       id: "u1",
@@ -576,7 +1022,7 @@ describe("POST /api/auth/complete-provider", () => {
       name: "Ann",
       role: "CUSTOMER",
     });
-    vi.mocked(getProviderIdByUser).mockResolvedValue("prov-1");
+    vi.mocked(resolveProviderIdByUser).mockResolvedValue("prov-1");
     db.user.update.mockResolvedValue({
       id: "u1",
       name: "Ann",
@@ -588,6 +1034,11 @@ describe("POST /api/auth/complete-provider", () => {
     expect(res.status).toBe(200);
     expect(reactivateProviderProfile).toHaveBeenCalledWith("u1");
     expect(createProviderProfile).not.toHaveBeenCalled();
+    // The reused profile's contactPhone is refreshed with the wizard's phone
+    // (#553) — the create path writes it itself, so only this path syncs.
+    expect(syncContactToProvider).toHaveBeenCalledWith("u1", {
+      phone: "+94771234567",
+    });
   });
 
   it("502s the re-upgrade when reactivation fails (role not flipped)", async () => {
@@ -597,11 +1048,50 @@ describe("POST /api/auth/complete-provider", () => {
       name: "Ann",
       role: "CUSTOMER",
     });
-    vi.mocked(getProviderIdByUser).mockResolvedValue("prov-1");
+    vi.mocked(resolveProviderIdByUser).mockResolvedValue("prov-1");
     vi.mocked(reactivateProviderProfile).mockRejectedValue(new Error("peer down"));
 
     const res = await post("/api/auth/complete-provider", providerBody, AUTH_HEADERS);
     expect(res.status).toBe(502);
+    expect(db.user.update).not.toHaveBeenCalled();
+  });
+
+  // #643: a transient blip in the create-vs-reactivate lookup must abort with
+  // 502 and NO role flip — never fall through to the create branch and orphan
+  // an existing profile hidden while the account becomes a PROVIDER.
+  it("502s (no role flip) when the create-vs-reactivate lookup fails", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "a@b.lk",
+      name: "Ann",
+      role: "CUSTOMER",
+    });
+    vi.mocked(resolveProviderIdByUser).mockRejectedValue(new Error("peer down"));
+
+    const res = await post("/api/auth/complete-provider", providerBody, AUTH_HEADERS);
+    expect(res.status).toBe(502);
+    expect(createProviderProfile).not.toHaveBeenCalled();
+    expect(reactivateProviderProfile).not.toHaveBeenCalled();
+    expect(db.user.update).not.toHaveBeenCalled();
+  });
+
+  // #550: the exploit chain — admin suspends, provider leave-providers (role →
+  // CUSTOMER), then complete-providers. The reactivate refusal must surface as
+  // a 403 with NO role flip, so the ADMIN suspension stays in force.
+  it("403s the re-upgrade when the profile is ADMIN-suspended (role not flipped)", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "a@b.lk",
+      name: "Ann",
+      role: "CUSTOMER",
+    });
+    vi.mocked(resolveProviderIdByUser).mockResolvedValue("prov-1");
+    vi.mocked(reactivateProviderProfile).mockRejectedValue(
+      new ProviderAdminSuspendedError()
+    );
+
+    const res = await post("/api/auth/complete-provider", providerBody, AUTH_HEADERS);
+    expect(res.status).toBe(403);
     expect(db.user.update).not.toHaveBeenCalled();
   });
 });
@@ -755,5 +1245,130 @@ describe("POST /api/auth/delete-account", () => {
       data: { userId: "u1", email: "a@b.lk", role: "CUSTOMER" },
     });
     expect(db.user.delete).toHaveBeenCalledWith({ where: { id: "u1" } });
+  });
+
+  // #555: the avatar file (PII) lives in media-service; deleting the account
+  // must also erase it, after the local rows are gone.
+  it("removes the stored avatar file after a successful deletion", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "a@b.lk",
+      role: "CUSTOMER",
+      passwordHash: currentHash,
+      avatarUrl: "/api/files/user/avatars/u1.jpg",
+    });
+    const res = await post(
+      "/api/auth/delete-account",
+      { password: CURRENT_PASSWORD },
+      AUTH_HEADERS
+    );
+    expect(res.status).toBe(200);
+    expect(removeStoredFile).toHaveBeenCalledWith("/api/files/user/avatars/u1.jpg");
+  });
+
+  it("keeps the avatar file when the deletion aborts on a failed peer erase", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "a@b.lk",
+      role: "CUSTOMER",
+      passwordHash: currentHash,
+      avatarUrl: "/api/files/user/avatars/u1.jpg",
+    });
+    vi.mocked(eraseUserData).mockRejectedValue(new Error("peer down"));
+    const res = await post(
+      "/api/auth/delete-account",
+      { password: CURRENT_PASSWORD },
+      AUTH_HEADERS
+    );
+    expect(res.status).toBe(502);
+    expect(removeStoredFile).not.toHaveBeenCalled();
+  });
+
+  // #360: a provider's JobResponses (their written message — PII) are keyed by
+  // provider id, and the job erase only deletes them when it receives that id.
+  // The resolved providerId must therefore reach eraseUserData so the responses
+  // are covered.
+  it("passes the resolved providerId to the erase so job responses are covered", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "a@b.lk",
+      role: "PROVIDER",
+      passwordHash: currentHash,
+    });
+    vi.mocked(resolveProviderIdForErase).mockResolvedValue("prov-1");
+    const res = await post(
+      "/api/auth/delete-account",
+      { password: CURRENT_PASSWORD },
+      AUTH_HEADERS
+    );
+    expect(res.status).toBe(200);
+    expect(eraseUserData).toHaveBeenCalledWith("u1", "prov-1");
+    expect(db.user.delete).toHaveBeenCalledWith({ where: { id: "u1" } });
+  });
+
+  // #360: if resolving the providerId transiently fails, we must abort with 502
+  // rather than proceed with a null id — that would erase the User while leaving
+  // the provider's job responses (PII) behind. All-or-nothing, never partial.
+  it("502s and deletes nothing when the providerId lookup fails (no partial erase)", async () => {
+    db.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "a@b.lk",
+      role: "PROVIDER",
+      passwordHash: currentHash,
+    });
+    vi.mocked(resolveProviderIdForErase).mockRejectedValue(
+      new Error("provider-service down")
+    );
+    const res = await post(
+      "/api/auth/delete-account",
+      { password: CURRENT_PASSWORD },
+      AUTH_HEADERS
+    );
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Upstream service unavailable" });
+    // The erase never ran and no local rows were touched, so a retry finishes it.
+    expect(eraseUserData).not.toHaveBeenCalled();
+    expect(db.$transaction).not.toHaveBeenCalled();
+    expect(db.user.delete).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/auth/me
+// ---------------------------------------------------------------------------
+describe("GET /api/auth/me", () => {
+  const ME_ROW = {
+    id: "u1",
+    name: "Test User",
+    email: "a@b.lk",
+    phone: null,
+    emailVerified: null,
+    role: "CUSTOMER",
+    avatarUrl: null,
+    sessionVersion: 1,
+  };
+
+  function getMe() {
+    return app.request("/api/auth/me", { headers: AUTH_HEADERS });
+  }
+
+  // hasPassword drives the web's password-confirmation field on sensitive ops
+  // (#504 change-email re-auth): shown for password accounts, skipped for
+  // social-only accounts (#398) that have no password to confirm.
+  it("reports hasPassword=true for a password account without leaking the hash", async () => {
+    db.user.findUnique.mockResolvedValue({ ...ME_ROW, passwordHash: currentHash });
+    const res = await getMe();
+    expect(res.status).toBe(200);
+    const { user } = await res.json();
+    expect(user.hasPassword).toBe(true);
+    expect(user.passwordHash).toBeUndefined();
+  });
+
+  it("reports hasPassword=false for a social-only account", async () => {
+    db.user.findUnique.mockResolvedValue({ ...ME_ROW, passwordHash: null });
+    const res = await getMe();
+    expect(res.status).toBe(200);
+    const { user } = await res.json();
+    expect(user.hasPassword).toBe(false);
   });
 });

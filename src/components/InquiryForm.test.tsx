@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { dict } from "@/lib/i18n";
 import InquiryForm from "./InquiryForm";
 
@@ -53,6 +53,31 @@ describe("InquiryForm", () => {
     expect(message.minLength).toBe(10);
   });
 
+  it("renders an inert, accessibility-hidden honeypot field (#65)", () => {
+    const { container } = renderForm();
+    const honeypot = container.querySelector<HTMLInputElement>("#inquiry-company")!;
+    // Present in the DOM for bots to fill...
+    expect(honeypot).toBeTruthy();
+    expect(honeypot.name).toBe("company");
+    // ...but inert for real users: not keyboard-reachable, never prefilled, and
+    // hidden from the accessibility tree via an aria-hidden ancestor.
+    expect(honeypot.tabIndex).toBe(-1);
+    expect(honeypot.getAttribute("autocomplete")).toBe("off");
+    expect(honeypot.closest("[aria-hidden='true']")).toBeTruthy();
+  });
+
+  it("sends whatever a bot writes into the honeypot so the server can filter it (#65)", () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+    const { container } = renderForm();
+    fillRequired();
+    // Simulate a bot writing the DOM value directly (no React event fired).
+    const honeypot = container.querySelector<HTMLInputElement>("#inquiry-company")!;
+    honeypot.value = "spam";
+    submit(container);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.company).toBe("spam");
+  });
+
   it("submits the inquiry and shows the sent confirmation on success", async () => {
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
     const { container } = renderForm();
@@ -67,10 +92,17 @@ describe("InquiryForm", () => {
         phone: "0771234567",
         email: "",
         message: "Please rewire my kitchen.",
+        company: "",
       }),
     });
 
-    expect(await screen.findByText(t.sentTitle)).toBeTruthy();
+    // The confirmation is an announced live region (#510)...
+    const status = await screen.findByRole("status");
+    expect(status.textContent).toContain(t.sentTitle);
+    // ...whose heading grabs focus so keyboard users aren't dropped on <body>.
+    const heading = screen.getByText(t.sentTitle);
+    // Focus moves in a useEffect — wait for it to flush (avoids a coverage-run flake).
+    await waitFor(() => expect(document.activeElement).toBe(heading));
     // The form (and its submit button) is replaced by the confirmation.
     expect(screen.queryByRole("button", { name: t.send })).toBeNull();
   });
@@ -111,5 +143,21 @@ describe("InquiryForm", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain(t.error);
+  });
+
+  // A dropped connection must not wedge the form (#363): the error is
+  // announced and the submit button is enabled for a retry.
+  it("recovers from a rejected fetch with an error and a re-enabled button", async () => {
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    const { container } = renderForm();
+    fillRequired();
+    submit(container);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(t.error);
+    const button = screen.getByRole("button", {
+      name: t.send,
+    }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
   });
 });

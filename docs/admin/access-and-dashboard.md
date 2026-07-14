@@ -29,8 +29,11 @@ Gating helpers: `isAdminRole()` (enter `/admin`), `hasSupportAccess()`
 app and the backend services — see [AUTHZ.md](../AUTHZ.md). Each service's
 `src/lib/http.ts` exposes `isSupportOrAdmin` (reads + report resolve/dismiss) and
 `isFullAdmin` (destructive writes), mirroring the web predicates. On the
-**dashboard, verifications, reports, providers, and categories** pages SUPPORT
-sees read-only/disabled controls while ADMIN can act. The **users, jobs,
+**dashboard, reports, providers, and categories** pages SUPPORT sees
+read-only/disabled controls while ADMIN can act. The **verifications** page is
+reachable by SUPPORT but its approve/reject controls are not role-disabled in
+the UI — the backend (`isFullAdmin`) rejects a SUPPORT click with 403. The
+**users, jobs,
 audit-log, and impersonate** pages redirect any non-`ADMIN` session at the page
 level, so they are ADMIN-only surfaces; a pure SUPPORT account works the
 moderation set above.
@@ -42,17 +45,19 @@ moderation set above.
 Route: **`/admin`** (`src/app/admin/page.tsx`,
 `src/components/admin/AdminDashboardCharts.tsx`).
 
-The home screen is the metrics view plus the nav grid. It fetches three
+The home screen is the metrics view plus the nav grid. It fetches four
 sources in parallel, each degrading to zeros rather than erroring:
 
 - `GET /api/admin/stats` (provider-service) — active/suspended/total providers,
   `pendingVerifications`, `openReports`, `categoryDistribution`.
 - `GET /api/admin/review-stats` (review-service) — review-side open reports.
+- `GET /api/admin/job-reports/count` (job-service, #375) — job-side open
+  reports.
 - `GET /api/admin/signups` (identity-service) — 30-day daily signup series and
   totals split by customers vs providers.
 
 **Stat tiles:** total signups, pending verifications, open reports (provider +
-review reports summed), active providers, suspended providers.
+review + job reports summed), active providers, suspended providers.
 
 **Charts** (recharts, colored from CSS vars so they follow dark mode):
 

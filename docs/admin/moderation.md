@@ -28,7 +28,10 @@ team.
   page indicator. The PENDING header stat and the hub badge baseline track the
   full `total`, not the current page.
 
-Any admin-tier user can act on this queue.
+Any admin-tier user can **read** this queue, but approve/reject (single and
+bulk) are **full-ADMIN** writes (`isFullAdmin` — a SUPPORT click is rejected
+with 403; the page doesn't currently disable the buttons for SUPPORT, so the
+rejection surfaces as an error on click).
 
 ### Reports queue
 
@@ -36,33 +39,58 @@ Route: **`/admin/reports`** (`src/app/admin/reports/page.tsx`,
 `AdminReportsList.tsx`, `ReportsFilterBar.tsx`, `ReportActions.tsx`,
 `RunFlaggingButton.tsx`).
 
-Merges two backends into one queue, sorted **open first, then newest first**:
-`GET /api/admin/reports` (provider-service — `PROVIDER` and `WORK_PHOTO`
-targets) and `GET /api/admin/review-reports` (review-service — `REVIEW`
-targets). Header stats: open / total.
+Merges three backends into one queue, sorted **open first, then newest
+first**: `GET /api/admin/reports` (provider-service — `PROVIDER`,
+`WORK_PHOTO`, `INQUIRY` and `MESSAGE` targets, #375/#376),
+`GET /api/admin/review-reports` (review-service — `REVIEW` targets) and
+`GET /api/admin/job-reports` (job-service — `JOB` and `JOB_RESPONSE` targets,
+#375/#376). Header stats: open / total.
 
-- **Filters** (URL-backed): target type (all / provider / photo / review) and
-  status (all / open / resolved / dismissed).
-- **Pagination.** Both backends are paginated 20 per page (#255); the page
+- **Filters** (URL-backed): target type (all / provider / photo / review /
+  inquiry / message / job post / job response) and status (all / open /
+  resolved / dismissed).
+- **Pagination.** All backends are paginated 20 per page (#255); the page
   requests the same page N from each and merges the results, so a page can hold
-  up to 20 rows from each source. Prev/next controls span the deeper source's
+  up to 20 rows from each source. Prev/next controls span the deepest source's
   page count. The open-count stat and hub badge come from the dedicated count
   endpoints (accurate across the whole queue, not just the current page).
 - **Per-row actions** — gated by `hasSupportAccess`: *Resolve* and *Dismiss*
-  send `PATCH` to the matching endpoint (`/api/admin/reports/{id}` or
-  `/api/admin/review-reports/{id}`) with `{ status: "RESOLVED" | "DISMISSED" }`.
+  send `PATCH` to the matching endpoint (`/api/admin/reports/{id}`,
+  `/api/admin/review-reports/{id}` or `/api/admin/job-reports/{id}`) with
+  `{ status: "RESOLVED" | "DISMISSED" }`.
 - **Bulk actions** — also support-gated; only open rows are selectable. Selected
-  ids are grouped by source and sent as `PATCH /api/admin/reports` and/or
-  `PATCH /api/admin/review-reports` with `{ ids, status }`.
+  ids are grouped by owning service and sent as `PATCH /api/admin/reports`,
+  `PATCH /api/admin/review-reports` and/or `PATCH /api/admin/job-reports`
+  with `{ ids, status }`.
 - **Audit stamp.** A closed report shows *who* closed it and *when*
-  (`resolvedBy` / `resolvedAt`).
-- Each row shows the target (review preview, or provider/photo with suspended /
-  content-removed chips) with a **Moderate** deep link, the reason and details,
-  the reporter (or "anonymous"), and the created date.
+  (`resolvedBy` / `resolvedAt`). Closing a report also sends the reporter a
+  best-effort `REPORT_RESOLVED` in-app notification (skipped for anonymous
+  and `SYSTEM`-sourced reports).
+- Each row shows the target (review preview, provider/photo with suspended /
+  content-removed chips, inquiry-thread context, job title + text with a
+  taken-down chip, or the reported thread message body) with a **Moderate**
+  deep link, the reason and details, the reporter ("anonymous", or
+  "System (auto-flagged)" for `SYSTEM`-sourced rows), and the created date.
+- **Takedown from the queue (#376).** A reported job row links to the admin
+  job detail, where a full admin can take it down (see
+  [Jobs](jobs.md)). A reported thread message has no separate admin surface,
+  so its row carries the ADMIN-only *Delete*/*Restore* control inline —
+  `DELETE /api/admin/messages/{id}` soft-deletes the message (it vanishes from
+  the thread for both parties), `PATCH /api/admin/messages/{id}/restore`
+  reverses it. Both are audit-logged.
 
 Report reasons are `spam | scam | offensive | fake | other` (plus free-text
-details, max 500 chars). Reports can be filed anonymously; the gateway rate-
-limits the report endpoints (see [RATE_LIMITING.md](../RATE_LIMITING.md)).
+details, max 500 chars). Reports on public content can be filed anonymously
+(thread messages are private, so only the two thread parties can report one);
+the gateway rate-limits the report endpoints (see
+[RATE_LIMITING.md](../RATE_LIMITING.md)).
+
+> **Note:** everything above is served by the per-service report stores
+> (provider / review / job). The unified
+> [trust & safety service](../rfcs/trust-safety-service.md) is **dark-launched
+> only** — its store is populated by an offline backfill script and nothing
+> reads from or dual-writes to it yet; these queues don't change until the
+> cutover PR.
 
 #### Auto-flagging ("Run flagging")
 
@@ -76,6 +104,41 @@ flags one when its **quality score is below 40** *or* it carries **3+ open
 (`Report.source = "SYSTEM"`, `reporterId = null`; providers that already carry
 an open system flag are skipped) and returning `{ flagged }`. System-flagged
 providers then appear in the normal reports queue for a human to action.
+
+The quality-score half of that rule depends on ratings hydrated from
+review-service. Because that fetch degrades to "no reviews" on an outage — which
+is indistinguishable from a provider genuinely having no reviews — the run uses a
+discriminated ratings result (`fetchRatingsResult` in `lib/clients.ts`): when
+hydration was incomplete (peer down / non-2xx), the **quality-score trigger is
+skipped for that run** so healthy providers aren't falsely flagged, and only the
+peer-independent **report-volume trigger** applies (#366).
+
+#### Content filter (write-time auto-reports)
+
+Every user-generated text write is checked server-side against a bilingual
+denylist (#375): review comments (review-service), provider
+headline/bio/service text and inquiry + thread messages (provider-service),
+and job posts + job responses (job-service). The **decision for v0.1 is
+auto-report, not reject**: a matching write always succeeds and the content
+stays publicly visible; the filter only files a `SYSTEM`-sourced open report
+(`reason: "auto-flag: content filter"`, `reporterId = null`) into the owning
+service's reports queue so an admin can triage it. Filing is best-effort — a
+moderation failure never fails the user's write.
+
+- **Matcher** — `src/lib/moderation.ts` in each of the three services
+  (canonical copies, same convention as `lib/logging.ts`); the denylist is a
+  data file, `src/lib/moderation-terms.ts`. Latin-script terms (English +
+  romanized Sinhala/"Singlish") match case-insensitively on word boundaries so
+  ordinary words that merely contain a term never trip it; Sinhala-script
+  terms match as substrings (suffixes attach to the stem in Sinhala). Input is
+  NFKC-normalized with zero-width characters stripped.
+- **Report targets** — the flagged review (`REVIEW`), the provider whose
+  profile/service text matched (`PROVIDER` — same target the threshold
+  flagging uses), the inquiry thread a message belongs to (`INQUIRY`, with the
+  offending excerpt in the report's `details`), or the job post / response
+  (`JOB` / `JOB_RESPONSE`).
+- **Dedupe** — at most one open `SYSTEM` report per target; a repeat hit
+  refreshes the existing report's details instead of stacking duplicates.
 
 ### Provider quality score
 

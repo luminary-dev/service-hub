@@ -27,13 +27,12 @@
     "hono": "^4.12.29",
     "pg": "8.22.0",
     "prisma": "7.8.0",
-    "sharp": "^0.35.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "^4.1.9",
     "@types/node": "26.1.1",
     "@types/pg": "8.20.0",
+    "@vitest/coverage-v8": "^4.1.9",
     "tsx": "^4.23.0",
     "typescript": "7.0.2",
     "vitest": "^4.1.9"

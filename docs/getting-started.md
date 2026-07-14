@@ -10,8 +10,8 @@
 ```bash
 git clone https://github.com/luminary-dev/service-hub.git
 cd service-hub
-npm run setup      # installs all packages, creates .env files, starts Postgres, pushes schemas, seeds
-npm run dev:all    # runs the gateway + all seven backend services + the web app (Ctrl-C stops everything)
+npm run setup      # installs all packages, creates .env files, starts Postgres, migrates, seeds
+npm run dev:all    # runs the gateway + all nine backend services + the web app (Ctrl-C stops everything)
 ```
 
 Open http://localhost:3000.
@@ -32,19 +32,27 @@ docker compose up --build
 | provider-service | 4002 | `provider_db` — profiles, services, photos, inquiries, verification |
 | review-service | 4003 | `review_db` — reviews + review photos |
 | job-service | 4004 | `job_db` — job request board |
-| notification-service | 4005 | stateless — transactional email (Resend) |
+| notification-service | 4005 | `notification_db` — in-app notifications + transactional email (Resend) |
 | media-service | 4006 | stateless — upload bytes + sharp image processing |
 | chat-service | 4007 | stateless — Claude assistant (holds the LLM key) |
-| Postgres | **5433** on the host | one cluster, one database per service |
-| Redis | internal | shared rate-limit window |
+| search-service | 4008 | `search_db` — derived provider search index (PostGIS geo + FTS) |
+| trust-safety-service | 4009 | `trust_safety_db` — unified reports + moderation audit (dark launch) |
+| Postgres | **5433** on the host | one cluster, one database per data-owning service |
+| Redis | internal | rate-limit windows, session-revocation list, email queue |
 
-Postgres binds host port 5433 because many dev machines already run a local Postgres on 5432.
+Postgres binds host port 5433 because many dev machines already run a local
+Postgres on 5432. In the Docker dev stack, every published port except web's
+3000 is bound to **127.0.0.1** (#387), so on shared wifi nobody can reach
+Postgres or call a service directly with the well-known dev internal secret;
+test from a phone via `http://<your-ip>:3000` (web proxies `/api/*` internally).
 
 ## Seeded accounts (password: `password123`)
 
 > Local development only — the seed refuses to run with `NODE_ENV=production`.
 > Production admins come from `npm run create-admin` (see the
-> [admin bootstrap](admin/notifications-and-bootstrap.md)).
+> [admin bootstrap](admin/notifications-and-bootstrap.md)). All seeded accounts
+> are email-verified (there is no real inbox to confirm from, and job posting
+> requires it — #556).
 
 | Role | Email | Notes |
 | --- | --- | --- |

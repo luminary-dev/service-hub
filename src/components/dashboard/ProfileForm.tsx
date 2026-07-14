@@ -9,7 +9,10 @@ import {
   type CategoryOption,
 } from "@/lib/categories";
 import { districtLabelLoc } from "@/lib/i18n";
+import type { GeoPoint } from "@/lib/geo";
 import { Field, FormRow } from "@/components/ui/Field";
+import LocationPicker from "@/components/LocationPicker";
+import ServiceDistrictsPicker from "@/components/ServiceDistrictsPicker";
 import { useLocale, useT } from "../I18nProvider";
 import { useToast } from "../ToastProvider";
 import type { DashboardData } from "./DashboardTabs";
@@ -41,6 +44,9 @@ export default function ProfileForm({
     category: data.category,
     headline: data.headline,
     bio: data.bio,
+    // Optional Sinhala variants (#515); default to "" for the controlled input.
+    headlineSi: data.headlineSi ?? "",
+    bioSi: data.bioSi ?? "",
     district: data.district,
     city: data.city,
     experience: String(data.experience),
@@ -55,6 +61,18 @@ export default function ProfileForm({
     youtube: data.youtube,
     website: data.website,
   });
+  // Extra served districts beyond the home district (#502) — the home
+  // district is pinned by the picker and unioned in at save time.
+  const [serviceDistricts, setServiceDistricts] = useState<string[]>(
+    data.serviceDistricts.filter((d) => d !== data.district),
+  );
+  // Optional map pin (#48): null = no pin; save sends explicit nulls so the
+  // API clears a removed pin (absent would leave it untouched).
+  const [location, setLocation] = useState<GeoPoint | null>(
+    data.latitude !== null && data.longitude !== null
+      ? { latitude: data.latitude, longitude: data.longitude }
+      : null,
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const toast = useToast();
@@ -68,23 +86,38 @@ export default function ProfileForm({
     e.preventDefault();
     setLoading(true);
     setError("");
-    const res = await fetch("/api/provider/profile", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...form,
-        experience: Number(form.experience) || 0,
-        // Empty input means "not away" — send an explicit null to clear it.
-        awayUntil: form.awayUntil || null,
-      }),
-    });
-    setLoading(false);
-    if (res.ok) {
-      toast.success(p.saved);
-      router.refresh();
-    } else {
-      const d = await res.json().catch(() => ({}));
-      setError(d.error ?? p.saveError);
+    try {
+      const res = await fetch("/api/provider/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...form,
+          // Full served set (#502): home district first, extras after.
+          serviceDistricts: [
+            form.district,
+            ...serviceDistricts.filter((d) => d !== form.district),
+          ],
+          experience: Number(form.experience) || 0,
+          // Empty input means "not away" — send an explicit null to clear it.
+          awayUntil: form.awayUntil || null,
+          // Map pin (#48): explicit nulls clear a removed pin (absent would
+          // leave the stored pin untouched).
+          latitude: location?.latitude ?? null,
+          longitude: location?.longitude ?? null,
+        }),
+      });
+      if (res.ok) {
+        toast.success(p.saved);
+        router.refresh();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setError(d.error ?? p.saveError);
+      }
+    } catch {
+      // Network failure — recover instead of wedging the button (#363).
+      setError(p.saveError);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -211,6 +244,23 @@ export default function ProfileForm({
         </Field>
       </FormRow>
 
+      {/* Multi-district service area (#502). */}
+      <ServiceDistrictsPicker
+        id="pf-service-districts"
+        primary={form.district}
+        value={serviceDistricts}
+        onChange={setServiceDistricts}
+      />
+
+      {/* Optional map pin (#48): pre-centered on the provider's district when
+          unset; the dashboard nudge to backfill pins. */}
+      <LocationPicker
+        id="pf-location"
+        value={location}
+        onChange={setLocation}
+        district={form.district}
+      />
+
       <Field label={p.headline} htmlFor="pf-headline">
         <input
           id="pf-headline"
@@ -230,6 +280,29 @@ export default function ProfileForm({
           onChange={(e) => set("bio", e.target.value)}
           required
           minLength={20}
+        />
+      </Field>
+
+      {/* Optional Sinhala variants (#515): shown to visitors browsing in
+          Sinhala; the English fields above stay the required source of truth. */}
+      <Field label={p.headlineSi} htmlFor="pf-headline-si" help={p.sinhalaHint}>
+        <input
+          id="pf-headline-si"
+          className="input"
+          value={form.headlineSi}
+          onChange={(e) => set("headlineSi", e.target.value)}
+          maxLength={120}
+          lang="si"
+        />
+      </Field>
+      <Field label={p.aboutSi} htmlFor="pf-about-si" help={p.sinhalaHint}>
+        <textarea
+          id="pf-about-si"
+          className="input min-h-32 resize-y"
+          value={form.bioSi}
+          onChange={(e) => set("bioSi", e.target.value)}
+          maxLength={2000}
+          lang="si"
         />
       </Field>
 

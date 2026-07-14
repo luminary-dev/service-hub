@@ -9,6 +9,18 @@ describe("resolveRoute (routing table)", () => {
     expect(resolveRoute("/api/favorites/prov-1")).toEqual({ service: "identity", path: "/api/favorites/prov-1" });
   });
 
+  it("routes saved searches to identity (#516)", () => {
+    expect(resolveRoute("/api/saved-searches")).toEqual({
+      service: "identity",
+      path: "/api/saved-searches",
+    });
+    expect(resolveRoute("/api/saved-searches/s-1")).toEqual({
+      service: "identity",
+      path: "/api/saved-searches/s-1",
+    });
+    expect(resolveRoute("/api/saved-searchesx")).toBeNull();
+  });
+
   it("routes admin user management to identity-service (#220 carve-out)", () => {
     expect(resolveRoute("/api/admin/users")).toEqual({ service: "identity", path: "/api/admin/users" });
     expect(resolveRoute("/api/admin/users/user-1")).toEqual({
@@ -66,6 +78,18 @@ describe("resolveRoute (routing table)", () => {
       service: "review",
       path: "/api/reviews/rev-1/report",
     });
+    // Job posts and inquiry thread messages are reportable too (#376).
+    expect(resolveRoute("/api/jobs/job-1/report")).toEqual({
+      service: "job",
+      path: "/api/jobs/job-1/report",
+    });
+    expect(resolveRoute("/api/messages/msg-1/report")).toEqual({
+      service: "provider",
+      path: "/api/messages/msg-1/report",
+    });
+    // Only the report action exists under /api/messages.
+    expect(resolveRoute("/api/messages/msg-1")).toBeNull();
+    expect(resolveRoute("/api/messages")).toBeNull();
     // Only the report action exists under /api/photos.
     expect(resolveRoute("/api/photos/ph-1")).toBeNull();
     expect(resolveRoute("/api/photos")).toBeNull();
@@ -101,6 +125,28 @@ describe("resolveRoute (routing table)", () => {
     });
   });
 
+  it("routes the notification center + preferences to notification-service (#394)", () => {
+    expect(resolveRoute("/api/notifications")).toEqual({
+      service: "notification",
+      path: "/api/notifications",
+    });
+    expect(resolveRoute("/api/notifications/unread-count")).toEqual({
+      service: "notification",
+      path: "/api/notifications/unread-count",
+    });
+    expect(resolveRoute("/api/notifications/read")).toEqual({
+      service: "notification",
+      path: "/api/notifications/read",
+    });
+    expect(resolveRoute("/api/notification-preferences")).toEqual({
+      service: "notification",
+      path: "/api/notification-preferences",
+    });
+    // The ADMIN badge counts stay carved out to provider-service above; a
+    // lookalike prefix without the exact base path is not forwarded.
+    expect(resolveRoute("/api/notification-preferencesX")).toBeNull();
+  });
+
   it("routes the admin audit logs to their owning services (#227)", () => {
     expect(resolveRoute("/api/admin/audit-log")).toEqual({
       service: "provider",
@@ -132,6 +178,25 @@ describe("resolveRoute (routing table)", () => {
     expect(resolveRoute("/api/admin/jobs/job-1")).toEqual({
       service: "job",
       path: "/api/admin/jobs/job-1",
+    });
+  });
+
+  it("routes the job moderation queue + audit log to job-service (#375)", () => {
+    expect(resolveRoute("/api/admin/job-reports")).toEqual({
+      service: "job",
+      path: "/api/admin/job-reports",
+    });
+    expect(resolveRoute("/api/admin/job-reports/rep-1")).toEqual({
+      service: "job",
+      path: "/api/admin/job-reports/rep-1",
+    });
+    expect(resolveRoute("/api/admin/job-reports/count")).toEqual({
+      service: "job",
+      path: "/api/admin/job-reports/count",
+    });
+    expect(resolveRoute("/api/admin/job-audit-log")).toEqual({
+      service: "job",
+      path: "/api/admin/job-audit-log",
     });
   });
 
@@ -180,6 +245,19 @@ describe("resolveRoute (routing table)", () => {
     expect(resolveRoute("/api/stats")).toEqual({ service: "provider", path: "/api/stats" });
   });
 
+  it("routes /api/search/* to search-service (search RFC phase 2)", () => {
+    expect(resolveRoute("/api/search/providers")).toEqual({
+      service: "search",
+      path: "/api/search/providers",
+    });
+    expect(resolveRoute("/api/search/providers/nearby")).toEqual({
+      service: "search",
+      path: "/api/search/providers/nearby",
+    });
+    // Browse deliberately stays on provider-service until the web migrates.
+    expect(resolveRoute("/api/providers")?.service).toBe("provider");
+  });
+
   it("routes categories to provider-service", () => {
     expect(resolveRoute("/api/categories")).toEqual({
       service: "provider",
@@ -213,6 +291,21 @@ describe("resolveRoute (routing table)", () => {
       service: "media",
       path: "/files/review/reviews/r.png",
     });
+    // Work photos under the provider namespace still go to media unchanged.
+    expect(resolveRoute("/api/files/provider/uploads/w.jpg")).toEqual({
+      service: "media",
+      path: "/files/provider/uploads/w.jpg",
+    });
+  });
+
+  it("routes provider verification documents to provider-service, NOT media (#500)", () => {
+    // PII (NIC / business-registration scans) must be admin-gated, so the
+    // verification prefix is carved out of the public media forward and handed
+    // to provider-service's gated serve route (path unchanged).
+    expect(resolveRoute("/api/files/provider/verification/doc.jpg")).toEqual({
+      service: "provider",
+      path: "/api/files/provider/verification/doc.jpg",
+    });
   });
 
   it("never forwards /internal paths", () => {
@@ -220,6 +313,36 @@ describe("resolveRoute (routing table)", () => {
     expect(resolveRoute("/api/providers/internal")).toBeNull();
     expect(resolveRoute("/api/auth/%2Finternal/users")).toBeNull();
     expect(resolveRoute("/internal/users")).toBeNull();
+  });
+
+  it("never forwards multi-encoded /internal paths (decode-until-stable)", () => {
+    // Double-encoded %2F → %252F. A single decode leaves "%2Finternal", so a
+    // one-shot guard would forward this; decode-until-stable catches it.
+    expect(resolveRoute("/api/auth/%252Finternal/users")).toBeNull();
+    expect(resolveRoute("/api/auth/%252finternal/users")).toBeNull();
+    // Deeper nesting (triple-encoded) is caught too.
+    expect(resolveRoute("/api/auth/%25252Finternal/users")).toBeNull();
+    // Encoded on the "internal" literal itself.
+    expect(resolveRoute("/api/jobs/%252Finternal%252Fjobs")).toBeNull();
+  });
+
+  it("does not throw on malformed percent-encoding, refuses to route", () => {
+    // A bare % (or truncated sequence) makes decodeURIComponent throw; the
+    // guard must treat that as suspicious rather than crash.
+    expect(() => resolveRoute("/api/providers/%")).not.toThrow();
+    expect(resolveRoute("/api/providers/%")).toBeNull();
+    expect(resolveRoute("/api/auth/%zz/login")).toBeNull();
+    // Malformed encoding that would otherwise be a valid public route.
+    expect(resolveRoute("/api/jobs/%E0%A4%A")).toBeNull();
+  });
+
+  it("still resolves normal percent-encoded public paths", () => {
+    // Innocuous encoding (an @ in an email-ish segment) must not be mistaken
+    // for an /internal smuggling attempt.
+    expect(resolveRoute("/api/admin/impersonate/a%40b.com")).toEqual({
+      service: "identity",
+      path: "/api/admin/impersonate/a%40b.com",
+    });
   });
 
   it("routes inquiry message threads to provider-service", () => {

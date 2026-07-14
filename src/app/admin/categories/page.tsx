@@ -40,9 +40,9 @@ export default async function AdminCategoriesPage() {
       >
         <StatReadout
           stats={[
-            { label: "TOTAL", value: categories.length },
-            { label: "ACTIVE", value: activeCount },
-            { label: "INACTIVE", value: categories.length - activeCount },
+            { label: t.stats.total, value: categories.length },
+            { label: t.stats.active, value: activeCount },
+            { label: t.stats.inactive, value: categories.length - activeCount },
           ]}
         />
       </PageHeader>

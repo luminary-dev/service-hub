@@ -2,11 +2,18 @@ import "./load-env";
 import { serve } from "@hono/node-server";
 import { app } from "./app";
 import { db } from "./db";
+import { log } from "./lib/log";
+import { installProcessErrorHandlers } from "./lib/logging";
+import { closeRevocationRedis } from "./lib/revocation";
 
 const port = Number(process.env.PORT ?? 4001);
 
+// Last-resort structured capture for errors outside a request (#34); Hono's
+// onError covers errors inside one. See lib/logging.ts.
+installProcessErrorHandlers(log);
+
 const server = serve({ fetch: app.fetch, port }, (info) => {
-  console.log(`identity-service listening on :${info.port}`);
+  log.info("listening", { port: info.port });
 });
 
 // Graceful shutdown: stop accepting connections, drain in-flight requests,
@@ -16,17 +23,18 @@ let shuttingDown = false;
 function shutdown(signal: string) {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.log(`identity-service received ${signal}, shutting down`);
+  log.info("shutting down", { signal });
   const forced = setTimeout(() => {
-    console.error("identity-service forced exit after shutdown timeout");
+    log.error("forced exit after shutdown timeout");
     process.exit(1);
   }, 10_000);
   forced.unref();
   server.close(async () => {
     try {
       await db.$disconnect();
+      await closeRevocationRedis();
     } catch (err) {
-      console.error("identity-service error during shutdown", err);
+      log.error("error during shutdown", { err });
     }
     clearTimeout(forced);
     process.exit(0);

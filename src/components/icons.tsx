@@ -5,8 +5,11 @@
 // only changed their import path. className/size/color pass straight through.
 import type { ReactElement, SVGProps } from "react";
 
-// title is allowed for parity with react-icons (renders as an SVG tooltip).
-type IconProps = SVGProps<SVGSVGElement> & { title?: string };
+// Icons are decorative (aria-hidden, innerHTML-injected), so a `title` prop
+// would emit an inert attribute, never a <title> child — no tooltip and no
+// accessible name. Name the wrapping element (aria-label / visually-hidden
+// text) instead; `title` is deliberately not accepted here.
+type IconProps = SVGProps<SVGSVGElement>;
 
 // Drop-in replacement for react-icons' IconType (callers that store an icon
 // component in a typed field / map, e.g. category → icon).
@@ -49,6 +52,9 @@ export function FaArrowUpRightFromSquare(props: IconProps) {
 }
 export function FaBars(props: IconProps) {
   return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M4 5h16\" /> <path d=\"M4 12h16\" /> <path d=\"M4 19h16\" />" }} />;
+}
+export function FaBell(props: IconProps) {
+  return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M10.268 21a2 2 0 0 0 3.464 0\" /> <path d=\"M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.74 7.327\" />" }} />;
 }
 export function FaBolt(props: IconProps) {
   return <svg {...outline} aria-hidden {...props} dangerouslySetInnerHTML={{ __html: "<path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\" />" }} />;

@@ -51,19 +51,24 @@ const GATEWAY_HEADERS = [
 ];
 
 // Public web origin, forwarded so services can build absolute links (emails).
-// A configured WEB_ORIGIN is authoritative and wins over any client-supplied
-// forwarding headers — otherwise a spoofed x-forwarded-host could poison the
-// links in password-reset / verification emails (account-takeover vector). The
-// header fallback only applies in dev, when WEB_ORIGIN is unset.
+// A configured WEB_ORIGIN is authoritative and wins over everything else —
+// otherwise a spoofed x-forwarded-host could poison the links in
+// password-reset / verification emails (account-takeover vector). Those
+// forwarding headers are client-controllable, so we only trust them in
+// development (a convenience when WEB_ORIGIN is unset); in every other
+// environment with no WEB_ORIGIN we fall back to a safe localhost default
+// rather than a client-derived origin.
 function resolveOrigin(c: Context): string {
   if (process.env.WEB_ORIGIN) return process.env.WEB_ORIGIN;
-  const proto = c.req.header("x-forwarded-proto");
-  const forwardedHost = c.req.header("x-forwarded-host");
-  if (!proto && !forwardedHost) {
-    return "http://localhost:3000";
+  if (process.env.NODE_ENV === "development") {
+    const proto = c.req.header("x-forwarded-proto");
+    const forwardedHost = c.req.header("x-forwarded-host");
+    if (proto || forwardedHost) {
+      const host = forwardedHost ?? c.req.header("host");
+      return `${proto ?? "http"}://${host}`;
+    }
   }
-  const host = forwardedHost ?? c.req.header("host");
-  return `${proto ?? "http"}://${host}`;
+  return "http://localhost:3000";
 }
 
 export async function buildUpstreamHeaders(
@@ -87,7 +92,15 @@ export async function buildUpstreamHeaders(
 
   if (
     impersonation &&
-    (await sessionVersionOk(impersonation.userId, impersonation.sv))
+    // Both parties' sessions must still be current: the target's (impersonation
+    // ends if they change password etc.) AND the admin's own (#358) — so
+    // force-logout / password-reset of the admin kills the impersonation now,
+    // not 15 minutes later.
+    (await sessionVersionOk(impersonation.userId, impersonation.sv)) &&
+    (await sessionVersionOk(
+      impersonation.impersonatedBy,
+      impersonation.impersonatedBySv
+    ))
   ) {
     headers.set("x-user-id", impersonation.userId);
     headers.set("x-user-role", impersonation.role);

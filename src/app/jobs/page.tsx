@@ -4,14 +4,18 @@ import { FaBriefcase, FaInbox, FaPhone, FaPlus } from "@/components/icons";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
+import { loginNext } from "@/lib/login";
 import { formatDate, formatNumber } from "@/lib/format";
 import { dict, categoryLabelLoc, districtLabelLoc } from "@/lib/i18n";
+import { localizedHref } from "@/lib/links";
 import InView from "@/components/InView";
 import PageHeader from "@/components/ui/PageHeader";
 import StatReadout from "@/components/ui/StatReadout";
 import EmptyState from "@/components/ui/EmptyState";
+import Pagination from "@/components/ui/Pagination";
 import JobRespondForm from "@/components/jobs/JobRespondForm";
 import JobStatusToggle from "@/components/jobs/JobStatusToggle";
+import ReportButton from "@/components/ReportButton";
 
 // Caching (#57): session-gated and must reflect the user's own writes
 // immediately — stays fully dynamic (no-store).
@@ -60,7 +64,7 @@ export default async function JobsPage({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const session = await getSession();
-  if (!session) redirect("/login");
+  if (!session) redirect(await loginNext("/jobs"));
 
   const params = await searchParams;
   const boardPage = Math.max(1, Number(params.boardPage) || 1);
@@ -72,13 +76,19 @@ export default async function JobsPage({
   const [locale, dashboard] = await Promise.all([
     getLocale(),
     session.role === "PROVIDER"
-      ? apiJson<{ provider: { category: string; district: string } }>(
-          "/api/provider/dashboard"
-        )
+      ? apiJson<{
+          provider: {
+            category: string;
+            district: string;
+            // Multi-district service area (#502).
+            serviceDistricts?: string[];
+          };
+        }>("/api/provider/dashboard")
       : Promise.resolve(null),
   ]);
   const t = dict[locale].jobs;
   const nav = dict[locale].nav;
+  const tr = dict[locale].report;
   const provider = dashboard?.provider ?? null;
 
   const [boardData, mineData] = await Promise.all([
@@ -107,41 +117,37 @@ export default async function JobsPage({
     if (boardPage > 1) sp.set("boardPage", String(boardPage));
     if (minePage > 1) sp.set("minePage", String(minePage));
     sp.set(key, String(value));
-    return `/jobs?${sp.toString()}`;
+    return localizedHref(`/jobs?${sp.toString()}`, locale);
   }
 
   function pager(key: "boardPage" | "minePage", current: number, totalPages: number) {
-    if (totalPages <= 1) return null;
     return (
-      <div className="mt-8 flex items-center justify-center gap-2">
-        {current > 1 && (
-          <Link href={pageHref(key, current - 1)} className="btn-secondary">
-            {t.prev}
-          </Link>
-        )}
-        <span className="px-3 text-sm text-ink-500">
-          {t.pageOf(current, totalPages)}
-        </span>
-        {current < totalPages && (
-          <Link href={pageHref(key, current + 1)} className="btn-secondary">
-            {t.next}
-          </Link>
-        )}
-      </div>
+      <Pagination
+        page={current}
+        totalPages={totalPages}
+        hrefFor={(p) => pageHref(key, p)}
+        locale={locale}
+        // Both sections can paginate on the same page — name each landmark
+        // after the list it pages so they stay distinguishable.
+        label={key === "boardPage" ? t.boardTitle : t.myTitle}
+        className="mt-8"
+      />
     );
   }
 
   // Instrument readout in the header band — board-focused for providers,
-  // posting-focused for customers. Labels are decorative mono captions
-  // (matching the registry header), values are localized counts.
+  // posting-focused for customers. Captions and counts are both localized.
   const stats = provider
     ? [
-        { label: "MATCHING", value: boardTotal },
-        { label: "RESPONDED", value: board.filter((j) => j.responded).length },
+        { label: t.stats.matching, value: boardTotal },
+        {
+          label: t.stats.responded,
+          value: board.filter((j) => j.responded).length,
+        },
       ]
     : [
-        { label: "POSTED", value: mineTotal },
-        { label: "OPEN", value: openCount },
+        { label: t.stats.posted, value: mineTotal },
+        { label: t.stats.open, value: openCount },
       ];
 
   return (
@@ -155,14 +161,20 @@ export default async function JobsPage({
           provider
             ? t.boardSubtitle(
                 categoryLabelLoc(provider.category, locale),
-                districtLabelLoc(provider.district, locale)
+                // The full served set (#502), not just the home district.
+                (provider.serviceDistricts?.length
+                  ? provider.serviceDistricts
+                  : [provider.district]
+                )
+                  .map((d) => districtLabelLoc(d, locale))
+                  .join(", ")
               )
             : t.mySubtitle
         }
       >
         <div className="flex flex-col items-start gap-4 sm:items-end">
           <StatReadout stats={stats} />
-          <Link href="/jobs/new" className="btn-primary">
+          <Link href={localizedHref("/jobs/new", locale)} className="btn-primary">
             <FaPlus className="h-3.5 w-3.5" />
             {t.postCta}
           </Link>
@@ -204,13 +216,23 @@ export default async function JobsPage({
                       {job.description}
                     </p>
                     <div className="mt-3.5 border-t border-dashed border-ink-300 pt-3.5">
-                      {job.responded ? (
-                        <span className="chip bg-emerald-50 text-emerald-700">
-                          {t.respondedTag}
-                        </span>
-                      ) : (
-                        <JobRespondForm jobId={job.id} />
-                      )}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          {job.responded ? (
+                            <span className="chip bg-emerald-50 text-emerald-700">
+                              {t.respondedTag}
+                            </span>
+                          ) : (
+                            <JobRespondForm jobId={job.id} />
+                          )}
+                        </div>
+                        {/* Abuse reporting (#376): scam/abusive postings feed
+                            the admin job-reports queue. */}
+                        <ReportButton
+                          endpoint={`/api/jobs/${job.id}/report`}
+                          label={tr.reportJob}
+                        />
+                      </div>
                     </div>
                   </li>
                 ))}
@@ -239,7 +261,10 @@ export default async function JobsPage({
                 icon={FaBriefcase}
                 title={t.myEmpty}
                 action={
-                  <Link href="/jobs/new" className="btn-primary">
+                  <Link
+                    href={localizedHref("/jobs/new", locale)}
+                    className="btn-primary"
+                  >
                     {t.postCta}
                   </Link>
                 }
@@ -287,7 +312,10 @@ export default async function JobsPage({
                           <li key={r.id} className="py-3">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <Link
-                                href={`/providers/${r.provider.id}`}
+                                href={localizedHref(
+                                  `/providers/${r.provider.id}`,
+                                  locale
+                                )}
                                 className="text-sm font-medium text-ink-800 hover:text-brand-700"
                               >
                                 {r.provider.name}

@@ -6,12 +6,14 @@ import { getSession, type SessionPayload } from "@/lib/auth";
 import { formatDate, formatLKR } from "@/lib/format";
 import {
   dict,
+  bilingualText,
   categoryLabelLoc,
   districtLabelLoc,
   priceTypeLabelLoc,
 } from "@/lib/i18n";
 import { languageAlternates } from "@/lib/links";
 import { getLocale, getUrlLocale } from "@/lib/locale";
+import { providerJsonLd, siteOpenGraph } from "@/lib/seo";
 import Avatar from "@/components/Avatar";
 import CategoryIcon from "@/components/CategoryIcon";
 import Stars from "@/components/Stars";
@@ -22,8 +24,10 @@ import ContactLinks from "@/components/ContactLinks";
 import FavoriteButton from "@/components/FavoriteButton";
 import ReportButton from "@/components/ReportButton";
 import ShareButton from "@/components/ShareButton";
+import StaticLocationMap from "@/components/StaticLocationMap";
 import VerifiedBadge from "@/components/VerifiedBadge";
 import InView from "@/components/InView";
+import JsonLd from "@/components/JsonLd";
 import StatReadout, { type Stat } from "@/components/ui/StatReadout";
 import type { ReactNode } from "react";
 
@@ -64,6 +68,8 @@ type FullReview = {
   createdAt: string;
   user: { name: string };
   photos: { id: string; url: string }[];
+  // Provider's public reply (#395); optional so cached pre-#395 payloads parse.
+  response?: { text: string; createdAt: string } | null;
 };
 
 type FullProvider = {
@@ -72,8 +78,20 @@ type FullProvider = {
   category: string;
   headline: string;
   bio: string;
+  // Optional Sinhala variants (#515); rendered under the `si` locale with an
+  // English fallback via bilingualText. Optional on the type so consumers need
+  // no churn.
+  headlineSi?: string | null;
+  bioSi?: string | null;
   district: string;
+  // Multi-district service area (#502); always includes `district`. Optional
+  // on the type so cached pre-#502 payloads need no churn.
+  serviceDistricts?: string[];
   city: string;
+  // Optional map pin (#48): the API includes the pair only when the provider
+  // set one, so presence of both means "show the mini-map".
+  latitude?: number;
+  longitude?: number;
   experience: number;
   // `available` is the EFFECTIVE availability (the service folds the away
   // window in); `awayUntil` is set while the provider is on leave (#49).
@@ -120,13 +138,42 @@ function fetchProvider(id: string, session: SessionPayload | null) {
     : apiJson<{ provider: FullProvider }>(path, { revalidate: 60 });
 }
 
+// Aggregated rating summary over ALL of a provider's reviews (#528): overall
+// average+count, per-dimension averages and the 5→1 star distribution. Read
+// straight from review-service's public reviews endpoint (no provider-service
+// change) — `?take=1` because we only need the summary, not another page of
+// reviews (those already arrive via /full). Same viewer-split caching as the
+// profile itself; degrades to null so the breakdown just hides.
+type ReviewSummary = {
+  rating: number;
+  count: number;
+  dimensions: {
+    quality: number | null;
+    punctuality: number | null;
+    value: number | null;
+    communication: number | null;
+  };
+  distribution: Record<string, number>;
+};
+
+function fetchReviewSummary(id: string, session: SessionPayload | null) {
+  const path = `/api/providers/${encodeURIComponent(id)}/reviews?take=1`;
+  return session
+    ? apiJson<{ summary: ReviewSummary }>(path)
+    : apiJson<{ summary: ReviewSummary }>(path, { revalidate: 60 });
+}
+
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
-  const [locale, session] = await Promise.all([getLocale(), getSession()]);
+  const [locale, urlLocale, session] = await Promise.all([
+    getLocale(),
+    getUrlLocale(),
+    getSession(),
+  ]);
   const data = await fetchProvider(id, session);
   const provider = data?.provider;
   if (!provider || provider.suspended) return {};
@@ -138,16 +185,21 @@ export async function generateMetadata({
     category,
     provider.city
   );
+  const path = `/providers/${encodeURIComponent(id)}`;
   // The opengraph-image.tsx sibling supplies the preview image automatically.
   return {
     title,
     description,
     // hreflang pair (#67): en at /providers/:id, si at /si/providers/:id.
-    alternates: languageAlternates(
-      `/providers/${encodeURIComponent(id)}`,
-      await getUrlLocale(),
-    ),
-    openGraph: { title, description, type: "profile" },
+    alternates: languageAlternates(path, urlLocale),
+    // Spread over the site defaults so og:url/og:locale/og:siteName match the
+    // canonical (#379); this page's own text and type stay on top.
+    openGraph: {
+      ...siteOpenGraph(locale, urlLocale, path),
+      title,
+      description,
+      type: "profile",
+    },
     twitter: { card: "summary_large_image", title, description },
   };
 }
@@ -158,7 +210,11 @@ export default async function ProviderProfilePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [session, locale] = await Promise.all([getSession(), getLocale()]);
+  const [session, locale, urlLocale] = await Promise.all([
+    getSession(),
+    getLocale(),
+    getUrlLocale(),
+  ]);
   const data = await fetchProvider(id, session);
   const provider = data?.provider ?? null;
 
@@ -187,20 +243,56 @@ export default async function ProviderProfilePage({
     favorited = favorites?.providerIds.includes(provider.id) ?? false;
   }
 
+  // Rating breakdown/distribution over all reviews (#528) — read directly from
+  // review-service, independent of the profile's first review page.
+  const reviewData = await fetchReviewSummary(provider.id, session);
+  const reviewSummary = reviewData?.summary ?? null;
+
+  // Headline rating/count must reflect ALL reviews, not the first page. `/full`
+  // only carries the newest FULL_REVIEWS_TAKE (50), so `provider.reviews`
+  // undercounts and skews `avg` for prolific providers (#548). Prefer the #528
+  // aggregate; fall back to the first-page values only if the summary fetch
+  // failed (so the header still shows something during a review-service blip).
+  const reviewCount = reviewSummary?.count ?? provider.reviews.length;
+  const ratingAvg =
+    reviewSummary && reviewSummary.count > 0 ? reviewSummary.rating : avg;
+
   const away =
     !!provider.awayUntil && new Date(provider.awayUntil) > new Date();
 
   // Instrument-style readout mirroring the registry header on the listing.
-  // Labels are the same terse English mono captions the shipped pages use;
-  // the localized experience/review copy still reads in the meta line below.
+  // Captions are localized (#380); the localized experience/review copy
+  // still reads in the meta line below.
   const stats: Stat[] = [];
   if (provider.experience > 0)
-    stats.push({ label: "EXP · YRS", value: provider.experience });
-  if (avg !== null) stats.push({ label: "RATING", value: avg.toFixed(1) });
-  stats.push({ label: "REVIEWS", value: provider.reviews.length });
+    stats.push({ label: t.profile.stats.expYears, value: provider.experience });
+  if (ratingAvg !== null)
+    stats.push({ label: t.profile.stats.rating, value: ratingAvg.toFixed(1) });
+  stats.push({ label: t.profile.stats.reviews, value: reviewCount });
 
   return (
     <div>
+      {/* LocalBusiness structured data (#379): name, bilingual headline,
+          address, category and — when reviews exist — the aggregate rating,
+          matching the figures rendered in the hero. */}
+      <JsonLd
+        data={providerJsonLd(
+          {
+            id: provider.id,
+            name: provider.user.name,
+            category: provider.category,
+            headline: provider.headline,
+            headlineSi: provider.headlineSi,
+            district: provider.district,
+            city: provider.city,
+            avatarUrl: provider.avatarUrl,
+            rating: ratingAvg,
+            reviewCount,
+          },
+          locale,
+          urlLocale,
+        )}
+      />
       {/* -- Blueprint hero band ---------------------------------------- */}
       <section className="blueprint-grid border-b border-ink-300 bg-ink-50">
         <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
@@ -257,15 +349,25 @@ export default async function ProviderProfilePage({
                   {provider.experience > 0 &&
                     ` · ${t.profile.exp(provider.experience)}`}
                 </p>
+                {/* Multi-district service area (#502): the full served set,
+                    shown when it goes beyond the home district. */}
+                {(provider.serviceDistricts?.length ?? 0) > 1 && (
+                  <p className="mt-1 font-mono text-[11px] uppercase tracking-wider text-ink-500">
+                    {t.serviceDistricts.areasLabel}:{" "}
+                    {provider
+                      .serviceDistricts!.map((d) => districtLabelLoc(d, locale))
+                      .join(", ")}
+                  </p>
+                )}
                 <div className="mt-2.5 flex items-center gap-2">
-                  {avg !== null ? (
+                  {ratingAvg !== null ? (
                     <>
-                      <Stars rating={avg} size="md" />
+                      <Stars rating={ratingAvg} size="md" />
                       <span className="font-semibold tabular-nums text-ink-800">
-                        {avg.toFixed(1)}
+                        {ratingAvg.toFixed(1)}
                       </span>
                       <span className="text-sm text-ink-500">
-                        {t.profile.reviewsShort(provider.reviews.length)}
+                        {t.profile.reviewsShort(reviewCount)}
                       </span>
                     </>
                   ) : (
@@ -325,11 +427,29 @@ export default async function ProviderProfilePage({
           <InView stagger className="space-y-8 lg:col-span-2">
             <SpecSection code="01" title={t.profile.about}>
               <p className="mt-3 font-medium text-ink-800">
-                {provider.headline}
+                {bilingualText(provider.headline, provider.headlineSi, locale)}
               </p>
               <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-ink-600">
-                {provider.bio}
+                {bilingualText(provider.bio, provider.bioSi, locale)}
               </p>
+              {/* Map pin (#48): a static OSM mini-map, only when the provider
+                  dropped a pin — never a substituted district centroid. */}
+              {provider.latitude !== undefined &&
+                provider.longitude !== undefined && (
+                  <div className="mt-5">
+                    <h3 className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-500">
+                      {t.location.profileLocation}
+                    </h3>
+                    <div className="mt-2">
+                      <StaticLocationMap
+                        latitude={provider.latitude}
+                        longitude={provider.longitude}
+                        alt={t.location.mapImageAlt(provider.user.name)}
+                        linkLabel={t.location.viewOnOsm}
+                      />
+                    </div>
+                  </div>
+                )}
             </SpecSection>
 
             <SpecSection code="02" title={t.profile.services}>
@@ -390,6 +510,7 @@ export default async function ProviderProfilePage({
 
             <ReviewSection
               providerId={provider.id}
+              providerName={provider.user.name}
               reviews={provider.reviews.map((r) => ({
                 id: r.id,
                 rating: r.rating,
@@ -397,9 +518,14 @@ export default async function ProviderProfilePage({
                 createdAt: r.createdAt,
                 userName: r.user.name,
                 photos: r.photos.map((ph) => ({ id: ph.id, url: ph.url })),
+                response: r.response
+                  ? { text: r.response.text, createdAt: r.response.createdAt }
+                  : null,
               }))}
               canReview={!!session && !isOwner}
+              canRespond={isOwner}
               signedIn={!!session}
+              summary={reviewSummary}
               myReview={
                 myReview
                   ? {

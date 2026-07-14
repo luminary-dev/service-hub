@@ -4,11 +4,18 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useLocale, useT } from "@/components/I18nProvider";
-import { localizedHref } from "@/lib/links";
+import { localizedHref, sanitizeNext } from "@/lib/links";
 import PasswordInput from "@/components/PasswordInput";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
 import FacebookSignInButton from "@/components/FacebookSignInButton";
+import { ConsentNotice } from "@/components/LegalConsent";
 import { Field } from "@/components/ui/Field";
+import {
+  FormError,
+  isValidEmail,
+  useFieldErrors,
+  type FieldErrors,
+} from "@/components/ui/FormError";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -18,22 +25,37 @@ export default function LoginPage() {
   const locale = useLocale();
   // OAuth failures redirect back here as ?error=<code>; map it to a message.
   const searchParams = useSearchParams();
+  // Post-login return-to (#560): "sign in to continue" entry points arrive as
+  // /login?next=<locale-prefixed path>. Validated same-origin paths win over
+  // the role default below; anything else is dropped (no open redirects).
+  const next = sanitizeNext(searchParams.get("next"));
   const oauthError = searchParams.get("error");
   const initialError =
     oauthError === "oauth_email"
       ? t.oauth.errEmail
       : oauthError === "oauth_unavailable"
         ? t.oauth.errUnavailable
-        : oauthError === "oauth"
-          ? t.oauth.errGeneric
-          : "";
+        : oauthError === "oauth_locked"
+          ? t.oauth.errLocked
+          : oauthError === "oauth"
+            ? t.oauth.errGeneric
+            : "";
   const [error, setError] = useState(initialError);
+  const { fieldErrors, show, errorProps } = useFieldErrors();
   const router = useRouter();
+
+  function validate(): FieldErrors {
+    const errs: FieldErrors = {};
+    if (!isValidEmail(email)) errs["login-email"] = t.fieldErrors.email;
+    if (!password) errs["login-password"] = t.fieldErrors.passwordRequired;
+    return errs;
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
     setError("");
+    if (show(validate())) return;
+    setLoading(true);
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
@@ -43,10 +65,11 @@ export default function LoginPage() {
       if (res.ok) {
         const data = await res.json();
         router.push(
-          localizedHref(
-            data.user.role === "PROVIDER" ? "/dashboard" : "/providers",
-            locale,
-          ),
+          next ??
+            localizedHref(
+              data.user.role === "PROVIDER" ? "/dashboard" : "/providers",
+              locale,
+            ),
         );
         router.refresh();
       } else {
@@ -84,8 +107,14 @@ export default function LoginPage() {
               SESSION
             </span>
           </div>
-          <form onSubmit={submit} className="space-y-4 p-6">
-            <Field label={t.login.email} htmlFor="login-email">
+          {/* noValidate: validation happens in JS so errors are localized,
+              inline and linked to their fields (#378), not browser bubbles. */}
+          <form onSubmit={submit} noValidate className="space-y-4 p-6">
+            <Field
+              label={t.login.email}
+              htmlFor="login-email"
+              error={fieldErrors["login-email"]}
+            >
               <input
                 id="login-email"
                 className="input"
@@ -114,14 +143,19 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 autoComplete="current-password"
-                aria-describedby={error ? "login-error" : undefined}
+                {...errorProps("login-password")}
               />
+              {fieldErrors["login-password"] && (
+                <p
+                  id="login-password-error"
+                  role="alert"
+                  className="mt-1 text-xs text-red-600"
+                >
+                  {fieldErrors["login-password"]}
+                </p>
+              )}
             </div>
-            {error && (
-              <p id="login-error" role="alert" className="text-sm text-red-600">
-                {error}
-              </p>
-            )}
+            <FormError>{error}</FormError>
             <button
               type="submit"
               disabled={loading}
@@ -138,10 +172,17 @@ export default function LoginPage() {
           <span className="h-px flex-1 bg-ink-200" />
         </div>
         <div className="mt-6 space-y-3">
-          <GoogleSignInButton label={t.oauth.continueWithGoogle} />
-          <FacebookSignInButton label={t.oauth.continueWithFacebook} />
+          <GoogleSignInButton
+            label={t.oauth.continueWithGoogle}
+            next={next ?? undefined}
+          />
+          <FacebookSignInButton
+            label={t.oauth.continueWithFacebook}
+            next={next ?? undefined}
+          />
         </div>
         <p className="mt-3 text-center text-xs text-ink-500">{t.oauth.dataUse}</p>
+        <ConsentNotice />
 
         <p className="mt-6 text-center text-sm text-ink-500">
           {t.login.newTo}{" "}

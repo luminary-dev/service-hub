@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { escapeHtml, inquiryEmail, jobResponseEmail, passwordResetEmail, verifyEmail } from "./email";
+import { accountExistsEmail, emailChangeAttemptEmail, escapeHtml, inquiryEmail, jobResponseEmail, newJobEmail, newProviderMatchEmail, passwordResetEmail, verifyEmail } from "./email";
 
 describe("verifyEmail", () => {
   it("renders the English template by default", () => {
@@ -41,6 +41,49 @@ describe("passwordResetEmail", () => {
   });
 });
 
+describe("accountExistsEmail", () => {
+  it("renders the English template by default", () => {
+    const { subject, html } = accountExistsEmail("https://baas.lk/login");
+    expect(subject).toBe("You already have a Baas.lk account");
+    expect(html).toContain("You already have an account");
+    expect(html).toContain(
+      "Someone tried to sign up for Baas.lk with this email address, but an account already exists."
+    );
+    expect(html).toContain(">Sign in</a>");
+    expect(html).toContain('href="https://baas.lk/login"');
+  });
+
+  it("renders the Sinhala template", () => {
+    const { subject, html } = accountExistsEmail("https://baas.lk/login", "si");
+    expect(subject).toBe("ඔබට දැනටමත් Baas.lk ගිණුමක් ඇත");
+    expect(html).toContain("ඔබට දැනටමත් ගිණුමක් ඇත");
+    expect(html).toContain("නව ගිණුමක් සෑදී නැත");
+    expect(html).toContain(">පිවිසෙන්න</a>");
+    expect(html).toContain('href="https://baas.lk/login"');
+  });
+});
+
+describe("emailChangeAttemptEmail", () => {
+  it("renders the English template by default", () => {
+    const { subject, html } = emailChangeAttemptEmail("https://baas.lk/login");
+    expect(subject).toBe("Someone tried to use your Baas.lk email");
+    expect(html).toContain("A change-email request used your address");
+    expect(html).toContain(
+      "Someone tried to change the email address on a Baas.lk account to this one."
+    );
+    expect(html).toContain(">Sign in</a>");
+    expect(html).toContain('href="https://baas.lk/login"');
+  });
+
+  it("renders the Sinhala template", () => {
+    const { subject, html } = emailChangeAttemptEmail("https://baas.lk/login", "si");
+    expect(subject).toBe("යමෙකු ඔබේ Baas.lk විද්‍යුත් තැපෑල භාවිතා කිරීමට උත්සාහ කළා");
+    expect(html).toContain("විද්‍යුත් තැපෑල වෙනස් කිරීමේ ඉල්ලීමක් ඔබේ ලිපිනය භාවිතා කළා");
+    expect(html).toContain(">පිවිසෙන්න</a>");
+    expect(html).toContain('href="https://baas.lk/login"');
+  });
+});
+
 describe("jobResponseEmail", () => {
   it("renders the English template by default", () => {
     const { subject, html } = jobResponseEmail(
@@ -71,6 +114,86 @@ describe("jobResponseEmail", () => {
     );
     expect(html).toContain(">ප්‍රතිචාරය බලන්න</a>");
     expect(html).toContain('href="https://baas.lk/jobs"');
+  });
+});
+
+describe("newJobEmail", () => {
+  it("renders the English template by default", () => {
+    const { subject, html } = newJobEmail(
+      "https://baas.lk/jobs",
+      "Fix a leaking tap",
+      "Colombo"
+    );
+    expect(subject).toBe("New job in Colombo matching your services");
+    expect(html).toContain("A new job matches your services");
+    expect(html).toContain(
+      'A new job "Fix a leaking tap" was posted in Colombo matching your category. Log in to your job board to view it and respond.'
+    );
+    expect(html).toContain(">View job</a>");
+    expect(html).toContain('href="https://baas.lk/jobs"');
+  });
+
+  it("renders the Sinhala template", () => {
+    const { subject, html } = newJobEmail(
+      "https://baas.lk/jobs",
+      "Fix a leaking tap",
+      "Colombo",
+      "si"
+    );
+    expect(subject).toBe("Colombo හි ඔබට ගැලපෙන නව රැකියාවක්");
+    expect(html).toContain("ඔබට ගැලපෙන නව රැකියාවක්");
+    expect(html).toContain(">රැකියාව බලන්න</a>");
+    expect(html).toContain('href="https://baas.lk/jobs"');
+  });
+
+  it("escapes markup in the job title", () => {
+    const { html } = newJobEmail(
+      "https://baas.lk/jobs",
+      "</p><script>steal()</script>",
+      "Colombo"
+    );
+    expect(html).not.toContain("<script>steal()</script>");
+    expect(html).toContain("&lt;script&gt;steal()&lt;/script&gt;");
+  });
+});
+
+describe("newProviderMatchEmail", () => {
+  it("renders the English template by default", () => {
+    const { subject, html } = newProviderMatchEmail(
+      "https://baas.lk/providers/prov1",
+      "Nimal Perera",
+      "Colombo"
+    );
+    expect(subject).toBe("New professional matching your saved search");
+    expect(html).toContain("A new match for your saved search");
+    expect(html).toContain(
+      "Nimal Perera in Colombo just joined Baas.lk and matches one of your saved searches. Take a look at their profile, services and rates."
+    );
+    expect(html).toContain(">View profile</a>");
+    expect(html).toContain('href="https://baas.lk/providers/prov1"');
+  });
+
+  it("renders the Sinhala template", () => {
+    const { subject, html } = newProviderMatchEmail(
+      "https://baas.lk/providers/prov1",
+      "Nimal Perera",
+      "Colombo",
+      "si"
+    );
+    expect(subject).toBe("ඔබේ සුරැකි සෙවුමට ගැලපෙන නව වෘත්තිකයෙක්");
+    expect(html).toContain("ඔබේ සුරැකි සෙවුමට නව ගැලපීමක්");
+    expect(html).toContain(">පැතිකඩ බලන්න</a>");
+    expect(html).toContain('href="https://baas.lk/providers/prov1"');
+  });
+
+  it("escapes markup in the provider name", () => {
+    const { html } = newProviderMatchEmail(
+      "https://baas.lk/providers/prov1",
+      "</p><script>steal()</script>",
+      "Colombo"
+    );
+    expect(html).not.toContain("<script>steal()</script>");
+    expect(html).toContain("&lt;script&gt;steal()&lt;/script&gt;");
   });
 });
 

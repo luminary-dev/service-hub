@@ -91,6 +91,9 @@ export default function PhotosManager({
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarError, setAvatarError] = useState("");
   const [dropActive, setDropActive] = useState(false);
+  // Two-step delete (#562): first tap arms the tile, second confirms.
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
   const coverRef = useRef<HTMLInputElement>(null);
@@ -103,7 +106,8 @@ export default function PhotosManager({
   const dragFrom = useRef<number | null>(null);
   const router = useRouter();
   const toast = useToast();
-  const ph = useT().dashboard.photos;
+  const t = useT();
+  const ph = t.dashboard.photos;
 
   function patchUpload(key: number, patch: Partial<UploadItem>) {
     setUploads((list) =>
@@ -206,18 +210,24 @@ export default function PhotosManager({
     // Avatars are unified on the User (#434): upload through the account
     // endpoint (identity), which sets User.avatarUrl and syncs the denormalized
     // copy back to this provider profile. Response shape is unchanged.
-    const res = await fetch("/api/account/avatar", {
-      method: "POST",
-      body: fd,
-    });
-    setAvatarUploading(false);
-    if (res.ok) {
-      const data = await res.json();
-      setAvatarUrl(data.avatarUrl);
-      router.refresh();
-    } else {
-      const d = await res.json().catch(() => ({}));
-      setAvatarError(d.error ?? ph.uploadError);
+    try {
+      const res = await fetch("/api/account/avatar", {
+        method: "POST",
+        body: fd,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAvatarUrl(data.avatarUrl);
+        router.refresh();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setAvatarError(d.error ?? ph.uploadError);
+      }
+    } catch {
+      // Network failure — recover instead of wedging the picker (#363).
+      setAvatarError(ph.uploadError);
+    } finally {
+      setAvatarUploading(false);
     }
   }
 
@@ -265,12 +275,23 @@ export default function PhotosManager({
   }
 
   async function removePhoto(id: string) {
-    const res = await fetch(`/api/provider/photos/${id}`, {
-      method: "DELETE",
-    });
-    if (res.ok) {
-      setPhotos((list) => list.filter((p) => p.id !== id));
-      router.refresh();
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/provider/photos/${id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setPhotos((list) => list.filter((p) => p.id !== id));
+        router.refresh();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        toast.error(d.error ?? ph.deleteError);
+      }
+    } catch {
+      toast.error(ph.deleteError);
+    } finally {
+      setDeletingId(null);
+      setConfirmingId(null);
     }
   }
 
@@ -547,7 +568,7 @@ export default function PhotosManager({
                 >
                   <Image
                     src={p.url}
-                    alt={p.caption || "Work photo"}
+                    alt={p.caption || t.profile.workPhoto}
                     fill
                     sizes="(min-width: 640px) 33vw, 50vw"
                     unoptimized={isSvg(p.url)}
@@ -563,14 +584,42 @@ export default function PhotosManager({
                       {p.caption}
                     </span>
                   )}
-                  <button
-                    onClick={() => removePhoto(p.id)}
-                    className="absolute right-2 top-2 rounded-full bg-black/60 px-2.5 py-1 text-xs font-medium text-white opacity-0 backdrop-blur transition hover:bg-red-600 focus-visible:opacity-100 group-hover:opacity-100"
-                  >
-                    {ph.delete}
-                  </button>
-                  {/* Keyboard-accessible fallback for the drag reorder. */}
-                  <div className="absolute inset-x-2 bottom-2 flex justify-between opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
+                  {confirmingId === p.id ? (
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-black/70 p-2 text-center backdrop-blur-sm">
+                      <p className="text-xs font-medium text-white">
+                        {ph.confirmDelete}
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => removePhoto(p.id)}
+                          disabled={deletingId !== null}
+                          className="rounded-full bg-red-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-red-700 disabled:opacity-50"
+                        >
+                          {deletingId === p.id ? ph.deleting : ph.delete}
+                        </button>
+                        <button
+                          onClick={() => setConfirmingId(null)}
+                          disabled={deletingId !== null}
+                          className="rounded-full bg-white/20 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-white/30 disabled:opacity-50"
+                        >
+                          {ph.cancel}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* pointer-coarse keeps the button reachable on touch,
+                       where group-hover never fires. */
+                    <button
+                      onClick={() => setConfirmingId(p.id)}
+                      className="absolute right-2 top-2 rounded-full bg-black/60 px-2.5 py-1 text-xs font-medium text-white opacity-0 backdrop-blur transition hover:bg-red-600 focus-visible:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100"
+                    >
+                      {ph.delete}
+                    </button>
+                  )}
+                  {/* Keyboard-accessible fallback for the drag reorder;
+                      pointer-coarse keeps it visible on touch, where
+                      group-hover never fires (#565). */}
+                  <div className="absolute inset-x-2 bottom-2 flex justify-between opacity-0 transition focus-within:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100">
                     <button
                       onClick={() => movePhoto(i, i - 1)}
                       disabled={i === 0}

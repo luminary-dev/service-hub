@@ -25,6 +25,15 @@ import { getProviderIdByUser } from "../lib/providers";
 
 export const adminImpersonationRoutes = new Hono();
 
+// The admin-tier role set (ADMIN + SUPPORT) as a pure role-string predicate.
+// http.ts's isSupportOrAdmin encodes the same set but reads the *caller's*
+// forwarded header; here we need to test a *target user's* role, so the check
+// lives as a local predicate rather than hardcoding the strings at the call
+// site (kept in sync with lib/http.ts's isSupportOrAdmin).
+function isAdminTierRole(role: string | null | undefined): boolean {
+  return role === "ADMIN" || role === "SUPPORT";
+}
+
 // ---------------------------------------------------------------------------
 // POST /api/admin/impersonate/end
 //
@@ -90,9 +99,14 @@ adminImpersonationRoutes.post("/:userId", async (c) => {
   }
 
   const raw = c.req.param("userId");
+  // Try the id lookup verbatim (ids are case-sensitive cuids), then fall back
+  // to email. Stored emails are always lowercased, so normalize the typed
+  // value (trim + lowercase) to match — otherwise a mixed-case address like
+  // "Foo@Bar.com" would spuriously 404 an existing user.
   let target = await db.user.findUnique({ where: { id: raw } }).catch(() => null);
   if (!target) {
-    target = await db.user.findUnique({ where: { email: raw } }).catch(() => null);
+    const email = raw.trim().toLowerCase();
+    target = await db.user.findUnique({ where: { email } }).catch(() => null);
   }
 
   if (!target) {
@@ -102,9 +116,21 @@ adminImpersonationRoutes.post("/:userId", async (c) => {
     return c.json({ error: "Cannot impersonate your own account" }, 400);
   }
   // Defense in depth beyond the ADMIN-only gate above: never let one admin
-  // session ride in as another admin.
-  if (target.role === "ADMIN") {
+  // session ride in as another admin of EITHER tier (#654). isAdminTierRole
+  // covers ADMIN and SUPPORT, so a SUPPORT target is refused just like an
+  // ADMIN — a SUPPORT session is still admin-tier and must not be assumable.
+  if (isAdminTierRole(target.role)) {
     return c.json({ error: "Cannot impersonate an admin account" }, 400);
+  }
+
+  // Record the admin's own sessionVersion in the token (#358) so verifiers can
+  // revoke an active impersonation the moment the admin is force-logged-out or
+  // resets their password — not just when the 15m token expires.
+  const admin = await db.user
+    .findUnique({ where: { id: auth.userId }, select: { sessionVersion: true } })
+    .catch(() => null);
+  if (!admin) {
+    return c.json({ error: "Unauthorized" }, 401);
   }
 
   await createImpersonationSession(c, {
@@ -113,6 +139,7 @@ adminImpersonationRoutes.post("/:userId", async (c) => {
     name: target.name,
     sv: target.sessionVersion,
     impersonatedBy: auth.userId,
+    impersonatedBySv: admin.sessionVersion,
   });
 
   try {

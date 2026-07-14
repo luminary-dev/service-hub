@@ -7,6 +7,7 @@ import Avatar from "@/components/Avatar";
 import InView from "@/components/InView";
 import { categoryLabelLoc } from "@/lib/i18n";
 import { daysSince, formatDate } from "@/lib/format";
+import { hasFullAdminAccess } from "@/lib/roles";
 import { useLocale, useT } from "../I18nProvider";
 import VerificationActions from "./VerificationActions";
 
@@ -32,12 +33,16 @@ function waitingBadgeClass(days: number): string {
 
 export default function VerificationQueue({
   items,
+  role,
 }: {
   items: PendingVerification[];
+  role: string;
 }) {
   const locale = useLocale();
   const t = useT().admin;
   const router = useRouter();
+  // Bulk approve/reject are ADMIN-only, same as the per-row actions (#629).
+  const allowed = hasFullAdminAccess(role);
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showBulkReason, setShowBulkReason] = useState(false);
@@ -61,7 +66,7 @@ export default function VerificationQueue({
   }
 
   async function bulkAct(action: "approve" | "reject") {
-    if (selected.size === 0 || pending) return;
+    if (!allowed || selected.size === 0 || pending) return;
     if (action === "reject" && !showBulkReason) {
       setShowBulkReason(true);
       return;
@@ -112,7 +117,8 @@ export default function VerificationQueue({
           <button
             type="button"
             onClick={() => bulkAct("approve")}
-            disabled={selected.size === 0 || pending}
+            disabled={!allowed || selected.size === 0 || pending}
+            title={allowed ? undefined : t.insufficientPermissions}
             className="btn-primary !px-4 !py-2"
           >
             {t.approveSelected}
@@ -120,7 +126,8 @@ export default function VerificationQueue({
           <button
             type="button"
             onClick={() => bulkAct("reject")}
-            disabled={selected.size === 0 || pending}
+            disabled={!allowed || selected.size === 0 || pending}
+            title={allowed ? undefined : t.insufficientPermissions}
             className="cursor-pointer rounded-full border border-ink-300 bg-surface px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-60"
           >
             {t.rejectSelected}
@@ -163,7 +170,11 @@ export default function VerificationQueue({
           </div>
         )}
 
-        {error && <p className="w-full text-sm text-red-600">{t.bulkActionError}</p>}
+        {error && (
+          <p role="alert" className="w-full text-sm text-red-600">
+            {t.bulkActionError}
+          </p>
+        )}
       </div>
 
       <InView as="ul" stagger className="mt-4 space-y-4">
@@ -203,7 +214,7 @@ export default function VerificationQueue({
                     </div>
                   </div>
                 </div>
-                <VerificationActions providerId={p.id} />
+                <VerificationActions providerId={p.id} role={role} />
               </div>
 
               <div className="mt-4 border-t border-dashed border-ink-200 pt-4">

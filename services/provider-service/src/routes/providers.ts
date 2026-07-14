@@ -5,16 +5,18 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { db } from "../db";
+import { moderateContent } from "../lib/auto-report";
 import { getAuth, getLocale, getOrigin } from "../lib/http";
 import {
   fetchProviderReviews,
   fetchRatings,
   fetchReviewCount,
-  sendInquiryEmail,
   type RatingEntry,
 } from "../lib/clients";
+import { emitNotification } from "../lib/notify";
 import { isEffectivelyAvailable } from "../lib/availability";
 import { slPhone } from "../lib/field-rules";
+import { moneyToNumber, moneyToNumberOrNull } from "../lib/money";
 import { normalizeListQuery } from "../lib/query";
 import { averageResponseMs } from "../lib/response-time";
 import { buildBrowseWhere } from "../lib/search";
@@ -40,11 +42,14 @@ providersRoutes.get("/api/categories", async (c) => {
   return c.json({ categories: rows });
 });
 
-type CardRow = Prisma.ProviderGetPayload<{
+export type CardRow = Prisma.ProviderGetPayload<{
   include: { services: true; photos: true };
 }>;
 
-const cardInclude = {
+// Exported for the S2S card hydration endpoint (routes/internal.ts): the
+// search-service query plane returns ranked ids and hydrates the SAME card
+// DTO from here, so display data stays single-sourced (search RFC §4.1).
+export const cardInclude = {
   services: { orderBy: { price: "asc" as const }, take: 1 },
   photos: {
     where: { deletedAt: null },
@@ -55,17 +60,37 @@ const cardInclude = {
   },
 };
 
-// Cover-image fallback map (#436): slug → category cover, resolved once per
-// request and attached to each card so the web can fall back
-// provider cover → category image → placeholder without a per-card lookup.
-async function categoryImageMap(): Promise<Map<string, string | null>> {
+// Cover-image fallback map (#436): slug → category cover, attached to each card
+// so the web can fall back provider cover → category image → placeholder
+// without a per-card lookup.
+//
+// This runs on the hottest endpoints (every /api/providers browse plus the
+// favorites `ids=` path), so the slug→imageUrl map is memoized in-process for
+// 60s (#523) — the same TTL as the category-slug validator in lib/categories.ts
+// — instead of hitting the DB on every request. Categories change rarely; a
+// freshly uploaded cover simply shows up within the TTL window.
+const CATEGORY_IMAGE_TTL_MS = 60_000;
+let categoryImageCache: Map<string, string | null> | null = null;
+let categoryImageExpiresAt = 0;
+
+export async function categoryImageMap(): Promise<Map<string, string | null>> {
+  const now = Date.now();
+  if (categoryImageCache && categoryImageExpiresAt > now) return categoryImageCache;
   const rows = await db.category.findMany({
     select: { slug: true, imageUrl: true },
   });
-  return new Map(rows.map((c) => [c.slug, c.imageUrl]));
+  categoryImageCache = new Map(rows.map((c) => [c.slug, c.imageUrl]));
+  categoryImageExpiresAt = now + CATEGORY_IMAGE_TTL_MS;
+  return categoryImageCache;
 }
 
-function toCardDTO(
+// Tests only — drop the memoized map so a case starts from a cold cache.
+export function __resetCategoryImageCache() {
+  categoryImageCache = null;
+  categoryImageExpiresAt = 0;
+}
+
+export function toCardDTO(
   p: CardRow,
   r: RatingEntry | undefined,
   categoryImages?: Map<string, string | null>
@@ -77,7 +102,13 @@ function toCardDTO(
     category: p.category,
     categoryImageUrl: categoryImages?.get(p.category) ?? null,
     headline: p.headline,
+    // Optional Sinhala headline (#515) so the web card can show the locale
+    // variant with an English fallback. Bio is not on the card.
+    headlineSi: p.headlineSi,
     district: p.district,
+    // Full served set (#502) — always contains the primary district; the card
+    // can surface "also serves" coverage without another fetch.
+    serviceDistricts: p.serviceDistricts,
     city: p.city,
     experience: p.experience,
     // Effective availability (#49): an away provider reports available=false;
@@ -94,11 +125,18 @@ function toCardDTO(
     photos: p.photos.slice(0, 1).map((ph) => ({ url: ph.url, caption: ph.caption })),
     services: p.services
       .slice(0, 1)
-      .map((s) => ({ id: s.id, title: s.title, price: s.price, priceType: s.priceType })),
-    fromPrice: p.services[0]?.price ?? null,
+      .map((s) => ({ id: s.id, title: s.title, price: moneyToNumber(s.price), priceType: s.priceType })),
+    fromPrice: moneyToNumberOrNull(p.services[0]?.price),
     fromPriceType: p.services[0]?.priceType ?? null,
     rating: r?.rating ?? null,
     reviewCount: r?.count ?? 0,
+    // Map pin (#48), included only when set — the same already-public
+    // coordinates the profile payloads carry, so the map view (search RFC
+    // phase 3) can place card markers without another fetch. Real pins only;
+    // district centroids are never substituted.
+    ...(p.latitude !== null && p.longitude !== null
+      ? { latitude: p.latitude, longitude: p.longitude }
+      : {}),
   };
 }
 
@@ -228,7 +266,7 @@ providersRoutes.get("/api/providers", async (c) => {
       rating,
       ratingSum: rating !== null ? rating * count : 0,
       reviewCount: count,
-      fromPrice: p.services[0]?.price ?? null,
+      fromPrice: moneyToNumberOrNull(p.services[0]?.price),
       experience: p.experience,
       createdAt: p.createdAt,
       verified: p.verificationStatus === "VERIFIED",
@@ -296,11 +334,20 @@ providersRoutes.get("/api/providers/:id", async (c) => {
     return c.json({ error: "Provider not found" }, 404);
   }
   // Strip the raw phone columns (#64) — the public payload carries only
-  // booleans; the digits are fetched on demand via POST /:id/contact.
-  const { contactPhone, whatsapp, phone2, ...pub } = provider;
+  // booleans; the digits are fetched on demand via POST /:id/contact. Also drop
+  // rejectionReason (#506): it's admin-authored moderation text and must never
+  // reach a public caller (a REJECTED-but-live provider would otherwise leak
+  // it). It stays only on the owner-gated dashboard. The map pin (#48) is
+  // included only when set — unpinned profiles carry no coordinate keys.
+  const { contactPhone, whatsapp, phone2, rejectionReason, latitude, longitude, ...pub } =
+    provider;
   return c.json({
     provider: {
       ...pub,
+      ...(latitude !== null && longitude !== null ? { latitude, longitude } : {}),
+      // price is DECIMAL in the DB (#371) — a Decimal JSON-serializes as a
+      // string, so convert back to the number this payload has always carried.
+      services: provider.services.map((s) => ({ ...s, price: moneyToNumber(s.price) })),
       // Effective availability (#49) — raw awayUntil rides along.
       available: isEffectivelyAvailable(provider),
       ...contactFlags(provider),
@@ -315,6 +362,10 @@ providersRoutes.get("/api/providers/:id", async (c) => {
 // consumer yet (photosTotal tells the UI they exist).
 const FULL_PHOTOS_TAKE = 50;
 const FULL_REVIEWS_TAKE = 50;
+// avgResponseMs is computed over the most recent answered inquiries only
+// (#372) — a rolling sample keeps the query bounded and tracks the provider's
+// current responsiveness rather than their all-time history.
+const RESPONSE_TIME_SAMPLE = 200;
 
 // Full page payload for /providers/[id]: services (price asc), first
 // FULL_PHOTOS_TAKE photos (sortOrder asc then createdAt desc — the provider's
@@ -357,14 +408,31 @@ providersRoutes.get("/api/providers/:id/full", async (c) => {
     db.inquiry.findMany({
       where: { providerId: id, respondedAt: { not: null } },
       select: { createdAt: true, respondedAt: true },
+      orderBy: { respondedAt: "desc" },
+      take: RESPONSE_TIME_SAMPLE,
     }),
   ]);
-  // Drop _count (internal) and the raw phone columns (#64) — the profile page
-  // reveals the digits on demand via POST /:id/contact.
-  const { _count, contactPhone, whatsapp, phone2, ...providerFields } = provider;
+  // Drop _count (internal), the raw phone columns (#64) — the profile page
+  // reveals the digits on demand via POST /:id/contact — and rejectionReason
+  // (#506), which is admin-only moderation text kept off every public payload.
+  // The map pin (#48) is included only when set.
+  const {
+    _count,
+    contactPhone,
+    whatsapp,
+    phone2,
+    rejectionReason,
+    latitude,
+    longitude,
+    ...providerFields
+  } = provider;
   return c.json({
     provider: {
       ...providerFields,
+      ...(latitude !== null && longitude !== null ? { latitude, longitude } : {}),
+      // price is DECIMAL in the DB (#371) — a Decimal JSON-serializes as a
+      // string, so convert back to the number this payload has always carried.
+      services: provider.services.map((s) => ({ ...s, price: moneyToNumber(s.price) })),
       // Effective availability (#49): away providers surface available=false;
       // the profile page renders "Away until {awayUntil}" from the raw field.
       available: isEffectivelyAvailable(provider),
@@ -443,6 +511,12 @@ const inquirySchema = z.object({
   // Attribution for analytics (#11). Enum-restricted; the plain web form
   // simply omits it.
   source: z.enum(["chat-agent"]).optional(),
+  // Honeypot decoy (#65). The web form renders a matching field that is hidden
+  // and inert for real users (off-screen, aria-hidden, tabindex -1), so humans
+  // never fill it. Bots that blindly complete every input leave it non-empty.
+  // Bounded so a filled value can't be an unbounded-body vector. Other clients
+  // (e.g. the chat agent) simply omit it. See docs/RATE_LIMITING.md.
+  company: z.string().max(200).optional(),
 });
 
 providersRoutes.post("/api/providers/:id/inquiries", async (c) => {
@@ -465,6 +539,17 @@ providersRoutes.post("/api/providers/:id/inquiries", async (c) => {
     return c.json({ error: parsed.error.issues[0]?.message ?? "Invalid input" }, 400);
   }
 
+  // Bot filter (#65): a non-empty honeypot means a script filled the hidden
+  // decoy. This is the authoritative, server-side check — the client control
+  // is only a delivery mechanism. Respond with the same success-shaped 200 as a
+  // real submission (silent drop): nothing is persisted and no provider email
+  // is sent, but a scripted caller can't tell it was filtered, so it has no
+  // signal to adapt. Complements the gateway's per-IP `inquiry` rate limit;
+  // does not replace it. See docs/RATE_LIMITING.md.
+  if (parsed.data.company && parsed.data.company.trim() !== "") {
+    return c.json({ inquiry: null });
+  }
+
   const auth = getAuth(c);
   const inquiry = await db.inquiry.create({
     data: {
@@ -478,13 +563,25 @@ providersRoutes.post("/api/providers/:id/inquiries", async (c) => {
     },
   });
 
+  // Content filter (#375): AFTER the write on purpose — the inquiry is
+  // delivered as normal and a filter hit only queues a SYSTEM report for
+  // admin triage.
+  await moderateContent("INQUIRY", inquiry.id, {
+    name: parsed.data.name,
+    message: parsed.data.message,
+  });
+
   // Tell the provider (denormalized contactEmail) — best-effort, never fails
-  // the inquiry.
-  await sendInquiryEmail({
-    to: provider.contactEmail,
-    url: `${getOrigin(c)}/dashboard`,
-    customerName: parsed.data.name,
-    locale: getLocale(c),
+  // the inquiry. In-app + email flow through the notification event (#394);
+  // the link lands on the new thread, not just the dashboard.
+  await emitNotification({
+    type: "NEW_INQUIRY",
+    recipients: [
+      { userId: provider.userId, email: provider.contactEmail, locale: getLocale(c) },
+    ],
+    payload: { customerName: parsed.data.name },
+    link: `/dashboard/inquiries/${inquiry.id}`,
+    origin: getOrigin(c),
   });
 
   return c.json({ inquiry });

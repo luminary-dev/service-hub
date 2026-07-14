@@ -6,9 +6,12 @@ import { isCommonPassword } from "./common-passwords";
 import {
   districtEnum,
   emailAddress,
+  latitudeField,
+  longitudeField,
   optionalSlPhone,
   optionalWebUrl,
   priceRupees,
+  serviceDistrictsField,
   slPhone,
 } from "./field-rules";
 
@@ -51,7 +54,17 @@ export const providerSchema = baseSchema.extend({
   headline: z.string().min(5).max(120),
   bio: z.string().min(20).max(2000),
   district: districtEnum,
+  // Multi-district service area (#502): every district served, home district
+  // included (the orchestration re-adds it if omitted). Optional so pre-#502
+  // clients keep registering with just `district`.
+  serviceDistricts: serviceDistrictsField,
   city: z.string().min(1).max(60),
+  // Optional map pin (#48, geo-capture phase of the search RFC), dropped in
+  // the wizard's Leaflet picker. Bounds-checked against the Sri Lanka box; the
+  // both-or-neither pair rule is enforced in the route (geoPairState) so the
+  // 400 lands before the user row exists — mirroring serviceDistricts.
+  latitude: latitudeField,
+  longitude: longitudeField,
   experience: z.number().int().min(0).max(60),
   whatsapp: optionalSlPhone,
   phone2: optionalSlPhone,

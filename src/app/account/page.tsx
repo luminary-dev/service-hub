@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
-import { FaIdCard, FaInbox, FaRegHeart, FaRegStar, type IconType } from "@/components/icons";
+import { FaBell, FaIdCard, FaInbox, FaMagnifyingGlass, FaRegHeart, FaRegStar, type IconType } from "@/components/icons";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
+import { loginNext } from "@/lib/login";
 import { categoryLabelLoc, dict } from "@/lib/i18n";
+import { localizedHref } from "@/lib/links";
 import { formatDate } from "@/lib/format";
 import ProviderCard, { ProviderCardDTO } from "@/components/ProviderCard";
 import Stars from "@/components/Stars";
@@ -16,6 +18,9 @@ import StatReadout from "@/components/ui/StatReadout";
 import EmptyState from "@/components/ui/EmptyState";
 import AccountDetails from "@/components/AccountDetails";
 import CloseProviderProfile from "@/components/CloseProviderProfile";
+import SavedSearches, { SavedSearchItem } from "@/components/SavedSearches";
+import NotificationPreferences from "@/components/NotificationPreferences";
+import type { NotificationPreferenceDTO } from "@/lib/notifications";
 
 // Caching (#57): session-gated and must reflect the user's own writes
 // immediately — stays fully dynamic (no-store).
@@ -29,6 +34,15 @@ type AccountInquiry = {
   respondedAt: string | null;
   unreadCount: number;
   provider: { id: string; name: string; category: string; suspended: boolean };
+};
+
+type SavedSearchDTO = {
+  id: string;
+  name: string;
+  query: string | null;
+  category: string | null;
+  district: string | null;
+  createdAt: string;
 };
 
 type AccountReview = {
@@ -77,13 +91,20 @@ function SectionHeading({
 }
 
 export default async function AccountPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  const [session, locale] = await Promise.all([getSession(), getLocale()]);
+  if (!session) redirect(await loginNext("/account"));
 
-  const [locale, favorites, inquiriesData, reviewsData, meData] =
+  const [favorites, savedSearchData, notifPrefData, inquiriesData, reviewsData, meData] =
     await Promise.all([
-      getLocale(),
       apiJson<{ providerIds: string[] }>("/api/favorites"),
+      // Saved searches (#516) are customer-only; other roles get a 403.
+      session.role === "CUSTOMER"
+        ? apiJson<{ savedSearches: SavedSearchDTO[] }>("/api/saved-searches")
+        : null,
+      // Notification preferences (#394) — the full catalog × channel matrix.
+      apiJson<{ preferences: NotificationPreferenceDTO[] }>(
+        "/api/notification-preferences"
+      ),
       apiJson<{ inquiries: AccountInquiry[] }>("/api/account/inquiries"),
       apiJson<{ reviews: AccountReview[] }>("/api/account/reviews"),
       apiJson<{
@@ -93,6 +114,7 @@ export default async function AccountPage() {
           phone: string | null;
           emailVerified: string | null;
           avatarUrl: string | null;
+          hasPassword: boolean;
         } | null;
       }>("/api/auth/me"),
     ]);
@@ -117,6 +139,29 @@ export default async function AccountPage() {
       );
   }
 
+  // Saved searches (#516): pre-localize the re-run URL and a filter summary so
+  // the client list stays dumb.
+  const savedSearchItems: SavedSearchItem[] = (
+    savedSearchData?.savedSearches ?? []
+  ).map((s) => {
+    const sp = new URLSearchParams();
+    if (s.query) sp.set("q", s.query);
+    if (s.category) sp.set("category", s.category);
+    if (s.district) sp.set("district", s.district);
+    return {
+      id: s.id,
+      name: s.name,
+      href: localizedHref(`/providers?${sp.toString()}`, locale),
+      filters: [
+        s.query ? `“${s.query}”` : "",
+        s.category ? categoryLabelLoc(s.category, locale) : "",
+        s.district ?? "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    };
+  });
+
   const inquiries = inquiriesData?.inquiries ?? [];
   const reviews = reviewsData?.reviews ?? [];
   const statusLabel: Record<string, string> = {
@@ -136,12 +181,15 @@ export default async function AccountPage() {
         <div className="flex flex-col items-start gap-4 sm:items-end">
           <StatReadout
             stats={[
-              { label: "SAVED", value: results.length },
-              { label: "SENT", value: inquiries.length },
-              { label: "REVIEWS", value: reviews.length },
+              { label: t.account.stats.saved, value: results.length },
+              { label: t.account.stats.sent, value: inquiries.length },
+              { label: t.account.stats.reviews, value: reviews.length },
             ]}
           />
-          <Link href="/account/security" className="btn-secondary">
+          <Link
+            href={localizedHref("/account/security", locale)}
+            className="btn-secondary"
+          >
             {t.security.link}
           </Link>
         </div>
@@ -163,6 +211,7 @@ export default async function AccountPage() {
                   email: me.email,
                   emailVerified: me.emailVerified != null,
                   avatarUrl: me.avatarUrl,
+                  hasPassword: me.hasPassword,
                 }}
               />
             </div>
@@ -180,7 +229,10 @@ export default async function AccountPage() {
                     {t.account.becomeProviderBody}
                   </p>
                 </div>
-                <Link href="/welcome/provider" className="btn-primary shrink-0">
+                <Link
+                  href={localizedHref("/welcome/provider", locale)}
+                  className="btn-primary shrink-0"
+                >
                   {t.account.becomeProviderCta}
                 </Link>
               </div>
@@ -206,7 +258,10 @@ export default async function AccountPage() {
               icon={FaRegHeart}
               title={t.account.empty}
               action={
-                <Link href="/providers" className="btn-primary">
+                <Link
+                  href={localizedHref("/providers", locale)}
+                  className="btn-primary"
+                >
                   {t.account.emptyCta}
                 </Link>
               }
@@ -227,6 +282,39 @@ export default async function AccountPage() {
               ))}
             </InView>
           )}
+        </section>
+
+        {/* Saved searches (#516) — customer-only, mirroring the backend gate. */}
+        {session.role === "CUSTOMER" && (
+          <section className="mt-14">
+            <SectionHeading
+              code="SRCH"
+              icon={FaMagnifyingGlass}
+              title={t.account.searchesTitle}
+            />
+            <SavedSearches initial={savedSearchItems} />
+          </section>
+        )}
+
+        {/* Notification preferences (#394) — per-type email / in-app toggles
+            for the catalog events; auth/security emails are never listed. */}
+        <section className="mt-14">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <SectionHeading
+              code="NTF"
+              icon={FaBell}
+              title={t.notifications.prefsTitle}
+            />
+            <Link
+              href={localizedHref("/account/notifications", locale)}
+              className="text-sm font-medium text-brand-600 hover:text-brand-700"
+            >
+              {t.notifications.viewAll}
+            </Link>
+          </div>
+          <NotificationPreferences
+            initial={notifPrefData?.preferences ?? null}
+          />
         </section>
 
         <div className="mt-14 grid items-start gap-10 lg:grid-cols-2">
@@ -254,7 +342,10 @@ export default async function AccountPage() {
                           </span>
                         ) : (
                           <Link
-                            href={`/providers/${i.provider.id}`}
+                            href={localizedHref(
+                              `/providers/${i.provider.id}`,
+                              locale
+                            )}
                             className="font-semibold text-ink-900 hover:text-brand-700"
                           >
                             {i.provider.name}
@@ -280,7 +371,7 @@ export default async function AccountPage() {
                     </p>
                     <div className="mt-4 flex items-center gap-2 border-t border-dashed border-ink-200 pt-3">
                       <Link
-                        href={`/account/inquiries/${i.id}`}
+                        href={localizedHref(`/account/inquiries/${i.id}`, locale)}
                         className="text-sm font-medium text-brand-600 hover:text-brand-700"
                       >
                         {t.messages.open}
@@ -316,13 +407,19 @@ export default async function AccountPage() {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <Link
-                          href={`/providers/${r.provider.id}`}
+                          href={localizedHref(
+                            `/providers/${r.provider.id}`,
+                            locale
+                          )}
                           className="font-semibold text-ink-900 hover:text-brand-700"
                         >
                           {r.provider.name}
                         </Link>
                         <div className="mt-1 flex items-center gap-2">
-                          <Stars rating={r.rating} />
+                          <Stars
+                            rating={r.rating}
+                            label={t.a11y.rated(r.rating.toFixed(1))}
+                          />
                           {r.verified && (
                             <VerifiedBadge label={t.account.verifiedReview} />
                           )}

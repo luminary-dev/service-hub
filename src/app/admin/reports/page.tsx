@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { apiJson } from "@/lib/api";
 import { getSession } from "@/lib/auth";
@@ -8,6 +7,7 @@ import { dict } from "@/lib/i18n";
 import MarkQueueViewed from "@/components/admin/MarkQueueViewed";
 import PageHeader from "@/components/ui/PageHeader";
 import StatReadout from "@/components/ui/StatReadout";
+import Pagination from "@/components/ui/Pagination";
 import AdminReportsList, {
   type ReportRow,
 } from "@/components/admin/AdminReportsList";
@@ -21,12 +21,22 @@ import ReportsFilterBar, {
 // next request — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
 
-// The moderation queue (#50) merges two sources — provider-service owns
-// reports on providers and work photos (`GET /api/admin/reports`),
-// review-service owns reports on reviews (`GET /api/admin/review-reports`).
-// Both return OPEN first (newest first) with a hydrated target summary
-// (null when the target no longer exists).
-const TARGET_TYPES: TargetTypeFilter[] = ["PROVIDER", "WORK_PHOTO", "REVIEW"];
+// The moderation queue (#50) merges three sources — provider-service owns
+// reports on providers, work photos, inquiry threads and thread messages
+// (`GET /api/admin/reports`), review-service owns reports on reviews
+// (`GET /api/admin/review-reports`), and job-service owns reports on job
+// posts/responses (`GET /api/admin/job-reports`, #375). All return OPEN
+// first (newest first) with a hydrated target summary (null when the target
+// no longer exists).
+const TARGET_TYPES: TargetTypeFilter[] = [
+  "PROVIDER",
+  "WORK_PHOTO",
+  "REVIEW",
+  "INQUIRY",
+  "MESSAGE",
+  "JOB",
+  "JOB_RESPONSE",
+];
 const STATUSES: StatusFilter[] = ["OPEN", "RESOLVED", "DISMISSED"];
 
 const PAGE_SIZE = 20;
@@ -66,35 +76,50 @@ export default async function AdminReportsPage({
   query.set("pageSize", String(PAGE_SIZE));
   const qs = query.toString();
 
-  const [locale, providerData, reviewData, providerCounts, reviewCounts] =
-    await Promise.all([
-      getLocale(),
-      apiJson<{
-        reports: Omit<Extract<ReportRow, { source: "provider" }>, "source">[];
-        total: number;
-      }>(`/api/admin/reports?${qs}`),
-      apiJson<{
-        reports: Omit<Extract<ReportRow, { source: "review" }>, "source">[];
-        total: number;
-      }>(`/api/admin/review-reports?${qs}`),
-      // Accurate open totals for the badge + stat readout — a single page no
-      // longer sees the whole queue, so the counts come from the dedicated
-      // count endpoints (#233) that back the admin hub badge.
-      apiJson<{ pendingVerifications: number; openReports: number }>(
-        "/api/admin/notifications/counts"
-      ),
-      apiJson<{ openReports: number }>("/api/admin/review-reports/count"),
-    ]);
+  const [
+    locale,
+    providerData,
+    reviewData,
+    jobData,
+    providerCounts,
+    reviewCounts,
+    jobCounts,
+  ] = await Promise.all([
+    getLocale(),
+    apiJson<{
+      reports: Omit<Extract<ReportRow, { service: "provider" }>, "service">[];
+      total: number;
+    }>(`/api/admin/reports?${qs}`),
+    apiJson<{
+      reports: Omit<Extract<ReportRow, { service: "review" }>, "service">[];
+      total: number;
+    }>(`/api/admin/review-reports?${qs}`),
+    apiJson<{
+      reports: Omit<Extract<ReportRow, { service: "job" }>, "service">[];
+      total: number;
+    }>(`/api/admin/job-reports?${qs}`),
+    // Accurate open totals for the badge + stat readout — a single page no
+    // longer sees the whole queue, so the counts come from the dedicated
+    // count endpoints (#233) that back the admin hub badge.
+    apiJson<{ pendingVerifications: number; openReports: number }>(
+      "/api/admin/notifications/counts"
+    ),
+    apiJson<{ openReports: number }>("/api/admin/review-reports/count"),
+    apiJson<{ openReports: number }>("/api/admin/job-reports/count"),
+  ]);
   const t = dict[locale].admin;
 
-  // Interleave the two queues while keeping each service's ordering contract:
-  // OPEN before closed, newest first within each group.
+  // Interleave the three queues while keeping each service's ordering
+  // contract: OPEN before closed, newest first within each group.
   const rows: ReportRow[] = [
     ...(providerData?.reports ?? []).map(
-      (r) => ({ ...r, source: "provider" }) as ReportRow
+      (r) => ({ ...r, service: "provider" }) as ReportRow
     ),
     ...(reviewData?.reports ?? []).map(
-      (r) => ({ ...r, source: "review" }) as ReportRow
+      (r) => ({ ...r, service: "review" }) as ReportRow
+    ),
+    ...(jobData?.reports ?? []).map(
+      (r) => ({ ...r, service: "job" }) as ReportRow
     ),
   ].sort((a, b) => {
     const openA = a.status === "OPEN" ? 0 : 1;
@@ -105,20 +130,24 @@ export default async function AdminReportsPage({
 
   const providerTotal = providerData?.total ?? 0;
   const reviewTotal = reviewData?.total ?? 0;
-  const total = providerTotal + reviewTotal;
+  const jobTotal = jobData?.total ?? 0;
+  const total = providerTotal + reviewTotal + jobTotal;
   // Each source is paged independently, so the queue has as many pages as its
   // deepest source.
   const totalPages = Math.max(
     1,
     Math.ceil(providerTotal / PAGE_SIZE),
-    Math.ceil(reviewTotal / PAGE_SIZE)
+    Math.ceil(reviewTotal / PAGE_SIZE),
+    Math.ceil(jobTotal / PAGE_SIZE)
   );
 
   // Notification badge (#233): "mark viewed" needs the current open count so
   // the admin hub badge clears once this queue has been seen — summed across
-  // both services, independent of the page currently shown.
+  // all three services, independent of the page currently shown.
   const openCount =
-    (providerCounts?.openReports ?? 0) + (reviewCounts?.openReports ?? 0);
+    (providerCounts?.openReports ?? 0) +
+    (reviewCounts?.openReports ?? 0) +
+    (jobCounts?.openReports ?? 0);
 
   function pageLink(target: number) {
     const sp = new URLSearchParams(query);
@@ -137,8 +166,8 @@ export default async function AdminReportsPage({
       >
         <StatReadout
           stats={[
-            { label: "OPEN", value: openCount },
-            { label: "TOTAL", value: total },
+            { label: t.stats.open, value: openCount },
+            { label: t.stats.total, value: total },
           ]}
         />
       </PageHeader>
@@ -153,23 +182,7 @@ export default async function AdminReportsPage({
 
         <AdminReportsList rows={rows} role={session.role} />
 
-        {totalPages > 1 && (
-          <div className="mt-10 flex items-center justify-center gap-2">
-            {page > 1 && (
-              <Link href={pageLink(page - 1)} className="btn-secondary">
-                {dict[locale].browse.prev}
-              </Link>
-            )}
-            <span className="px-3 text-sm text-ink-500">
-              {dict[locale].browse.pageOf(page, totalPages)}
-            </span>
-            {page < totalPages && (
-              <Link href={pageLink(page + 1)} className="btn-secondary">
-                {dict[locale].browse.next}
-              </Link>
-            )}
-          </div>
-        )}
+        <Pagination page={page} totalPages={totalPages} hrefFor={pageLink} locale={locale} />
       </div>
     </div>
   );

@@ -10,10 +10,18 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { dict } from "@/lib/i18n";
 import ChatAssistant from "./ChatAssistant";
 
+// The current URL locale is derived from usePathname(); default to the English
+// root and override per-test to simulate a /si-prefixed URL.
+let mockPathname = "/";
+vi.mock("next/navigation", () => ({
+  usePathname: () => mockPathname,
+}));
+
 const t = dict.en.assistant;
 const fetchMock = vi.fn();
 
 beforeEach(() => {
+  mockPathname = "/";
   vi.stubGlobal("fetch", fetchMock);
   Element.prototype.scrollIntoView = vi.fn();
 });
@@ -70,6 +78,34 @@ describe("ChatAssistant", () => {
     expect(alert.textContent).toContain(t.error);
     // The user's own message stays visible after the failure.
     expect(screen.getByText("I need a plumber")).toBeTruthy();
+  });
+
+  // #558: a 401 (signed-out visitor) gets a sign-in prompt with a login link,
+  // not the generic retry-forever error.
+  async function submitWhile401(pathname: string) {
+    mockPathname = pathname;
+    fetchMock.mockResolvedValue({ ok: false, status: 401, body: null });
+    const { container } = render(<ChatAssistant />);
+    fireEvent.click(screen.getByRole("button", { name: t.open }));
+    fireEvent.change(screen.getByLabelText(t.placeholder), {
+      target: { value: "I need a plumber" },
+    });
+    fireEvent.submit(container.querySelector("form")!);
+    return screen.findByRole("alert");
+  }
+
+  it("shows a sign-in prompt with a login link when the request 401s", async () => {
+    const alert = await submitWhile401("/providers");
+    expect(alert.textContent).toContain(t.signInPrompt);
+    expect(alert.textContent).not.toContain(t.error);
+    const link = screen.getByRole("link", { name: t.signInCta });
+    expect(link.getAttribute("href")).toBe("/login");
+  });
+
+  it("keeps the /si prefix on the sign-in link on Sinhala URLs", async () => {
+    await submitWhile401("/si/providers");
+    const link = screen.getByRole("link", { name: t.signInCta });
+    expect(link.getAttribute("href")).toBe("/si/login");
   });
 
   // #202: a proposal event renders a confirmation card, and NO inquiry is
@@ -153,5 +189,34 @@ describe("ChatAssistant", () => {
     expect(
       fetchMock.mock.calls.filter((c) => String(c[0]).includes("/inquiries"))
     ).toHaveLength(0);
+  });
+
+  // The route derives reply language from the URL locale (proxy sets x-locale
+  // from the /si prefix), so the client must request the /si-prefixed variant
+  // when the visitor is on a Sinhala URL — otherwise a shared /si link gets
+  // English replies (#L8).
+  async function submitAndGetChatUrl(): Promise<string> {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      body: sseStream([{ type: "text", text: "hi" }]),
+    });
+    const { container } = render(<ChatAssistant />);
+    fireEvent.click(screen.getByRole("button", { name: t.open }));
+    fireEvent.change(screen.getByLabelText(t.placeholder), {
+      target: { value: "I need a plumber" },
+    });
+    fireEvent.submit(container.querySelector("form")!);
+    await screen.findByText("hi");
+    return String(fetchMock.mock.calls[0][0]);
+  }
+
+  it("posts to /agent/chat on an English-root URL", async () => {
+    mockPathname = "/providers";
+    expect(await submitAndGetChatUrl()).toBe("/agent/chat");
+  });
+
+  it("posts to /si/agent/chat on a Sinhala (/si) URL", async () => {
+    mockPathname = "/si/providers";
+    expect(await submitAndGetChatUrl()).toBe("/si/agent/chat");
   });
 });

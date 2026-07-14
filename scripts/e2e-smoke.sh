@@ -3,7 +3,7 @@
 # gateway). Requires: a running stack (scripts/dev-all.sh or docker compose),
 # curl, jq. Reseeds the databases first, so it is repeatable — but the
 # gateway's in-memory rate limits persist across runs (authStrict: 8 logins /
-# 15 min / IP; this script uses 3), so after a few back-to-back runs restart
+# 15 min / IP; this script uses 4), so after a few back-to-back runs restart
 # the gateway or wait out the window.
 set -uo pipefail
 
@@ -19,7 +19,7 @@ PASS=0
 FAIL=0
 
 echo "== Reseeding databases =="
-for s in identity-service provider-service review-service job-service; do
+for s in identity-service provider-service review-service job-service notification-service trust-safety-service; do
   (cd "services/$s" && npm run --silent db:seed >/dev/null) || echo "warn: reseed $s failed"
 done
 
@@ -38,7 +38,11 @@ req() { # req <jar> <method> <path> [curl args...]
 }
 
 echo "== Health =="
-for port in 4000 4001 4002 4003 4004 4005 4006; do
+# Probe every backend service 4000-4009 (gateway + the nine services, including
+# chat on 4007 and the dark-launched trust-safety on 4009 — both are booted and
+# loopback-published in the dev compose stack even though trust-safety isn't
+# routed through the gateway yet).
+for port in 4000 4001 4002 4003 4004 4005 4006 4007 4008 4009; do
   check "healthz :$port" "$(curl -sS "http://localhost:$port/healthz")" '"ok":true'
 done
 
@@ -48,11 +52,53 @@ check "providers page renders" "$(curl -sS "$WEB/providers")" "Baas"
 
 echo "== Public API through web rewrite =="
 LIST=$(req anon GET "/api/providers?sort=rating")
-check "providers list total=6" "$(echo "$LIST" | jq -r .total)" "6"
+check "providers list total=48" "$(echo "$LIST" | jq -r .total)" "48"
 check "providers have ratings" "$(echo "$LIST" | jq -r '.providers[0].rating != null')" "true"
 PROV_ID=$(echo "$LIST" | jq -r '.providers[0].id')
 check "provider detail page" "$(curl -sS "$WEB/providers/$PROV_ID")" "Baas"
-check "stats endpoint" "$(req anon GET "/api/stats" | jq -r '.providerCount')" "6"
+# 50 seeded providers, 2 of them suspended (excluded from this non-suspended count).
+check "stats endpoint" "$(req anon GET "/api/stats" | jq -r '.providerCount')" "48"
+
+echo "== Search service (index + browse parity) =="
+# The index is derived and starts empty — populate it from the seeded source
+# of truth first (the sweep the ops cron runs daily). 4008 is loopback-bound.
+check "search reindex" "$(curl -sS -X POST "http://localhost:4008/internal/search/reindex" \
+  -H "x-internal-secret: ${INTERNAL_API_SECRET:-dev-internal-secret}" | jq -r '.indexed >= 6')" "true"
+
+# Shadow-compare /api/search/providers against /api/providers (search RFC
+# phase 2 parity): same filters must select the same providers. Ordered
+# comparison only where the sort is fully deterministic on the seed data
+# (sort=price — distinct fromPrices); elsewhere ties (equal ratings/createdAt
+# ms) make order legitimately unstable, so the ID SETS are compared.
+parity_set() { # parity_set <name> <query-string>
+  local browse search
+  browse=$(req anon GET "/api/providers?$2" | jq -cS '[.providers[].id] | sort')
+  search=$(req anon GET "/api/search/providers?$2" | jq -cS '[.providers[].id] | sort')
+  check "parity (set): $1" "$search" "$browse"
+}
+parity_ordered() { # parity_ordered <name> <query-string>
+  local browse search
+  browse=$(req anon GET "/api/providers?$2" | jq -c '[.providers[].id]')
+  search=$(req anon GET "/api/search/providers?$2" | jq -c '[.providers[].id]')
+  check "parity (ordered): $1" "$search" "$browse"
+}
+parity_set "no filters" "pageSize=24"
+parity_set "category" "category=mechanic&pageSize=24"
+parity_set "district membership" "district=Colombo&pageSize=24"
+parity_set "available only" "availableOnly=1&pageSize=24"
+parity_set "price range" "priceMin=2000&priceMax=7000&pageSize=24"
+parity_set "rating minimum" "ratingMin=5&pageSize=24"
+parity_set "free text" "q=garden&pageSize=24"
+parity_ordered "price sort" "sort=price&pageSize=24"
+check "parity: totals" "$(req anon GET "/api/search/providers" | jq -r '.total')" \
+  "$(req anon GET "/api/providers" | jq -r '.total')"
+
+# Geo (RFC §5.1): the seed pins two Colombo-area providers; a 25 km radius
+# from Colombo Fort finds both, nearest first with a distance on each card.
+NEARBY=$(req anon GET "/api/search/providers/nearby?lat=6.9271&lng=79.8612&radiusKm=25")
+check "nearby finds pinned providers" "$(echo "$NEARBY" | jq -r '.total')" "2"
+check "nearby carries distanceKm" "$(echo "$NEARBY" | jq -r '.providers[0].distanceKm != null')" "true"
+check "nearby requires coordinates" "$(req anon GET "/api/search/providers/nearby" | jq -r '.error')" "lat and lng are required"
 
 echo "== Auth =="
 check "login admin" "$(req admin POST "/api/auth/login" -H 'content-type: application/json' \
@@ -90,7 +136,13 @@ check "review visible" "$(curl -sS "http://localhost:4003/internal/by-provider/p
   | jq -r '.reviews[0].comment')" "E2E approved"
 
 echo "== Jobs (reverse marketplace) =="
-JOB_ID=$(req cust POST "/api/jobs" -H 'content-type: application/json' \
+# Job posting is gated on a verified email (#556): the freshly registered
+# customer must be blocked, so the job flow runs as a seeded (verified) one.
+check "unverified job post blocked" "$(req cust POST "/api/jobs" -H 'content-type: application/json' \
+  -d '{"category":"mechanic","district":"Colombo","title":"E2E gated job post","description":"An unverified account must not be able to post this job."}' | jq -r '.error')" "Verify your email"
+req jobcust POST "/api/auth/login" -H 'content-type: application/json' \
+  -d '{"email":"dilani@example.com","password":"password123"}' > /dev/null
+JOB_ID=$(req jobcust POST "/api/jobs" -H 'content-type: application/json' \
   -d '{"category":"mechanic","district":"Colombo","title":"E2E brake inspection","description":"My car needs a brake inspection as soon as possible please."}' | jq -r '.id')
 check "job created" "$(test -n "$JOB_ID" && test "$JOB_ID" != "null" && echo yes)" "yes"
 
@@ -105,11 +157,11 @@ check "duplicate respond blocked" "$(req prov POST "/api/jobs/$JOB_ID/responses"
 check "dashboard payload" "$(req prov GET "/api/provider/dashboard" | jq -r '.provider.id')" "prov_nuwan"
 check "dashboard page renders" "$(req prov GET "/dashboard")" "Baas"
 
-check "job mine shows response" "$(req cust GET "/api/jobs/mine" | jq -r '(.jobs // []) | map(select(.id=="'"$JOB_ID"'")) | .[0].responses | length')" "1"
+check "job mine shows response" "$(req jobcust GET "/api/jobs/mine" | jq -r '(.jobs // []) | map(select(.id=="'"$JOB_ID"'")) | .[0].responses | length')" "1"
 
 # Response scoping (must mirror the board query): out-of-category/district and
 # own-job responses are rejected even with a valid job id.
-OTHER_JOB=$(req cust POST "/api/jobs" -H 'content-type: application/json' \
+OTHER_JOB=$(req jobcust POST "/api/jobs" -H 'content-type: application/json' \
   -d '{"category":"plumber","district":"Kandy","title":"E2E out-of-scope job","description":"A plumbing job in Kandy that nuwan the Colombo mechanic must not answer."}' | jq -r '.id')
 check "out-of-scope respond blocked" "$(req prov POST "/api/jobs/$OTHER_JOB/responses" -H 'content-type: application/json' \
   -d '{"message":"I should not be allowed to respond to this."}' | jq -r '.error')" "outside your category or district"
@@ -118,7 +170,7 @@ NUWAN_JOB=$(req prov POST "/api/jobs" -H 'content-type: application/json' \
 check "own-job respond blocked" "$(req prov POST "/api/jobs/$NUWAN_JOB/responses" -H 'content-type: application/json' \
   -d '{"message":"Responding to my own job should fail."}' | jq -r '.error')" "You cannot respond to your own job"
 
-check "job close" "$(req cust PATCH "/api/jobs/$JOB_ID" -H 'content-type: application/json' -d '{"status":"CLOSED"}' | jq -r '.ok')" "true"
+check "job close" "$(req jobcust PATCH "/api/jobs/$JOB_ID" -H 'content-type: application/json' -d '{"status":"CLOSED"}' | jq -r '.ok')" "true"
 
 echo "== Provider registration orchestration =="
 PEMAIL="e2e-prov-$RUN_TAG@example.com"
@@ -133,7 +185,7 @@ check "provider register returns providerId" "$(test -n "$NEW_PROV_ID" && test "
 check "new provider searchable" "$(req anon GET "/api/providers?q=$RUN_TAG" | jq -r '.total')" "1"
 
 echo "== Admin =="
-check "admin providers list" "$(req admin GET "/api/admin/providers" | jq -r '.providers | length >= 7')" "true"
+check "admin providers list" "$(req admin GET "/api/admin/providers" | jq -r '.total >= 51')" "true"
 check "admin suspend" "$(req admin PATCH "/api/admin/providers/$NEW_PROV_ID" -H 'content-type: application/json' \
   -d '{"action":"suspend"}' | jq -r '.ok')" "true"
 check "suspended hidden from search" "$(req anon GET "/api/providers?q=$RUN_TAG" | jq -r '.total')" "0"

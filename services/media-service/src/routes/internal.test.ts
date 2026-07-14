@@ -12,7 +12,7 @@ const MEDIA_DIR = vi.hoisted(() => {
 import { rm, utimes } from "node:fs/promises";
 import sharp from "sharp";
 import { app } from "../app";
-import { MAX_UPLOAD_SIZE, resolveFilePath } from "../lib/media";
+import { MAX_UPLOAD_SIZE, resolveFilePath, storeFile } from "../lib/media";
 
 const SECRET = "dev-internal-secret";
 
@@ -156,6 +156,32 @@ describe("POST /internal/media/store", () => {
     expect(await res.json()).toEqual({ error: "File too large" });
   });
 
+  it("413s early on an over-limit Content-Length, before buffering the body", async () => {
+    // A tiny (even non-multipart) body: if the guard ran, it short-circuits on
+    // the declared Content-Length and never reaches the formData parse — which
+    // would otherwise 400 with "Invalid input" (see the non-multipart case).
+    const res = await app.request("/internal/media/store", {
+      method: "POST",
+      headers: {
+        "x-internal-secret": SECRET,
+        "content-type": "application/json",
+        "content-length": String(MAX_UPLOAD_SIZE + 1),
+      },
+      body: "{}",
+    });
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: "File too large" });
+  });
+
+  it("does not early-reject a within-limit Content-Length (a normal upload still works)", async () => {
+    const res = await postStore(
+      storeForm({ namespace: "provider", prefix: "uploads", file: new File([await jpeg()], "ok.jpg", { type: "image/jpeg" }) }),
+      { "x-internal-secret": SECRET, "content-length": String(MAX_UPLOAD_SIZE - 1) }
+    );
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { url: string }).url).toMatch(/\.jpg$/);
+  });
+
   it("400s an invalid prefix (multi-segment / traversal)", async () => {
     const res = await postStore(
       storeForm({ namespace: "provider", prefix: "a/b", file: new File([await jpeg()], "x.jpg", { type: "image/jpeg" }) })
@@ -192,6 +218,45 @@ describe("POST /internal/media/store", () => {
     });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "Invalid input" });
+  });
+});
+
+describe("GET /internal/media/raw", () => {
+  function getRaw(url: string, headers: Record<string, string> = { "x-internal-secret": SECRET }) {
+    return app.request(`/internal/media/raw?url=${encodeURIComponent(url)}`, { headers });
+  }
+
+  it("requires the internal secret", async () => {
+    const res = await getRaw("/api/files/provider/verification/x.jpg", {});
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "Forbidden" });
+  });
+
+  it("streams a stored verification document's bytes as private/no-store PII", async () => {
+    const url = await storeFile("provider", "verification", Buffer.from(await jpeg()));
+    const res = await getRaw(url);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/jpeg");
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect((await res.arrayBuffer()).byteLength).toBeGreaterThan(0);
+  });
+
+  it("400s without a url", async () => {
+    const res = await app.request("/internal/media/raw", { headers: { "x-internal-secret": SECRET } });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Invalid input" });
+  });
+
+  it("404s a missing file", async () => {
+    const res = await getRaw("/api/files/provider/verification/nope.jpg");
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "Not found" });
+  });
+
+  it("404s an unknown namespace and a non-image extension", async () => {
+    expect((await getRaw("/api/files/evil/verification/x.jpg")).status).toBe(404);
+    expect((await getRaw("/api/files/provider/verification/x.txt")).status).toBe(404);
   });
 });
 

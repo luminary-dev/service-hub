@@ -5,7 +5,9 @@
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { db } from "../db";
-import { getAuth } from "../lib/http";
+import { moderateContent } from "../lib/auto-report";
+import { getAuth, getLocale, getOrigin } from "../lib/http";
+import { emitNotification } from "../lib/notify";
 import {
   lastReadField,
   otherParty,
@@ -21,7 +23,11 @@ async function loadThread(c: Context, id: string) {
   const auth = getAuth(c);
   const inquiry = await db.inquiry.findUnique({
     where: { id },
-    include: { provider: { select: { id: true, userId: true, contactName: true } } },
+    include: {
+      provider: {
+        select: { id: true, userId: true, contactName: true, contactEmail: true },
+      },
+    },
   });
   if (!inquiry) return null;
   const party = resolveThreadParty(inquiry, auth);
@@ -29,9 +35,10 @@ async function loadThread(c: Context, id: string) {
   return { inquiry, party };
 }
 
-// Thread fetch. Marks the caller's side as read (their lastReadAt = now).
-// ?after=<ISO> returns only newer messages so polling stays cheap; the full
-// payload includes the thread header the UI needs (names, status, the
+// Thread fetch. Marks the caller's side as read up to the newest message this
+// page actually returned (#638) — not now(), and only when the page was
+// non-empty. ?after=<ISO> returns only newer messages so polling stays cheap;
+// the full payload includes the thread header the UI needs (names, status, the
 // original inquiry message shown as the first bubble).
 messagesRoutes.get("/api/inquiries/:id/messages", async (c) => {
   const thread = await loadThread(c, c.req.param("id"));
@@ -46,6 +53,9 @@ messagesRoutes.get("/api/inquiries/:id/messages", async (c) => {
   const messages = await db.inquiryMessage.findMany({
     where: {
       inquiryId: inquiry.id,
+      // Messages removed by admin takedown (#376) are invisible to both
+      // parties.
+      deletedAt: null,
       ...(after && !Number.isNaN(after.getTime())
         ? { createdAt: { gt: after } }
         : {}),
@@ -54,10 +64,19 @@ messagesRoutes.get("/api/inquiries/:id/messages", async (c) => {
     take: 200,
   });
 
-  await db.inquiry.update({
-    where: { id: inquiry.id },
-    data: { [lastReadField(party)]: new Date() },
-  });
+  // #638: only advance the read marker when this page returned messages, and
+  // anchor it to the newest returned message's createdAt — never now(). The
+  // old unconditional `now()` stamp wrote on every poll (amplification) and
+  // opened a lost-unread race: a message landing between the SELECT above and
+  // this update was marked read despite never being returned. Messages are
+  // ordered ascending by createdAt, so the last element is the newest; a later
+  // arrival keeps a strictly greater createdAt and stays correctly unread.
+  if (messages.length > 0) {
+    await db.inquiry.update({
+      where: { id: inquiry.id },
+      data: { [lastReadField(party)]: messages[messages.length - 1]!.createdAt },
+    });
+  }
 
   return c.json({
     party,
@@ -115,6 +134,38 @@ messagesRoutes.post("/api/inquiries/:id/messages", async (c) => {
     return m;
   });
 
+  // Content filter (#375): AFTER the write on purpose — the message is
+  // delivered as normal and a filter hit only queues a SYSTEM report (on the
+  // thread's inquiry — the report's details carry the offending excerpt).
+  await moderateContent("INQUIRY", inquiry.id, { message: parsed.data.body });
+
+  // Tell the OTHER party there is a new reply (#393): in-app + email via the
+  // notification event — best-effort, never fails the message. Anonymous
+  // inquiries carry no customer account (userId null), so a provider reply to
+  // one notifies nobody; the inquiry's optional email is the customer's
+  // address, the provider's is the denormalized contactEmail.
+  const recipient =
+    party === "PROVIDER"
+      ? inquiry.userId
+        ? { userId: inquiry.userId, email: inquiry.email ?? undefined }
+        : null
+      : { userId: inquiry.provider.userId, email: inquiry.provider.contactEmail };
+  if (recipient) {
+    await emitNotification({
+      type: "THREAD_REPLY",
+      recipients: [{ ...recipient, locale: getLocale(c) }],
+      payload: {
+        senderName:
+          party === "PROVIDER" ? inquiry.provider.contactName : inquiry.name,
+      },
+      link:
+        party === "PROVIDER"
+          ? `/account/inquiries/${inquiry.id}`
+          : `/dashboard/inquiries/${inquiry.id}`,
+      origin: getOrigin(c),
+    });
+  }
+
   return c.json({
     message: {
       id: message.id,
@@ -141,6 +192,8 @@ export async function unreadCounts(
     by: ["inquiryId"],
     where: {
       sender: otherParty(party),
+      // Removed messages (#376) can't be read, so they never count as unread.
+      deletedAt: null,
       OR: inquiries.map((i) => {
         const lastRead =
           party === "CUSTOMER" ? i.customerLastReadAt : i.providerLastReadAt;

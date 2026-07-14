@@ -54,4 +54,37 @@ describe("processImage", () => {
     const gif = Buffer.from("47494638396101000100800000000000ffffff21f90401000000002c00000000010001000002024401003b", "hex");
     await expect(processImage(gif)).rejects.toThrow(InvalidImageError);
   });
+
+  it("downscales to the requested width when given one (#382)", async () => {
+    const big = await sharp({
+      create: { width: 1000, height: 600, channels: 3, background: { r: 10, g: 20, b: 30 } },
+    })
+      .jpeg()
+      .toBuffer();
+    const { data } = await processImage(big, 400);
+    const meta = await sharp(data).metadata();
+    expect(meta.width).toBe(400);
+    expect(meta.height).toBe(240); // aspect ratio preserved
+  });
+
+  it("never upscales a smaller original (withoutEnlargement)", async () => {
+    const small = await sharp({
+      create: { width: 100, height: 100, channels: 3, background: { r: 1, g: 2, b: 3 } },
+    })
+      .png()
+      .toBuffer();
+    const { data } = await processImage(small, 400);
+    expect((await sharp(data).metadata()).width).toBe(100);
+  });
+
+  it("strips EXIF from a resized variant too", async () => {
+    const withExif = await sharp({
+      create: { width: 900, height: 900, channels: 3, background: { r: 5, g: 5, b: 5 } },
+    })
+      .jpeg()
+      .withExif({ IFD0: { Software: "test-suite" } })
+      .toBuffer();
+    const { data } = await processImage(withExif, 400);
+    expect((await sharp(data).metadata()).exif).toBeUndefined();
+  });
 });

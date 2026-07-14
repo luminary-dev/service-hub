@@ -12,7 +12,9 @@ import type { NextConfig } from "next";
 // - style-src keeps 'unsafe-inline' for Tailwind, next/font, and the inline
 //   style attributes used for gradients / --rise-index vars.
 // - img-src is 'self' (uploads are served same-origin via /api/files/*, backed
-//   by R2 or local disk) plus data:/blob: for client-side upload previews.
+//   by R2 or local disk) plus data:/blob: for client-side upload previews, and
+//   the OpenStreetMap tile host for the provider location maps (#48 — the
+//   browser fetches tiles directly; see src/lib/geo.ts OSM_TILE_HOST).
 // No Report-Only copy is kept: we never had report-uri/report-to collection
 // infrastructure, so a shadow header would report to nowhere.
 const isDev = process.env.NODE_ENV !== "production";
@@ -21,7 +23,7 @@ const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
+  "img-src 'self' data: blob: https://tile.openstreetmap.org",
   "font-src 'self'",
   "connect-src 'self'",
   "frame-ancestors 'none'",
@@ -53,6 +55,9 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Standalone output: the Docker runtime ships the traced self-contained
+  // server instead of the full prod node_modules + `next start` (~1GB → ~340MB).
+  output: "standalone",
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

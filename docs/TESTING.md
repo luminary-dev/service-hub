@@ -7,12 +7,12 @@ what kind of test belongs where.
 
 | Layer | Where | What it covers | Runs in CI |
 | --- | --- | --- | --- |
-| Service unit tests | `services/*/src/**/*.test.ts` | Each service's routes, validation, auth and business logic (vitest, hundreds of tests across the seven backend services + gateway) | Yes — per-service `npm run test` |
+| Service unit tests | `services/*/src/**/*.test.ts` | Each service's routes, validation, auth and business logic (vitest, hundreds of tests across the nine backend services + gateway) | Yes — per-service `npm run test` |
 | Gateway app tests | `services/api-gateway/src/app.test.ts` + `src/lib/*.test.ts` | Gateway routing, cookie/CSRF/rate-limit behavior, S2S forwarding — upstream services are stubbed, nothing real is dialed | Yes — part of the gateway suite |
 | Web unit tests | `src/lib/*.test.ts`, `src/proxy.test.ts` | Pure logic: locale formatting, i18n dictionary parity, category/district/price-type lookups, sort normalization, the `/api/*` proxy rewrite | Yes — web `npm run test` |
 | Web component tests | `src/components/*.test.tsx` | High-value client components (toasts, favorite/share buttons) rendered with Testing Library in jsdom; `fetch`, clipboard and `next/navigation` are mocked | Yes — same web suite |
 | Accessibility checks | `src/components/a11y.test.tsx` | axe-core runs against ~12 rendered components (nav, cards, filters, forms, chat, modals) and fails on any serious/critical WCAG violation | Yes — same web suite |
-| E2E smoke | `scripts/e2e-smoke.sh` | 48 checks against the full docker-compose stack: health, auth, favorites, inquiries, reviews, jobs, admin moderation, CSRF | Yes (PRs only) — a dedicated `e2e` job boots the compose stack; also run locally |
+| E2E smoke | `scripts/e2e-smoke.sh` | 60+ checks against the full docker-compose stack: health, auth, favorites, inquiries, reviews, jobs, admin moderation, CSRF, search browse-parity + geo | Yes (PRs only) — a dedicated `e2e` job boots the compose stack; also run locally |
 | Coverage | per-package `npm run coverage` | v8 coverage for the web app and every service, with a low ratchet-floor threshold so coverage can't silently regress | Yes — a separate `coverage` job per package |
 
 ## Running each layer
@@ -30,17 +30,17 @@ npm run coverage      # writes ./coverage + a text summary
 
 # E2E smoke against the compose stack (needs the stack up and seeded)
 docker compose up -d --build
-npm run e2e           # scripts/e2e-smoke.sh — "48 passed, 0 failed" on success
+npm run e2e           # scripts/e2e-smoke.sh — expect "…, 0 failed" on success
 ```
 
 CI (`.github/workflows/ci.yml`) runs on pushes and PRs to `dev` and `prod`, in
-four jobs:
+five jobs:
 
 - **`web`** — a matrix of `typecheck` / `lint` / `test` / `build` for the web app.
-- **`services`** — a matrix of `typecheck` / `test` / `build` across all eight
+- **`services`** — a matrix of `typecheck` / `test` / `build` across all ten
   service packages (identity, provider, review, job, notification, media, chat,
-  api-gateway).
-- **`coverage`** — `npm run coverage` for the web app and each service (nine
+  search, trust-safety, api-gateway).
+- **`coverage`** — `npm run coverage` for the web app and each service (eleven
   packages), enforcing the low baseline thresholds in each package's vitest
   config and uploading the reports as artifacts. A ratchet, not a gate: it
   passes today and only trips if coverage regresses below the floor (#262).
@@ -49,6 +49,10 @@ four jobs:
   `NODE_ENV=production`, where seeding is otherwise refused), and runs
   `scripts/e2e-smoke.sh` against it (#241). Kept separate so booting the full
   stack never blocks the fast per-package matrix.
+- **`prod-compose`** — validates `docker-compose.prod.yml` (`docker compose
+  config`) and `deploy/Caddyfile` (`caddy validate`) with dummy secrets, so the
+  file that actually ships fails CI instead of the live deploy (#512; see
+  [OPERATIONS.md](OPERATIONS.md)).
 
 ## What belongs where
 
@@ -84,15 +88,28 @@ four jobs:
 What's automated and what still needs a human (#66):
 
 - **Automated — `src/components/a11y.test.tsx`.** Each test renders a
-  high-traffic component (Navbar's mobile menu, provider cards, filter/search
-  bars, the login/registration/inquiry/review/security forms, message thread,
-  chat assistant, report modal, photo lightbox) and runs
+  high-traffic component (Navbar's mobile menu and user menu, provider cards,
+  filter/search bars, every auth page — login, register choice, customer
+  registration, all four provider-wizard steps, forgot/reset-password,
+  verify-email — the inquiry/review/security and job post/respond forms, the
+  email-verify banner, message thread, chat assistant, report modal, photo
+  lightbox) and runs
   [axe-core](https://github.com/dequelabs/axe-core) on the result, failing on
   any violation axe rates *serious* or *critical* — missing accessible names,
   broken label/input association, bad ARIA wiring, missing image alt text.
-  The modal tests additionally assert focus behavior directly: focus moves
-  into the dialog on open, `Escape` closes it, and focus returns to the
-  trigger. Add new interactive components to this file as they're built.
+  The modal tests additionally assert focus and scroll behavior directly:
+  focus moves into the dialog on open, background scrolling locks
+  (`useScrollLock`), `Escape` closes it, and focus + scrolling return to the
+  trigger. The form tests also submit invalid input and assert the error
+  wiring (#378): inline errors linked to their fields via
+  `aria-describedby`/`aria-invalid` with focus moved to the first invalid
+  control, and the provider wizard's focus-managed error summary whose
+  in-page links focus the offending field. The wizard test likewise asserts
+  real form semantics (Enter submits each step) and that focus moves to the
+  step heading on step change. Add new interactive components to this file
+  as they're built, and surface their errors through the `Field` error prop
+  / `src/components/ui/FormError.tsx` helpers so the wiring stays
+  consistent.
 - **Not automatable here — needs a browser.** axe's `color-contrast` rule is
   disabled because jsdom has no layout engine; contrast must be re-verified
   in a real browser (both light and dark themes — the token ramps in

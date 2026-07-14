@@ -1,4 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// The service is stateful now: /healthz probes Postgres and the notification
+// routes hit Prisma, so the client is mocked — no live DB in unit tests.
+const { dbMock } = vi.hoisted(() => ({
+  dbMock: {
+    $queryRaw: vi.fn().mockResolvedValue([{ "?column?": 1 }]),
+    notification: {
+      findMany: vi.fn().mockResolvedValue([]),
+      createMany: vi.fn().mockResolvedValue({ count: 0 }),
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      count: vi.fn().mockResolvedValue(0),
+    },
+    notificationPreference: {
+      findMany: vi.fn().mockResolvedValue([]),
+      upsert: vi.fn(),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
+  },
+}));
+vi.mock("./db", () => ({ db: dbMock }));
+
 import { app } from "./app";
 
 // The test environment must not have a Resend key: the happy paths below
@@ -25,10 +47,21 @@ beforeEach(() => {
 });
 
 describe("GET /healthz", () => {
-  it("responds without the internal secret", async () => {
+  it("responds without the internal secret when the DB is reachable", async () => {
     const res = await app.request("/healthz");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, service: "notification-service" });
+  });
+
+  it("degrades to 503 when the DB probe fails", async () => {
+    dbMock.$queryRaw.mockRejectedValueOnce(new Error("connection refused"));
+    const res = await app.request("/healthz");
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({
+      ok: false,
+      service: "notification-service",
+      db: "down",
+    });
   });
 });
 
@@ -36,8 +69,12 @@ describe("internal secret enforcement", () => {
   it.each([
     "/internal/email/verify",
     "/internal/email/password-reset",
-    "/internal/email/job-response",
-    "/internal/email/inquiry",
+    "/internal/email/account-exists",
+    "/internal/email/email-change-attempt",
+    "/internal/notifications/events",
+    "/internal/users/u1/erase",
+    "/api/notifications/read",
+    "/api/notification-preferences",
   ])("rejects %s without x-internal-secret", async (path) => {
     const res = await post(path, { to: "a@b.lk", url: "https://baas.lk" });
     expect(res.status).toBe(403);
@@ -59,8 +96,8 @@ describe("input validation", () => {
   it.each([
     "/internal/email/verify",
     "/internal/email/password-reset",
-    "/internal/email/job-response",
-    "/internal/email/inquiry",
+    "/internal/email/account-exists",
+    "/internal/email/email-change-attempt",
   ])("returns 400 for an invalid body on %s", async (path) => {
     const res = await postWithSecret(path, { to: "a@b.lk" }); // missing url
     expect(res.status).toBe(400);
@@ -80,22 +117,33 @@ describe("input validation", () => {
     expect(await res.json()).toEqual({ error: "Invalid input" });
   });
 
-  it("returns 400 when job-response is missing providerName/jobTitle", async () => {
-    const res = await postWithSecret("/internal/email/job-response", {
-      to: "a@b.lk",
-      url: "https://baas.lk/jobs",
+  it.each([
+    "/internal/email/verify",
+    "/internal/email/password-reset",
+    "/internal/email/change-email",
+    "/internal/email/email-change-attempt",
+  ])("returns 400 when `to` is not a valid email on %s", async (path) => {
+    const res = await postWithSecret(path, {
+      to: "not-an-email",
+      url: "https://baas.lk",
     });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "Invalid input" });
   });
 
-  it("returns 400 when inquiry is missing customerName", async () => {
-    const res = await postWithSecret("/internal/email/inquiry", {
-      to: "a@b.lk",
-      url: "https://baas.lk/dashboard",
-    });
-    expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: "Invalid input" });
+  it("404s the retired marketplace email routes (migrated to /internal/notifications/events)", async () => {
+    for (const path of [
+      "/internal/email/inquiry",
+      "/internal/email/job-response",
+      "/internal/email/new-job",
+      "/internal/email/new-provider-match",
+    ]) {
+      const res = await postWithSecret(path, {
+        to: "a@b.lk",
+        url: "https://baas.lk",
+      });
+      expect(res.status, path).toBe(404);
+    }
   });
 });
 
@@ -119,22 +167,20 @@ describe("happy paths (no RESEND_API_KEY → console fallback)", () => {
     expect(await res.json()).toEqual({ ok: true, delivered: false });
   });
 
-  it("POST /internal/email/job-response", async () => {
-    const res = await postWithSecret("/internal/email/job-response", {
+  it("POST /internal/email/account-exists", async () => {
+    const res = await postWithSecret("/internal/email/account-exists", {
       to: "user@example.com",
-      url: "https://baas.lk/jobs",
-      providerName: "Nimal Perera",
-      jobTitle: "Fix a leaking tap",
+      url: "https://baas.lk/login",
+      locale: "si",
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, delivered: false });
   });
 
-  it("POST /internal/email/inquiry", async () => {
-    const res = await postWithSecret("/internal/email/inquiry", {
-      to: "provider@example.com",
-      url: "https://baas.lk/dashboard",
-      customerName: "Dilani Fernando",
+  it("POST /internal/email/email-change-attempt", async () => {
+    const res = await postWithSecret("/internal/email/email-change-attempt", {
+      to: "owner@example.com",
+      url: "https://baas.lk/login",
       locale: "si",
     });
     expect(res.status).toBe(200);

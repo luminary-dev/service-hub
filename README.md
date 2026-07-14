@@ -6,7 +6,7 @@ The customer-facing UI is bilingual — an EN/සිං toggle in the navbar swi
 
 ## Architecture
 
-The marketplace is built as **eight Hono services — an API gateway fronting seven backend microservices — with a Next.js 16 web app as a pure frontend**, all backed by Postgres and Redis. The web app never touches a database — it rewrites `/api/*` to the gateway, which verifies the JWT session cookie, enforces CSRF + rate limits, and fans requests out to the backend services over internal HTTP secured by a shared secret. The four data-owning services (identity, provider, review, job) each own their own Postgres database, and Redis backs the gateway's distributed rate limiter. Full details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Narrative team documentation (onboarding, workflow, operations) lives on GitBook in [luminary-dev/service-hub-docs](https://github.com/luminary-dev/service-hub-docs).
+The marketplace is built as **ten Hono services — an API gateway fronting nine backend microservices — with a Next.js 16 web app as a pure frontend**, all backed by Postgres and Redis. The web app never touches a database — it rewrites `/api/*` to the gateway, which verifies the JWT session cookie, enforces CSRF + rate limits, and fans requests out to the backend services over internal HTTP secured by a shared secret. The seven data-owning services (identity, provider, review, job, notification, search, trust-safety) each own their own Postgres database, and Redis backs the gateway's distributed rate limiter and the notification email queue. Full details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Narrative team documentation (onboarding, workflow, operations) is published to GitBook directly from this repo's [docs/](docs/) tree (Git Sync via `.gitbook.yaml` + `docs/SUMMARY.md`).
 
 ```
 browser ── same-origin /api/* ──> Next.js web (:3000)
@@ -16,13 +16,15 @@ browser ── same-origin /api/* ──> Next.js web (:3000)
                                    ├── provider-service     (:4002)  profiles, services, photos, inquiries
                                    ├── review-service       (:4003)  reviews + review photos
                                    ├── job-service          (:4004)  job request board
-                                   ├── notification-service (:4005)  email (Resend)
+                                   ├── notification-service (:4005)  in-app + email notifications
                                    ├── media-service        (:4006)  image processing + file storage
-                                   └── chat-service         (:4007)  Claude assistant (holds the LLM key)
+                                   ├── chat-service         (:4007)  Claude assistant (holds the LLM key)
+                                   ├── search-service       (:4008)  provider search + geo discovery index
+                                   └── trust-safety-service (:4009)  unified reports + audit store (dark launch)
                                    gateway ── rate limits ──> Redis (:6379)
 ```
 
-- The four data-owning services (identity, provider, review, job) each own a Postgres database; notification, media and chat are stateless. Cross-service data flows over internal HTTP with a shared secret.
+- The seven data-owning services (identity, provider, review, job, notification, search, trust-safety) each own a Postgres database; media and chat are stateless. search_db is a derived, rebuildable index (PostGIS) over provider data. Cross-service data flows over internal HTTP with a shared secret.
 - The gateway verifies the JWT session cookie, enforces CSRF + distributed (Redis-backed) rate limits, and forwards identity headers.
 - This repo is the **canonical monorepo**. Every service under `services/` is also mirrored to its own repo in the `luminary-dev` org (`npm run sync:repos`), where it builds, tests and deploys standalone.
 
@@ -33,11 +35,19 @@ browser ── same-origin /api/* ──> Next.js web (:3000)
 Prereqs: Node 22+, Docker.
 
 ```bash
-npm run setup      # scripts/setup.sh — install all packages, create .env files, start Postgres, push schemas, seed
-npm run dev:all    # scripts/dev-all.sh — run the gateway + all seven backend services + the web app (Ctrl-C stops everything)
+npm run setup      # scripts/setup.sh — install all packages, create .env files, start Postgres, run migrations, seed
+npm run dev:all    # scripts/dev-all.sh — run the gateway + all nine backend services + the web app (Ctrl-C stops everything)
 ```
 
-Open http://localhost:3000.
+Open http://localhost:3000. In a separate terminal, once the stack is up,
+rebuild the search index from the providers `setup.sh` just seeded — it's a
+derived index (migrated, not seeded), so it starts empty and the provider
+browse/search page has nothing to show until this runs once:
+
+```bash
+curl -sS -X POST -H "x-internal-secret: ${INTERNAL_API_SECRET:-dev-internal-secret}" \
+  http://localhost:4008/internal/search/reindex
+```
 
 Or run the entire stack (Postgres, Redis, all services, web) in containers:
 
@@ -46,10 +56,17 @@ docker compose up -d --build
 
 # The container images run as NODE_ENV=production, so the demo seed is an
 # explicit opt-in (unlike `npm run setup` above, which seeds for you). Seed the
-# four data services once the stack is up:
-for s in identity-service provider-service review-service job-service; do
+# six stateful services once the stack is up (search_db is a derived index —
+# migrated, not seeded):
+for s in identity-service provider-service review-service job-service notification-service trust-safety-service; do
   docker compose exec -e SEED_DEMO_DATA=true "$s" npm run db:seed
 done
+
+# search_db is a derived index — migrated, not seeded — so it starts empty.
+# Rebuild it from the providers you just seeded, or the web app's provider
+# browse/search page will show nothing:
+curl -sS -X POST -H "x-internal-secret: ${INTERNAL_API_SECRET:-dev-internal-secret}" \
+  http://localhost:4008/internal/search/reindex
 ```
 
 Two lines you'll see during that seed are expected, not errors: each service
@@ -57,7 +74,7 @@ prints `.env not found. Continuing without it.` (containers read their config
 from Compose, not a `.env` file), and `job-service` prints `no seed data` — the
 job board starts empty by design (jobs are customer-created at runtime).
 
-Ports: web `:3000`, gateway `:4000`, backend services `:4001`–`:4007`. Postgres
+Ports: web `:3000`, gateway `:4000`, backend services `:4001`–`:4009`. Postgres
 listens on host port **5433** (5432 is often taken by a local install); Redis is
 internal to the compose network. Verify everything with the end-to-end smoke
 suite while the stack is running:
@@ -122,9 +139,11 @@ services/
   provider-service/      providers, services, photos, inquiries    (provider_db)
   review-service/        reviews, review photos                    (review_db)
   job-service/           job requests + responses                  (job_db)
-  notification-service/  email templates + Resend delivery         (stateless)
+  notification-service/  in-app notifications + email (Resend)     (notification_db)
   media-service/         image processing (sharp) + file storage   (R2 / local disk)
   chat-service/          Claude marketplace assistant (holds LLM key) (stateless)
+  search-service/        provider search + geo discovery (PostGIS)  (search_db)
+  trust-safety-service/  unified reports + moderation audit (dark)  (trust_safety_db)
 scripts/                 setup, dev-all, e2e-smoke, sync-service-repos
 docs/ARCHITECTURE.md     service contracts, conventions, env vars
 docker-compose.yml       Postgres + all services + web
@@ -148,7 +167,7 @@ engineering contract (for humans and AI assistants alike) is in [CLAUDE.md](CLAU
 
 ## Documentation
 
-The monorepo `docs/` folder is the canonical technical + process reference; narrative team docs (onboarding, workflow) live on GitBook in [luminary-dev/service-hub-docs](https://github.com/luminary-dev/service-hub-docs).
+The monorepo `docs/` folder is the canonical technical + process reference — the team's GitBook space is published directly from it (Git Sync via `.gitbook.yaml` + `docs/SUMMARY.md`), so there is no separate docs repo.
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — service contracts, conventions, env vars, data flow
 - [docs/FEATURES.md](docs/FEATURES.md) — product feature reference, per surface

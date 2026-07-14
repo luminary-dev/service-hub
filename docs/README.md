@@ -28,10 +28,14 @@ the security posture. Per-service API detail lives in each
 | [FEATURES.md](FEATURES.md) | Product feature reference — what the marketplace does end to end, and which service owns each piece. Split under [`features/`](features/). |
 | [SECURITY.md](../SECURITY.md) | Security policy, supported versions and the responsible-disclosure process (repo root). |
 | [BACKUPS.md](BACKUPS.md) | Database backup & disaster recovery: `scripts/backup-dbs.sh` dumps, upload storage (R2 vs local volumes), the restore runbook and offsite copies. |
+| [SECRET_ROTATION.md](SECRET_ROTATION.md) | Operator runbook for rotating the platform secrets (`AUTH_SECRET`, `INTERNAL_API_SECRET`, `POSTGRES_PASSWORD`, third-party keys): the blast radius of each, the update-secret → redeploy → verify procedure, and rollback. |
 | [TESTING.md](TESTING.md) | The test strategy layer by layer — service unit tests, gateway app tests, web unit tests — and what belongs where. |
+| [CI_ADDITIONS.md](CI_ADDITIONS.md) | A menu of further CI checks/pipelines we can add (actionlint, link checking, service ESLint, dependency-review, SBOM/cosign, …) — rationale, effort and gate-vs-report for each, plus what already runs (incl. CodeQL via default setup). |
+| [DEPENDENCIES.md](DEPENDENCIES.md) | Forward-looking dependency decisions: the `@hono/node-server` 1.x → 2.x migration plan and the Node 26-vs-24-LTS runtime decision (#391), plus known-behind dev tooling. |
 | [RATE_LIMITING.md](RATE_LIMITING.md) | The gateway's Redis-backed sliding-window limiter: the per-route budget table, the in-memory fallback and the client-IP (XFF) caveat (#201). |
 | [EMAIL_SETUP.md](EMAIL_SETUP.md) | Transactional email via notification-service + Resend: the API key, the verified sending domain and the console fallback when unset. |
 | [DESIGN.md](DESIGN.md) | The web design system (UI 2.0): the blueprint visual language, `globals.css` OKLCH tokens, light/dark theming and the shared `src/components/ui/*` primitives. |
+| [rfcs/](rfcs/search-discovery-service.md) | Stage-2 service RFCs — search & discovery, stateful notifications, trust & safety — each carrying a Status line tracking what has shipped. |
 
 Some of these docs are authored and maintained in parallel; links point at their
 canonical paths whether or not the file is present in your checkout yet.

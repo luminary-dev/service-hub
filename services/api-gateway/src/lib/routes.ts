@@ -1,4 +1,15 @@
-export type ServiceName = "identity" | "provider" | "review" | "job" | "media";
+// "trust-safety" is wired (URL + union) but DARK: resolveRoute never returns
+// it yet — the trust & safety extraction's cutover PR flips the report/queue
+// paths to it (docs/rfcs/trust-safety-service.md §5.4).
+export type ServiceName =
+  | "identity"
+  | "provider"
+  | "review"
+  | "job"
+  | "notification"
+  | "media"
+  | "search"
+  | "trust-safety";
 
 export type ResolvedRoute = { service: ServiceName; path: string };
 
@@ -7,6 +18,17 @@ export type ResolvedRoute = { service: ServiceName; path: string };
 // /internal are never forwarded.
 export function resolveRoute(pathname: string): ResolvedRoute | null {
   if (containsInternal(pathname)) return null;
+
+  // Provider verification documents (NIC / business-registration scans, #500)
+  // are PII and must NOT be served on the public media path. Carve the
+  // `verification` prefix out AHEAD of the media forward below and route it to
+  // provider-service's admin-gated serve route, which re-checks the caller is
+  // ADMIN/SUPPORT and fetches the bytes from media over S2S. Every other
+  // /api/files/provider/* upload (work photos, avatars, covers) still goes to
+  // media unchanged.
+  if (pathname.startsWith("/api/files/provider/verification/")) {
+    return { service: "provider", path: pathname };
+  }
 
   // /api/files/<service>/* → upstream /files/*
   // File serving moved to media-service (#media extraction). The namespace
@@ -104,6 +126,19 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
     return { service: "job", path: pathname };
   }
 
+  // Job moderation queue (#375/#376): reports on job posts/responses (user
+  // reports and content-filter auto-flags), plus job-service's slice of the
+  // moderation audit trail — both owned by job-service, carved out of the
+  // /api/admin/ → provider-service fallback like the review-owned queues
+  // above.
+  if (
+    pathname === "/api/admin/job-reports" ||
+    pathname.startsWith("/api/admin/job-reports/") ||
+    pathname === "/api/admin/job-audit-log"
+  ) {
+    return { service: "job", path: pathname };
+  }
+
   // Everything else under /api/admin/, including the notification-badge
   // counts endpoint (#233, /api/admin/notifications/counts), belongs to
   // provider-service; the review-owned counterpart above
@@ -112,8 +147,28 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
     return { service: "provider", path: pathname };
   }
 
+  // Notification center + channel preferences (#394, RFC
+  // stateful-notification-service) — notification-service's public surface.
+  // Placed AFTER the /api/admin/ fallback above so the admin badge counts at
+  // /api/admin/notifications/counts keep resolving to provider-service.
+  if (
+    pathname === "/api/notifications" ||
+    pathname.startsWith("/api/notifications/")
+  ) {
+    return { service: "notification", path: pathname };
+  }
+  if (pathname === "/api/notification-preferences") {
+    return { service: "notification", path: pathname };
+  }
+
   // Work-photo abuse reports (#50) — photos are provider-service data.
   if (/^\/api\/photos\/[^/]+\/report$/.test(pathname)) {
+    return { service: "provider", path: pathname };
+  }
+
+  // Inquiry-message abuse reports (#376) — thread messages are
+  // provider-service data (job reports ride the /api/jobs prefix below).
+  if (/^\/api\/messages\/[^/]+\/report$/.test(pathname)) {
     return { service: "provider", path: pathname };
   }
 
@@ -122,6 +177,21 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
   }
   if (pathname === "/api/favorites" || pathname.startsWith("/api/favorites/")) {
     return { service: "identity", path: pathname };
+  }
+  // Saved searches (#516) live next to favorites on identity-service.
+  if (
+    pathname === "/api/saved-searches" ||
+    pathname.startsWith("/api/saved-searches/")
+  ) {
+    return { service: "identity", path: pathname };
+  }
+
+  // Provider search & geo discovery (search RFC phase 2). `/api/providers`
+  // browse deliberately stays on provider-service below until the web has
+  // migrated to /api/search/providers and it has soaked — this routing table
+  // is the single cut-over point.
+  if (pathname.startsWith("/api/search/")) {
+    return { service: "search", path: pathname };
   }
 
   if (
@@ -143,13 +213,24 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
 }
 
 function containsInternal(pathname: string): boolean {
-  if (pathname.includes("/internal")) return true;
-  try {
-    // Also catch percent-encoded attempts (e.g. %2Finternal).
-    return decodeURIComponent(pathname).includes("/internal");
-  } catch {
-    return true; // malformed encoding — refuse to route
+  // Decode until the string stops changing, so single- (%2Finternal) *and*
+  // multi-encoded (%252finternal, and deeper) attempts to smuggle an
+  // /internal segment past this guard are all caught. A small iteration cap
+  // keeps malformed/adversarial input from looping unboundedly.
+  let current = pathname;
+  for (let i = 0; i < 5; i++) {
+    if (current.includes("/internal")) return true;
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(current);
+    } catch {
+      return true; // malformed encoding — refuse to route
+    }
+    if (decoded === current) return false; // fully decoded, no /internal
+    current = decoded;
   }
+  // Still decoding after the cap — treat as suspicious rather than forward it.
+  return true;
 }
 
 export function serviceUrl(service: ServiceName): string {
@@ -162,7 +243,13 @@ export function serviceUrl(service: ServiceName): string {
       return process.env.REVIEW_SERVICE_URL ?? "http://localhost:4003";
     case "job":
       return process.env.JOB_SERVICE_URL ?? "http://localhost:4004";
+    case "notification":
+      return process.env.NOTIFICATION_SERVICE_URL ?? "http://localhost:4005";
     case "media":
       return process.env.MEDIA_SERVICE_URL ?? "http://localhost:4006";
+    case "search":
+      return process.env.SEARCH_SERVICE_URL ?? "http://localhost:4008";
+    case "trust-safety":
+      return process.env.TRUST_SAFETY_SERVICE_URL ?? "http://localhost:4009";
   }
 }

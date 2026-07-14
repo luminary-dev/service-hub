@@ -8,10 +8,14 @@ import { getLocale } from "@/lib/locale";
 import { dict, categoryLabelLoc, districtLabelLoc } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
 import AdminJobFilters from "@/components/admin/AdminJobFilters";
+import EmptyState from "@/components/ui/EmptyState";
+import Pagination from "@/components/ui/Pagination";
 
 // Caching (#57): admin-only moderation view; edits (new job posts/responses)
 // must be visible on the next request — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
+
+const PAGE_SIZE = 20;
 
 // Admin listing as served by `GET /api/admin/jobs` on the gateway (newest
 // first, with the customer name and a response count hydrated).
@@ -22,6 +26,8 @@ type AdminJobRow = {
   district: string;
   budget: number | null;
   status: "OPEN" | "CLOSED";
+  // Takedown flag (#376): set while the job is hidden by an admin.
+  hiddenAt: string | null;
   createdAt: string;
   customer: { name: string };
   responseCount: number;
@@ -39,18 +45,34 @@ export default async function AdminJobsPage({
   const params = await searchParams;
   const status = typeof params.status === "string" ? params.status : "";
   const category = typeof params.category === "string" ? params.category : "";
+  const page = Math.max(1, Number(params.page) || 1);
 
+  // Pagination (#372) happens in job-service; page/pageSize pass straight
+  // through the gateway and `total` drives the pager controls.
   const query = new URLSearchParams();
   if (status) query.set("status", status);
   if (category) query.set("category", category);
+  query.set("page", String(page));
+  query.set("pageSize", String(PAGE_SIZE));
 
   const [locale, data, categories] = await Promise.all([
     getLocale(),
-    apiJson<{ jobs: AdminJobRow[] }>(`/api/admin/jobs?${query.toString()}`),
+    apiJson<{ jobs: AdminJobRow[]; total: number; page: number; pageSize: number }>(
+      `/api/admin/jobs?${query.toString()}`
+    ),
     fetchCategoryOptions(),
   ]);
   const jobs = data?.jobs ?? [];
+  const total = data?.total ?? 0;
+  const pageSize = data?.pageSize ?? PAGE_SIZE;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const t = dict[locale].admin;
+
+  function pageLink(target: number) {
+    const sp = new URLSearchParams(query);
+    sp.set("page", String(target));
+    return `/admin/jobs?${sp.toString()}`;
+  }
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
@@ -65,9 +87,7 @@ export default async function AdminJobsPage({
       </div>
 
       {jobs.length === 0 ? (
-        <div className="card mt-8 px-6 py-16 text-center text-sm text-ink-500">
-          {t.jobsEmpty}
-        </div>
+        <EmptyState icon={FaBriefcase} title={t.jobsEmpty} className="mt-8" />
       ) : (
         <ul className="mt-8 space-y-3">
           {jobs.map((j) => (
@@ -92,6 +112,11 @@ export default async function AdminJobsPage({
                       {t.jobStatusClosed}
                     </span>
                   )}
+                  {j.hiddenAt && (
+                    <span className="chip bg-red-50 text-red-700 ring-1 ring-red-200">
+                      {t.jobHiddenTag}
+                    </span>
+                  )}
                 </div>
                 <p className="text-sm text-ink-500">
                   {categoryLabelLoc(j.category, locale)} ·{" "}
@@ -114,6 +139,8 @@ export default async function AdminJobsPage({
           ))}
         </ul>
       )}
+
+      <Pagination page={page} totalPages={totalPages} hrefFor={pageLink} locale={locale} />
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import type { Context, Next } from "hono";
 import { Redis } from "ioredis";
+import { log } from "./log";
 
 export type RateRule = { limit: number; windowMs: number };
 
@@ -16,6 +17,23 @@ export const RATE_LIMITS = {
   // Phone-number reveal (#64): generous enough for a human browsing several
   // profiles, tight enough to blunt a crawler harvesting the whole directory.
   contactReveal: { limit: 20, windowMs: 10 * 60_000 },
+  // Image uploads (#520): every upload POST runs a CPU-expensive sharp
+  // re-encode, so throttle them. Shared budget wide enough for a provider
+  // filling out a photo gallery in one sitting, tight enough to blunt an
+  // attacker hammering the re-encode path.
+  upload: { limit: 20, windowMs: 15 * 60_000 },
+  // Profile edits (#656): a provider profile save re-runs bio moderation and
+  // pushes a fresh doc to the search index (S2S reindex fanout), and the
+  // account profile save is an identity write — both were previously
+  // unthrottled because the middleware ignored PUT. Generous enough for a
+  // provider iterating on their bio / service area / map pin in one sitting,
+  // tight enough to blunt an attacker hammering the moderation+reindex path.
+  profile: { limit: 20, windowMs: 15 * 60_000 },
+  // Search queries (/api/search/*): generous enough for a human paging and
+  // refining filters (each results page is one GET), tight enough to blunt a
+  // scraper walking the whole index. The only GET budget — searches are the
+  // gateway's first rate-limited reads (see LIMITED_GET_ROUTES).
+  search: { limit: 60, windowMs: 60_000 },
 } as const;
 
 // In-memory sliding-window store. This state is per-instance and resets on
@@ -61,6 +79,43 @@ export function trustedProxyHops(env = process.env): number {
   const raw = env.TRUSTED_PROXY_HOPS;
   const n = raw === undefined ? 0 : Number.parseInt(raw, 10);
   return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+// Startup sanity check for TRUSTED_PROXY_HOPS (#374). Misconfiguring this is a
+// silent footgun: behind the prod Caddy → web → gateway chain the value must be
+// 2, but if it is unset/0 the limiter keys every request on the internal
+// web-app IP — collapsing all users into ONE rate-limit bucket, so a single
+// abuser can trip the shared limit and DoS the whole site. We only WARN (never
+// crash): the topology can't be detected at runtime, and 0 is a legitimate
+// value when the gateway is directly exposed. Call once at startup.
+export function checkProxyConfig(env = process.env, logger = log): void {
+  const raw = env.TRUSTED_PROXY_HOPS;
+
+  // Set to something that silently coerces to 0 (NaN or negative) despite the
+  // operator clearly not writing "0" — almost always a typo (e.g. "two", "-2").
+  // "0" is a deliberate, valid value, so it drops to the production check below.
+  if (raw !== undefined && raw.trim() !== "" && raw.trim() !== "0") {
+    const parsed = Number.parseInt(raw, 10);
+    if (!(Number.isFinite(parsed) && parsed > 0)) {
+      logger.warn(
+        `TRUSTED_PROXY_HOPS="${raw}" is not a valid positive integer; treating it as 0 ` +
+          "(rate limits keyed on the socket peer). Behind the Caddy→web→gateway chain set it " +
+          "to 2. See docs/RATE_LIMITING.md."
+      );
+      return;
+    }
+  }
+
+  // In production the gateway sits behind Caddy → web (2 hops). Hops of 0 there
+  // means the socket peer is the web app, so every client shares one bucket.
+  if (env.NODE_ENV === "production" && trustedProxyHops(env) === 0) {
+    logger.warn(
+      "TRUSTED_PROXY_HOPS is unset or 0 in production: behind the Caddy→web→gateway chain this " +
+        "keys every request on the internal web-app IP, collapsing all clients into a single " +
+        "rate-limit bucket (one abuser can DoS the whole site). Set TRUSTED_PROXY_HOPS=2 to match " +
+        "the deployed topology. See docs/RATE_LIMITING.md."
+    );
+  }
 }
 
 // Resolve the client IP to key rate limits on.
@@ -120,7 +175,9 @@ function socketPeer(c: Context): string | undefined {
 // per-instance limiting beats returning errors or no limiting at all.
 // ---------------------------------------------------------------------------
 
-// Minimal command surface so tests can inject a fake.
+// Minimal command surface so tests can inject a fake. `get` is used by the
+// session-revocation check (session-version.ts, #374), which shares this same
+// Redis connection rather than opening a second one.
 export type RedisCommands = {
   zremrangebyscore(key: string, min: number | string, max: number | string): Promise<number>;
   zadd(key: string, score: number, member: string): Promise<unknown>;
@@ -128,6 +185,7 @@ export type RedisCommands = {
   zrem(key: string, member: string): Promise<number>;
   zrange(key: string, start: number, stop: number, withScores: "WITHSCORES"): Promise<string[]>;
   pexpire(key: string, ms: number): Promise<number>;
+  get(key: string): Promise<string | null>;
 };
 
 // Sliding window over a sorted set: drop expired hits, optimistically add
@@ -161,10 +219,47 @@ export async function checkRateLimitRedis(
   };
 }
 
+// Edge-triggered health flag for the shared Redis backend. A Redis failure
+// silently falls back to per-instance limiting (see rateLimit below) which,
+// across multiple gateway replicas, effectively multiplies every limit by the
+// replica count — so ops must be able to see the degradation. We log only on
+// the TRANSITION into/out of the degraded state, never per request: when Redis
+// is down every request would otherwise flood the logs with the same line.
+let redisDegraded = false;
+
+// Called when a Redis rate-limit op throws and we fall back to in-memory. Logs
+// once on the way into the degraded state; subsequent failures are silent.
+// This warn is an intended ALERTING HOOK (#374): while degraded, limits are
+// per-instance, so across N gateway replicas an attacker gets ~limit×N attempts
+// — page on it.
+function noteRedisFailure(err: unknown, key: string): void {
+  if (redisDegraded) return;
+  redisDegraded = true;
+  log.warn(
+    "rate-limit Redis backend unavailable; falling back to per-instance in-memory limiting (cross-instance limits degraded — alert on this)",
+    { err, key }
+  );
+}
+
+// Called after a successful Redis op; logs once when the backend recovers.
+function noteRedisRecovered(): void {
+  if (!redisDegraded) return;
+  redisDegraded = false;
+  log.info("rate-limit Redis backend recovered; resumed distributed limiting");
+}
+
+// Test-only: reset the edge-triggered health flag between cases.
+export function resetRedisDegradedState(): void {
+  redisDegraded = false;
+}
+
 // undefined = not initialized yet; null = no REDIS_URL configured.
 let redisClient: RedisCommands | null | undefined;
 
-function getRedis(): RedisCommands | null {
+// Shared Redis connection for the gateway. Exported so the session-revocation
+// check (session-version.ts, #374) consults the same client instead of opening
+// its own — one connection, one place to configure the fail-fast options.
+export function getRedis(): RedisCommands | null {
   if (redisClient !== undefined) return redisClient;
   const url = process.env.REDIS_URL;
   if (!url) {
@@ -197,6 +292,27 @@ export async function closeRedis(): Promise<void> {
   }
 }
 
+// Run the limit check against Redis when available, otherwise the in-memory
+// store. A Redis error falls back to the in-memory check (availability is
+// intentionally preserved) and flips the edge-triggered degraded flag so the
+// fallback is observable without logging on every request. Injecting `redis`
+// keeps this unit-testable without a live connection.
+export async function resolveRateLimit(
+  redis: RedisCommands | null,
+  key: string,
+  rule: RateRule
+): Promise<{ success: boolean; retryAfterMs: number }> {
+  if (!redis) return checkRateLimit(key, rule);
+  try {
+    const result = await checkRateLimitRedis(redis, `rl:${key}`, rule);
+    noteRedisRecovered();
+    return result;
+  } catch (err) {
+    noteRedisFailure(err, key);
+    return checkRateLimit(key, rule);
+  }
+}
+
 // Returns a 429 response when the caller is over the limit, otherwise null.
 export async function rateLimit(
   c: Context,
@@ -204,17 +320,7 @@ export async function rateLimit(
   rule: RateRule
 ): Promise<Response | null> {
   const key = `${name}:${clientIp(c)}`;
-  const redis = getRedis();
-  let result: { success: boolean; retryAfterMs: number };
-  if (redis) {
-    try {
-      result = await checkRateLimitRedis(redis, `rl:${key}`, rule);
-    } catch {
-      result = checkRateLimit(key, rule);
-    }
-  } else {
-    result = checkRateLimit(key, rule);
-  }
+  const result = await resolveRateLimit(getRedis(), key, rule);
   if (result.success) return null;
   const retryAfter = Math.max(1, Math.ceil(result.retryAfterMs / 1000));
   return c.json(
@@ -224,9 +330,11 @@ export async function rateLimit(
   );
 }
 
-// The contract's rate-limit table. Rule names match the monolith's
+// The contract's rate-limit table for UNSAFE methods (POST/PUT/PATCH/DELETE) —
+// the middleware matches on path only (not method), so a rule here guards every
+// mutating verb on the path. Rule names match the monolith's
 // rateLimit(req, name, rule) calls exactly so keys stay identical.
-const LIMITED_ROUTES: { pattern: RegExp; name: string; rule: RateRule }[] = [
+export const LIMITED_ROUTES: { pattern: RegExp; name: string; rule: RateRule }[] = [
   { pattern: /^\/api\/auth\/login$/, name: "auth-login", rule: RATE_LIMITS.authStrict },
   { pattern: /^\/api\/auth\/forgot-password$/, name: "auth-forgot", rule: RATE_LIMITS.authStrict },
   { pattern: /^\/api\/auth\/reset-password$/, name: "auth-reset", rule: RATE_LIMITS.authStrict },
@@ -237,26 +345,79 @@ const LIMITED_ROUTES: { pattern: RegExp; name: string; rule: RateRule }[] = [
   { pattern: /^\/api\/auth\/delete-account$/, name: "auth-delete", rule: RATE_LIMITS.authStrict },
   { pattern: /^\/api\/auth\/register$/, name: "auth-register", rule: RATE_LIMITS.authSignup },
   { pattern: /^\/api\/auth\/resend-verification$/, name: "auth-resend", rule: RATE_LIMITS.resend },
+  // Change-email (#505) sends a confirmation email to an attacker-CHOSEN
+  // address on every call, so it sits on the same email-sending budget as
+  // resend-verification.
+  { pattern: /^\/api\/account\/email\/change$/, name: "account-email-change", rule: RATE_LIMITS.resend },
   { pattern: /^\/api\/jobs$/, name: "job-post", rule: RATE_LIMITS.inquiry },
   { pattern: /^\/api\/providers\/[^/]+\/inquiries$/, name: "inquiry", rule: RATE_LIMITS.inquiry },
   // Phone-number reveal (#64) — anti-scraping budget on the number-reveal POST.
   { pattern: /^\/api\/providers\/[^/]+\/contact$/, name: "contact-reveal", rule: RATE_LIMITS.contactReveal },
   { pattern: /^\/api\/jobs\/[^/]+\/responses$/, name: "job-response", rule: RATE_LIMITS.review },
   { pattern: /^\/api\/providers\/[^/]+\/reviews$/, name: "review", rule: RATE_LIMITS.review },
+  // Provider responses to reviews (#395) — one-shot form, same budget as
+  // review submission.
+  { pattern: /^\/api\/reviews\/[^/]+\/response$/, name: "review-response", rule: RATE_LIMITS.review },
   // Thread messages (#13) are conversational - wider budget than one-shot forms.
   { pattern: /^\/api\/inquiries\/[^/]+\/messages$/, name: "message", rule: RATE_LIMITS.message },
-  // Abuse reports (#50) accept anonymous submissions, so the IP budget is the
-  // main spam control. One shared "report" bucket across the three target
-  // types, on the review budget.
+  // Abuse reports (#50, #376) accept anonymous submissions (messages
+  // excepted — thread-party only), so the IP budget is the main spam
+  // control. One shared "report" bucket across the five target types, on the
+  // review budget.
   { pattern: /^\/api\/providers\/[^/]+\/report$/, name: "report", rule: RATE_LIMITS.review },
   { pattern: /^\/api\/photos\/[^/]+\/report$/, name: "report", rule: RATE_LIMITS.review },
   { pattern: /^\/api\/reviews\/[^/]+\/report$/, name: "report", rule: RATE_LIMITS.review },
+  { pattern: /^\/api\/jobs\/[^/]+\/report$/, name: "report", rule: RATE_LIMITS.review },
+  { pattern: /^\/api\/messages\/[^/]+\/report$/, name: "report", rule: RATE_LIMITS.review },
+  // Notification center (#394): mark-read fires at conversational frequency
+  // (each bell-dropdown open marks a page read) → the message budget; the
+  // preference upsert is a settings form → the review budget. The GETs (feed,
+  // unread-count poll) stay unthrottled like every other read.
+  { pattern: /^\/api\/notifications\/read$/, name: "notification-read", rule: RATE_LIMITS.message },
+  { pattern: /^\/api\/notification-preferences$/, name: "notification-prefs", rule: RATE_LIMITS.review },
+  // Image uploads (#520): each runs a CPU-expensive sharp re-encode, so they
+  // share one per-IP "upload" bucket across the four upload POST endpoints.
+  { pattern: /^\/api\/account\/avatar$/, name: "upload", rule: RATE_LIMITS.upload },
+  { pattern: /^\/api\/provider\/photos$/, name: "upload", rule: RATE_LIMITS.upload },
+  { pattern: /^\/api\/provider\/verification$/, name: "upload", rule: RATE_LIMITS.upload },
+  { pattern: /^\/api\/admin\/categories\/image$/, name: "upload", rule: RATE_LIMITS.upload },
+  // Profile edits (#656) are PUT/PATCH mutations that used to slip through
+  // because the middleware only ran for POST/GET. The provider profile save
+  // (PUT) fans out a search reindex + re-runs moderation; the account profile
+  // save (PUT) is an identity write; the inquiry-status update (PATCH) can fire
+  // a notification email to the customer. Each carries its own per-IP bucket.
+  { pattern: /^\/api\/provider\/profile$/, name: "provider-profile", rule: RATE_LIMITS.profile },
+  { pattern: /^\/api\/account\/profile$/, name: "account-profile", rule: RATE_LIMITS.profile },
+  // Inquiry-status update sits on the conversational message budget: a provider
+  // triaging their inbox legitimately updates many inquiries in one sitting.
+  { pattern: /^\/api\/provider\/inquiries\/[^/]+$/, name: "inquiry-update", rule: RATE_LIMITS.message },
 ];
 
+// Rate-limited GET routes. Reads were historically unthrottled (the write
+// budgets above are the abuse surface), but /api/search/* is a query engine —
+// a scraper can walk the whole directory through it — so it gets a per-IP
+// budget of its own (search RFC §5).
+export const LIMITED_GET_ROUTES: { pattern: RegExp; name: string; rule: RateRule }[] = [
+  { pattern: /^\/api\/search\//, name: "search", rule: RATE_LIMITS.search },
+];
+
+// The unsafe (mutating) methods. All of them run against LIMITED_ROUTES: a
+// limiter rule must be able to protect a non-POST mutation too (#656 — the old
+// `method === "POST"` gate silently exempted every PUT/PATCH/DELETE). GET is
+// the one safe method with a budget, and it walks its own LIMITED_GET_ROUTES
+// table so no read can ever consume a write bucket, and vice versa.
+const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
 export async function rateLimitMiddleware(c: Context, next: Next) {
-  if (c.req.method === "POST") {
+  const method = c.req.method;
+  const table = UNSAFE_METHODS.has(method)
+    ? LIMITED_ROUTES
+    : method === "GET"
+      ? LIMITED_GET_ROUTES
+      : null;
+  if (table) {
     const pathname = new URL(c.req.url).pathname;
-    for (const route of LIMITED_ROUTES) {
+    for (const route of table) {
       if (route.pattern.test(pathname)) {
         const limited = await rateLimit(c, route.name, route.rule);
         if (limited) return limited;

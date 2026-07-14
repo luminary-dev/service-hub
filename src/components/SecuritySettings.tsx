@@ -2,10 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useT } from "@/components/I18nProvider";
+import { useLocale, useT } from "@/components/I18nProvider";
+import { localizedHref } from "@/lib/links";
 import PasswordInput from "@/components/PasswordInput";
 import { useToast } from "@/components/ToastProvider";
 import { Field } from "@/components/ui/Field";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/constants";
 
 // Account security controls, backed by identity-service via the gateway:
 // change-password re-issues this session's cookie (other devices drop via the
@@ -15,6 +17,7 @@ export default function SecuritySettings() {
   const t = useT();
   const toast = useToast();
   const router = useRouter();
+  const locale = useLocale();
 
   // Change password
   const [current, setCurrent] = useState("");
@@ -40,33 +43,44 @@ export default function SecuritySettings() {
       return;
     }
     setChanging(true);
-    const res = await fetch("/api/auth/change-password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ currentPassword: current, newPassword: next }),
-    });
-    setChanging(false);
-    if (res.ok) {
-      setCurrent("");
-      setNext("");
-      setConfirm("");
-      toast.success(t.security.changed);
-    } else {
-      const data = await res.json().catch(() => ({}));
-      setChangeError(data.error ?? t.security.genericError);
+    try {
+      const res = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword: current, newPassword: next }),
+      });
+      if (res.ok) {
+        setCurrent("");
+        setNext("");
+        setConfirm("");
+        toast.success(t.security.changed);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setChangeError(data.error ?? t.security.genericError);
+      }
+    } catch {
+      // Network failure — recover instead of wedging the button (#363).
+      setChangeError(t.security.genericError);
+    } finally {
+      setChanging(false);
     }
   }
 
   async function logoutAll() {
     setLoggingOut(true);
     setLogoutError("");
-    const res = await fetch("/api/auth/logout-all", { method: "POST" });
-    setLoggingOut(false);
-    if (res.ok) {
-      toast.success(t.security.logoutAllDone);
-    } else {
-      const data = await res.json().catch(() => ({}));
-      setLogoutError(data.error ?? t.security.genericError);
+    try {
+      const res = await fetch("/api/auth/logout-all", { method: "POST" });
+      if (res.ok) {
+        toast.success(t.security.logoutAllDone);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setLogoutError(data.error ?? t.security.genericError);
+      }
+    } catch {
+      setLogoutError(t.security.genericError);
+    } finally {
+      setLoggingOut(false);
     }
   }
 
@@ -74,19 +88,24 @@ export default function SecuritySettings() {
     e.preventDefault();
     setDeleting(true);
     setDeleteError("");
-    const res = await fetch("/api/auth/delete-account", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: deletePassword }),
-    });
-    if (res.ok) {
-      router.push("/");
-      router.refresh();
-      return;
+    try {
+      const res = await fetch("/api/auth/delete-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: deletePassword }),
+      });
+      if (res.ok) {
+        // Keep the button disabled while we navigate away.
+        router.push(localizedHref("/", locale));
+        router.refresh();
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      setDeleteError(data.error ?? t.security.genericError);
+    } catch {
+      setDeleteError(t.security.genericError);
     }
     setDeleting(false);
-    const data = await res.json().catch(() => ({}));
-    setDeleteError(data.error ?? t.security.genericError);
   }
 
   return (
@@ -128,8 +147,8 @@ export default function SecuritySettings() {
               value={next}
               onChange={(e) => setNext(e.target.value)}
               required
-              minLength={6}
-              maxLength={100}
+              minLength={PASSWORD_MIN_LENGTH}
+              maxLength={PASSWORD_MAX_LENGTH}
               autoComplete="new-password"
             />
           </Field>
@@ -139,8 +158,8 @@ export default function SecuritySettings() {
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               required
-              minLength={6}
-              maxLength={100}
+              minLength={PASSWORD_MIN_LENGTH}
+              maxLength={PASSWORD_MAX_LENGTH}
               autoComplete="new-password"
               aria-invalid={changeError ? true : undefined}
               aria-describedby={

@@ -1,7 +1,8 @@
 // Route-handler tests for job-service's public /api/jobs endpoints. app.test.ts
 // covers the /internal S2S contracts and query.test.ts covers pagination
 // normalization; this file exercises the route handlers themselves: job
-// creation (+ category validation), the board's category/district scoping and
+// creation (+ category validation, the #556 verified-email gate and daily
+// posting cap), the board's category/district scoping and
 // exclude-own filter, /mine, the owner-only status patch, and the response flow
 // (provider gate, out-of-scope / own-job / closed-job rejection, one-per-job
 // dedup + the P2002 race guard). Prisma is mocked and s2s is stubbed per path —
@@ -29,6 +30,9 @@ const { dbMock } = vi.hoisted(() => ({
       findUnique: vi.fn(),
       create: vi.fn(),
     },
+    // Content filter (#375): the auto-report path files a SYSTEM report on
+    // the job / response when its text matches the denylist.
+    report: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
     $queryRaw: vi.fn(),
   },
 }));
@@ -40,7 +44,21 @@ import { s2s } from "../lib/http";
 const SECRET = "dev-internal-secret";
 const CUSTOMER_ID = "user_customer";
 const PROVIDER_USER_ID = "user_provider";
-const PROVIDER = { id: "prov_1", category: "plumbing", district: "Colombo" };
+// Served set (#502): the fixture provider covers a second district so the
+// board/response scoping tests exercise membership, not equality. The field
+// is optional on the type so the pre-#502-payload fallback test can omit it.
+const PROVIDER: {
+  id: string;
+  category: string;
+  district: string;
+  serviceDistricts?: string[];
+  suspended?: boolean;
+} = {
+  id: "prov_1",
+  category: "plumbing",
+  district: "Colombo",
+  serviceDistricts: ["Colombo", "Gampaha"],
+};
 
 const s2sMock = vi.mocked(s2s);
 
@@ -57,9 +75,30 @@ function json(body: unknown, status = 200) {
 function wireS2s(opts: {
   providerByUser?: typeof PROVIDER | null | "fail";
   users?: { id: string; name: string; email: string }[];
-  providers?: { id: string; contactName: string | null; contactPhone: string | null }[];
+  providers?: {
+    id: string;
+    contactName: string | null;
+    contactPhone: string | null;
+    suspended?: boolean;
+  }[];
+  // #501 forward fan-out: matching providers returned to the create path, and
+  // whether the matching lookup / notification-event ingestion blows up.
+  matching?:
+    | { id: string; userId: string; contactName: string | null; contactEmail: string }[]
+    | "fail";
+  events?: "fail";
+  // #556 gate: the emailVerified value identity returns for any looked-up user
+  // (verified by default); "fail" makes the identity lookup blow up.
+  emailVerified?: string | null | "fail";
 } = {}) {
-  const { providerByUser = PROVIDER, users = [], providers = [] } = opts;
+  const {
+    providerByUser = PROVIDER,
+    users = [],
+    providers = [],
+    matching = [],
+    events,
+    emailVerified = "2026-01-01T00:00:00.000Z",
+  } = opts;
   s2sMock.mockImplementation(async (_base: string, path: string) => {
     if (path.includes("/internal/categories")) {
       return json({ categories: [{ slug: "plumbing" }, { slug: "electrical" }] });
@@ -68,9 +107,30 @@ function wireS2s(opts: {
       if (providerByUser === "fail") return new Response("boom", { status: 503 });
       return json({ provider: providerByUser });
     }
-    if (path.includes("/internal/users?ids=")) return json({ users });
+    if (path.includes("/internal/providers/matching")) {
+      if (matching === "fail") throw new Error("provider-service down");
+      return json({ providers: matching });
+    }
+    if (path.includes("/internal/users?ids=")) {
+      if (emailVerified === "fail") return new Response("boom", { status: 503 });
+      if (users.length > 0) return json({ users });
+      // Echo the queried ids back with the configured emailVerified so the
+      // create path's gate resolves without per-test wiring.
+      const ids = decodeURIComponent(path.split("ids=")[1] ?? "").split(",");
+      return json({
+        users: ids.filter(Boolean).map((id) => ({
+          id,
+          name: "User",
+          email: "user@example.com",
+          emailVerified,
+        })),
+      });
+    }
     if (path.includes("/internal/providers?ids=")) return json({ providers });
-    if (path.includes("/internal/email/job-response")) return json({ ok: true });
+    if (path.includes("/internal/notifications/events")) {
+      if (events === "fail") throw new Error("notification down");
+      return json({ ok: true, accepted: 0 }, 202);
+    }
     throw new Error(`unexpected s2s path: ${path}`);
   });
 }
@@ -97,6 +157,8 @@ const validJob = {
 beforeEach(() => {
   vi.clearAllMocks();
   wireS2s();
+  // Create-path daily cap (#556): default to no posts in the window.
+  dbMock.jobRequest.count.mockResolvedValue(0);
 });
 
 describe("POST /api/jobs (create)", () => {
@@ -126,6 +188,48 @@ describe("POST /api/jobs (create)", () => {
     expect(dbMock.jobRequest.create).not.toHaveBeenCalled();
   });
 
+  it("403s when the poster's email is unverified (#556)", async () => {
+    wireS2s({ emailVerified: null });
+    const res = await req(
+      "/api/jobs",
+      { method: "POST", body: JSON.stringify(validJob) },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toMatch(/verify your email/i);
+    expect(dbMock.jobRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("502s when the email-verification lookup fails (write-path gate)", async () => {
+    wireS2s({ emailVerified: "fail" });
+    const res = await req(
+      "/api/jobs",
+      { method: "POST", body: JSON.stringify(validJob) },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(502);
+    expect(dbMock.jobRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("429s when the daily posting cap is reached (#556)", async () => {
+    dbMock.jobRequest.count.mockResolvedValue(10);
+    const res = await req(
+      "/api/jobs",
+      { method: "POST", body: JSON.stringify(validJob) },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(429);
+    expect((await res.json()).error).toMatch(/daily job posting limit/i);
+    expect(dbMock.jobRequest.create).not.toHaveBeenCalled();
+    // The cap counts only the caller's posts inside the 24h window.
+    expect(dbMock.jobRequest.count).toHaveBeenCalledWith({
+      where: {
+        customerId: CUSTOMER_ID,
+        createdAt: { gte: expect.any(Date) },
+      },
+    });
+  });
+
   it("creates the job and returns its id", async () => {
     dbMock.jobRequest.create.mockResolvedValue({ id: "job_1" });
     const res = await req(
@@ -143,6 +247,115 @@ describe("POST /api/jobs (create)", () => {
         budget: null,
       }),
     });
+  });
+
+  it("notifies matching providers (fan-out) after creating the job", async () => {
+    dbMock.jobRequest.create.mockResolvedValue({
+      id: "job_1",
+      title: validJob.title,
+      category: "plumbing",
+      district: "Colombo",
+    });
+    wireS2s({
+      matching: [
+        { id: "prov_1", userId: "u1", contactName: "Jane", contactEmail: "jane@example.com" },
+        { id: "prov_2", userId: "u2", contactName: "Sam", contactEmail: "sam@example.com" },
+      ],
+    });
+    const res = await req(
+      "/api/jobs",
+      { method: "POST", body: JSON.stringify(validJob) },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: "job_1" });
+
+    // The matching lookup is scoped to the job's category+district and excludes
+    // the poster.
+    const matchCall = s2sMock.mock.calls.find(([, p]) =>
+      p.includes("/internal/providers/matching")
+    );
+    expect(matchCall?.[1]).toContain("category=plumbing");
+    expect(matchCall?.[1]).toContain("district=Colombo");
+    expect(matchCall?.[1]).toContain(`excludeUserId=${CUSTOMER_ID}`);
+
+    // Every matching provider (userId + email) is handed to the ingestion
+    // endpoint in one batched NEW_JOB_MATCH event (#394).
+    const notifyCall = s2sMock.mock.calls.find(([, p]) =>
+      p.includes("/internal/notifications/events")
+    );
+    expect(notifyCall).toBeDefined();
+    const body = JSON.parse((notifyCall?.[2]?.body as string) ?? "{}");
+    expect(body).toEqual({
+      type: "NEW_JOB_MATCH",
+      recipients: [
+        { userId: "u1", email: "jane@example.com", locale: "en" },
+        { userId: "u2", email: "sam@example.com", locale: "en" },
+      ],
+      payload: { jobTitle: validJob.title, district: "Colombo" },
+      link: "/jobs",
+    });
+    // The origin rides as x-origin so the email channel can build absolute links.
+    expect(notifyCall?.[2]?.headers).toHaveProperty("x-origin");
+  });
+
+  it("skips the notification call when no providers match", async () => {
+    dbMock.jobRequest.create.mockResolvedValue({
+      id: "job_1",
+      title: validJob.title,
+      category: "plumbing",
+      district: "Colombo",
+    });
+    wireS2s({ matching: [] });
+    const res = await req(
+      "/api/jobs",
+      { method: "POST", body: JSON.stringify(validJob) },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(200);
+    const notifyCall = s2sMock.mock.calls.find(([, p]) =>
+      p.includes("/internal/notifications/events")
+    );
+    expect(notifyCall).toBeUndefined();
+  });
+
+  it("still returns { id } when the matching lookup fails (best-effort)", async () => {
+    dbMock.jobRequest.create.mockResolvedValue({
+      id: "job_1",
+      title: validJob.title,
+      category: "plumbing",
+      district: "Colombo",
+    });
+    wireS2s({ matching: "fail" });
+    const res = await req(
+      "/api/jobs",
+      { method: "POST", body: JSON.stringify(validJob) },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: "job_1" });
+  });
+
+  it("still returns { id } when the notification call fails (best-effort)", async () => {
+    dbMock.jobRequest.create.mockResolvedValue({
+      id: "job_1",
+      title: validJob.title,
+      category: "plumbing",
+      district: "Colombo",
+    });
+    wireS2s({
+      matching: [
+        { id: "prov_1", userId: "u1", contactName: "Jane", contactEmail: "jane@example.com" },
+      ],
+      events: "fail",
+    });
+    const res = await req(
+      "/api/jobs",
+      { method: "POST", body: JSON.stringify(validJob) },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: "job_1" });
   });
 });
 
@@ -165,7 +378,17 @@ describe("GET /api/jobs/board", () => {
     expect((await res.json()).error).toMatch(/registered professionals/i);
   });
 
-  it("scopes to the provider's category+district, excludes own jobs, flags responded", async () => {
+  // #642: a suspended provider keeps the PROVIDER role but must not see the
+  // board — never even runs the board query.
+  it("403s a suspended provider without querying the board", async () => {
+    wireS2s({ providerByUser: { ...PROVIDER, suspended: true } });
+    const res = await req("/api/jobs/board", {}, { "x-user-id": PROVIDER_USER_ID });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toMatch(/suspended/i);
+    expect(dbMock.jobRequest.findMany).not.toHaveBeenCalled();
+  });
+
+  it("scopes to the provider's category + served districts (#502), excludes own jobs, flags responded", async () => {
     dbMock.jobRequest.findMany.mockResolvedValue([
       {
         id: "job_1",
@@ -189,12 +412,53 @@ describe("GET /api/jobs/board", () => {
       expect.objectContaining({
         where: {
           status: "OPEN",
+          hiddenAt: null,
           category: "plumbing",
-          district: "Colombo",
+          district: { in: ["Colombo", "Gampaha"] },
           NOT: { customerId: PROVIDER_USER_ID },
         },
       })
     );
+  });
+
+  it("falls back to the primary district when the served set is absent (pre-#502 payload)", async () => {
+    wireS2s({
+      providerByUser: { id: "prov_1", category: "plumbing", district: "Colombo" },
+    });
+    dbMock.jobRequest.findMany.mockResolvedValue([]);
+    dbMock.jobRequest.count.mockResolvedValue(0);
+    const res = await req("/api/jobs/board", {}, { "x-user-id": PROVIDER_USER_ID });
+    expect(res.status).toBe(200);
+    expect(dbMock.jobRequest.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ district: { in: ["Colombo"] } }),
+      })
+    );
+  });
+
+  it("serializes a Decimal budget as a JSON number (#371)", async () => {
+    // budget is DECIMAL(12,2) in the DB, so Prisma hands the route a Decimal —
+    // which would JSON-stringify as a string without the edge conversion.
+    dbMock.jobRequest.findMany.mockResolvedValue([
+      {
+        id: "job_1",
+        title: "t",
+        description: "d",
+        category: "plumbing",
+        district: "Colombo",
+        budget: new Prisma.Decimal("60000.00"),
+        status: "OPEN",
+        createdAt: new Date(),
+        customerId: CUSTOMER_ID,
+        responses: [],
+      },
+    ]);
+    dbMock.jobRequest.count.mockResolvedValue(1);
+    const res = await req("/api/jobs/board", {}, { "x-user-id": PROVIDER_USER_ID });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.jobs[0].budget).toBe(60000);
+    expect(typeof body.jobs[0].budget).toBe("number");
   });
 });
 
@@ -236,6 +500,48 @@ describe("GET /api/jobs/mine", () => {
     expect(dbMock.jobRequest.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { customerId: CUSTOMER_ID } })
     );
+  });
+
+  // #642: a suspended provider's contact details are withheld from the
+  // customer's my-jobs hydration — the response row stays, but name/phone are
+  // dropped (falls back to "Unknown" / no phone), matching the public listings
+  // a suspended profile is already removed from.
+  it("withholds a suspended provider's contact details", async () => {
+    dbMock.jobRequest.findMany.mockResolvedValue([
+      {
+        id: "job_1",
+        title: "t",
+        description: "d",
+        category: "plumbing",
+        district: "Colombo",
+        budget: null,
+        status: "OPEN",
+        createdAt: new Date(),
+        customerId: CUSTOMER_ID,
+        responses: [
+          { id: "resp_1", message: "I can help", createdAt: new Date(), providerId: "prov_1" },
+        ],
+      },
+    ]);
+    dbMock.jobRequest.count.mockResolvedValue(1);
+    wireS2s({
+      providers: [
+        {
+          id: "prov_1",
+          contactName: "Jane Plumb",
+          contactPhone: "0771234567",
+          suspended: true,
+        },
+      ],
+    });
+    const res = await req("/api/jobs/mine", {}, { "x-user-id": CUSTOMER_ID });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.jobs[0].responses[0].provider).toEqual({
+      id: "prov_1",
+      name: "Unknown",
+      phone: null,
+    });
   });
 });
 
@@ -324,6 +630,21 @@ describe("POST /api/jobs/:id/responses (provider responds)", () => {
     expect(res.status).toBe(403);
   });
 
+  // #642: a suspended provider can't respond either — gated before the job is
+  // even loaded.
+  it("403s a suspended provider without touching the job", async () => {
+    wireS2s({ providerByUser: { ...PROVIDER, suspended: true } });
+    const res = await req(
+      "/api/jobs/job_1/responses",
+      { method: "POST", body: JSON.stringify(message) },
+      { "x-user-id": PROVIDER_USER_ID }
+    );
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toMatch(/suspended/i);
+    expect(dbMock.jobRequest.findUnique).not.toHaveBeenCalled();
+    expect(dbMock.jobResponse.create).not.toHaveBeenCalled();
+  });
+
   it("404s when the job does not exist", async () => {
     dbMock.jobRequest.findUnique.mockResolvedValue(null);
     const res = await req(
@@ -332,6 +653,17 @@ describe("POST /api/jobs/:id/responses (provider responds)", () => {
       { "x-user-id": PROVIDER_USER_ID }
     );
     expect(res.status).toBe(404);
+  });
+
+  it("404s when the job was taken down by an admin (#376)", async () => {
+    dbMock.jobRequest.findUnique.mockResolvedValue({ ...openJob, hiddenAt: new Date() });
+    const res = await req(
+      "/api/jobs/job_1/responses",
+      { method: "POST", body: JSON.stringify(message) },
+      { "x-user-id": PROVIDER_USER_ID }
+    );
+    expect(res.status).toBe(404);
+    expect(dbMock.jobResponse.create).not.toHaveBeenCalled();
   });
 
   it("400s when responding to your own job", async () => {
@@ -345,7 +677,7 @@ describe("POST /api/jobs/:id/responses (provider responds)", () => {
     expect((await res.json()).error).toMatch(/your own job/i);
   });
 
-  it("403s when the job is outside the provider's category or district", async () => {
+  it("403s when the job's district is outside the provider's served set", async () => {
     dbMock.jobRequest.findUnique.mockResolvedValue({ ...openJob, district: "Kandy" });
     const res = await req(
       "/api/jobs/job_1/responses",
@@ -390,8 +722,8 @@ describe("POST /api/jobs/:id/responses (provider responds)", () => {
     expect(dbMock.jobResponse.create).not.toHaveBeenCalled();
   });
 
-  it("creates the response (notification best-effort) and returns ok", async () => {
-    dbMock.jobRequest.findUnique.mockResolvedValue(openJob);
+  it("allows responding to a job in a secondary served district (#502)", async () => {
+    dbMock.jobRequest.findUnique.mockResolvedValue({ ...openJob, district: "Gampaha" });
     dbMock.jobResponse.findUnique.mockResolvedValue(null);
     dbMock.jobResponse.create.mockResolvedValue({ id: "resp_1" });
     wireS2s({
@@ -404,8 +736,38 @@ describe("POST /api/jobs/:id/responses (provider responds)", () => {
     );
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
+  });
+
+  it("creates the response (notification best-effort) and returns ok", async () => {
+    dbMock.jobRequest.findUnique.mockResolvedValue(openJob);
+    dbMock.jobResponse.findUnique.mockResolvedValue(null);
+    dbMock.jobResponse.create.mockResolvedValue({ id: "resp_1" });
+    wireS2s({
+      users: [{ id: CUSTOMER_ID, name: "Cus Tomer", email: "cust@example.com" }],
+    });
+    const res = await req(
+      "/api/jobs/job_1/responses",
+      { method: "POST", body: JSON.stringify(message) },
+      { "x-user-id": PROVIDER_USER_ID, "x-user-name": "Pro%20Vider" }
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
     expect(dbMock.jobResponse.create).toHaveBeenCalledWith({
       data: { jobRequestId: "job_1", providerId: "prov_1", message: message.message },
+    });
+    // JOB_RESPONSE notification to the job's customer, email hydrated from
+    // identity (#394).
+    const notifyCall = s2sMock.mock.calls.find(([, p]) =>
+      p.includes("/internal/notifications/events")
+    );
+    expect(notifyCall).toBeDefined();
+    expect(JSON.parse((notifyCall?.[2]?.body as string) ?? "{}")).toEqual({
+      type: "JOB_RESPONSE",
+      recipients: [
+        { userId: CUSTOMER_ID, email: "cust@example.com", locale: "en" },
+      ],
+      payload: { providerName: "Pro Vider", jobTitle: openJob.title },
+      link: "/jobs",
     });
   });
 
@@ -425,5 +787,123 @@ describe("POST /api/jobs/:id/responses (provider responds)", () => {
     );
     expect(res.status).toBe(400);
     expect((await res.json()).error).toMatch(/already responded/i);
+  });
+});
+
+// Write-time content filter (#375): a denylist hit on job / response text
+// auto-files a SYSTEM report; the write itself always succeeds (decision:
+// auto-report and keep visible, never hard-block).
+describe("content filter on job posts and responses (#375)", () => {
+  const openJob = {
+    id: "job_1",
+    customerId: CUSTOMER_ID,
+    category: "plumbing",
+    district: "Colombo",
+    status: "OPEN",
+    title: "Fix a leaking tap",
+  };
+
+  it("POST /api/jobs: flags a denylist hit in the description (JOB target)", async () => {
+    dbMock.jobRequest.create.mockResolvedValue({ id: "job_1", ...validJob });
+    dbMock.report.findFirst.mockResolvedValue(null);
+    const res = await req(
+      "/api/jobs",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...validJob,
+          description: "Last plumber was a fucking crook, need a real one.",
+        }),
+      },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: "job_1" });
+    expect(dbMock.report.create).toHaveBeenCalledWith({
+      data: {
+        targetType: "JOB",
+        targetId: "job_1",
+        reporterId: null,
+        reason: "auto-flag: content filter",
+        details: expect.stringContaining('matched "fucking" in description'),
+        source: "SYSTEM",
+      },
+    });
+  });
+
+  it("POST /api/jobs: flags Sinhala job text too", async () => {
+    dbMock.jobRequest.create.mockResolvedValue({ id: "job_1", ...validJob });
+    dbMock.report.findFirst.mockResolvedValue(null);
+    const res = await req(
+      "/api/jobs",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...validJob,
+          description: "කලින් ආපු කැරියා වැඩේ කලේ නැහැ, හොඳ කෙනෙක් ඕන.",
+        }),
+      },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(200);
+    const arg = dbMock.report.create.mock.calls[0][0] as { data: { details: string } };
+    expect(arg.data.details).toContain("කැරියා");
+  });
+
+  it("POST /api/jobs: clean text never touches the reports table", async () => {
+    dbMock.jobRequest.create.mockResolvedValue({ id: "job_1", ...validJob });
+    const res = await req(
+      "/api/jobs",
+      { method: "POST", body: JSON.stringify(validJob) },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(200);
+    expect(dbMock.report.findFirst).not.toHaveBeenCalled();
+    expect(dbMock.report.create).not.toHaveBeenCalled();
+  });
+
+  it("POST /api/jobs/:id/responses: flags a hit in the message (JOB_RESPONSE target)", async () => {
+    dbMock.jobRequest.findUnique.mockResolvedValue(openJob);
+    dbMock.jobResponse.findUnique.mockResolvedValue(null);
+    dbMock.jobResponse.create.mockResolvedValue({ id: "resp_1" });
+    dbMock.report.findFirst.mockResolvedValue(null);
+    wireS2s({
+      users: [{ id: CUSTOMER_ID, name: "Cus Tomer", email: "cust@example.com" }],
+    });
+    const res = await req(
+      "/api/jobs/job_1/responses",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          message: "mata deela thibba job eka hariyata karala nathi hutta mama nemei",
+        }),
+      },
+      { "x-user-id": PROVIDER_USER_ID }
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(dbMock.report.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        targetType: "JOB_RESPONSE",
+        targetId: "resp_1",
+        source: "SYSTEM",
+        details: expect.stringContaining('matched "hutta" in message'),
+      }),
+    });
+  });
+
+  it("never fails the write when the auto-report path throws (best-effort)", async () => {
+    dbMock.jobRequest.create.mockResolvedValue({ id: "job_1", ...validJob });
+    dbMock.report.findFirst.mockRejectedValue(new Error("db down"));
+    const res = await req(
+      "/api/jobs",
+      {
+        method: "POST",
+        body: JSON.stringify({ ...validJob, description: "utter bullshit service" }),
+      },
+      { "x-user-id": CUSTOMER_ID }
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: "job_1" });
   });
 });

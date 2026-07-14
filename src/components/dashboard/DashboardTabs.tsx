@@ -37,8 +37,17 @@ export type DashboardData = {
   category: string;
   headline: string;
   bio: string;
+  // Optional Sinhala variants (#515); "" / absent when unset (the form treats
+  // blank as "clear to null" on save).
+  headlineSi?: string;
+  bioSi?: string;
   district: string;
+  // Full served set (#502) — always includes `district`.
+  serviceDistricts: string[];
   city: string;
+  // Optional map pin (#48); both set or both null.
+  latitude: number | null;
+  longitude: number | null;
   experience: number;
   available: boolean;
   // ISO string while the provider is away (#49); null when not set.
@@ -54,7 +63,10 @@ export type DashboardData = {
   website: string;
   services: ServiceItem[];
   photos: PhotoItem[];
+  // First page of the inbox (#372); inquiriesTotal covers the whole inbox so
+  // the list can load more on demand.
   inquiries: InquiryItem[];
+  inquiriesTotal: number;
   stats: {
     rating: number | null;
     reviewCount: number;
@@ -125,7 +137,9 @@ export default function DashboardTabs({
             name={data.name}
           />
         )}
-        {tab === "Inquiries" && <InquiriesList initial={data.inquiries} />}
+        {tab === "Inquiries" && (
+          <InquiriesList initial={data.inquiries} total={data.inquiriesTotal} />
+        )}
       </div>
     </div>
   );

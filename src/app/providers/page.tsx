@@ -5,21 +5,25 @@ import { fetchCategoryOptions } from "@/lib/categories-server";
 import { dict, categoryLabelLoc } from "@/lib/i18n";
 import { languageAlternates, localizedHref } from "@/lib/links";
 import { getLocale, getUrlLocale } from "@/lib/locale";
+import { siteOpenGraph } from "@/lib/seo";
 import { normalizeSort } from "@/lib/sort-keys";
 import { getSession } from "@/lib/auth";
 import ProviderCard, { ProviderCardDTO } from "@/components/ProviderCard";
 import CategoryIcon from "@/components/CategoryIcon";
 import FilterBar from "@/components/FilterBar";
+import ProvidersView from "@/components/ProvidersView";
+import SaveSearchButton from "@/components/SaveSearchButton";
 import InView from "@/components/InView";
+import Pagination from "@/components/ui/Pagination";
+import { browseFilterParams, type BrowseFilters } from "@/lib/search-params";
 import { DISTRICTS } from "@/lib/constants";
 import Link from "next/link";
 
 // Caching (#57): public-but-fresh. No force-dynamic - the page renders per
 // request (searchParams + locale/session cookies), but the search results
-// come from the Data Cache with a 60-second revalidate. The full query
-// string is part of the fetch URL, so every filter/sort/page combination is
-// its own cache entry; new/edited profiles show up in browse within a
-// minute, which is plenty for a directory listing.
+// come from the Data Cache with a 60-second revalidate. Only bounded filter
+// combinations are cached (see `cacheable` below, #377); new/edited profiles
+// show up in browse within a minute, which is plenty for a directory listing.
 const PAGE_SIZE = 12;
 
 // Shown as suggestions when a search or filter combination yields no results.
@@ -47,16 +51,43 @@ export async function generateMetadata({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }): Promise<Metadata> {
-  const [params, urlLocale] = await Promise.all([
+  const [params, urlLocale, locale] = await Promise.all([
     searchParams,
     getUrlLocale(),
+    getLocale(),
   ]);
   const category =
     typeof params.category === "string" && params.category
-      ? `?category=${encodeURIComponent(params.category)}`
+      ? params.category
       : "";
+  const district =
+    typeof params.district === "string" && params.district
+      ? params.district
+      : "";
+  const canonical = category
+    ? `?category=${encodeURIComponent(category)}`
+    : "";
+  const alternates = languageAlternates(`/providers${canonical}`, urlLocale);
+  // og:url mirrors the canonical (#379) — search permutations share the
+  // category listing's URL, exactly like the alternates above.
+  const openGraph = siteOpenGraph(locale, urlLocale, `/providers${canonical}`);
+
+  // Default listing (no filters) keeps the generic root title/description via
+  // the layout — only category/district permutations get a bespoke, keyword-
+  // rich title so /providers?category=… pages stop sharing one <title> (#513).
+  if (!category && !district) {
+    return { alternates, openGraph };
+  }
+
+  const t = dict[locale];
+  const categoryLabel = category ? categoryLabelLoc(category, locale) : null;
+  const title = t.browse.metaTitle(categoryLabel, district || null);
+  const description = t.browse.metaDesc(categoryLabel, district || null);
   return {
-    alternates: languageAlternates(`/providers${category}`, urlLocale),
+    title,
+    description,
+    alternates,
+    openGraph: { ...openGraph, title, description },
   };
 }
 
@@ -66,13 +97,17 @@ export default async function ProvidersPage({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const params = await searchParams;
-  const locale = await getLocale();
+  // These three are independent of one another and of the listing, so run them
+  // together instead of in a serial chain (#660). `categories` gates the
+  // listing's cacheable check below; `favorites` (session-scoped) is fetched
+  // alongside the listing further down.
+  const [locale, session, categories] = await Promise.all([
+    getLocale(),
+    getSession(),
+    // Admin-managed categories (#561) — falls back to the static list inside.
+    fetchCategoryOptions({ revalidate: 300 }),
+  ]);
   const t = dict[locale];
-  const session = await getSession();
-  const favorites = session
-    ? await apiJson<{ providerIds: string[] }>("/api/favorites")
-    : null;
-  const favoriteIds = new Set(favorites?.providerIds ?? []);
   const q = typeof params.q === "string" ? params.q.trim() : "";
   const category = typeof params.category === "string" ? params.category : "";
   const district = typeof params.district === "string" ? params.district : "";
@@ -84,28 +119,64 @@ export default async function ProvidersPage({
   const ratingMin = numericParam(params.ratingMin);
   const availableOnly = params.availableOnly === "1";
 
-  // Search, filtering, ranking and pagination all happen in provider-service;
-  // the query params pass straight through the gateway.
-  const query = new URLSearchParams();
-  if (q) query.set("q", q);
-  if (category) query.set("category", category);
-  if (district) query.set("district", district);
-  if (priceMin) query.set("priceMin", priceMin);
-  if (priceMax) query.set("priceMax", priceMax);
-  if (ratingMin) query.set("ratingMin", ratingMin);
-  if (availableOnly) query.set("availableOnly", "1");
+  const filters: BrowseFilters = {
+    q,
+    category,
+    district,
+    priceMin,
+    priceMax,
+    ratingMin,
+    availableOnly,
+  };
+
+  // Search, filtering, ranking and pagination all happen in search-service
+  // (the RFC phase 3 cut-over — same params, envelope and card DTO browse
+  // served); the query params pass straight through the gateway.
+  const query = browseFilterParams(filters);
   query.set("sort", sort);
   query.set("page", String(page));
 
-  const [listing, categories] = await Promise.all([
-    apiJson<{
-      providers: ProviderCardDTO[];
-      total: number;
-      page: number;
-      pageSize: number;
-    }>(`/api/providers?${query.toString()}`, { revalidate: 60 }),
-    fetchCategoryOptions({ revalidate: 300 }),
-  ]);
+  // Data Cache entries are keyed by the full fetch URL, so only queries drawn
+  // from a bounded key space (known category/district, normalized sort, capped
+  // page) are cached — free-text q, arbitrary numeric filters or made-up slugs
+  // would let anyone mint unlimited cache entries on disk (#377). Unbounded
+  // permutations still render fine, just without the shared cache.
+  const cacheable =
+    !q &&
+    !priceMin &&
+    !priceMax &&
+    !ratingMin &&
+    page <= 50 &&
+    (!category || categories.some((c) => c.slug === category)) &&
+    (!district || (DISTRICTS as readonly string[]).includes(district));
+
+  type Listing = {
+    providers: ProviderCardDTO[];
+    total: number;
+    page: number;
+    pageSize: number;
+  };
+  const cacheOpts = cacheable ? { revalidate: 60 } : undefined;
+  // Favorites (session-scoped) and the listing don't depend on each other —
+  // kick favorites off first, then await the listing, so the two overlap (#660).
+  const favoritesPromise = session
+    ? apiJson<{ providerIds: string[] }>("/api/favorites")
+    : Promise.resolve(null);
+  let listing = await apiJson<Listing>(
+    `/api/search/providers?${query.toString()}`,
+    cacheOpts
+  );
+  if (!listing) {
+    // Transition fallback (RFC §5.2): while /api/providers browse still
+    // serves the identical envelope from provider-service, a search-service
+    // outage degrades to it instead of an empty listing.
+    listing = await apiJson<Listing>(
+      `/api/providers?${query.toString()}`,
+      cacheOpts
+    );
+  }
+  const favorites = await favoritesPromise;
+  const favoriteIds = new Set(favorites?.providerIds ?? []);
 
   const results = listing?.providers ?? [];
   const total = listing?.total ?? 0;
@@ -127,10 +198,22 @@ export default async function ProvidersPage({
   }
 
   const stats: [string, number][] = [
-    ["TOTAL", total],
-    ["TRADES", categories.length],
-    ["DISTRICTS", DISTRICTS.length],
+    [t.browse.stats.total, total],
+    [t.browse.stats.trades, categories.length],
+    [t.browse.stats.districts, DISTRICTS.length],
   ];
+
+  // Saved searches (#516): customers can persist the primary filters
+  // (q/category/district) and get emailed when a new professional matches.
+  const canSaveSearch =
+    session?.role === "CUSTOMER" && Boolean(q || category || district);
+  const defaultSearchName = [
+    q,
+    category ? categoryLabelLoc(category, locale) : "",
+    district,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <div>
@@ -180,9 +263,25 @@ export default async function ProvidersPage({
           priceMax={priceMax}
           ratingMin={ratingMin}
           availableOnly={availableOnly}
+          page={page}
           categories={categories}
         />
 
+      {canSaveSearch && (
+        <div className="mt-4">
+          <SaveSearchButton
+            query={q}
+            category={category}
+            district={district}
+            defaultName={defaultSearchName}
+          />
+        </div>
+      )}
+
+      {/* List/map toggle (#48): the server-rendered list below stays the
+          primary view; the map view fetches /api/search/providers/nearby
+          client-side. */}
+      <ProvidersView filters={filters}>
       {results.length === 0 ? (
         <div className="card mt-8 flex flex-col items-center px-6 py-16 text-center">
           <FaMagnifyingGlass className="h-12 w-12 text-ink-300" />
@@ -225,23 +324,8 @@ export default async function ProvidersPage({
         </InView>
       )}
 
-      {totalPages > 1 && (
-        <div className="mt-10 flex items-center justify-center gap-2">
-          {page > 1 && (
-            <Link href={pageLink(page - 1)} className="btn-secondary">
-              {t.browse.prev}
-            </Link>
-          )}
-          <span className="px-3 text-sm text-ink-500">
-            {t.browse.pageOf(page, totalPages)}
-          </span>
-          {page < totalPages && (
-            <Link href={pageLink(page + 1)} className="btn-secondary">
-              {t.browse.next}
-            </Link>
-          )}
-        </div>
-      )}
+      <Pagination page={page} totalPages={totalPages} hrefFor={pageLink} locale={locale} />
+      </ProvidersView>
       </div>
     </div>
   );

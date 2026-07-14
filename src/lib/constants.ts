@@ -2,22 +2,34 @@ import type { IconType } from "@/components/icons";
 import {
   FaBolt,
   FaBorderAll,
+  FaBriefcase,
   FaBroom,
   FaBug,
   FaFire,
+  FaGlobe,
   FaHammer,
+  FaHouse,
   FaHouseChimney,
   FaLeaf,
   FaPaintRoller,
   FaPlug,
   FaScrewdriverWrench,
+  FaShieldHalved,
   FaShower,
   FaSnowflake,
+  FaTags,
   FaTrowel,
   FaTruck,
   FaVideo,
   FaWrench,
 } from "@/components/icons";
+
+// Password policy, mirrored from the server's source of truth
+// (services/identity-service/src/lib/register-schema.ts). Length is the only
+// rule the client enforces — the offline common-password screen is owned by
+// the server. Keep these in sync if the server policy changes.
+export const PASSWORD_MIN_LENGTH = 10;
+export const PASSWORD_MAX_LENGTH = 100;
 
 export const CATEGORIES: readonly {
   slug: string;
@@ -50,6 +62,11 @@ export const DISTRICTS = [
   "Trincomalee", "Vavuniya",
 ] as const;
 
+// Multi-district service area (#502): how many districts one provider may
+// serve in total, home district included. Mirrors the server's source of
+// truth (services/*/src/lib/field-rules.ts) — keep in sync.
+export const MAX_SERVICE_DISTRICTS = 5;
+
 export const PRICE_TYPES = [
   { value: "HOURLY", label: "Per Hour" },
   { value: "DAILY", label: "Per Day" },
@@ -63,6 +80,44 @@ export function categoryLabel(slug: string) {
 
 export function categoryIcon(slug: string): IconType {
   return CATEGORIES.find((c) => c.slug === slug)?.icon ?? FaScrewdriverWrench;
+}
+
+// Curated set of category icons an admin can assign to a category (stored as
+// the icon *name* in Category.icon). Keeping it a short, trade-relevant list
+// (not every exported icon) makes the admin picker a sensible menu, and lets
+// the UI resolve an admin-chosen icon by name — see `iconByName`. `#436`.
+export const CATEGORY_ICONS: Record<string, IconType> = {
+  FaWrench,
+  FaScrewdriverWrench,
+  FaBolt,
+  FaShower,
+  FaHammer,
+  FaTrowel,
+  FaPaintRoller,
+  FaLeaf,
+  FaSnowflake,
+  FaPlug,
+  FaFire,
+  FaHouseChimney,
+  FaHouse,
+  FaBorderAll,
+  FaVideo,
+  FaShieldHalved,
+  FaBug,
+  FaBroom,
+  FaTruck,
+  FaBriefcase,
+  FaTags,
+  FaGlobe,
+};
+
+// The picker options, in insertion order.
+export const CATEGORY_ICON_NAMES: readonly string[] = Object.keys(CATEGORY_ICONS);
+
+// Resolve an admin-assigned icon name to its component. Null for unset / unknown
+// names, so callers can fall back to the slug-based `categoryIcon`.
+export function iconByName(name: string | null | undefined): IconType | null {
+  return name ? CATEGORY_ICONS[name] ?? null : null;
 }
 
 export function priceTypeLabel(value: string) {

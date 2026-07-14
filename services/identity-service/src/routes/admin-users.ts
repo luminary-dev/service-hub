@@ -5,9 +5,17 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
+import { logAudit } from "../lib/audit";
 import { getAuth, isFullAdmin, isSupportOrAdmin } from "../lib/http";
 import { isLockedOut, MANUAL_LOCK_UNTIL } from "../lib/lockout";
-import { fetchProvidersByIds } from "../lib/providers";
+import { log } from "../lib/log";
+import {
+  deactivateProviderProfile,
+  fetchProvidersByIds,
+  ProviderAdminSuspendedError,
+  reactivateProviderProfile,
+} from "../lib/providers";
+import { publishRevocation } from "../lib/revocation";
 
 export const adminUsersRoutes = new Hono();
 
@@ -146,11 +154,16 @@ adminUsersRoutes.patch("/api/admin/users/:id", async (c) => {
   const data: Record<string, unknown> = {};
   if (parsed.data.action === "lock") {
     data.lockedUntil = MANUAL_LOCK_UNTIL;
+    // Locking must cut off the account *now*, not whenever the ~7-day JWT
+    // expires; bump sessionVersion so any token minted before the lock fails
+    // the gateway's revocation check (mirrors force-logout).
+    data.sessionVersion = { increment: 1 };
   } else if (parsed.data.action === "unlock") {
     data.lockedUntil = null;
     data.failedLogins = 0;
   }
-  if (parsed.data.role && parsed.data.role !== user.role) {
+  const roleChange = parsed.data.role && parsed.data.role !== user.role;
+  if (roleChange) {
     data.role = parsed.data.role;
     // A role change alters what the user is authorized to do; bump
     // sessionVersion so tokens minted under the old role fail the gateway's
@@ -158,7 +171,82 @@ adminUsersRoutes.patch("/api/admin/users/:id", async (c) => {
     data.sessionVersion = { increment: 1 };
   }
 
+  // When the role change crosses the PROVIDER boundary, mirror the self-service
+  // routes (auth.ts leave-provider / complete-provider) so provider-service
+  // stays consistent — otherwise a demoted provider stays publicly listed and a
+  // promoted customer gets no manageable profile. Do this FIRST as a write-path
+  // gate: if provider-service is down we return 502 and leave the role
+  // untouched, so identity and provider-service never disagree. Role changes
+  // that don't involve PROVIDER (CUSTOMER↔ADMIN↔SUPPORT) need no provider call.
+  if (roleChange) {
+    const newRole = parsed.data.role;
+    if (user.role === "PROVIDER" && newRole !== "PROVIDER") {
+      // Demotion: hide/suspend the provider profile.
+      try {
+        await deactivateProviderProfile(id);
+      } catch (e) {
+        log.error("provider deactivate failed", { context: "admin-role-change", err: e });
+        return c.json({ error: "Upstream service unavailable" }, 502);
+      }
+    } else if (user.role !== "PROVIDER" && newRole === "PROVIDER") {
+      // Promotion: reactivate an existing (previously hidden) profile. Unlike
+      // complete-provider there is no wizard data to create one from, so a user
+      // with NO profile must be rejected, not promoted: complete-provider — the
+      // only profile-creating endpoint — refuses callers already holding
+      // PROVIDER, and every provider dashboard route 401s without a profile, so
+      // promoting anyway would brick the account (#554). The missing-profile
+      // reactivate is a no-op upstream, so refusing after the call leaves both
+      // services unchanged. An ADMIN-suspended profile is refused too (#550) —
+      // lifting a moderation suspension stays exclusive to the provider
+      // unsuspend action, so a role change can't lift one as a side effect.
+      let hadProfile: boolean;
+      try {
+        hadProfile = await reactivateProviderProfile(id);
+      } catch (e) {
+        if (e instanceof ProviderAdminSuspendedError) {
+          return c.json(
+            {
+              error:
+                "This user's provider profile is suspended by moderation. Unsuspend it in Admin → Providers first.",
+            },
+            409
+          );
+        }
+        log.error("provider reactivate failed", { context: "admin-role-change", err: e });
+        return c.json({ error: "Upstream service unavailable" }, 502);
+      }
+      if (!hadProfile) {
+        return c.json(
+          {
+            error:
+              "This user has no provider profile. They must complete provider signup themselves before they can hold the PROVIDER role.",
+          },
+          400
+        );
+      }
+    }
+  }
+
   const updated = await db.user.update({ where: { id }, data });
+
+  // A lock or a role change bumped sessionVersion — mirror it into the shared
+  // revocation list (#374) so the gateway cuts the user's tokens off even if
+  // identity is unreachable. (Unlock doesn't bump, so it needs no publish.)
+  if (parsed.data.action === "lock" || roleChange) {
+    await publishRevocation(updated.id, updated.sessionVersion);
+  }
+
+  // Best-effort audit trail on the sensitive mutations (#362, security-audit
+  // M7). logAudit swallows its own errors, so this never blocks the action.
+  if (parsed.data.action === "lock") {
+    await logAudit(c, "LOCK_USER", "USER", id);
+  } else if (parsed.data.action === "unlock") {
+    await logAudit(c, "UNLOCK_USER", "USER", id);
+  }
+  if (parsed.data.role && parsed.data.role !== user.role) {
+    await logAudit(c, "CHANGE_ROLE", "USER", id, `${user.role} -> ${parsed.data.role}`);
+  }
+
   return c.json({ user: serializeUser(updated) });
 });
 
@@ -184,5 +272,13 @@ adminUsersRoutes.post("/api/admin/users/:id/force-logout", async (c) => {
     where: { id },
     data: { sessionVersion: { increment: 1 } },
   });
+
+  // Mirror the bump into the shared revocation list (#374) so the gateway
+  // rejects every existing token even if identity is unreachable.
+  await publishRevocation(updated.id, updated.sessionVersion);
+
+  // Best-effort audit trail (#362, security-audit M7); never blocks the action.
+  await logAudit(c, "FORCE_LOGOUT", "USER", id);
+
   return c.json({ ok: true, sessionVersion: updated.sessionVersion });
 });

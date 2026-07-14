@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { FaShieldHalved } from "@/components/icons";
 import { apiJson } from "@/lib/api";
@@ -9,6 +8,7 @@ import { dict } from "@/lib/i18n";
 import PageHeader from "@/components/ui/PageHeader";
 import StatReadout from "@/components/ui/StatReadout";
 import EmptyState from "@/components/ui/EmptyState";
+import Pagination from "@/components/ui/Pagination";
 import VerificationQueue, {
   type PendingVerification,
 } from "@/components/admin/VerificationQueue";
@@ -74,8 +74,8 @@ export default async function AdminVerificationsPage({
       >
         <StatReadout
           stats={[
-            { label: "PENDING", value: total },
-            { label: "DOCS", value: docCount },
+            { label: t.admin.stats.pending, value: total },
+            { label: t.admin.stats.docs, value: docCount },
           ]}
         />
       </PageHeader>
@@ -87,27 +87,11 @@ export default async function AdminVerificationsPage({
           <>
             {/* Active caution rail: this queue is awaiting review. */}
             <div className="hazard mb-6 h-1.5 w-full rounded-full" />
-            <VerificationQueue items={pending} />
+            <VerificationQueue items={pending} role={session.role} />
           </>
         )}
 
-        {totalPages > 1 && (
-          <div className="mt-10 flex items-center justify-center gap-2">
-            {page > 1 && (
-              <Link href={pageLink(page - 1)} className="btn-secondary">
-                {t.browse.prev}
-              </Link>
-            )}
-            <span className="px-3 text-sm text-ink-500">
-              {t.browse.pageOf(page, totalPages)}
-            </span>
-            {page < totalPages && (
-              <Link href={pageLink(page + 1)} className="btn-secondary">
-                {t.browse.next}
-              </Link>
-            )}
-          </div>
-        )}
+        <Pagination page={page} totalPages={totalPages} hrefFor={pageLink} locale={locale} />
       </div>
     </div>
   );

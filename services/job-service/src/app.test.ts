@@ -54,13 +54,36 @@ describe("internal secret enforcement", () => {
 });
 
 describe("GET /internal/jobs/count", () => {
-  it("returns { count } for a valid request", async () => {
+  it("counts across a comma-separated served set (#502)", async () => {
     dbMock.jobRequest.count.mockResolvedValue(5);
-    const res = await req("/internal/jobs/count?category=plumbing&district=Colombo");
+    const res = await req(
+      "/internal/jobs/count?category=plumbing&districts=Colombo,Gampaha"
+    );
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ count: 5 });
     expect(dbMock.jobRequest.count).toHaveBeenCalledWith({
-      where: { status: "OPEN", category: "plumbing", district: "Colombo" },
+      where: {
+        status: "OPEN",
+        // Admin-hidden jobs excluded so the badge matches the board (#647).
+        hiddenAt: null,
+        category: "plumbing",
+        district: { in: ["Colombo", "Gampaha"] },
+      },
+    });
+  });
+
+  it("still honors the legacy single district param", async () => {
+    dbMock.jobRequest.count.mockResolvedValue(2);
+    const res = await req("/internal/jobs/count?category=plumbing&district=Colombo");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ count: 2 });
+    expect(dbMock.jobRequest.count).toHaveBeenCalledWith({
+      where: {
+        status: "OPEN",
+        hiddenAt: null,
+        category: "plumbing",
+        district: { in: ["Colombo"] },
+      },
     });
   });
 });
@@ -77,6 +100,19 @@ describe("POST /internal/users/:id/erase", () => {
     expect(dbMock.jobRequest.deleteMany).toHaveBeenCalledWith({
       where: { customerId: "u1" },
     });
+    expect(dbMock.jobResponse.deleteMany).not.toHaveBeenCalled();
+  });
+
+  // #551: a retry after full peer success resolves providerId as null (the
+  // Provider row is gone) — the erase must still be a clean idempotent 200.
+  it("treats an explicit null providerId as a no-op for responses", async () => {
+    dbMock.jobRequest.deleteMany.mockResolvedValue({ count: 0 });
+    const res = await req("/internal/users/u1/erase", {
+      method: "POST",
+      body: JSON.stringify({ providerId: null }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
     expect(dbMock.jobResponse.deleteMany).not.toHaveBeenCalled();
   });
 

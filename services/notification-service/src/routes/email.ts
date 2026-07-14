@@ -1,9 +1,15 @@
+// Transactional auth/security emails ONLY — these are not notifications and
+// take no preferences, so they keep dedicated routes permanently. Marketplace
+// events (inquiry, thread reply, reviews, job match/response, saved-search
+// match, ...) flow through POST /internal/notifications/events instead
+// (routes/events.ts); the four legacy per-event email routes were deleted
+// when their callers migrated (RFC stateful-notification-service, phase 3).
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import {
+  accountExistsEmail,
   changeEmail,
-  inquiryEmail,
-  jobResponseEmail,
+  emailChangeAttemptEmail,
   passwordResetEmail,
   sendMail,
   verifyEmail,
@@ -18,18 +24,9 @@ function coerceLocale(value: unknown): Locale {
 }
 
 const baseSchema = z.object({
-  to: z.string().min(1),
+  to: z.string().email(),
   url: z.string().min(1),
   locale: z.unknown().optional(),
-});
-
-const jobResponseSchema = baseSchema.extend({
-  providerName: z.string().min(1),
-  jobTitle: z.string().min(1),
-});
-
-const inquirySchema = baseSchema.extend({
-  customerName: z.string().min(1),
 });
 
 async function readBody(c: Context): Promise<unknown> {
@@ -67,25 +64,21 @@ emailRoutes.post("/change-email", async (c) => {
   return c.json({ ok: true, delivered });
 });
 
-emailRoutes.post("/inquiry", async (c) => {
-  const parsed = inquirySchema.safeParse(await readBody(c));
+emailRoutes.post("/account-exists", async (c) => {
+  const parsed = baseSchema.safeParse(await readBody(c));
   if (!parsed.success) return c.json({ error: "Invalid input" }, 400);
-  const { to, url, customerName, locale } = parsed.data;
-  const { subject, html } = inquiryEmail(url, customerName, coerceLocale(locale));
+  const { to, url, locale } = parsed.data;
+  const { subject, html } = accountExistsEmail(url, coerceLocale(locale));
   const { delivered } = await sendMail({ to, subject, html });
   return c.json({ ok: true, delivered });
 });
 
-emailRoutes.post("/job-response", async (c) => {
-  const parsed = jobResponseSchema.safeParse(await readBody(c));
+emailRoutes.post("/email-change-attempt", async (c) => {
+  const parsed = baseSchema.safeParse(await readBody(c));
   if (!parsed.success) return c.json({ error: "Invalid input" }, 400);
-  const { to, url, providerName, jobTitle, locale } = parsed.data;
-  const { subject, html } = jobResponseEmail(
-    url,
-    providerName,
-    jobTitle,
-    coerceLocale(locale)
-  );
+  const { to, url, locale } = parsed.data;
+  const { subject, html } = emailChangeAttemptEmail(url, coerceLocale(locale));
   const { delivered } = await sendMail({ to, subject, html });
   return c.json({ ok: true, delivered });
 });
+

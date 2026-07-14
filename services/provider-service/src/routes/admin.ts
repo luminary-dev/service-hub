@@ -6,15 +6,18 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { Context } from "hono";
 import { db } from "../db";
-import { getAuth, isFullAdmin, isSupportOrAdmin } from "../lib/http";
+import { getAuth, getOrigin, isFullAdmin, isSupportOrAdmin } from "../lib/http";
+import { emitNotification } from "../lib/notify";
 import {
   ALLOWED_IMAGE_TYPES,
   InvalidImageError,
   MAX_UPLOAD_SIZE,
   storeImage,
 } from "../lib/storage";
-import { fetchProviderReviews, fetchRatings } from "../lib/clients";
+import { fetchProviderReviews, fetchRatings, fetchRatingsResult } from "../lib/clients";
 import { computeQualityScore } from "../lib/quality-score";
+import { log } from "../lib/log";
+import { syncProviderIndex } from "../lib/search-index";
 import {
   buildAdminProvidersWhere,
   normalizeAdminListQuery,
@@ -23,6 +26,11 @@ import {
 } from "../lib/admin-list";
 
 export const adminRoutes = new Hono();
+
+// Upper bound on providers loaded for the in-memory mostReviews ranking
+// (#372) — mirrors MAX_BROWSE_CANDIDATES on the public directory. If ever
+// hit, we log and rank the newest slice.
+const MOST_REVIEWS_CANDIDATES = 1000;
 
 // Moderation audit trail (#227): fire-and-record after every write below.
 // Best-effort — a logging failure must never roll back or block the
@@ -74,14 +82,22 @@ adminRoutes.get("/api/admin/providers", async (c) => {
 
   if (sort === "mostReviews") {
     // Review counts are derived data owned by review-service, so ranking by
-    // them means hydrating and sorting the full match set in memory rather
-    // than paginating in the database (same tradeoff the public directory
-    // makes for its rating-based sorts — see providers.ts).
+    // them means hydrating and sorting the match set in memory rather than
+    // paginating in the database (same tradeoff the public directory makes
+    // for its rating-based sorts — see providers.ts). Bounded (#372): at most
+    // MOST_REVIEWS_CANDIDATES rows (newest first) are loaded and ranked.
     const all = await db.provider.findMany({
       where,
       orderBy: { createdAt: "desc" },
+      take: MOST_REVIEWS_CANDIDATES + 1,
       include: { _count: { select: { photos: true } } },
     });
+    if (all.length > MOST_REVIEWS_CANDIDATES) {
+      all.length = MOST_REVIEWS_CANDIDATES;
+      log.warn("admin mostReviews sort hit candidate cap — ranking may be incomplete", {
+        cap: MOST_REVIEWS_CANDIDATES,
+      });
+    }
     const ratings = await fetchRatings(all.map((p) => p.id));
     const ranked = [...all].sort(
       (a, b) =>
@@ -136,11 +152,21 @@ adminRoutes.get("/api/admin/providers/:id", async (c) => {
   }
 
   // Moderation view: include soft-deleted reviews so admins can restore.
+  // Only OPEN USER-source reports feed the quality-score penalty, matching the
+  // auto-flagging run (POST /api/admin/flagging/run). SYSTEM reports are the
+  // flagging job's own output, so counting them here would let an auto-flag
+  // drive the score down further than the threshold that triggered it,
+  // diverging the admin-visible score from the flagging decision.
   const [{ reviews }, ratings, openReportCount] = await Promise.all([
     fetchProviderReviews(id, { includeDeleted: true }),
     fetchRatings([id]),
     db.report.count({
-      where: { targetType: "PROVIDER", targetId: id, status: "OPEN" },
+      where: {
+        targetType: "PROVIDER",
+        targetId: id,
+        status: "OPEN",
+        source: "USER",
+      },
     }),
   ]);
   const rating = ratings[id]?.rating ?? 0;
@@ -215,6 +241,25 @@ adminRoutes.patch("/api/admin/providers/:id", async (c) => {
     return c.json({ error: "Invalid action" }, 400);
   }
 
+  // Owner-deactivated profiles (#403: `suspended=true` with `adminSuspended=false`)
+  // must not be relisted by an admin unsuspend (#644) — that would override the
+  // owner's own choice to hide their profile. Only the owner can re-list one
+  // (via the reactivate S2S path). Genuine ADMIN suspensions
+  // (`adminSuspended=true`) are still lifted here, as before.
+  if (
+    parsed.data.action === "unsuspend" &&
+    provider.suspended &&
+    !provider.adminSuspended
+  ) {
+    return c.json(
+      {
+        error:
+          "This profile was deactivated by its owner and can only be relisted by them",
+      },
+      409
+    );
+  }
+
   const data: Record<string, unknown> = {};
   switch (parsed.data.action) {
     case "verify":
@@ -225,16 +270,24 @@ adminRoutes.patch("/api/admin/providers/:id", async (c) => {
       data.verificationStatus = "NONE";
       data.verifiedAt = null;
       break;
+    // adminSuspended (#550) marks the suspension as admin-owned so the
+    // self-service reactivate path can't lift it; only this unsuspend clears it.
     case "suspend":
       data.suspended = true;
+      data.adminSuspended = true;
       break;
     case "unsuspend":
       data.suspended = false;
+      data.adminSuspended = false;
       break;
   }
 
   await db.provider.update({ where: { id }, data });
   await logAudit(c, parsed.data.action, "PROVIDER", id);
+  // Search-index sync (search RFC §4.2): suspend deletes the document (the
+  // index only holds public rows), unsuspend/verify/unverify re-push it.
+  // Fire-and-forget, best-effort.
+  void syncProviderIndex(id);
   return c.json({ ok: true });
 });
 
@@ -258,11 +311,57 @@ adminRoutes.patch("/api/admin/providers", async (c) => {
     return c.json({ error: "Invalid input" }, 400);
   }
 
-  const { count } = await db.provider.updateMany({
-    where: { id: { in: parsed.data.ids } },
-    data: { suspended: parsed.data.suspended },
+  const where = { id: { in: parsed.data.ids } };
+
+  if (parsed.data.suspended) {
+    // Suspend: an admin-owned suspension on every matched row. Capture the ids
+    // actually matched before the write so the audit trail records real targets
+    // (not the raw request list, which may include ids that no longer exist).
+    const affected = await db.provider.findMany({ where, select: { id: true } });
+    const { count } = await db.provider.updateMany({
+      where,
+      // adminSuspended mirrors suspended for the same reason as the
+      // single-provider PATCH above (#550).
+      data: { suspended: true, adminSuspended: true },
+    });
+    await Promise.all(affected.map((p) => logAudit(c, "suspend", "PROVIDER", p.id)));
+    // Search-index sync per affected row (bounded ≤200): suspend deletes the
+    // documents. Best-effort (RFC §4.2).
+    for (const p of affected) void syncProviderIndex(p.id);
+    return c.json({ ok: true, count });
+  }
+
+  // Unsuspend: only genuine ADMIN suspensions (`adminSuspended=true`) may be
+  // relisted (#644). Owner-deactivated rows (`adminSuspended=false`) are left
+  // hidden — the owner alone re-lists those — and reported back as `skipped`
+  // so the caller knows they weren't lifted.
+  const matched = await db.provider.findMany({
+    where,
+    select: { id: true, adminSuspended: true },
   });
-  return c.json({ ok: true, count });
+  const eligible = matched.filter((p) => p.adminSuspended);
+  const skipped = matched.length - eligible.length;
+  if (eligible.length === 0) {
+    return c.json(
+      {
+        error:
+          "None of the selected profiles were suspended by an admin; owner-deactivated profiles can only be relisted by their owner",
+        count: 0,
+        skipped,
+      },
+      409
+    );
+  }
+  const eligibleIds = eligible.map((p) => p.id);
+  const { count } = await db.provider.updateMany({
+    where: { id: { in: eligibleIds } },
+    data: { suspended: false, adminSuspended: false },
+  });
+  await Promise.all(eligible.map((p) => logAudit(c, "unsuspend", "PROVIDER", p.id)));
+  // Search-index sync per relisted row (bounded ≤200): unsuspend re-pushes the
+  // document. Best-effort (RFC §4.2).
+  for (const p of eligible) void syncProviderIndex(p.id);
+  return c.json({ ok: true, count, skipped });
 });
 
 const verificationActionSchema = z.object({
@@ -287,6 +386,15 @@ adminRoutes.patch("/api/admin/verifications/:id", async (c) => {
     return c.json({ error: "Invalid action" }, 400);
   }
 
+  // Only a still-PENDING submission can be decided (#647), matching the bulk
+  // variant's `verificationStatus: "PENDING"` where-clause. Without this a
+  // stale client (or a double-click racing another admin) could re-flip an
+  // already-actioned row — re-verifying a since-rejected provider, or wiping a
+  // verified badge back to REJECTED — and re-fire the owner notification.
+  if (provider.verificationStatus !== "PENDING") {
+    return c.json({ error: "This verification is no longer pending" }, 409);
+  }
+
   const approved = parsed.data.action === "approve";
   await db.provider.update({
     where: { id },
@@ -297,6 +405,23 @@ adminRoutes.patch("/api/admin/verifications/:id", async (c) => {
     },
   });
   await logAudit(c, approved ? "verify" : "reject-verification", "PROVIDER", id);
+
+  // verificationStatus is indexed (verified boost in the recommended sort) —
+  // best-effort push (search RFC §4.2).
+  void syncProviderIndex(id);
+
+  // Tell the owner their verification was decided (#393): in-app + email via
+  // the notification event — best-effort, never fails the moderation action.
+  // The rejection reason is truncated to the event payload's 500-char bound.
+  await emitNotification({
+    type: approved ? "VERIFICATION_APPROVED" : "VERIFICATION_REJECTED",
+    recipients: [{ userId: provider.userId, email: provider.contactEmail }],
+    payload: approved
+      ? {}
+      : { reason: parsed.data.reason?.slice(0, 500) || undefined },
+    link: "/dashboard",
+    origin: getOrigin(c),
+  });
 
   return c.json({ status: approved ? "VERIFIED" : "REJECTED" });
 });
@@ -324,13 +449,42 @@ adminRoutes.patch("/api/admin/verifications", async (c) => {
 
   const { ids, action, reason } = parsed.data;
   const approved = action === "approve";
+  const where = { id: { in: ids }, verificationStatus: "PENDING" };
+  // Only the still-PENDING ids are transitioned (and reported in `count`), so
+  // capture exactly those before the write to audit the real targets (and to
+  // address the owner notifications below).
+  const affected = await db.provider.findMany({
+    where,
+    select: { id: true, userId: true, contactEmail: true },
+  });
   const { count } = await db.provider.updateMany({
-    where: { id: { in: ids }, verificationStatus: "PENDING" },
+    where,
     data: {
       verificationStatus: approved ? "VERIFIED" : "REJECTED",
       verifiedAt: approved ? new Date() : null,
       rejectionReason: approved ? null : reason || null,
     },
+  });
+
+  // Audit trail (#227): one entry per provider actually transitioned out of
+  // PENDING, mirroring the single-verification PATCH above.
+  const auditAction = approved ? "verify" : "reject-verification";
+  await Promise.all(
+    affected.map((p) => logAudit(c, auditAction, "PROVIDER", p.id))
+  );
+
+  // verificationStatus is indexed — best-effort push per transitioned row
+  // (bounded ≤200, search RFC §4.2).
+  for (const p of affected) void syncProviderIndex(p.id);
+
+  // Tell every affected owner (#393) — one batched event (≤200 recipients,
+  // the schema's own cap), same best-effort contract as the single PATCH.
+  await emitNotification({
+    type: approved ? "VERIFICATION_APPROVED" : "VERIFICATION_REJECTED",
+    recipients: affected.map((p) => ({ userId: p.userId, email: p.contactEmail })),
+    payload: approved ? {} : { reason: reason?.slice(0, 500) || undefined },
+    link: "/dashboard",
+    origin: getOrigin(c),
   });
 
   return c.json({ status: approved ? "VERIFIED" : "REJECTED", count });
@@ -363,30 +517,81 @@ adminRoutes.patch("/api/admin/photos/:id/restore", async (c) => {
     return c.json({ error: "Forbidden" }, 403);
   }
   const id = c.req.param("id");
-  await db.workPhoto.updateMany({
+  // updateMany returns count 0 when the id doesn't exist; report that as a
+  // 404 rather than a misleading 200, matching the report PATCH above and the
+  // findUnique 404 on the photo delete/verification routes.
+  const { count } = await db.workPhoto.updateMany({
     where: { id },
     data: { deletedAt: null },
   });
+  if (count === 0) {
+    return c.json({ error: "Photo not found" }, 404);
+  }
   await logAudit(c, "restore-photo", "WORK_PHOTO", id);
   return c.json({ ok: true });
 });
 
+// Takedown of a reported inquiry thread message (#376). Same soft-delete /
+// restore pair as work photos: the removal is reversible and the row survives
+// so the reports queue can still show what was removed. Destructive → full
+// ADMIN only, audit-logged.
+adminRoutes.delete("/api/admin/messages/:id", async (c) => {
+  if (!isFullAdmin(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+  const id = c.req.param("id");
+  const { count } = await db.inquiryMessage.updateMany({
+    where: { id },
+    data: { deletedAt: new Date() },
+  });
+  if (count === 0) {
+    return c.json({ error: "Message not found" }, 404);
+  }
+  await logAudit(c, "delete-message", "MESSAGE", id);
+  return c.json({ ok: true });
+});
+
+adminRoutes.patch("/api/admin/messages/:id/restore", async (c) => {
+  if (!isFullAdmin(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+  const id = c.req.param("id");
+  const { count } = await db.inquiryMessage.updateMany({
+    where: { id },
+    data: { deletedAt: null },
+  });
+  if (count === 0) {
+    return c.json({ error: "Message not found" }, 404);
+  }
+  await logAudit(c, "restore-message", "MESSAGE", id);
+  return c.json({ ok: true });
+});
+
 // ---------------------------------------------------------------------------
-// Abuse-report moderation queue (#50): reports on providers and work photos
-// (review reports live at review-service under /api/admin/review-reports).
+// Abuse-report moderation queue (#50): reports on providers, work photos,
+// inquiry threads (content-filter flags, #375) and inquiry thread messages
+// (user reports, #376) — review reports live at review-service under
+// /api/admin/review-reports, job reports at job-service under
+// /api/admin/job-reports.
 // ---------------------------------------------------------------------------
 
 const REPORT_STATUSES = ["OPEN", "RESOLVED", "DISMISSED"] as const;
-// This queue only ever holds PROVIDER/WORK_PHOTO reports — REVIEW reports
-// live at review-service. A REVIEW filter is valid overall (the admin
-// frontend offers it as one dropdown across both services) but never
-// matches here, so it short-circuits to an empty list below.
-const LOCAL_TARGET_TYPES = ["PROVIDER", "WORK_PHOTO"] as const;
+// This queue only ever holds PROVIDER/WORK_PHOTO/INQUIRY/MESSAGE reports —
+// REVIEW reports live at review-service, JOB/JOB_RESPONSE at job-service.
+// Filters for a type another service owns are valid overall (the admin
+// frontend offers one dropdown across all sources) but never match here, so
+// they short-circuit to an empty list below. INQUIRY reports (#375) are only
+// ever SYSTEM-created by the write-time content filter — there is no public
+// report-an-inquiry flow; MESSAGE reports (#376) are user reports on
+// individual thread messages.
+const LOCAL_TARGET_TYPES = ["PROVIDER", "WORK_PHOTO", "INQUIRY", "MESSAGE"] as const;
 
 // OPEN reports first (newest first), then closed ones (newest first). Every
 // report carries a hydrated target summary from local tables — provider name
-// for PROVIDER targets, photo url + owner for WORK_PHOTO targets — and
-// `target` is null when the target has since been hard-deleted.
+// for PROVIDER targets, photo url + owner for WORK_PHOTO targets, thread
+// context for INQUIRY targets, message body + thread owner for MESSAGE
+// targets — and `target` is null when the target has since been
+// hard-deleted.
 //
 // Filtering (#223): optional `status` and `targetType` query params, passed
 // straight through from the admin frontend's filter dropdowns. Unrecognized
@@ -476,7 +681,13 @@ adminRoutes.get("/api/admin/reports", async (c) => {
   const photoIds = rows
     .filter((r) => r.targetType === "WORK_PHOTO")
     .map((r) => r.targetId);
-  const [providers, photos] = await Promise.all([
+  const inquiryIds = rows
+    .filter((r) => r.targetType === "INQUIRY")
+    .map((r) => r.targetId);
+  const messageIds = rows
+    .filter((r) => r.targetType === "MESSAGE")
+    .map((r) => r.targetId);
+  const [providers, photos, inquiries, messages] = await Promise.all([
     providerIds.length
       ? db.provider.findMany({
           where: { id: { in: providerIds } },
@@ -496,9 +707,40 @@ adminRoutes.get("/api/admin/reports", async (c) => {
           },
         })
       : [],
+    inquiryIds.length
+      ? db.inquiry.findMany({
+          where: { id: { in: inquiryIds } },
+          select: {
+            id: true,
+            name: true,
+            message: true,
+            providerId: true,
+            provider: { select: { contactName: true } },
+          },
+        })
+      : [],
+    messageIds.length
+      ? db.inquiryMessage.findMany({
+          where: { id: { in: messageIds } },
+          select: {
+            id: true,
+            sender: true,
+            body: true,
+            deletedAt: true,
+            inquiry: {
+              select: {
+                providerId: true,
+                provider: { select: { contactName: true } },
+              },
+            },
+          },
+        })
+      : [],
   ]);
   const providerById = new Map(providers.map((p) => [p.id, p]));
   const photoById = new Map(photos.map((p) => [p.id, p]));
+  const inquiryById = new Map(inquiries.map((i) => [i.id, i]));
+  const messageById = new Map(messages.map((m) => [m.id, m]));
 
   const reports = rows.map((r) => {
     let target = null;
@@ -509,6 +751,34 @@ adminRoutes.get("/api/admin/reports", async (c) => {
           providerId: p.id,
           providerName: p.contactName,
           suspended: p.suspended,
+        };
+      }
+    } else if (r.targetType === "INQUIRY") {
+      // Thread context for a content-filter flag (#375): the customer name,
+      // the original inquiry message and the provider whose thread it is. The
+      // flagged text itself is in the report's `details` (a thread can hold
+      // many messages; details pins the offending one).
+      const i = inquiryById.get(r.targetId);
+      if (i) {
+        target = {
+          providerId: i.providerId,
+          providerName: i.provider.contactName,
+          customerName: i.name,
+          message: i.message,
+        };
+      }
+    } else if (r.targetType === "MESSAGE") {
+      // A user-reported thread message (#376): the message itself plus the
+      // provider whose thread it is, and whether an admin already removed it.
+      const m = messageById.get(r.targetId);
+      if (m) {
+        target = {
+          messageId: m.id,
+          providerId: m.inquiry.providerId,
+          providerName: m.inquiry.provider.contactName,
+          sender: m.sender,
+          body: m.body,
+          removed: m.deletedAt !== null,
         };
       }
     } else {
@@ -543,6 +813,12 @@ adminRoutes.patch("/api/admin/reports/:id", async (c) => {
   }
 
   const id = c.req.param("id");
+  // Loaded before the write so the resolve notification below can address the
+  // reporter (updateMany returns only a count).
+  const report = await db.report.findUnique({
+    where: { id },
+    select: { reporterId: true, targetType: true },
+  });
   // Audit trail (#223): stamp who closed the report and when.
   const { count } = await db.report.updateMany({
     where: { id },
@@ -561,6 +837,16 @@ adminRoutes.patch("/api/admin/reports/:id", async (c) => {
     "REPORT",
     id
   );
+  // Tell the reporter their report was actioned — in-app only in v1 (no email
+  // template); anonymous and SYSTEM reports carry no reporterId and skip.
+  if (report?.reporterId) {
+    await emitNotification({
+      type: "REPORT_RESOLVED",
+      recipients: [{ userId: report.reporterId }],
+      payload: { targetType: report.targetType, status: parsed.data.status },
+      link: "/",
+    });
+  }
   return c.json({ ok: true });
 });
 
@@ -584,14 +870,44 @@ adminRoutes.patch("/api/admin/reports", async (c) => {
 
   // Audit trail (#223): stamp who closed the reports and when, matching the
   // single-report PATCH above so bulk-closed reports carry the same metadata.
+  const where = { id: { in: parsed.data.ids } };
+  // Capture the ids actually matched before the write so the audit log records
+  // real targets (unknown ids in the request list are skipped) and the resolve
+  // notifications below can address the reporters.
+  const affected = await db.report.findMany({
+    where,
+    select: { id: true, reporterId: true, targetType: true },
+  });
   const { count } = await db.report.updateMany({
-    where: { id: { in: parsed.data.ids } },
+    where,
     data: {
       status: parsed.data.status,
       resolvedBy: getAuth(c)?.userId ?? null,
       resolvedAt: new Date(),
     },
   });
+  // Audit trail (#227): one entry per affected report, mirroring the
+  // single-report PATCH above so bulk actions leave the same trail.
+  const action =
+    parsed.data.status === "RESOLVED" ? "resolve-report" : "dismiss-report";
+  await Promise.all(affected.map((r) => logAudit(c, action, "REPORT", r.id)));
+  // Tell the reporters (in-app only in v1): the payload carries the target
+  // type, so batch one event per type; anonymous/SYSTEM reports skip.
+  const reportersByTargetType = new Map<string, string[]>();
+  for (const r of affected) {
+    if (!r.reporterId) continue;
+    const list = reportersByTargetType.get(r.targetType) ?? [];
+    list.push(r.reporterId);
+    reportersByTargetType.set(r.targetType, list);
+  }
+  for (const [targetType, userIds] of reportersByTargetType) {
+    await emitNotification({
+      type: "REPORT_RESOLVED",
+      recipients: userIds.map((userId) => ({ userId })),
+      payload: { targetType, status: parsed.data.status },
+      link: "/",
+    });
+  }
   return c.json({ ok: true, count });
 });
 
@@ -610,86 +926,112 @@ adminRoutes.patch("/api/admin/reports", async (c) => {
 // ---------------------------------------------------------------------------
 const FLAG_QUALITY_BELOW = 40;
 const FLAG_OPEN_USER_REPORTS_AT = 3;
+// Page size for the roster sweep (#639): the run walks providers in id-ordered
+// pages rather than loading the whole non-suspended set into memory at once.
+const FLAG_PAGE_SIZE = 500;
 
 adminRoutes.post("/api/admin/flagging/run", async (c) => {
   if (!isFullAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
 
-  const providers = await db.provider.findMany({
-    where: { suspended: false },
-    select: { id: true },
-  });
-  if (providers.length === 0) {
-    return c.json({ flagged: 0 });
-  }
+  // Cursor-paginated sweep (#639): each page is scored independently — its own
+  // grouped report counts + ratings fetch scoped to just that page's ids — and
+  // flagged in one createMany, so peak memory is bounded by FLAG_PAGE_SIZE
+  // instead of the roster size. The id cursor reuses the export walk's pattern.
+  let cursor: string | undefined;
+  let flaggedTotal = 0;
 
-  const providerIds = providers.map((p) => p.id);
-
-  // Open USER-report counts per provider, providers already carrying an OPEN
-  // SYSTEM flag (dedupe set), and rating/reviewCount — all as grouped/batched
-  // queries rather than one-per-provider.
-  const [userReportGroups, systemFlagGroups, ratings] = await Promise.all([
-    db.report.groupBy({
-      by: ["targetId"],
-      where: {
-        targetType: "PROVIDER",
-        targetId: { in: providerIds },
-        status: "OPEN",
-        source: "USER",
-      },
-      _count: { _all: true },
-    }),
-    db.report.groupBy({
-      by: ["targetId"],
-      where: {
-        targetType: "PROVIDER",
-        targetId: { in: providerIds },
-        status: "OPEN",
-        source: "SYSTEM",
-      },
-      _count: { _all: true },
-    }),
-    fetchRatings(providerIds),
-  ]);
-
-  const openUserReportsById = new Map(
-    userReportGroups.map((g) => [g.targetId, g._count._all])
-  );
-  const alreadyFlagged = new Set(systemFlagGroups.map((g) => g.targetId));
-
-  const toFlag = providers.filter((p) => {
-    if (alreadyFlagged.has(p.id)) return false;
-    const openUserReportCount = openUserReportsById.get(p.id) ?? 0;
-    const { qualityScore } = computeQualityScore({
-      rating: ratings[p.id]?.rating ?? 0,
-      reviewCount: ratings[p.id]?.count ?? 0,
-      openReportCount: openUserReportCount,
+  for (;;) {
+    const providers = await db.provider.findMany({
+      where: { suspended: false },
+      select: { id: true },
+      orderBy: { id: "asc" },
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      take: FLAG_PAGE_SIZE,
     });
-    return (
-      qualityScore < FLAG_QUALITY_BELOW ||
-      openUserReportCount >= FLAG_OPEN_USER_REPORTS_AT
-    );
-  });
+    if (providers.length === 0) break;
 
-  if (toFlag.length === 0) {
-    return c.json({ flagged: 0 });
+    const providerIds = providers.map((p) => p.id);
+
+    // Open USER-report counts per provider, providers already carrying an OPEN
+    // SYSTEM flag (dedupe set), and rating/reviewCount — all as grouped/batched
+    // queries scoped to this page rather than one-per-provider.
+    const [userReportGroups, systemFlagGroups, ratingsResult] = await Promise.all([
+      db.report.groupBy({
+        by: ["targetId"],
+        where: {
+          targetType: "PROVIDER",
+          targetId: { in: providerIds },
+          status: "OPEN",
+          source: "USER",
+        },
+        _count: { _all: true },
+      }),
+      db.report.groupBy({
+        by: ["targetId"],
+        where: {
+          targetType: "PROVIDER",
+          targetId: { in: providerIds },
+          status: "OPEN",
+          source: "SYSTEM",
+        },
+        _count: { _all: true },
+      }),
+      fetchRatingsResult(providerIds),
+    ]);
+
+    const openUserReportsById = new Map(
+      userReportGroups.map((g) => [g.targetId, g._count._all])
+    );
+    const alreadyFlagged = new Set(systemFlagGroups.map((g) => g.targetId));
+
+    // The quality-score signal is only trustworthy when ratings hydrated fully.
+    // On a review-service outage `fetchRatings` degrades to "no reviews" for every
+    // provider, which is indistinguishable from a genuine zero-review provider —
+    // acting on it would flag healthy providers with bogus SYSTEM reports (#366).
+    // So when the ratings fetch was incomplete, drop the quality trigger for this
+    // run and flag on report volume alone (which needs no peer).
+    const { ok: ratingsOk, ratings } = ratingsResult;
+
+    const toFlag = providers.filter((p) => {
+      if (alreadyFlagged.has(p.id)) return false;
+      const openUserReportCount = openUserReportsById.get(p.id) ?? 0;
+      if (openUserReportCount >= FLAG_OPEN_USER_REPORTS_AT) return true;
+      if (!ratingsOk) return false;
+      const { qualityScore } = computeQualityScore({
+        rating: ratings[p.id]?.rating ?? 0,
+        reviewCount: ratings[p.id]?.count ?? 0,
+        openReportCount: openUserReportCount,
+      });
+      return qualityScore < FLAG_QUALITY_BELOW;
+    });
+
+    if (toFlag.length > 0) {
+      await db.report.createMany({
+        data: toFlag.map((p) => ({
+          targetType: "PROVIDER",
+          targetId: p.id,
+          reporterId: null,
+          reason: "auto-flag: low quality score / high report volume",
+          status: "OPEN",
+          source: "SYSTEM",
+        })),
+      });
+      flaggedTotal += toFlag.length;
+    }
+
+    if (providers.length < FLAG_PAGE_SIZE) break;
+    cursor = providers[providers.length - 1]!.id;
   }
 
-  await db.report.createMany({
-    data: toFlag.map((p) => ({
-      targetType: "PROVIDER",
-      targetId: p.id,
-      reporterId: null,
-      reason: "auto-flag: low quality score / high report volume",
-      status: "OPEN",
-      source: "SYSTEM",
-    })),
-  });
+  // Only a run that actually flagged something leaves an audit entry (a no-op
+  // sweep is noise), matching the original single-shot behavior.
+  if (flaggedTotal > 0) {
+    await logAudit(c, "run-flagging", "PROVIDER", "batch", `flagged ${flaggedTotal}`);
+  }
 
-  await logAudit(c, "run-flagging", "PROVIDER", "batch", `flagged ${toFlag.length}`);
-
-  return c.json({ flagged: toFlag.length });
+  return c.json({ flagged: flaggedTotal });
 });
 
 // ---------------------------------------------------------------------------
@@ -766,14 +1108,17 @@ const categorySlug = z
   .string()
   .regex(/^[a-z0-9-]{2,40}$/, "Slug must be 2-40 lowercase letters, digits or dashes");
 
-// A stored image path — a relative /path only (never a scheme/host), so a
-// category can only point at our own media (/api/files/category/… or a seeded
-// /images/… asset), not an arbitrary external URL.
+// A stored image path — a relative /path under one of our own media roots, so
+// a category can only point at an uploaded cover (/api/files/category/… — see
+// storeImage → media-service) or a seeded /images/… asset, never an external
+// URL. The prefix is pinned because a bare `/^\/…/` also matches a
+// protocol-relative `//evil.com/x.jpg` (leading `//` → `//host`), which the
+// browser resolves against the current scheme and loads cross-origin (#519).
 const imagePath = z
   .string()
   .trim()
   .max(300)
-  .regex(/^\/[\w./-]*$/, "Image URL must be a relative path");
+  .regex(/^\/(?:api\/files|images)\/[\w./-]+$/, "Image URL must be a relative path");
 
 const categoryCreateSchema = z.object({
   slug: categorySlug,
@@ -919,6 +1264,12 @@ adminRoutes.get("/api/admin/audit-log", async (c) => {
   const from = c.req.query("from");
   const to = c.req.query("to");
 
+  // A date-only value (e.g. "2026-07-12") parses to midnight UTC. As a `gte`
+  // lower bound that is exactly what we want, but as an `lte` upper bound it
+  // would exclude every entry from the named day — so snap it to end-of-day
+  // UTC. A full ISO datetime is honored verbatim on both bounds.
+  const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
   const createdAt: { gte?: Date; lte?: Date } = {};
   if (from) {
     const d = new Date(from);
@@ -926,7 +1277,10 @@ adminRoutes.get("/api/admin/audit-log", async (c) => {
   }
   if (to) {
     const d = new Date(to);
-    if (!Number.isNaN(d.getTime())) createdAt.lte = d;
+    if (!Number.isNaN(d.getTime())) {
+      if (DATE_ONLY.test(to)) d.setUTCHours(23, 59, 59, 999);
+      createdAt.lte = d;
+    }
   }
 
   const entries = await db.adminAuditLog.findMany({

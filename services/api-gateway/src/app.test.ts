@@ -166,6 +166,8 @@ describe("rate limiting", () => {
     ["/api/providers/prov-1/report", "203.0.113.91"],
     ["/api/photos/ph-1/report", "203.0.113.92"],
     ["/api/reviews/rev-1/report", "203.0.113.93"],
+    ["/api/jobs/job-1/report", "203.0.113.95"],
+    ["/api/messages/msg-1/report", "203.0.113.96"],
   ])("rate-limits %s with the report (review) budget", async (path, ip) => {
     const headers = { "sec-fetch-site": "same-origin", "x-forwarded-for": ip };
     // The review budget allows 10 submissions per window.
@@ -287,17 +289,24 @@ describe("identity headers", () => {
     expect(fwd.get("x-user-name")).toBeNull();
   });
 
-  it("derives x-locale from the lang cookie and x-origin from forwarded headers", async () => {
-    await app.request("/api/providers", {
-      headers: {
-        cookie: "lang=si",
-        "x-forwarded-proto": "https",
-        "x-forwarded-host": "baas.lk",
-      },
-    });
-    const fwd = upstreamRequests[0].headers;
-    expect(fwd.get("x-locale")).toBe("si");
-    expect(fwd.get("x-origin")).toBe("https://baas.lk");
+  it("derives x-locale from the lang cookie and (in dev) x-origin from forwarded headers", async () => {
+    const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
+    process.env.NODE_ENV = "development";
+    try {
+      await app.request("/api/providers", {
+        headers: {
+          cookie: "lang=si",
+          "x-forwarded-proto": "https",
+          "x-forwarded-host": "baas.lk",
+        },
+      });
+      const fwd = upstreamRequests[0].headers;
+      expect(fwd.get("x-locale")).toBe("si");
+      expect(fwd.get("x-origin")).toBe("https://baas.lk");
+    } finally {
+      if (ORIGINAL_NODE_ENV === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = ORIGINAL_NODE_ENV;
+    }
   });
 });
 
@@ -323,6 +332,41 @@ describe("admin impersonation (#234)", () => {
     expect(fwd.get("x-user-role")).toBe("CUSTOMER");
     expect(fwd.get("x-user-name")).toBe(encodeURIComponent("Target User"));
     expect(fwd.get("x-impersonated-by")).toBe("admin-1");
+  });
+
+  it("rejects the impersonation once the ADMIN's own session is revoked (#358)", async () => {
+    const impersonation = await signImpersonation({
+      userId: "target-1",
+      role: "CUSTOMER",
+      name: "Target User",
+      sv: 0,
+      impersonatedBy: "admin-1",
+      impersonatedBySv: 0,
+    });
+    // Target's version is still current (0); the admin was force-logged-out, so
+    // their version is now 1 — ahead of the token's impersonatedBySv (0).
+    const version = (v: number) =>
+      new Response(JSON.stringify({ v }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    upstreamResponse = () => {
+      const url = upstreamRequests.at(-1)!.url;
+      if (url.includes("/internal/users/admin-1/session-version")) return version(1);
+      if (url.includes("session-version")) return version(0);
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+    const res = await app.request("/api/auth/me", {
+      headers: { cookie: `impersonation_session=${impersonation}` },
+    });
+    expect(res.status).toBe(200);
+    // Impersonation not honored, and no sh_session to fall back to → no identity.
+    const fwd = upstreamRequests.at(-1)!.headers;
+    expect(fwd.get("x-impersonated-by")).toBeNull();
+    expect(fwd.get("x-user-id")).toBeNull();
   });
 
   it("prefers a valid impersonation cookie over sh_session, leaving the admin's own session untouched", async () => {
@@ -446,6 +490,30 @@ describe("origin poisoning protection", () => {
       );
     } finally {
       delete process.env.WEB_ORIGIN;
+    }
+  });
+
+  it("ignores a spoofed x-forwarded-host outside development when WEB_ORIGIN is unset", async () => {
+    // With no WEB_ORIGIN configured, the client-controllable forwarding headers
+    // must not seed x-origin in prod/staging/test — that would poison the
+    // absolute links in password-reset / verification emails. Only the safe
+    // localhost default is forwarded; the header fallback is dev-only.
+    const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
+    delete process.env.WEB_ORIGIN;
+    process.env.NODE_ENV = "production";
+    try {
+      await app.request("/api/providers", {
+        headers: {
+          "x-forwarded-proto": "https",
+          "x-forwarded-host": "evil.example",
+        },
+      });
+      expect(upstreamRequests.at(-1)!.headers.get("x-origin")).toBe(
+        "http://localhost:3000"
+      );
+    } finally {
+      if (ORIGINAL_NODE_ENV === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = ORIGINAL_NODE_ENV;
     }
   });
 });

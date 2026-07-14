@@ -5,9 +5,10 @@
 #   ./scripts/backup-dbs.sh                 # dumps to ./backups/<UTC timestamp>/
 #   BACKUP_DIR=/mnt/backups RETENTION=30 ./scripts/backup-dbs.sh
 #
-# Retention prunes to the newest $RETENTION snapshot directories. Ship the
-# snapshot directory offsite (rclone/aws s3 sync) once an object-storage
-# bucket exists — see docs/BACKUPS.md.
+# Retention prunes to the newest $RETENTION snapshot directories locally and
+# $REMOTE_RETENTION offsite. When the four BACKUP_R2_* vars are set (#389),
+# each snapshot is shipped to Cloudflare R2 via a dockerized rclone — see
+# docs/BACKUPS.md for the nightly cron + .backup.env setup.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -21,11 +22,18 @@ COMPOSE=(docker compose -f "$COMPOSE_FILE")
 
 BACKUP_DIR="${BACKUP_DIR:-./backups}"
 RETENTION="${RETENTION:-14}"
-DATABASES=(identity_db provider_db review_db job_db)
+# search_db is deliberately EXCLUDED: it is a derived, rebuildable search
+# index (search & discovery RFC) — after any restore, repopulate it with
+# search-service's POST /internal/search/reindex instead (docs/BACKUPS.md).
+DATABASES=(identity_db provider_db review_db job_db notification_db trust_safety_db)
 
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 DEST="$BACKUP_DIR/$STAMP"
 mkdir -p "$DEST"
+
+# Count is derived from the array above so it can never drift out of sync with
+# the actual set (currently 6; search_db excluded by design — see above).
+echo "==> Backing up ${#DATABASES[@]} databases to $DEST (search_db excluded)"
 
 for db in "${DATABASES[@]}"; do
   echo "==> Dumping $db"
@@ -36,6 +44,36 @@ for db in "${DATABASES[@]}"; do
     exit 1
   fi
 done
+
+# Offsite copy (#389): ship the snapshot to R2 through a dockerized rclone (the
+# host needs no extra tooling) and prune remote snapshots beyond
+# $REMOTE_RETENTION. Use a DEDICATED backups bucket + API token, not the
+# media-service R2_* credentials — least privilege (docs/BACKUPS.md).
+REMOTE_RETENTION="${REMOTE_RETENTION:-30}"
+if [ -n "${BACKUP_R2_ENDPOINT:-}" ] && [ -n "${BACKUP_R2_BUCKET:-}" ] &&
+   [ -n "${BACKUP_R2_ACCESS_KEY_ID:-}" ] && [ -n "${BACKUP_R2_SECRET_ACCESS_KEY:-}" ]; then
+  rclone_r2() {
+    docker run --rm -v "$(cd "$DEST" && pwd)":/snapshot:ro \
+      -e RCLONE_CONFIG_R2_TYPE=s3 \
+      -e RCLONE_CONFIG_R2_PROVIDER=Cloudflare \
+      -e RCLONE_CONFIG_R2_ENDPOINT="$BACKUP_R2_ENDPOINT" \
+      -e RCLONE_CONFIG_R2_ACCESS_KEY_ID="$BACKUP_R2_ACCESS_KEY_ID" \
+      -e RCLONE_CONFIG_R2_SECRET_ACCESS_KEY="$BACKUP_R2_SECRET_ACCESS_KEY" \
+      rclone/rclone:1 "$@"
+  }
+  echo "==> Uploading $STAMP to R2 bucket $BACKUP_R2_BUCKET"
+  rclone_r2 copy /snapshot "R2:$BACKUP_R2_BUCKET/$STAMP"
+  # Same timestamp-only match as the local prune below, so nothing else kept in
+  # the bucket is ever counted or deleted.
+  rclone_r2 lsf "R2:$BACKUP_R2_BUCKET" --dirs-only |
+    { grep -E '^[0-9]{8}T[0-9]{6}Z/$' || true; } | sort -r |
+    tail -n "+$((REMOTE_RETENTION + 1))" | while read -r old; do
+      echo "==> Pruning remote ${old%/}"
+      rclone_r2 purge "R2:$BACKUP_R2_BUCKET/${old%/}"
+    done
+else
+  echo "WARN: BACKUP_R2_* not set — snapshot NOT copied offsite (docs/BACKUPS.md)." >&2
+fi
 
 # Prune old snapshots beyond the retention count (newest first survive). Match
 # ONLY our timestamp dirs (YYYYMMDDTHHMMSSZ) so a stray subdirectory in

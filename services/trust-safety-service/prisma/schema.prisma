@@ -1,0 +1,84 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Unified abuse-report store (trust & safety extraction RFC,
+// docs/rfcs/trust-safety-service.md — refs #375/#376). One model for ALL
+// seven target types that were previously split field-for-field identically
+// across provider-, review- and job-service. targetId/reporterId reference
+// rows owned by other services; no FK across service boundaries — a report
+// must survive its target being deleted so admins can still see what
+// happened. Target existence/visibility is checked over S2S at write time.
+model Report {
+  id           String    @id @default(cuid()) // preserved verbatim on backfilled rows (scripts/migrate-trust-safety-backfill.sh); cuid() for new ones
+  // PROVIDER | WORK_PHOTO | INQUIRY | MESSAGE | REVIEW | JOB | JOB_RESPONSE
+  targetType   String
+  targetId     String
+  // "provider" | "review" | "job" — derived from targetType, denormalized so
+  // queue hydration and the takedown action can fan out per owning service
+  // without re-deriving the mapping per row.
+  ownerService String
+  // References a User owned by identity-service (plain string, nullable —
+  // anonymous visitors can report).
+  reporterId   String?
+  // "spam" | "scam" | "offensive" | "fake" | "other" (zod-validated), or the
+  // "auto-flag: …" reasons stamped on SYSTEM rows.
+  reason       String
+  details      String?
+  // "OPEN" | "RESOLVED" | "DISMISSED"
+  status       String    @default("OPEN")
+  // "USER" | "SYSTEM": USER reports come from the public report flow; SYSTEM
+  // reports are auto-created by the content filter (#375) or the provider
+  // threshold flagging (#232).
+  source       String    @default("USER")
+  createdAt    DateTime  @default(now())
+  // Last-transition timestamp (#370): auto-stamped on every write. Also the
+  // upsert guard for the backfill/delta passes (RFC §4.2).
+  updatedAt    DateTime  @updatedAt
+  // Audit trail (#223): admin userId + timestamp stamped when a report
+  // transitions to RESOLVED or DISMISSED. Both null while OPEN.
+  resolvedBy   String?
+  resolvedAt   DateTime?
+
+  // Admin queue reads by status; duplicate-protection looks up by target.
+  @@index([status])
+  @@index([targetType, targetId])
+  // Report queue orders newest-first (#369).
+  @@index([createdAt])
+  // #651: a PARTIAL unique index `Report_open_reporter_key` on
+  // ("targetType","targetId","reporterId") WHERE status='OPEN' AND
+  // reporterId IS NOT NULL enforces one OPEN report per (target, reporter).
+  // Prisma's DSL can't express a filtered unique index, so it lives only in the
+  // hand-written migration (20260714140000_report_open_dedup); the fileReport
+  // handler catches the P2002 as idempotent success.
+}
+
+// Unified moderation audit trail (#227): one row per admin moderation action,
+// merged from the three per-service logs. identity-service's separate
+// AdminAuditLog (user-management/self-service records) stays put — different
+// semantics, out of scope (RFC §2). adminId references a User owned by
+// identity-service (plain string, no FK — same convention as
+// Report.reporterId).
+model AdminAuditLog {
+  id         String   @id @default(cuid()) // preserved verbatim on backfilled rows; cuid() for new ones
+  adminId    String
+  action     String
+  targetType String
+  targetId   String
+  reason     String?
+  // Originating service ("provider" | "review" | "job" for rows ingested via
+  // POST /internal/audit or backfilled; "trust-safety" for actions taken
+  // here) — replaces the admin frontend's client-side source tag.
+  service    String
+  createdAt  DateTime @default(now())
+
+  // The read endpoint filters by any combination of admin/action/date range,
+  // and always orders newest-first.
+  @@index([adminId])
+  @@index([action])
+  @@index([createdAt])
+}

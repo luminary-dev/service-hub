@@ -1,19 +1,55 @@
 // Internal S2S route tests (#403 self-service downgrade). The deactivate route
-// hides a provider's own profile by userId; the create path reactivates a
-// self-deactivated profile on re-upgrade. Prisma is mocked; internal routes
-// require the shared secret.
+// hides a provider's own profile by userId; the dedicated reactivate route
+// clears it. The create path is idempotent on a userId conflict but must never
+// touch `suspended` (so it can't lift an admin suspension). Prisma is mocked;
+// internal routes require the shared secret.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Prisma } from "@prisma/client";
 
-const { dbMock } = vi.hoisted(() => ({
+const { dbMock, storageMock } = vi.hoisted(() => ({
   dbMock: {
-    provider: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
+    provider: {
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn(),
+      delete: vi.fn(),
+    },
+    workPhoto: { findMany: vi.fn() },
+    verificationDocument: { findMany: vi.fn() },
+    category: { findMany: vi.fn() },
+    inquiry: { deleteMany: vi.fn() },
+    // Content filter (#375) on the registration create path.
+    report: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+  },
+  storageMock: {
+    removeStoredFile: vi.fn().mockResolvedValue(undefined),
+    sweepMedia: vi.fn().mockResolvedValue({ removed: 0, kept: 0 }),
   },
 }));
 
 vi.mock("../db", () => ({ db: dbMock }));
+// Search-index pushes (search RFC) are fired (not awaited) from these routes.
+vi.mock("../lib/search-index", async (importOriginal) => ({
+  // buildIndexDocument stays real — the export endpoint tests below pin the
+  // document shape; only the network-touching sync fns are stubbed.
+  ...(await importOriginal<typeof import("../lib/search-index")>()),
+  syncProviderIndex: vi.fn(() => Promise.resolve()),
+  syncProviderIndexByUser: vi.fn(() => Promise.resolve()),
+  deleteProviderIndex: vi.fn(() => Promise.resolve()),
+  // Erase path awaits the bounded-retry variant (#640) — stub it so the test
+  // never touches the network.
+  deleteProviderIndexWithRetry: vi.fn(() => Promise.resolve()),
+}));
+vi.mock("../lib/storage", () => storageMock);
+// Saved-search alert fan-out (#516) — fired (not awaited) from the create path.
+vi.mock("../lib/saved-search-alerts", () => ({
+  notifySavedSearchMatches: vi.fn(() => Promise.resolve()),
+}));
 
 import { app } from "../app";
+import { notifySavedSearchMatches } from "../lib/saved-search-alerts";
 
 const SECRET = "dev-internal-secret";
 
@@ -23,6 +59,10 @@ function post(path: string, body?: unknown) {
     headers: { "content-type": "application/json", "x-internal-secret": SECRET },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
+}
+
+function get(path: string) {
+  return app.request(path, { headers: { "x-internal-secret": SECRET } });
 }
 
 beforeEach(() => {
@@ -54,7 +94,11 @@ describe("POST /internal/providers/by-user/:userId/deactivate", () => {
 
 describe("POST /internal/providers/by-user/:userId/reactivate", () => {
   it("clears suspended on a self-deactivated profile (re-upgrade)", async () => {
-    dbMock.provider.findUnique.mockResolvedValue({ id: "prov1", suspended: true });
+    dbMock.provider.findUnique.mockResolvedValue({
+      id: "prov1",
+      suspended: true,
+      adminSuspended: false,
+    });
     dbMock.provider.update.mockResolvedValue({ id: "prov1", suspended: false });
 
     const res = await post("/internal/providers/by-user/owner-1/reactivate");
@@ -67,9 +111,27 @@ describe("POST /internal/providers/by-user/:userId/reactivate", () => {
   });
 
   it("is a no-op when already active", async () => {
-    dbMock.provider.findUnique.mockResolvedValue({ id: "prov1", suspended: false });
+    dbMock.provider.findUnique.mockResolvedValue({
+      id: "prov1",
+      suspended: false,
+      adminSuspended: false,
+    });
     const res = await post("/internal/providers/by-user/owner-1/reactivate");
     expect(res.status).toBe(200);
+    expect(dbMock.provider.update).not.toHaveBeenCalled();
+  });
+
+  // #550: leave-provider → complete-provider must not lift an ADMIN
+  // suspension — the reactivate path refuses it outright, with no write.
+  it("refuses an ADMIN suspension with 409 and no write", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({
+      id: "prov1",
+      suspended: true,
+      adminSuspended: true,
+    });
+    const res = await post("/internal/providers/by-user/owner-1/reactivate");
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "Suspended by admin" });
     expect(dbMock.provider.update).not.toHaveBeenCalled();
   });
 });
@@ -89,23 +151,622 @@ describe("POST /internal/providers re-upgrade", () => {
     services: [{ title: "Fix taps", price: 1000, priceType: "FIXED" }],
   };
 
-  it("reactivates a previously self-deactivated profile", async () => {
-    // create() hits the unique-userId constraint (profile already exists).
+  it("persists the optional Sinhala headline/bio when supplied (#515)", async () => {
+    dbMock.provider.create.mockResolvedValue({ id: "prov9" });
+    const res = await post("/internal/providers", {
+      ...body,
+      headlineSi: "විශ්වාසවන්ත ජලනළ කාර්මිකයා",
+      bioSi: "අවුරුදු දහයකට වැඩි පළපුරුද්දක් සහිත ජලනළ සේවා.",
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          headlineSi: "විශ්වාසවන්ත ජලනළ කාර්මිකයා",
+          bioSi: "අවුරුදු දහයකට වැඩි පළපුරුද්දක් සහිත ජලනළ සේවා.",
+        }),
+      })
+    );
+  });
+
+  it("rejects a non-integer service price on the S2S create path (#371)", async () => {
+    const res = await post("/internal/providers", {
+      ...body,
+      services: [{ title: "Fix taps", price: 1000.5, priceType: "FIXED" }],
+    });
+    expect(res.status).toBe(400);
+    expect(dbMock.provider.create).not.toHaveBeenCalled();
+  });
+
+  it("stores null for absent Sinhala variants (#515)", async () => {
+    dbMock.provider.create.mockResolvedValue({ id: "prov10" });
+    const res = await post("/internal/providers", body);
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ headlineSi: null, bioSi: null }),
+      })
+    );
+  });
+
+  it("defaults the served set to [district] when serviceDistricts is omitted (#502)", async () => {
+    dbMock.provider.create.mockResolvedValue({ id: "prov11" });
+    const res = await post("/internal/providers", body);
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ serviceDistricts: ["Colombo"] }),
+      })
+    );
+  });
+
+  it("dedupes the served set and pins the primary district first (#502)", async () => {
+    dbMock.provider.create.mockResolvedValue({ id: "prov12" });
+    const res = await post("/internal/providers", {
+      ...body,
+      serviceDistricts: ["Gampaha", "Colombo", "Gampaha", "Kalutara"],
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          serviceDistricts: ["Colombo", "Gampaha", "Kalutara"],
+        }),
+      })
+    );
+  });
+
+  it("400s when the served set exceeds the cap or holds an unknown district (#502)", async () => {
+    const over = await post("/internal/providers", {
+      ...body,
+      // 5 extras + the primary = 6 > MAX_SERVICE_DISTRICTS.
+      serviceDistricts: ["Gampaha", "Kalutara", "Kandy", "Galle", "Matara"],
+    });
+    expect(over.status).toBe(400);
+    const unknown = await post("/internal/providers", {
+      ...body,
+      serviceDistricts: ["Atlantis"],
+    });
+    expect(unknown.status).toBe(400);
+    expect(dbMock.provider.create).not.toHaveBeenCalled();
+  });
+
+  it("returns the existing id without lifting a suspension (invariant guard)", async () => {
+    // create() hits the unique-userId constraint (profile already exists) and
+    // that profile is suspended. Re-registration must be idempotent but must
+    // NOT clear `suspended` — the flag can't tell a self-downgrade from an
+    // ADMIN suspension, so un-suspension is left to the dedicated /reactivate
+    // endpoint. Guards against re-registration silently lifting an admin ban.
     dbMock.provider.create.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError("unique", {
         code: "P2002",
         clientVersion: "7",
       })
     );
-    dbMock.provider.findUnique.mockResolvedValue({ id: "prov1", suspended: true });
-    dbMock.provider.update.mockResolvedValue({ id: "prov1", suspended: false });
+    dbMock.provider.findUnique.mockResolvedValue({ id: "prov1" });
 
     const res = await post("/internal/providers", body);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ id: "prov1" });
-    expect(dbMock.provider.update).toHaveBeenCalledWith({
-      where: { id: "prov1" },
-      data: { suspended: false },
+    // No un-suspension on the create path — the profile stays as it was.
+    expect(dbMock.provider.update).not.toHaveBeenCalled();
+  });
+
+  // Write-time content filter (#375): registration text is checked like a
+  // profile edit — a hit flags the new provider (SYSTEM report), the create
+  // itself always succeeds.
+  it("auto-files a SYSTEM PROVIDER report when registration text hits the denylist", async () => {
+    dbMock.provider.create.mockResolvedValue({ id: "prov9" });
+    dbMock.report.findFirst.mockResolvedValue(null);
+    const res = await post("/internal/providers", {
+      ...body,
+      bio: "Best in town, the rest are wesi scammers frankly.",
     });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: "prov9" });
+    expect(dbMock.report.create).toHaveBeenCalledWith({
+      data: {
+        targetType: "PROVIDER",
+        targetId: "prov9",
+        reporterId: null,
+        reason: "auto-flag: content filter",
+        details: expect.stringContaining('matched "wesi" in bio'),
+        source: "SYSTEM",
+      },
+    });
+  });
+
+  it("clean registration text never touches the reports table", async () => {
+    dbMock.provider.create.mockResolvedValue({ id: "prov10" });
+    const res = await post("/internal/providers", body);
+    expect(res.status).toBe(200);
+    expect(dbMock.report.findFirst).not.toHaveBeenCalled();
+    expect(dbMock.report.create).not.toHaveBeenCalled();
+  });
+
+  // Saved-search alerting (#516): a fresh publish fires the fan-out with the
+  // fields identity's candidate scoping + the email template need.
+  it("fires the saved-search alert fan-out on a fresh create", async () => {
+    dbMock.provider.create.mockResolvedValue({ id: "prov10" });
+    const res = await post("/internal/providers", body);
+    expect(res.status).toBe(200);
+    expect(notifySavedSearchMatches).toHaveBeenCalledWith(
+      {
+        id: "prov10",
+        userId: "owner-1",
+        contactName: "Ann",
+        category: "plumbing",
+        district: "Colombo",
+        serviceDistricts: ["Colombo"],
+      },
+      expect.any(String)
+    );
+  });
+
+  // Multi-district service areas (#502): the fan-out receives the full
+  // normalized served set (primary pinned first), so a saved search for any
+  // served district — not just the base one — can be alerted.
+  it("hands the full served set to the saved-search fan-out", async () => {
+    dbMock.provider.create.mockResolvedValue({ id: "prov11" });
+    const res = await post("/internal/providers", {
+      ...body,
+      serviceDistricts: ["Gampaha", "Kalutara"],
+    });
+    expect(res.status).toBe(200);
+    expect(notifySavedSearchMatches).toHaveBeenCalledWith(
+      expect.objectContaining({
+        district: "Colombo",
+        serviceDistricts: ["Colombo", "Gampaha", "Kalutara"],
+      }),
+      expect.any(String)
+    );
+  });
+
+  it("does not re-alert on the idempotent duplicate-create path", async () => {
+    dbMock.provider.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("unique", {
+        code: "P2002",
+        clientVersion: "7",
+      })
+    );
+    dbMock.provider.findUnique.mockResolvedValue({ id: "prov1" });
+
+    const res = await post("/internal/providers", body);
+    expect(res.status).toBe(200);
+    expect(notifySavedSearchMatches).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /internal/providers/contact (#553 contact sync)", () => {
+  it("mirrors only the provided fields onto the contact columns", async () => {
+    dbMock.provider.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await post("/internal/providers/contact", {
+      userId: "u1",
+      name: "New Name",
+      phone: "+94771234567",
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(dbMock.provider.updateMany).toHaveBeenCalledWith({
+      where: { userId: "u1" },
+      data: { contactName: "New Name", contactPhone: "+94771234567" },
+    });
+  });
+
+  it("updates the contact email alone (change-email confirm)", async () => {
+    dbMock.provider.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await post("/internal/providers/contact", {
+      userId: "u1",
+      email: "new@baas.lk",
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.updateMany).toHaveBeenCalledWith({
+      where: { userId: "u1" },
+      data: { contactEmail: "new@baas.lk" },
+    });
+  });
+
+  it("stores null when phone is cleared", async () => {
+    dbMock.provider.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await post("/internal/providers/contact", {
+      userId: "u1",
+      phone: null,
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.updateMany).toHaveBeenCalledWith({
+      where: { userId: "u1" },
+      data: { contactPhone: null },
+    });
+  });
+
+  it("no-ops (200) when no contact fields are provided", async () => {
+    const res = await post("/internal/providers/contact", { userId: "u1" });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("400s without a userId", async () => {
+    const res = await post("/internal/providers/contact", { name: "X" });
+    expect(res.status).toBe(400);
+    expect(dbMock.provider.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /internal/providers/matching (#501 lead-gen fan-out)", () => {
+  it("400s without category or district", async () => {
+    const res = await get("/internal/providers/matching?category=plumbing");
+    expect(res.status).toBe(400);
+    expect(dbMock.provider.findMany).not.toHaveBeenCalled();
+  });
+
+  it("returns matching providers' userId + contact email, scoped + not-suspended + capped", async () => {
+    dbMock.provider.findMany.mockResolvedValue([
+      { id: "p1", userId: "u1", contactName: "Jane", contactEmail: "jane@example.com" },
+      { id: "p2", userId: "u2", contactName: "Sam", contactEmail: "sam@example.com" },
+    ]);
+    const res = await get(
+      "/internal/providers/matching?category=plumbing&district=Colombo&excludeUserId=owner-1"
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      providers: [
+        { id: "p1", userId: "u1", contactName: "Jane", contactEmail: "jane@example.com" },
+        { id: "p2", userId: "u2", contactName: "Sam", contactEmail: "sam@example.com" },
+      ],
+    });
+    // Mirrors the board's scoping: category equality + served-set membership
+    // (#502), suspended excluded, poster excluded, capped. `userId` addresses
+    // the in-app half of the NEW_JOB_MATCH notification.
+    expect(dbMock.provider.findMany).toHaveBeenCalledWith({
+      where: {
+        category: "plumbing",
+        serviceDistricts: { has: "Colombo" },
+        suspended: false,
+        NOT: { userId: "owner-1" },
+      },
+      select: { id: true, userId: true, contactName: true, contactEmail: true },
+      take: 200,
+    });
+  });
+
+  it("dedupes providers that share a contact email", async () => {
+    dbMock.provider.findMany.mockResolvedValue([
+      { id: "p1", userId: "u1", contactName: "Jane", contactEmail: "shared@example.com" },
+      { id: "p2", userId: "u2", contactName: "Sam", contactEmail: "SHARED@example.com" },
+    ]);
+    const res = await get(
+      "/internal/providers/matching?category=plumbing&district=Colombo"
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.providers).toHaveLength(1);
+    expect(body.providers[0].id).toBe("p1");
+    // No excludeUserId → no NOT clause.
+    expect(dbMock.provider.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          category: "plumbing",
+          serviceDistricts: { has: "Colombo" },
+          suspended: false,
+        },
+      })
+    );
+  });
+});
+
+// Geo capture (#48): the S2S create path re-validates the optional pin —
+// identity pre-validates, so a 400 here only catches a drifted/hostile caller.
+describe("POST /internal/providers — map pin (#48)", () => {
+  const base = {
+    userId: "owner-geo",
+    name: "Ann",
+    email: "a@b.lk",
+    phone: "+94771234567",
+    category: "plumbing",
+    headline: "Plumber for hire",
+    bio: "Twenty-plus characters of provider bio text.",
+    district: "Colombo",
+    city: "Colombo",
+    experience: 3,
+    services: [{ title: "Fix taps", price: 1000, priceType: "FIXED" }],
+  };
+
+  it("persists an in-bounds pair", async () => {
+    dbMock.provider.create.mockResolvedValue({ id: "prov-geo" });
+    const res = await post("/internal/providers", {
+      ...base,
+      latitude: 6.9271,
+      longitude: 79.8612,
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ latitude: 6.9271, longitude: 79.8612 }),
+      })
+    );
+  });
+
+  it("stores nulls when the pin is absent", async () => {
+    dbMock.provider.create.mockResolvedValue({ id: "prov-geo" });
+    const res = await post("/internal/providers", base);
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ latitude: null, longitude: null }),
+      })
+    );
+  });
+
+  it("400s a lone coordinate", async () => {
+    const res = await post("/internal/providers", { ...base, latitude: 6.9271 });
+    expect(res.status).toBe(400);
+    expect(dbMock.provider.create).not.toHaveBeenCalled();
+  });
+
+  it("400s an off-island pair", async () => {
+    const res = await post("/internal/providers", {
+      ...base,
+      latitude: 51.5072,
+      longitude: -0.1276,
+    });
+    expect(res.status).toBe(400);
+    expect(dbMock.provider.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /internal/providers — social/website URL validation (#518)", () => {
+  const base = {
+    userId: "owner-2",
+    name: "Ravi",
+    email: "r@b.lk",
+    phone: "+94771234567",
+    category: "plumbing",
+    headline: "Plumber for hire",
+    bio: "Twenty-plus characters of provider bio text.",
+    district: "Colombo",
+    city: "Colombo",
+    experience: 3,
+    services: [{ title: "Fix taps", price: 1000, priceType: "FIXED" }],
+  };
+
+  it("rejects a javascript: scheme in a social link (400, no create)", async () => {
+    const res = await post("/internal/providers", {
+      ...base,
+      website: "javascript:alert(1)",
+    });
+    expect(res.status).toBe(400);
+    expect(dbMock.provider.create).not.toHaveBeenCalled();
+  });
+
+  it("normalizes a scheme-less host to an https URL before persisting", async () => {
+    dbMock.provider.create.mockResolvedValue({ id: "prov2" });
+    const res = await post("/internal/providers", {
+      ...base,
+      facebook: "facebook.com/ravi",
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.create.mock.calls[0][0].data.facebook).toBe(
+      "https://facebook.com/ravi"
+    );
+  });
+
+  it("still accepts an explicit null for an omitted link", async () => {
+    dbMock.provider.create.mockResolvedValue({ id: "prov3" });
+    const res = await post("/internal/providers", { ...base, website: null });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.create.mock.calls[0][0].data.website).toBeNull();
+  });
+});
+
+describe("POST /internal/maintenance/sweep-orphans", () => {
+  it("treats provider cover photos as referenced (never swept)", async () => {
+    dbMock.workPhoto.findMany.mockResolvedValue([{ url: "provider/photo.jpg" }]);
+    dbMock.verificationDocument.findMany.mockResolvedValue([
+      { url: "provider/doc.pdf" },
+    ]);
+    dbMock.category.findMany.mockResolvedValue([]);
+    // avatar query then cover-photo query, in Promise.all order.
+    dbMock.provider.findMany
+      .mockResolvedValueOnce([{ avatarUrl: "provider/avatar.jpg" }])
+      .mockResolvedValueOnce([{ coverPhoto: "provider/cover.jpg" }]);
+
+    const res = await post("/internal/maintenance/sweep-orphans");
+    expect(res.status).toBe(200);
+
+    const [namespace, referenced] = storageMock.sweepMedia.mock.calls[0];
+    expect(namespace).toBe("provider");
+    // The active cover photo must be in the keep-set, or the sweep would
+    // delete every provider's live cover (data loss, #435).
+    expect(referenced).toContain("provider/cover.jpg");
+    expect(referenced).toContain("provider/avatar.jpg");
+    expect(referenced).toContain("provider/photo.jpg");
+    expect(referenced).toContain("provider/doc.pdf");
+  });
+
+  // #555: category cover images share this DB, so the same maintenance call
+  // sweeps their namespace, keeping the saved imageUrls.
+  it("also sweeps the category namespace with saved covers referenced", async () => {
+    dbMock.workPhoto.findMany.mockResolvedValue([]);
+    dbMock.verificationDocument.findMany.mockResolvedValue([]);
+    dbMock.category.findMany.mockResolvedValue([
+      { imageUrl: "/api/files/category/covers/live.jpg" },
+    ]);
+    dbMock.provider.findMany.mockResolvedValue([]);
+
+    const res = await post("/internal/maintenance/sweep-orphans");
+    expect(res.status).toBe(200);
+    expect(storageMock.sweepMedia).toHaveBeenCalledTimes(2);
+
+    const [namespace, referenced] = storageMock.sweepMedia.mock.calls[1];
+    expect(namespace).toBe("category");
+    expect(referenced).toContain("/api/files/category/covers/live.jpg");
+  });
+});
+
+describe("POST /internal/users/:id/erase", () => {
+  it("removes the provider's stored cover photo alongside avatar/photos/docs", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({
+      id: "prov1",
+      avatarUrl: "provider/avatar.jpg",
+      coverPhoto: "provider/cover.jpg",
+      photos: [{ url: "provider/photo.jpg" }],
+      verificationDocs: [{ url: "provider/doc.pdf" }],
+    });
+    dbMock.provider.delete.mockResolvedValue({ id: "prov1" });
+    dbMock.inquiry.deleteMany.mockResolvedValue({ count: 0 });
+
+    const res = await post("/internal/users/owner-1/erase");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+
+    const removed = storageMock.removeStoredFile.mock.calls.map((c) => c[0]);
+    expect(removed).toContain("provider/cover.jpg");
+    expect(removed).toContain("provider/avatar.jpg");
+    expect(removed).toContain("provider/photo.jpg");
+    expect(removed).toContain("provider/doc.pdf");
+  });
+
+  it("skips a null cover photo without erroring", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({
+      id: "prov1",
+      avatarUrl: null,
+      coverPhoto: null,
+      photos: [],
+      verificationDocs: [],
+    });
+    dbMock.provider.delete.mockResolvedValue({ id: "prov1" });
+    dbMock.inquiry.deleteMany.mockResolvedValue({ count: 0 });
+
+    const res = await post("/internal/users/owner-1/erase");
+    expect(res.status).toBe(200);
+    expect(storageMock.removeStoredFile).not.toHaveBeenCalled();
+  });
+});
+
+// Search-service integration (search RFC §4.1/§4.2): the batched card
+// hydration the query plane calls, and the paginated full-document export the
+// reindex sweep walks.
+describe("GET /internal/providers/cards", () => {
+  const cardRow = {
+    id: "prov1",
+    userId: "owner-1",
+    contactName: "Nuwan Perera",
+    category: "mechanic",
+    headline: "Honest auto repairs",
+    headlineSi: null,
+    district: "Colombo",
+    serviceDistricts: ["Colombo"],
+    city: "Colombo",
+    experience: 5,
+    available: true,
+    awayUntil: null,
+    verificationStatus: "VERIFIED",
+    verifiedAt: new Date("2026-01-02T00:00:00Z"),
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+    avatarUrl: null,
+    coverPhoto: null,
+    latitude: 6.9271,
+    longitude: 79.8612,
+    photos: [],
+    services: [{ id: "s1", title: "Brake inspection", price: 2500, priceType: "VISIT" }],
+  };
+
+  it("returns browse-shaped cards with zeroed rating fields", async () => {
+    dbMock.provider.findMany.mockResolvedValue([cardRow]);
+    dbMock.category.findMany.mockResolvedValue([]);
+    const res = await get("/internal/providers/cards?ids=prov1,missing");
+    expect(res.status).toBe(200);
+    const { cards } = (await res.json()) as { cards: Record<string, unknown>[] };
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({
+      id: "prov1",
+      name: "Nuwan Perera",
+      fromPrice: 2500,
+      // search-service overlays its own aggregates over these defaults.
+      rating: null,
+      reviewCount: 0,
+      // The map pin rides on the card (#48) so the web map can place markers.
+      latitude: 6.9271,
+      longitude: 79.8612,
+    });
+    // Suspended rows are excluded at the query (defense in depth).
+    expect(dbMock.provider.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: { in: ["prov1", "missing"] }, suspended: false },
+      })
+    );
+  });
+
+  it("returns no cards without querying when no ids are given", async () => {
+    dbMock.category.findMany.mockResolvedValue([]);
+    const res = await get("/internal/providers/cards");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ cards: [] });
+    expect(dbMock.provider.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /internal/providers/export", () => {
+  const exportRow = (id: string) => ({
+    id,
+    userId: `user-${id}`,
+    contactName: "Nuwan Perera",
+    contactEmail: "nuwan@example.com",
+    contactPhone: "0771234501",
+    category: "mechanic",
+    headline: "Honest auto repairs",
+    bio: "A long bio.",
+    headlineSi: null,
+    bioSi: null,
+    city: "Colombo",
+    district: "Colombo",
+    serviceDistricts: ["Colombo"],
+    latitude: null,
+    longitude: null,
+    experience: 5,
+    available: true,
+    awayUntil: null,
+    suspended: false,
+    verificationStatus: "NONE",
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+    updatedAt: new Date("2026-07-01T00:00:00Z"),
+    services: [{ title: "Brake inspection", price: 2500 }],
+  });
+
+  it("exports full index documents (no contact PII) with cursor pagination", async () => {
+    // take=1 with two rows available → one document + a nextCursor.
+    dbMock.provider.findMany.mockResolvedValue([exportRow("a"), exportRow("b")]);
+    const res = await get("/internal/providers/export?take=1");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      providers: Record<string, unknown>[];
+      nextCursor: string | null;
+    };
+    expect(body.providers).toHaveLength(1);
+    expect(body.providers[0]).toMatchObject({
+      id: "a",
+      contactName: "Nuwan Perera",
+      serviceTitles: ["Brake inspection"],
+      servicePrices: [2500],
+    });
+    expect(JSON.stringify(body)).not.toContain("nuwan@example.com");
+    expect(JSON.stringify(body)).not.toContain("0771234501");
+    expect(body.nextCursor).toBe("a");
+    expect(dbMock.provider.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { suspended: false } })
+    );
+  });
+
+  it("ends the walk with a null cursor on the last page", async () => {
+    dbMock.provider.findMany.mockResolvedValue([exportRow("a")]);
+    const res = await get("/internal/providers/export?cursor=z");
+    const body = (await res.json()) as { nextCursor: string | null };
+    expect(body.nextCursor).toBeNull();
+    expect(dbMock.provider.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ cursor: { id: "z" }, skip: 1 })
+    );
   });
 });

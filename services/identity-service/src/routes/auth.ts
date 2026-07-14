@@ -8,18 +8,32 @@ import { log } from "../lib/log";
 import { createSession, destroySession } from "../lib/session";
 import { hashToken } from "../lib/tokens";
 import { eraseUserData } from "../lib/erase";
-import { isLockedOut, recordFailure } from "../lib/lockout";
+import { isLockedOut, lockUntilFor } from "../lib/lockout";
 import { passwordSchema, providerSchema, registerSchema } from "../lib/register-schema";
-import { emailAddress } from "../lib/field-rules";
+import {
+  emailAddress,
+  GEO_PAIR_MESSAGE,
+  geoPairState,
+  MAX_SERVICE_DISTRICTS,
+  normalizeServiceDistricts,
+} from "../lib/field-rules";
 import { categoryValidator } from "../lib/categories";
 import {
   createProviderProfile,
   deactivateProviderProfile,
+  eraseProviderProfile,
   getProviderIdByUser,
+  ProviderAdminSuspendedError,
   reactivateProviderProfile,
+  resolveProviderIdByUser,
+  resolveProviderIdForErase,
+  syncContactToProvider,
 } from "../lib/providers";
 import { logAudit } from "../lib/audit";
+import { publishRevocation } from "../lib/revocation";
+import { removeStoredFile } from "../lib/storage";
 import {
+  sendAccountExistsEmail,
   sendPasswordResetEmail,
   sendVerificationEmail,
 } from "../lib/verification";
@@ -40,6 +54,33 @@ authRoutes.post("/register", async (c) => {
   }
   const data = parsed.data;
 
+  // Served set (#502): dedupe + pin the home district here (a friendly 400,
+  // before the user row exists) rather than letting provider-service's own
+  // guard turn a validation miss into a 502 + compensation. Sync check, so it
+  // runs before the S2S category lookup below.
+  const serviceDistricts =
+    data.role === "PROVIDER"
+      ? normalizeServiceDistricts(data.district, data.serviceDistricts)
+      : null;
+  if (data.role === "PROVIDER" && !serviceDistricts) {
+    return c.json(
+      {
+        error: `You can serve at most ${MAX_SERVICE_DISTRICTS} districts (including your own)`,
+      },
+      400
+    );
+  }
+
+  // Map pin (#48): the coordinates are a pair — a lone latitude (or a
+  // number/null mix) is a friendly 400 here, before the user row exists,
+  // mirroring the served-set pre-flight above.
+  if (
+    data.role === "PROVIDER" &&
+    geoPairState(data.latitude, data.longitude) === "invalid"
+  ) {
+    return c.json({ error: GEO_PAIR_MESSAGE }, 400);
+  }
+
   // Category is data now, not code: check it against provider-service's list
   // (60s cache, static fallback) as an explicit post-parse step.
   if (
@@ -49,19 +90,32 @@ authRoutes.post("/register", async (c) => {
     return c.json({ error: "Invalid category" }, 400);
   }
 
+  // Anti-enumeration (#373): registration must not reveal whether an email is
+  // already registered. A 409 "already exists" here (like the old behavior) let
+  // an attacker probe which addresses have accounts — the exact leak login and
+  // forgot-password already close. So a taken email is NOT rejected: we mail the
+  // real owner an "account already exists" notice out-of-band and return the
+  // same generic success shape the caller can't distinguish from a brand-new
+  // signup. The dummy hash below equalizes the bcrypt cost the create path pays,
+  // so the taken-email branch isn't an obvious faster/earlier return (mirrors
+  // login's DUMMY_HASH compare); the mail is fire-and-forget so it adds no
+  // measurable round-trip either. No duplicate user is created.
   const existing = await db.user.findUnique({ where: { email: data.email } });
   if (existing) {
-    return c.json(
-      { error: "An account with this email already exists" },
-      409
+    await bcrypt.hash(data.password, 10);
+    void sendAccountExistsEmail(data.email, getOrigin(c), getLocale(c)).catch(
+      (e) =>
+        log.error("account-exists email failed", { context: "register", err: e })
     );
+    return c.json({ ok: true });
   }
 
   const passwordHash = await bcrypt.hash(data.password, 10);
 
   // The findUnique above is a fast path, not a guarantee: two concurrent
   // registrations with the same email both pass it, and the loser hits the
-  // unique constraint. Catch P2002 and return the same 409 rather than a 500.
+  // unique constraint. Catch P2002 and give it the same anti-enumeration
+  // response as the fast-path branch above rather than a 500 (or a 409 tell).
   const user = await db.user
     .create({
       data: {
@@ -82,10 +136,11 @@ authRoutes.post("/register", async (c) => {
       throw e;
     });
   if (!user) {
-    return c.json(
-      { error: "An account with this email already exists" },
-      409
+    void sendAccountExistsEmail(data.email, getOrigin(c), getLocale(c)).catch(
+      (e) =>
+        log.error("account-exists email failed", { context: "register", err: e })
     );
+    return c.json({ ok: true });
   }
 
   let providerId: string | null = null;
@@ -100,7 +155,10 @@ authRoutes.post("/register", async (c) => {
         headline: data.headline,
         bio: data.bio,
         district: data.district,
+        serviceDistricts: serviceDistricts ?? [data.district],
         city: data.city,
+        latitude: data.latitude ?? null,
+        longitude: data.longitude ?? null,
         experience: data.experience,
         whatsapp: data.whatsapp || null,
         phone2: data.phone2 || null,
@@ -113,8 +171,33 @@ authRoutes.post("/register", async (c) => {
       });
     } catch (e) {
       log.error("provider creation failed", { context: "register", err: e });
-      // Compensation: the user row is useless without its provider profile.
-      await db.user.delete({ where: { id: user.id } });
+      // Compensation: the user row is useless without its provider profile, so
+      // roll it back. Two independent best-effort cleanups, because the failure
+      // above is ambiguous — provider-service may have committed the Provider
+      // row and merely lost its *response* (a timeout), in which case deleting
+      // the user alone would leave an orphaned Provider with a dangling userId
+      // (#359).
+      //
+      // Erase the (possibly-committed) provider FIRST, then delete the user:
+      // the orphan we're guarding against lives in provider-service, so clean
+      // it while we still hold the context, before dropping the local row. The
+      // erase is idempotent — a no-op when nothing was committed — and both
+      // steps are best-effort: a failure is logged for later cleanup but must
+      // not let the throw turn a graceful "upstream down" into a 500.
+      await eraseProviderProfile(user.id).catch((eraseErr) => {
+        log.error("orphan provider cleanup failed", {
+          context: "register",
+          userId: user.id,
+          err: eraseErr,
+        });
+      });
+      await db.user.delete({ where: { id: user.id } }).catch((delErr) => {
+        log.error("orphan user cleanup failed", {
+          context: "register",
+          userId: user.id,
+          err: delErr,
+        });
+      });
       return c.json({ error: "Upstream service unavailable" }, 502);
     }
   }
@@ -169,6 +252,26 @@ authRoutes.post("/complete-provider", async (c) => {
   }
   const data = parsed.data;
 
+  // Served set (#502) — same pre-flight normalization as /register, ahead of
+  // the S2S category lookup.
+  const serviceDistricts = normalizeServiceDistricts(
+    data.district,
+    data.serviceDistricts
+  );
+  if (!serviceDistricts) {
+    return c.json(
+      {
+        error: `You can serve at most ${MAX_SERVICE_DISTRICTS} districts (including your own)`,
+      },
+      400
+    );
+  }
+
+  // Map pin (#48) — same pair pre-flight as /register.
+  if (geoPairState(data.latitude, data.longitude) === "invalid") {
+    return c.json({ error: GEO_PAIR_MESSAGE }, 400);
+  }
+
   if (!(await categoryValidator.isValidCategory(data.category))) {
     return c.json({ error: "Invalid category" }, 400);
   }
@@ -186,8 +289,18 @@ authRoutes.post("/complete-provider", async (c) => {
   }
 
   // Idempotency guard against a double-submit creating two profiles: if a
-  // profile already exists for this user (best-effort lookup), reuse it.
-  let providerId = await getProviderIdByUser(user.id);
+  // profile already exists for this user, reuse it. Resolve with the FAIL-LOUD
+  // resolver (#643), NOT getProviderIdByUser (which degrades to null on a
+  // transient blip): a false null here would wrongly take the create branch,
+  // flip the role to PROVIDER, and orphan the existing profile hidden. On any
+  // lookup failure, abort with 502 and no role flip — a retry can finish.
+  let providerId: string | null;
+  try {
+    providerId = await resolveProviderIdByUser(user.id);
+  } catch (e) {
+    log.error("provider lookup failed", { context: "complete-provider", err: e });
+    return c.json({ error: "Upstream service unavailable" }, 502);
+  }
   if (!providerId) {
     try {
       providerId = await createProviderProfile({
@@ -199,7 +312,10 @@ authRoutes.post("/complete-provider", async (c) => {
         headline: data.headline,
         bio: data.bio,
         district: data.district,
+        serviceDistricts,
         city: data.city,
+        latitude: data.latitude ?? null,
+        longitude: data.longitude ?? null,
         experience: data.experience,
         whatsapp: data.whatsapp || null,
         phone2: data.phone2 || null,
@@ -218,13 +334,24 @@ authRoutes.post("/complete-provider", async (c) => {
     // Re-upgrade (#403): the profile already exists but may have been
     // self-deactivated on a prior downgrade. Reactivate it so it returns to
     // public listings; fail loudly (502) rather than flip the role while the
-    // profile stays hidden.
+    // profile stays hidden. An ADMIN suspension is refused outright (#550) —
+    // no role flip — so leave-provider → complete-provider can't self-lift it.
     try {
       await reactivateProviderProfile(user.id);
     } catch (e) {
+      if (e instanceof ProviderAdminSuspendedError) {
+        return c.json(
+          { error: "This provider profile has been suspended. Contact support." },
+          403
+        );
+      }
       log.error("provider reactivation failed", { context: "complete-provider", err: e });
       return c.json({ error: "Upstream service unavailable" }, 502);
     }
+    // The reused profile kept the contactPhone from its first registration;
+    // mirror the wizard's fresh phone onto it (#553). Best-effort — the
+    // create path above already writes it, so only this reuse path syncs.
+    await syncContactToProvider(user.id, { phone: data.phone });
   }
 
   // Flip the role and bump sessionVersion so the old CUSTOMER token is revoked
@@ -341,10 +468,21 @@ authRoutes.post("/login", async (c) => {
   }
 
   if (!(await bcrypt.compare(parsed.data.password, user.passwordHash))) {
-    await db.user.update({
+    // Increment atomically in the DB rather than overwriting from the pre-read
+    // snapshot: concurrent wrong-password attempts must each advance the
+    // counter, otherwise a parallel guesser reaches MAX_FAILED_LOGINS far more
+    // slowly than intended and the brute-force lockout is weakened. Derive the
+    // lock from the *resulting* count, then set lockedUntil only when the
+    // threshold is crossed (a second, conditional write).
+    const { failedLogins } = await db.user.update({
       where: { id: user.id },
-      data: recordFailure(user.failedLogins),
+      data: { failedLogins: { increment: 1 } },
+      select: { failedLogins: true },
     });
+    const lockedUntil = lockUntilFor(failedLogins);
+    if (lockedUntil) {
+      await db.user.update({ where: { id: user.id }, data: { lockedUntil } });
+    }
     return c.json({ error: "Invalid email or password" }, 401);
   }
 
@@ -389,15 +527,27 @@ authRoutes.post("/logout-all", async (c) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  const user = await db.user
-    .update({
+  let user;
+  try {
+    user = await db.user.update({
       where: { id: auth.userId },
       data: { sessionVersion: { increment: 1 } },
-    })
-    .catch(() => null);
-  if (!user) {
-    return c.json({ error: "Unauthorized" }, 401);
+    });
+  } catch (e) {
+    // A missing row (P2025) means the authenticated user was deleted out from
+    // under this session — that is genuinely a 401. But a DB outage must NOT be
+    // masked as a 401 (#647 L8): swallowing every error into 401 would both
+    // sign users out on a transient blip and hide the incident. Surface it 500.
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    log.error("logout-all failed", { context: "logout-all", err: e });
+    return c.json({ error: "Something went wrong" }, 500);
   }
+
+  // Mirror the bump into the shared revocation list (#374) so the gateway
+  // rejects the now-stale tokens even if identity is unreachable.
+  await publishRevocation(user.id, user.sessionVersion);
 
   await createSession(c, {
     userId: user.id,
@@ -448,9 +598,12 @@ authRoutes.post("/delete-account", async (c) => {
   }
 
   // providerId must be resolved BEFORE the provider profile is erased —
-  // job-service needs it to delete the provider's job responses.
-  const providerId = await getProviderIdByUser(user.id);
+  // job-service needs it to delete the provider's JobResponses (PII). Resolve
+  // it with the fail-loud helper (NOT getProviderIdByUser, which degrades to
+  // null): a transient blip here must abort with 502, not silently pass null to
+  // the job erase and leave the responses behind while the User is deleted (#360).
   try {
+    const providerId = await resolveProviderIdForErase(user.id);
     await eraseUserData(user.id, providerId);
   } catch (e) {
     log.error("peer erase failed", { context: "delete-account", err: e });
@@ -463,6 +616,14 @@ authRoutes.post("/delete-account", async (c) => {
     }),
     db.user.delete({ where: { id: user.id } }),
   ]);
+
+  // The avatar file (PII, #434) lives in media-service and would otherwise
+  // outlive the account (#555). After the local delete so a failed transaction
+  // can't erase a still-referenced file; best-effort — removeStoredFile
+  // swallows errors and the `user`-namespace orphan sweep catches any miss.
+  if (user.avatarUrl) {
+    await removeStoredFile(user.avatarUrl);
+  }
 
   destroySession(c);
   return c.json({ ok: true });
@@ -490,6 +651,11 @@ authRoutes.get("/me", async (c) => {
       role: user.role,
       avatarUrl: user.avatarUrl,
       providerId,
+      // Whether this account has a password at all — social-only accounts
+      // (#398) don't. The web uses this to show the password-confirmation
+      // field the sensitive-op re-auth (#504: change-email) requires, instead
+      // of asking a social-only user for a password they can't have.
+      hasPassword: user.passwordHash != null,
     },
   });
 });
@@ -512,7 +678,7 @@ authRoutes.post("/change-password", async (c) => {
   const parsed = changePasswordSchema.safeParse(body);
   if (!parsed.success) {
     return c.json(
-      { error: "New password must be between 6 and 100 characters." },
+      { error: "New password must be between 10 and 100 characters." },
       400
     );
   }
@@ -550,6 +716,10 @@ authRoutes.post("/change-password", async (c) => {
     db.passwordResetToken.deleteMany({ where: { userId: user.id } }),
   ]);
 
+  // Mirror the bump into the shared revocation list (#374) so the gateway
+  // rejects the old (hijacked) tokens even if identity is unreachable.
+  await publishRevocation(updated.id, updated.sessionVersion);
+
   await createSession(c, {
     userId: updated.id,
     role: updated.role,
@@ -577,8 +747,11 @@ authRoutes.post("/verify-email", async (c) => {
     where: { tokenHash: hashToken(parsed.data.token) },
   });
   if (!record || record.expiresAt < new Date()) {
+    // deleteMany, not delete: a double-submit (two clicks of the same link)
+    // would race to delete the same row, and delete() throws P2025 on the
+    // second — a spurious 500. deleteMany is idempotent (count 0, no throw).
     if (record) {
-      await db.emailVerificationToken.delete({ where: { id: record.id } });
+      await db.emailVerificationToken.deleteMany({ where: { id: record.id } });
     }
     return c.json({ error: "expired" }, 400);
   }
@@ -668,21 +841,23 @@ authRoutes.post("/reset-password", async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = resetSchema.safeParse(body);
   if (!parsed.success) {
-    return c.json({ error: "Password must be at least 6 characters." }, 400);
+    return c.json({ error: "Password must be at least 10 characters." }, 400);
   }
 
   const record = await db.passwordResetToken.findUnique({
     where: { tokenHash: hashToken(parsed.data.token) },
   });
   if (!record || record.expiresAt < new Date()) {
+    // deleteMany, not delete: a double-submit races to delete the same row and
+    // delete() throws P2025 on the loser (a spurious 500). deleteMany no-ops.
     if (record) {
-      await db.passwordResetToken.delete({ where: { id: record.id } });
+      await db.passwordResetToken.deleteMany({ where: { id: record.id } });
     }
     return c.json({ error: "This reset link is invalid or has expired." }, 400);
   }
 
   const passwordHash = await bcrypt.hash(parsed.data.password, 10);
-  await db.$transaction([
+  const [updated] = await db.$transaction([
     // sessionVersion bump: whoever prompted the reset (possibly an attacker
     // holding a session) is signed out everywhere.
     db.user.update({
@@ -692,6 +867,10 @@ authRoutes.post("/reset-password", async (c) => {
     // Single-use: consume every reset token for this user.
     db.passwordResetToken.deleteMany({ where: { userId: record.userId } }),
   ]);
+
+  // Mirror the bump into the shared revocation list (#374) so the gateway
+  // rejects the old tokens even if identity is unreachable.
+  await publishRevocation(updated.id, updated.sessionVersion);
 
   return c.json({ ok: true });
 });

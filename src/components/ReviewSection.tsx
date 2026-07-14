@@ -8,6 +8,7 @@ import { FaStar, FaXmark } from "@/components/icons";
 import Stars from "./Stars";
 import Avatar from "./Avatar";
 import { isSvg } from "@/lib/image";
+import { loginNextHref, localizedHref } from "@/lib/links";
 import { useLocale, useT } from "./I18nProvider";
 import { useToast } from "./ToastProvider";
 import { formatDate } from "@/lib/format";
@@ -22,26 +23,57 @@ type ReviewItem = {
   createdAt: string;
   userName: string;
   photos: ReviewPhoto[];
+  // Provider's public reply (#395) — at most one per review.
+  response: { text: string; createdAt: string } | null;
+};
+
+// Optional per-dimension sub-ratings (#528). Keys line up with the columns
+// review-service persists and the labels in i18n.reviews.dimensions.
+const DIMENSION_KEYS = ["quality", "punctuality", "value", "communication"] as const;
+type DimensionKey = (typeof DIMENSION_KEYS)[number];
+const NO_DIMENSIONS: Record<DimensionKey, number> = {
+  quality: 0,
+  punctuality: 0,
+  value: 0,
+  communication: 0,
+};
+
+// Aggregated summary over ALL of a provider's reviews, served alongside the
+// public reviews page (see review-service GET /api/providers/:id/reviews).
+type RatingSummary = {
+  rating: number;
+  count: number;
+  dimensions: Record<DimensionKey, number | null>;
+  distribution: Record<string, number>;
 };
 
 const MAX_PHOTOS = 3;
 
 export default function ReviewSection({
   providerId,
+  providerName,
   reviews,
   canReview,
+  canRespond,
   signedIn,
   myReview,
+  summary,
 }: {
   providerId: string;
+  providerName: string;
   reviews: ReviewItem[];
   canReview: boolean;
+  // The profiled provider (owner) may keep one public reply per review (#395).
+  canRespond: boolean;
   signedIn: boolean;
   myReview: { rating: number; comment: string; photos: ReviewPhoto[] } | null;
+  summary: RatingSummary | null;
 }) {
   const [rating, setRating] = useState(myReview?.rating ?? 5);
   const [hover, setHover] = useState(0);
   const [comment, setComment] = useState(myReview?.comment ?? "");
+  // Optional dimension picks, 0 = unset (not submitted; left unchanged on edit).
+  const [dims, setDims] = useState<Record<DimensionKey, number>>(NO_DIMENSIONS);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -50,6 +82,12 @@ export default function ReviewSection({
   const t = useT();
   const toast = useToast();
   const locale = useLocale();
+
+  // Provider response state (#395): at most one inline form open at a time.
+  const [respondingTo, setRespondingTo] = useState<string | null>(null);
+  const [responseText, setResponseText] = useState("");
+  const [responseSaving, setResponseSaving] = useState(false);
+  const [responseError, setResponseError] = useState("");
 
   const existingCount = myReview?.photos.length ?? 0;
   const slotsLeft = MAX_PHOTOS - existingCount;
@@ -66,21 +104,72 @@ export default function ReviewSection({
     const fd = new FormData();
     fd.append("rating", String(rating));
     fd.append("comment", comment);
+    // Only send dimensions the user actually set (0 = unset) — the server
+    // treats an omitted dimension as "leave unchanged".
+    for (const key of DIMENSION_KEYS) {
+      if (dims[key] > 0) fd.append(key, String(dims[key]));
+    }
     if (files) for (const f of Array.from(files)) fd.append("photos", f);
 
-    const res = await fetch(`/api/providers/${providerId}/reviews`, {
+    try {
+      const res = await fetch(`/api/providers/${providerId}/reviews`, {
+        method: "POST",
+        body: fd,
+      });
+      if (res.ok) {
+        setShowForm(false);
+        if (fileRef.current) fileRef.current.value = "";
+        toast.success(t.toast.reviewSaved);
+        router.refresh();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? t.reviews.error);
+      }
+    } catch {
+      // Network failure — recover instead of wedging the button (#363).
+      setError(t.reviews.error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function openResponseForm(review: ReviewItem) {
+    setRespondingTo(review.id);
+    setResponseText(review.response?.text ?? "");
+    setResponseError("");
+  }
+
+  async function submitResponse(e: React.FormEvent, reviewId: string) {
+    e.preventDefault();
+    setResponseSaving(true);
+    setResponseError("");
+    const res = await fetch(`/api/reviews/${reviewId}/response`, {
       method: "POST",
-      body: fd,
-    });
-    setLoading(false);
-    if (res.ok) {
-      setShowForm(false);
-      if (fileRef.current) fileRef.current.value = "";
-      toast.success(t.toast.reviewSaved);
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: responseText }),
+    }).catch(() => null);
+    setResponseSaving(false);
+    if (res && res.ok) {
+      setRespondingTo(null);
+      toast.success(t.toast.responseSaved);
       router.refresh();
     } else {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? t.reviews.error);
+      const data = res ? await res.json().catch(() => ({})) : {};
+      setResponseError(data.error ?? t.reviews.responseError);
+    }
+  }
+
+  async function deleteResponse(reviewId: string) {
+    const res = await fetch(`/api/reviews/${reviewId}/response`, {
+      method: "DELETE",
+    }).catch(() => null);
+    if (res && res.ok) {
+      setRespondingTo(null);
+      toast.success(t.toast.responseDeleted);
+      router.refresh();
+    } else {
+      const data = res ? await res.json().catch(() => ({})) : {};
+      setResponseError(data.error ?? t.reviews.responseError);
     }
   }
 
@@ -116,7 +205,14 @@ export default function ReviewSection({
         )}
         {!signedIn && (
           <Link
-            href="/login"
+            // Return here after sign-in (#560) instead of the generic
+            // listing; the /login URL itself stays in the /si space (#364).
+            href={localizedHref(
+              loginNextHref(
+                localizedHref(`/providers/${providerId}`, locale),
+              ),
+              locale,
+            )}
             className="text-sm font-medium text-brand-600 hover:text-brand-700"
           >
             {t.reviews.signIn}
@@ -171,6 +267,49 @@ export default function ReviewSection({
             minLength={3}
             placeholder={t.reviews.ph}
           />
+
+          {/* Optional per-dimension sub-ratings (#528): clearly optional; each
+              picker toggles off if the current star is clicked again. */}
+          <fieldset className="mt-4">
+            <legend className="label">{t.reviews.dimensionsLabel}</legend>
+            <div className="mt-1 grid gap-2 sm:grid-cols-2">
+              {DIMENSION_KEYS.map((key) => (
+                <div key={key} className="flex items-center justify-between gap-2">
+                  <span className="text-sm text-ink-600">
+                    {t.reviews.dimensions[key]}
+                  </span>
+                  <div
+                    role="group"
+                    aria-label={t.reviews.dimensions[key]}
+                    className="flex gap-0.5"
+                  >
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() =>
+                          setDims((d) => ({ ...d, [key]: d[key] === i ? 0 : i }))
+                        }
+                        aria-pressed={dims[key] === i}
+                        aria-label={t.reviews.dimensionStarLabel(
+                          t.reviews.dimensions[key],
+                          i
+                        )}
+                        className="cursor-pointer rounded transition hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                      >
+                        <FaStar
+                          aria-hidden
+                          className={`h-4 w-4 ${
+                            i <= dims[key] ? "text-amber-400" : "text-ink-300"
+                          }`}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </fieldset>
 
           {myReview && myReview.photos.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
@@ -234,6 +373,81 @@ export default function ReviewSection({
         </form>
       )}
 
+      {/* Aggregated breakdown over ALL reviews (#528): per-dimension averages
+          and the 5→1 star distribution, alongside the overall average+count. */}
+      {summary && summary.count > 0 && (
+        <div className="mt-5 grid gap-6 rounded-lg border border-ink-200 bg-ink-50 p-4 sm:grid-cols-2">
+          {DIMENSION_KEYS.some((k) => summary.dimensions[k] !== null) && (
+            <div>
+              <h3 className="label">{t.reviews.breakdown}</h3>
+              <ul className="mt-2 space-y-1.5">
+                {DIMENSION_KEYS.map((key) => {
+                  const avg = summary.dimensions[key];
+                  return (
+                    <li
+                      key={key}
+                      className="flex items-center justify-between gap-2 text-sm"
+                    >
+                      <span className="text-ink-600">
+                        {t.reviews.dimensions[key]}
+                      </span>
+                      {avg === null ? (
+                        <span className="text-xs text-ink-400">
+                          {t.reviews.notRated}
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1.5">
+                          <Stars
+                            rating={avg}
+                            label={t.a11y.rated(avg.toFixed(1))}
+                          />
+                          <span className="tabular-nums text-ink-700">
+                            {avg.toFixed(1)}
+                          </span>
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+          <div>
+            <h3 className="label">{t.reviews.distribution}</h3>
+            <ul className="mt-2 space-y-1.5">
+              {[5, 4, 3, 2, 1].map((star) => {
+                const c = summary.distribution[String(star)] ?? 0;
+                const pct = summary.count > 0 ? (c / summary.count) * 100 : 0;
+                return (
+                  <li
+                    key={star}
+                    className="flex items-center gap-2 text-sm"
+                    aria-label={t.reviews.distributionRow(star, c)}
+                  >
+                    <span className="w-3 tabular-nums text-ink-500" aria-hidden>
+                      {star}
+                    </span>
+                    <FaStar aria-hidden className="h-3.5 w-3.5 text-amber-400" />
+                    <span
+                      className="h-2 flex-1 overflow-hidden rounded-full bg-ink-200"
+                      aria-hidden
+                    >
+                      <span
+                        className="block h-full rounded-full bg-amber-400"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </span>
+                    <span className="w-6 text-right tabular-nums text-ink-500" aria-hidden>
+                      {c}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
+      )}
+
       {reviews.length === 0 ? (
         <p className="mt-4 text-sm text-ink-500">{t.reviews.empty}</p>
       ) : (
@@ -290,6 +504,84 @@ export default function ReviewSection({
                     </a>
                   ))}
                 </div>
+              )}
+
+              {/* Provider's public reply (#395), rendered under the review. */}
+              {r.response && respondingTo !== r.id && (
+                <div className="ml-4 mt-3 rounded-lg border-l-2 border-brand-300 bg-ink-50 p-3">
+                  <p className="text-xs font-semibold text-ink-700">
+                    {t.reviews.responseFrom(providerName)}
+                    <span className="ml-2 font-normal text-ink-500">
+                      {formatDate(r.response.createdAt, locale)}
+                    </span>
+                  </p>
+                  <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-ink-600">
+                    {r.response.text}
+                  </p>
+                </div>
+              )}
+
+              {canRespond && respondingTo !== r.id && (
+                <div className="mt-2 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => openResponseForm(r)}
+                    className="text-sm font-medium text-brand-600 hover:text-brand-700"
+                  >
+                    {r.response ? t.reviews.editResponse : t.reviews.respond}
+                  </button>
+                  {r.response && (
+                    <button
+                      type="button"
+                      onClick={() => deleteResponse(r.id)}
+                      className="text-sm font-medium text-red-600 hover:text-red-700"
+                    >
+                      {t.reviews.deleteResponse}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {canRespond && respondingTo === r.id && (
+                <form
+                  onSubmit={(e) => submitResponse(e, r.id)}
+                  className="ml-4 mt-3 rounded-lg border border-ink-200 bg-ink-50 p-3"
+                >
+                  <label className="label" htmlFor={`review-response-${r.id}`}>
+                    {t.reviews.yourResponse}
+                  </label>
+                  <textarea
+                    id={`review-response-${r.id}`}
+                    className="input min-h-20 resize-y"
+                    value={responseText}
+                    onChange={(e) => setResponseText(e.target.value)}
+                    required
+                    minLength={3}
+                    maxLength={1000}
+                    placeholder={t.reviews.responsePh}
+                  />
+                  {responseError && (
+                    <p role="alert" className="mt-2 text-sm text-red-600">
+                      {responseError}
+                    </p>
+                  )}
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="submit"
+                      disabled={responseSaving}
+                      className="btn-primary"
+                    >
+                      {responseSaving ? t.reviews.saving : t.reviews.postResponse}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRespondingTo(null)}
+                      className="btn-ghost"
+                    >
+                      {t.reviews.cancel}
+                    </button>
+                  </div>
+                </form>
               )}
             </li>
           ))}

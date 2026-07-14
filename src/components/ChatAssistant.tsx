@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { FaCommentDots, FaPaperPlane, FaXmark } from "@/components/icons";
 import { useT } from "@/components/I18nProvider";
+import { localizedHref, pathLocale } from "@/lib/links";
 
 // The assistant never sends an inquiry itself. It can only *propose* a draft
 // (#202): the confirmation card below is rendered from this draft and the real
@@ -34,17 +37,20 @@ function setProposalStatus(
   return next;
 }
 
-// Floating chat assistant (#11): guests or signed-in customers describe a
-// job; the assistant suggests providers and drafts an inquiry, which the
-// customer sends themselves via the confirmation card. Talks to the web app's
-// own /agent/chat route (SSE).
+// Floating chat assistant (#11): signed-in customers describe a job; the
+// assistant suggests providers and drafts an inquiry, which the customer
+// sends themselves via the confirmation card. Talks to the web app's own
+// /agent/chat route (SSE), which 401s guests — the widget turns that into a
+// sign-in prompt with a login link instead of a generic error (#558).
 export default function ChatAssistant() {
   const t = useT();
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [authRequired, setAuthRequired] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -71,17 +77,28 @@ export default function ChatAssistant() {
     const text = draft.trim();
     if (!text || busy) return;
     setFailed(false);
+    setAuthRequired(false);
     setDraft("");
     const nextMessages: Msg[] = [...messages, { role: "user", content: text }];
     setMessages(nextMessages);
     setBusy(true);
 
     try {
-      const res = await fetch("/agent/chat", {
+      // Request the /si-prefixed variant on Sinhala URLs so the route's
+      // getLocale() sees the URL locale (proxy sets x-locale from the prefix),
+      // matching the app's "URL prefix wins, then cookie" precedence — a
+      // shared /si link gets Sinhala assistant replies, not English.
+      const res = await fetch(localizedHref("/agent/chat", pathLocale(pathname)), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: nextMessages }),
       });
+      // The route requires a session; tell guests to sign in rather than
+      // showing the generic (and endlessly retryable) error.
+      if (res.status === 401) {
+        setAuthRequired(true);
+        return;
+      }
       if (!res.ok || !res.body) throw new Error("chat failed");
 
       // Messages produced this turn. Text streams into an assistant bubble; a
@@ -309,6 +326,20 @@ export default function ChatAssistant() {
                   </p>
                 </div>
               )
+            )}
+            {authRequired && (
+              <p
+                role="alert"
+                className="rounded-2xl rounded-bl-sm bg-ink-100 px-4 py-2.5 text-sm text-ink-800"
+              >
+                {t.assistant.signInPrompt}{" "}
+                <Link
+                  href={localizedHref("/login", pathLocale(pathname))}
+                  className="font-medium text-brand-600 underline hover:text-brand-700"
+                >
+                  {t.assistant.signInCta}
+                </Link>
+              </p>
             )}
             {failed && (
               <p role="alert" className="text-center text-xs text-red-600">

@@ -22,9 +22,10 @@ import { formatNumber } from "@/lib/format";
 import PageHeader from "@/components/ui/PageHeader";
 import StatReadout from "@/components/ui/StatReadout";
 import InView from "@/components/InView";
-import AdminDashboardCharts, {
-  type CategoryStat,
-  type SignupPoint,
+import AdminDashboardChartsLazy from "@/components/admin/AdminDashboardChartsLazy";
+import type {
+  CategoryStat,
+  SignupPoint,
 } from "@/components/admin/AdminDashboardCharts";
 
 // Caching (#57): admin-only moderation view; edits must be visible on the
@@ -44,11 +45,13 @@ type Card = {
 // owns the data:
 //  - provider-service `/api/admin/stats`: provider active/suspended counts,
 //    pending verifications, its half of "open reports", category breakdown.
-//  - review-service `/api/admin/review-stats`: the other half of "open
-//    reports" (abuse reports on reviews).
+//  - review-service `/api/admin/review-stats`: its slice of "open reports"
+//    (abuse reports on reviews).
+//  - job-service `/api/admin/job-reports/count`: its slice of "open reports"
+//    (content-filter flags on job posts/responses, #375).
 //  - identity-service `/api/admin/signups`: daily signup counts (30 days),
 //    split customers vs providers.
-// All three degrade to null on failure — the page still renders with zeros
+// All sources degrade to null on failure — the page still renders with zeros
 // rather than 500ing, same as the rest of the merged-source admin pages.
 type ProviderStats = {
   providers: { active: number; suspended: number; total: number };
@@ -69,15 +72,20 @@ export default async function AdminHomePage() {
   if (!session) redirect("/login");
   if (!isAdminRole(session.role)) redirect("/");
 
-  const [locale, providerStats, reviewStats, signupStats] = await Promise.all([
-    getLocale(),
-    apiJson<ProviderStats>("/api/admin/stats"),
-    apiJson<ReviewStats>("/api/admin/review-stats"),
-    apiJson<SignupStats>("/api/admin/signups"),
-  ]);
+  const [locale, providerStats, reviewStats, jobReportStats, signupStats] =
+    await Promise.all([
+      getLocale(),
+      apiJson<ProviderStats>("/api/admin/stats"),
+      apiJson<ReviewStats>("/api/admin/review-stats"),
+      apiJson<ReviewStats>("/api/admin/job-reports/count"),
+      apiJson<SignupStats>("/api/admin/signups"),
+    ]);
   const t = dict[locale].admin;
 
-  const openReports = (providerStats?.openReports ?? 0) + (reviewStats?.openReports ?? 0);
+  const openReports =
+    (providerStats?.openReports ?? 0) +
+    (reviewStats?.openReports ?? 0) +
+    (jobReportStats?.openReports ?? 0);
   const signupsTotal =
     (signupStats?.totals.customers ?? 0) + (signupStats?.totals.providers ?? 0);
 
@@ -161,7 +169,7 @@ export default async function AdminHomePage() {
           />
 
           <div className="mt-6">
-            <AdminDashboardCharts
+            <AdminDashboardChartsLazy
               signups={signupStats?.series ?? []}
               categories={providerStats?.categoryDistribution ?? []}
             />

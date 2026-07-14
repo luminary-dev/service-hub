@@ -10,6 +10,12 @@ inquiry, which the customer then sends themselves, in English or Sinhala.
   `POST /internal/chat/marketplace/stream`, streaming Server-Sent Events back to
   the browser and forwarding only the locale. No session cookie is forwarded
   into the LLM-driven service, because nothing there acts on the user's behalf.
+  The reply locale follows the app's usual precedence (the `/si` URL prefix
+  wins, then the `lang` cookie — see `src/lib/locale.ts`): the client requests
+  the `/si/agent/chat` variant on Sinhala URLs so the proxy's trusted `x-locale`
+  header carries the URL locale, and the route resolves it with `getLocale()`.
+  A visitor on a shared `/si` link therefore gets Sinhala replies even without a
+  `lang` cookie.
 - **Model & loop.** Uses Claude (`claude-opus-4-8`) with a server-side tool
   loop: it streams text, and when the model requests a tool it runs it, feeds
   the result back, and continues — up to a safety bound (`MAX_LOOPS = 6`), with a
@@ -33,9 +39,16 @@ inquiry, which the customer then sends themselves, in English or Sinhala.
   treats tool-result data as untrusted (it can never send an inquiry — only the
   user's tap on the card does). It won't negotiate prices or bookings, keeps
   replies short, and answers in Sinhala when the locale is `si`.
+- **Where it mounts.** The floating widget is a customer-facing concierge, so
+  the root layout renders it only for **signed-out visitors and `CUSTOMER`
+  sessions** — `PROVIDER`, `ADMIN`, and `SUPPORT` sessions never see it, since
+  it has no purpose in the provider dashboard or the admin console (#662).
 - **Session-gated & rate-limited.** The web proxy requires a signed-in session
   (401 otherwise) and enforces a per-user sliding window of **15 requests / 60 s**
-  (429 on exceed).
+  (429 on exceed). The widget handles the 401 for signed-out visitors by showing
+  a localized sign-in prompt with a link to `/login` (keeping the `/si` prefix
+  on Sinhala URLs) instead of the generic error (#558). The in-memory window map is swept of aged-out users (mirroring
+  the gateway limiter) so it can't grow unbounded over the process lifetime.
 
 ---
 

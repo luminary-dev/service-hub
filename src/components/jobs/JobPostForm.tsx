@@ -9,8 +9,14 @@ import {
   type CategoryOption,
 } from "@/lib/categories";
 import { districtLabelLoc } from "@/lib/i18n";
+import { localizedHref } from "@/lib/links";
 import { useLocale, useT } from "@/components/I18nProvider";
 import { Field, FormRow } from "@/components/ui/Field";
+import {
+  FormError,
+  useFieldErrors,
+  type FieldErrors,
+} from "@/components/ui/FormError";
 
 export default function JobPostForm({
   categories = STATIC_CATEGORY_OPTIONS,
@@ -26,6 +32,7 @@ export default function JobPostForm({
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const { fieldErrors, show } = useFieldErrors();
   const router = useRouter();
   const locale = useLocale();
   const t = useT().jobs;
@@ -34,34 +41,56 @@ export default function JobPostForm({
     setForm((f) => ({ ...f, [k]: v }));
   }
 
+  function validate(): FieldErrors {
+    const errs: FieldErrors = {};
+    if (form.title.trim().length < 5) errs["job-title"] = t.errTitle;
+    if (!form.category) errs["job-category"] = t.errCategory;
+    if (!form.district) errs["job-district"] = t.errDistrict;
+    if (form.description.trim().length < 10)
+      errs["job-description"] = t.errDescription;
+    if (form.budget !== "" && !(Number(form.budget) >= 100))
+      errs["job-budget"] = t.errBudget;
+    return errs;
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
     setError("");
-    const res = await fetch("/api/jobs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        category: form.category,
-        district: form.district,
-        title: form.title.trim(),
-        description: form.description.trim(),
-        budget: form.budget ? Number(form.budget) : null,
-      }),
-    });
-    setLoading(false);
-    if (res.ok) {
-      router.push("/jobs");
-      router.refresh();
-    } else {
-      const d = await res.json().catch(() => ({}));
-      setError(d.error ?? t.postError);
+    if (show(validate())) return;
+    setLoading(true);
+    try {
+      const res = await fetch("/api/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category: form.category,
+          district: form.district,
+          title: form.title.trim(),
+          description: form.description.trim(),
+          budget: form.budget ? Number(form.budget) : null,
+        }),
+      });
+      if (res.ok) {
+        router.push(localizedHref("/jobs", locale));
+        router.refresh();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setError(d.error ?? t.postError);
+      }
+    } catch {
+      // Network failure — recover instead of wedging the button (#363).
+      setError(t.postError);
+    } finally {
+      setLoading(false);
     }
   }
 
   return (
+    // noValidate: validation happens in JS so errors are localized, inline
+    // and linked to their fields (#378), not browser bubbles.
     <form
       onSubmit={submit}
+      noValidate
       className="tech-corners overflow-hidden rounded-lg border border-ink-300 bg-surface"
     >
       {/* Spec header bar — mirrors the register/provider form panel. */}
@@ -70,9 +99,13 @@ export default function JobPostForm({
         <span className="text-brand-700">{t.postTitle}</span>
       </div>
       <div className="space-y-4 p-6">
-        <Field label={t.jobTitle} htmlFor="job-jobTitle">
+        <Field
+          label={t.jobTitle}
+          htmlFor="job-title"
+          error={fieldErrors["job-title"]}
+        >
           <input
-            id="job-jobTitle"
+            id="job-title"
             className="input"
             value={form.title}
             onChange={(e) => set("title", e.target.value)}
@@ -83,7 +116,11 @@ export default function JobPostForm({
           />
         </Field>
         <FormRow>
-          <Field label={t.category} htmlFor="job-category">
+          <Field
+            label={t.category}
+            htmlFor="job-category"
+            error={fieldErrors["job-category"]}
+          >
             <select
               id="job-category"
               className="input"
@@ -99,7 +136,11 @@ export default function JobPostForm({
               ))}
             </select>
           </Field>
-          <Field label={t.district} htmlFor="job-district">
+          <Field
+            label={t.district}
+            htmlFor="job-district"
+            error={fieldErrors["job-district"]}
+          >
             <select
               id="job-district"
               className="input"
@@ -116,7 +157,11 @@ export default function JobPostForm({
             </select>
           </Field>
         </FormRow>
-        <Field label={t.description} htmlFor="job-description">
+        <Field
+          label={t.description}
+          htmlFor="job-description"
+          error={fieldErrors["job-description"]}
+        >
           <textarea
             id="job-description"
             className="input min-h-32 resize-y"
@@ -128,7 +173,12 @@ export default function JobPostForm({
             maxLength={2000}
           />
         </Field>
-        <Field label={t.budget} htmlFor="job-budget" help={t.budgetOptional}>
+        <Field
+          label={t.budget}
+          htmlFor="job-budget"
+          help={t.budgetOptional}
+          error={fieldErrors["job-budget"]}
+        >
           <input
             id="job-budget"
             className="input"
@@ -139,11 +189,7 @@ export default function JobPostForm({
             placeholder={t.budgetPh}
           />
         </Field>
-        {error && (
-          <p role="alert" className="text-sm text-red-600">
-            {error}
-          </p>
-        )}
+        <FormError>{error}</FormError>
         <button type="submit" disabled={loading} className="btn-primary">
           {loading ? t.posting : t.post}
         </button>

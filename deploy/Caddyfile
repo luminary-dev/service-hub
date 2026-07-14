@@ -6,6 +6,13 @@
 }
 
 {$DOMAIN} {
+	# Per-request access logs (#527): Caddy emits none by default. Write them as
+	# JSON to stdout so they land in the container's json-file log driver, which
+	# is already size-capped + rotated in docker-compose.prod.yml.
+	log {
+		output stdout
+		format json
+	}
 	encode zstd gzip
 	# HSTS: force HTTPS for two years on this host + subdomains. `preload` makes
 	# it eligible for the browser preload list (submit the domain separately at

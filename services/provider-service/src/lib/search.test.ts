@@ -14,10 +14,22 @@ describe("buildSearchWhere", () => {
     expect(where.OR).toEqual([
       { headline: { contains: "wiring", mode: "insensitive" } },
       { bio: { contains: "wiring", mode: "insensitive" } },
+      { headlineSi: { contains: "wiring", mode: "insensitive" } },
+      { bioSi: { contains: "wiring", mode: "insensitive" } },
       { city: { contains: "wiring", mode: "insensitive" } },
       { contactName: { contains: "wiring", mode: "insensitive" } },
       { services: { some: { title: { contains: "wiring", mode: "insensitive" } } } },
     ]);
+  });
+
+  it("matches the optional Sinhala headline/bio (#515)", () => {
+    const where = buildSearchWhere("කාර්මික", []);
+    expect(where.OR).toContainEqual({
+      headlineSi: { contains: "කාර්මික", mode: "insensitive" },
+    });
+    expect(where.OR).toContainEqual({
+      bioSi: { contains: "කාර්මික", mode: "insensitive" },
+    });
   });
 
   it("trims the query", () => {
@@ -36,7 +48,7 @@ describe("buildSearchWhere", () => {
 
   it("omits the category clause when no slugs matched", () => {
     const where = buildSearchWhere("mechanic", []);
-    expect(where.OR).toHaveLength(5);
+    expect(where.OR).toHaveLength(7);
     expect(where.OR).not.toContainEqual(
       expect.objectContaining({ category: expect.anything() })
     );
@@ -56,11 +68,11 @@ describe("buildBrowseWhere", () => {
     expect(buildBrowseWhere({})).toEqual({ suspended: false });
   });
 
-  it("applies category and district exact filters", () => {
+  it("applies the category exact filter and the district membership filter (#502)", () => {
     expect(buildBrowseWhere({ category: "plumber", district: "Kandy" })).toEqual({
       suspended: false,
       category: "plumber",
-      district: "Kandy",
+      serviceDistricts: { has: "Kandy" },
     });
   });
 
@@ -114,7 +126,9 @@ describe("buildBrowseWhere", () => {
       availableOnly: true,
     });
     expect(where.suspended).toBe(false);
-    expect(where.district).toBe("Colombo");
+    // Multi-district (#502): the filter is membership in the served set, so a
+    // provider based elsewhere but serving Colombo matches too.
+    expect(where.serviceDistricts).toEqual({ has: "Colombo" });
     expect(where.available).toBe(true);
     expect(where.OR).toContainEqual({ category: { in: ["mechanic"] } });
   });

@@ -25,50 +25,97 @@ jobs:
   add-issue-to-board:
     if: github.event_name == 'issues'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Add issue to board
         id: add
-        uses: actions/add-to-project@v2.0.0
+        uses: actions/add-to-project@5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd # v2.0.0
         with:
           project-url: https://github.com/orgs/luminary-dev/projects/1
           github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}
 
       - name: Set Status=Backlog and Service
+        # Field/option ids are resolved by NAME at runtime (like
+        # board-done-on-close.yml) so board edits don't break the sync, and the
+        # Service option comes from the issue's `service:` label instead of a
+        # hardcoded default (#388).
         env:
           GH_TOKEN: ${{ secrets.ADD_TO_PROJECT_PAT }}
+          PROJECT_ID: PVT_kwDOD0HlNc4Bcax8
           ITEM_ID: ${{ steps.add.outputs.itemId }}
+          LABELS: ${{ toJSON(github.event.issue.labels.*.name) }}
         run: |
-          gh api graphql -f item="$ITEM_ID" -f query='
-            mutation($item: ID!) {
-              status: updateProjectV2ItemFieldValue(input: {
-                projectId: "PVT_kwDOD0HlNc4Bcax8", itemId: $item,
-                fieldId: "PVTSSF_lADOD0HlNc4Bcax8zhXDxPc",
-                value: { singleSelectOptionId: "c261ff04" }
-              }) { clientMutationId }
-              service: updateProjectV2ItemFieldValue(input: {
-                projectId: "PVT_kwDOD0HlNc4Bcax8", itemId: $item,
-                fieldId: "PVTSSF_lADOD0HlNc4Bcax8zhXDxSs",
-                value: { singleSelectOptionId: "fa10f78e" }
-              }) { clientMutationId }
-            }'
+          set -euo pipefail
+
+          FIELDS=$(gh api graphql -f pid="$PROJECT_ID" -f query='
+            query($pid:ID!){ node(id:$pid){ ... on ProjectV2 {
+              status: field(name:"Status"){ ... on ProjectV2SingleSelectField { id options { id name } } }
+              service: field(name:"Service"){ ... on ProjectV2SingleSelectField { id options { id name } } }
+            } } }')
+
+          set_field() { # $1 = field id, $2 = option id
+            gh api graphql -f pid="$PROJECT_ID" -f item="$ITEM_ID" -f fid="$1" -f opt="$2" -f query='
+              mutation($pid:ID!, $item:ID!, $fid:ID!, $opt:String!) {
+                updateProjectV2ItemFieldValue(input: {
+                  projectId: $pid, itemId: $item, fieldId: $fid,
+                  value: { singleSelectOptionId: $opt }
+                }) { clientMutationId }
+              }' >/dev/null
+          }
+
+          BACKLOG=$(jq -r '.data.node.status.options[] | select(.name=="Backlog") | .id' <<<"$FIELDS")
+          if [ -n "$BACKLOG" ]; then
+            set_field "$(jq -r '.data.node.status.id' <<<"$FIELDS")" "$BACKLOG"
+            echo "Status set to Backlog."
+          else
+            echo "::warning::No 'Backlog' Status option on the board — Status left unset."
+          fi
+
+          # `service: <name>` label → the Service option with that name.
+          SVC=$(jq -r 'map(select(startswith("service:")) | sub("^service:\\s*"; "")) | first // empty' <<<"$LABELS")
+          if [ -z "$SVC" ]; then
+            echo "No 'service:' label on the issue — Service left unset."
+            exit 0
+          fi
+          OPT=$(jq -r --arg s "$SVC" \
+            '.data.node.service.options[] | select((.name|ascii_downcase) == ($s|ascii_downcase)) | .id' <<<"$FIELDS")
+          if [ -n "$OPT" ]; then
+            set_field "$(jq -r '.data.node.service.id' <<<"$FIELDS")" "$OPT"
+            echo "Service set to '$SVC'."
+          else
+            echo "::warning::No Service option named '$SVC' on the board — set it manually."
+          fi
 
   # ── PRs: not board cards. Assign the author; mirror onto the resolved issue ─
   assign-pr-and-linked-issue:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
+      # Fork PRs get a read-only GITHUB_TOKEN, so the edits below can never
+      # work — skip them loudly instead of failing silently (#388).
+      - name: Fork PR notice
+        if: github.event.pull_request.head.repo.full_name != github.repository
+        run: echo "::notice::PR is from a fork — GITHUB_TOKEN is read-only, so assignee sync is skipped. Assign manually."
+
       - name: Assign the PR to its author
+        if: github.event.pull_request.head.repo.full_name == github.repository
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           ACTOR: ${{ github.actor }}
           PR: ${{ github.event.pull_request.number }}
-        run: gh pr edit "$PR" --repo "$REPO" --add-assignee "$ACTOR" || true
+        run: |
+          gh pr edit "$PR" --repo "$REPO" --add-assignee "$ACTOR" \
+            || echo "::warning::Could not assign PR #$PR to $ACTOR — assign manually."
 
       - name: Mirror the assignee onto any issue this PR closes
         # PRs are not added to the board; instead the issue(s) the PR resolves
         # (Closes #n) get the PR author as assignee, so the board card reflects
         # who's doing the work. No linked issue → nothing to do here.
+        # closingIssuesReferences can point at OTHER repos (`Closes owner/repo#5`),
+        # so each node is filtered to this repo before editing (#388).
+        if: github.event.pull_request.head.repo.full_name == github.repository
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
@@ -76,16 +123,25 @@ jobs:
           OWNER: ${{ github.repository_owner }}
           PR: ${{ github.event.pull_request.number }}
         run: |
+          set -euo pipefail
           name="${REPO#*/}"
-          nums=$(gh api graphql -f owner="$OWNER" -f repo="$name" -F num="$PR" -f query='
+          gh api graphql -f owner="$OWNER" -f repo="$name" -F num="$PR" -f query='
             query($owner:String!, $repo:String!, $num:Int!) {
               repository(owner:$owner, name:$repo) {
                 pullRequest(number:$num) {
-                  closingIssuesReferences(first:20) { nodes { number } }
+                  closingIssuesReferences(first:20) {
+                    nodes { number repository { nameWithOwner } }
+                  }
                 }
               }
-            }' --jq '.data.repository.pullRequest.closingIssuesReferences.nodes[].number')
-          for n in $nums; do
-            echo "Assigning issue #$n to $ACTOR (resolved by PR #$PR)"
-            gh issue edit "$n" --repo "$REPO" --add-assignee "$ACTOR" || true
-          done
+            }' --jq '.data.repository.pullRequest.closingIssuesReferences.nodes[]
+                     | [(.number|tostring), .repository.nameWithOwner] | @tsv' \
+          | while IFS=$'\t' read -r n issue_repo; do
+              if [ "$issue_repo" != "$REPO" ]; then
+                echo "Skipping $issue_repo#$n — cross-repo reference, not this repo's issue."
+                continue
+              fi
+              echo "Assigning issue #$n to $ACTOR (resolved by PR #$PR)"
+              gh issue edit "$n" --repo "$REPO" --add-assignee "$ACTOR" \
+                || echo "::warning::Could not assign issue #$n to $ACTOR — assign manually."
+            done

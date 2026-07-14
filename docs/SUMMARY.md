@@ -21,6 +21,12 @@
   - [Internal S2S API](api/internal.md)
 - [Authorization & RBAC](AUTHZ.md)
 
+## RFCs
+
+- [Search & discovery service](rfcs/search-discovery-service.md)
+- [Stateful notification service](rfcs/stateful-notification-service.md)
+- [Trust & safety service extraction](rfcs/trust-safety-service.md)
+
 ## Product
 
 - [Features](FEATURES.md)
@@ -30,6 +36,8 @@
   - [Jobs (reverse-marketplace)](features/jobs.md)
   - [Reviews](features/reviews.md)
   - [Favorites](features/favorites.md)
+  - [Saved searches & alerts](features/saved-searches.md)
+  - [In-app notifications](features/notifications.md)
   - [AI chat assistant](features/chat.md)
   - [Bilingual EN/SI & theme](features/i18n-and-theme.md)
   - [Media & uploads](features/media.md)
@@ -50,7 +58,10 @@
 - [Deployment](DEPLOYMENT.md)
 - [Operations runbook](OPERATIONS.md)
 - [Backups & disaster recovery](BACKUPS.md)
+- [Secret rotation](SECRET_ROTATION.md)
 - [Rate limiting](RATE_LIMITING.md)
 - [Testing](TESTING.md)
+- [CI additions (proposed)](CI_ADDITIONS.md)
+- [Dependency maintenance](DEPENDENCIES.md)
 - [Email setup](EMAIL_SETUP.md)
 - [Security policy](https://github.com/luminary-dev/service-hub/blob/dev/SECURITY.md)

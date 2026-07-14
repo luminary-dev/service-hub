@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useT } from "@/components/I18nProvider";
 import { formatDate } from "@/lib/format";
+import ReportButton from "@/components/ReportButton";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 type Message = {
   id: string;
@@ -39,12 +41,26 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
   const [sendError, setSendError] = useState(false);
   const lastSeenRef = useRef<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const logRef = useRef<HTMLDivElement>(null);
+  // Whether the user is parked near the bottom of the log. Starts true so the
+  // first load scrolls to the latest; a poll only auto-scrolls if the user
+  // hasn't scrolled up to read history (#661).
+  const nearBottomRef = useRef(true);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal?: AbortSignal) => {
     const after = lastSeenRef.current;
-    const res = await fetch(
-      `/api/inquiries/${inquiryId}/messages${after ? `?after=${encodeURIComponent(after)}` : ""}`
-    );
+    let res: Response;
+    try {
+      res = await fetch(
+        `/api/inquiries/${inquiryId}/messages${after ? `?after=${encodeURIComponent(after)}` : ""}`,
+        { signal }
+      );
+    } catch {
+      // Abort on unmount is expected; a dropped connection on the first load
+      // shows the load-failed alert, later polls just retry next tick (#377).
+      if (!signal?.aborted && !after) setError(true);
+      return;
+    }
     if (!res.ok) {
       if (!after) setError(true);
       return;
@@ -67,14 +83,40 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
   }, [inquiryId]);
 
   useEffect(() => {
-    load();
-    const timer = setInterval(load, POLL_MS);
-    return () => clearInterval(timer);
+    // Abort the in-flight fetch on unmount so a slow response can't set state
+    // on an unmounted thread (#377).
+    const controller = new AbortController();
+    load(controller.signal);
+    // Only poll while the tab is visible, and refetch on focus, so a
+    // backgrounded thread stops hitting the network (mirrors NotificationBell,
+    // #661).
+    const onFocus = () => load(controller.signal);
+    window.addEventListener("focus", onFocus);
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") load(controller.signal);
+    }, POLL_MS);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+      controller.abort();
+    };
   }, [load]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: "end" });
+    // Don't yank a reader who has scrolled up to review history back down on
+    // every poll — only follow new messages when they're already at the
+    // bottom (#661).
+    if (nearBottomRef.current) {
+      bottomRef.current?.scrollIntoView({ block: "end" });
+    }
   }, [thread?.messages.length]);
+
+  function onLogScroll() {
+    const el = logRef.current;
+    if (!el) return;
+    nearBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
@@ -82,22 +124,28 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
     if (!body || sending) return;
     setSending(true);
     setSendError(false);
-    const res = await fetch(`/api/inquiries/${inquiryId}/messages`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ body }),
-    });
-    setSending(false);
-    if (!res.ok) {
+    try {
+      const res = await fetch(`/api/inquiries/${inquiryId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body }),
+      });
+      if (!res.ok) {
+        setSendError(true);
+        return;
+      }
+      const data = (await res.json()) as { message: Message };
+      setDraft("");
+      lastSeenRef.current = data.message.createdAt;
+      setThread((prev) =>
+        prev ? { ...prev, messages: [...prev.messages, data.message] } : prev
+      );
+    } catch {
+      // Network failure — recover instead of wedging the send button (#363).
       setSendError(true);
-      return;
+    } finally {
+      setSending(false);
     }
-    const data = (await res.json()) as { message: Message };
-    setDraft("");
-    lastSeenRef.current = data.message.createdAt;
-    setThread((prev) =>
-      prev ? { ...prev, messages: [...prev.messages, data.message] } : prev
-    );
   }
 
   if (error) {
@@ -110,8 +158,8 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
   if (!thread) {
     return (
       <div className="tech-corners animate-pulse rounded-lg border border-ink-300 bg-surface p-6">
-        <div className="h-4 w-1/3 rounded bg-ink-100" />
-        <div className="mt-4 h-16 rounded bg-ink-100" />
+        <Skeleton className="h-4 w-1/3 rounded" />
+        <Skeleton className="mt-4 h-16 rounded" />
       </div>
     );
   }
@@ -131,6 +179,8 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
       </div>
 
       <div
+        ref={logRef}
+        onScroll={onLogScroll}
         role="log"
         aria-label={t.messages.threadWith(counterpart)}
         className="flex-1 space-y-3 overflow-y-auto px-5 py-4"
@@ -151,7 +201,7 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
         {thread.messages.map((m) => {
           const mine = m.sender === thread.party;
           return (
-            <div key={m.id} className={mine ? "flex justify-end" : "flex justify-start"}>
+            <div key={m.id} className={mine ? "flex justify-end" : "flex items-end justify-start gap-1.5"}>
               <div
                 className={
                   mine
@@ -172,6 +222,15 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
                   })}
                 </p>
               </div>
+              {/* Abuse reporting (#376): only the counterpart's messages are
+                  reportable — reporting your own makes no sense. */}
+              {!mine && (
+                <ReportButton
+                  endpoint={`/api/messages/${m.id}/report`}
+                  label={t.report.reportMessage}
+                  showLabel={false}
+                />
+              )}
             </div>
           );
         })}

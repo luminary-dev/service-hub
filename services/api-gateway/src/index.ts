@@ -1,12 +1,23 @@
 import "./load-env";
 import { serve } from "@hono/node-server";
 import { app } from "./app";
-import { closeRedis } from "./lib/rate-limit";
+import { log } from "./lib/log";
+import { installProcessErrorHandlers } from "./lib/logging";
+import { checkProxyConfig, closeRedis } from "./lib/rate-limit";
 
 const port = Number(process.env.PORT ?? 4000);
 
+// Last-resort structured capture for errors outside a request (#34); Hono's
+// onError covers errors inside one. See lib/logging.ts.
+installProcessErrorHandlers(log);
+
+// Warn (don't crash) if TRUSTED_PROXY_HOPS looks misconfigured for the deployed
+// topology (#374) — a silent 0 collapses every client into one rate-limit
+// bucket behind the Caddy→web→gateway chain.
+checkProxyConfig();
+
 const server = serve({ fetch: app.fetch, port }, (info) => {
-  console.log(`api-gateway listening on :${info.port}`);
+  log.info("listening", { port: info.port });
 });
 
 // Graceful shutdown: stop accepting connections, drain in-flight requests,
@@ -16,9 +27,9 @@ let shuttingDown = false;
 function shutdown(signal: string) {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.log(`api-gateway received ${signal}, shutting down`);
+  log.info("shutting down", { signal });
   const forced = setTimeout(() => {
-    console.error("api-gateway forced exit after shutdown timeout");
+    log.error("forced exit after shutdown timeout");
     process.exit(1);
   }, 10_000);
   forced.unref();
@@ -26,7 +37,7 @@ function shutdown(signal: string) {
     try {
       await closeRedis();
     } catch (err) {
-      console.error("api-gateway error during shutdown", err);
+      log.error("error during shutdown", { err });
     }
     clearTimeout(forced);
     process.exit(0);

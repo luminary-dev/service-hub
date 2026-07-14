@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { dict } from "@/lib/i18n";
-import { ToastProvider, useToast } from "./ToastProvider";
+import { TOAST_DURATION_MS, ToastProvider, useToast } from "./ToastProvider";
 
 function Trigger() {
   const toast = useToast();
@@ -38,9 +38,19 @@ describe("ToastProvider", () => {
     renderWithProvider();
     fireEvent.click(screen.getByText("ok"));
     fireEvent.click(screen.getByText("fail"));
-    const toasts = screen.getAllByRole("status");
-    expect(toasts).toHaveLength(2);
-    expect(toasts[1].textContent).toContain("boom");
+    // Success stays polite (role="status"); errors interrupt (role="alert").
+    expect(screen.getByRole("status").textContent).toContain("saved!");
+    expect(screen.getByRole("alert").textContent).toContain("boom");
+  });
+
+  it("announces error toasts assertively", () => {
+    renderWithProvider();
+    fireEvent.click(screen.getByText("fail"));
+    const errorToast = screen.getByRole("alert");
+    expect(errorToast.textContent).toContain("boom");
+    // The error lives in the assertive live region, not the polite one.
+    expect(errorToast.closest("[aria-live='assertive']")).not.toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("auto-dismisses after the toast duration", () => {
@@ -55,6 +65,51 @@ describe("ToastProvider", () => {
     // …and gone right after.
     act(() => vi.advanceTimersByTime(1));
     expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("pauses auto-dismiss on hover and resumes on leave (#565)", () => {
+    vi.useFakeTimers();
+    renderWithProvider();
+    fireEvent.click(screen.getByText("ok"));
+    const toast = screen.getByRole("status");
+
+    // Hovering cancels the pending timer, so the toast outlives 4s…
+    fireEvent.mouseEnter(toast);
+    act(() => vi.advanceTimersByTime(TOAST_DURATION_MS + 1000));
+    expect(screen.getByRole("status")).toBeTruthy();
+
+    // …and leaving restarts the full duration.
+    fireEvent.mouseLeave(toast);
+    act(() => vi.advanceTimersByTime(TOAST_DURATION_MS - 1));
+    expect(screen.getByRole("status")).toBeTruthy();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("pauses auto-dismiss while the toast holds focus (#565)", () => {
+    vi.useFakeTimers();
+    renderWithProvider();
+    fireEvent.click(screen.getByText("ok"));
+    const dismissBtn = screen.getByRole("button", {
+      name: dict.en.toast.dismiss,
+    });
+
+    fireEvent.focus(dismissBtn);
+    act(() => vi.advanceTimersByTime(TOAST_DURATION_MS + 1000));
+    expect(screen.getByRole("status")).toBeTruthy();
+
+    fireEvent.blur(dismissBtn);
+    act(() => vi.advanceTimersByTime(TOAST_DURATION_MS));
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("clears pending timers on unmount (#565)", () => {
+    vi.useFakeTimers();
+    const { unmount } = renderWithProvider();
+    fireEvent.click(screen.getByText("ok"));
+    unmount();
+    // No timer should still be queued once the provider is gone.
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("dismisses immediately via the close button", () => {

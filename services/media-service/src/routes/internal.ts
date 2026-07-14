@@ -9,6 +9,7 @@ import {
   InvalidNamespaceError,
   InvalidPrefixError,
   MAX_UPLOAD_SIZE,
+  readStoredFile,
   sweep,
   storeFile,
 } from "../lib/media";
@@ -18,6 +19,15 @@ export const internalRoutes = new Hono();
 // POST /internal/media/store — multipart: namespace, prefix, file. Processes
 // (sharp) and stores; returns the URL to persist. 400 for a non-image.
 internalRoutes.post("/internal/media/store", async (c) => {
+  // Fail fast before buffering the multipart body: if the caller declares a
+  // body larger than the limit, reject it now. Content-Length can be absent or
+  // spoofed, so this is only an early cut-off — the post-parse file.size check
+  // below is the authoritative backstop. (We're an S2S service; the gateway's
+  // 6MB body cap doesn't protect us from a compromised/buggy sibling.)
+  const contentLength = Number(c.req.header("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > MAX_UPLOAD_SIZE) {
+    return c.json({ error: "File too large" }, 413);
+  }
   const form = await c.req.formData().catch(() => null);
   const namespace = form?.get("namespace");
   const prefix = form?.get("prefix");
@@ -29,8 +39,9 @@ internalRoutes.post("/internal/media/store", async (c) => {
   ) {
     return c.json({ error: "Invalid input" }, 400);
   }
-  // Reject oversized uploads before reading the whole file into memory and
-  // handing it to sharp (defence-in-depth behind the gateway's body limit).
+  // Authoritative size check: the multipart body is now parsed, so this is the
+  // true byte count regardless of what Content-Length claimed above. Reject
+  // before handing the bytes to sharp.
   if (file.size > MAX_UPLOAD_SIZE) {
     return c.json({ error: "File too large" }, 413);
   }
@@ -48,6 +59,25 @@ internalRoutes.post("/internal/media/store", async (c) => {
     }
     throw e;
   }
+});
+
+// GET /internal/media/raw?url=/api/files/<ns>/<subpath> — streams a stored
+// file's raw bytes for admin-gated callers that must NOT expose it on the
+// public /files path (verification documents, #500). Behind the internal
+// secret like everything here; the calling service enforces per-request authz
+// (provider-service only lets ADMIN/SUPPORT reach this). PII, so it is marked
+// private/no-store rather than the public immutable cache the /files route uses.
+internalRoutes.get("/internal/media/raw", async (c) => {
+  const url = c.req.query("url");
+  if (!url) return c.json({ error: "Invalid input" }, 400);
+  const file = await readStoredFile(url);
+  if (!file) return c.json({ error: "Not found" }, 404);
+  return c.body(file.data, 200, {
+    "content-type": file.contentType,
+    "cache-control": "private, no-store",
+    "x-content-type-options": "nosniff",
+    "content-disposition": "inline",
+  });
 });
 
 const deleteSchema = z.object({ url: z.string().min(1) });

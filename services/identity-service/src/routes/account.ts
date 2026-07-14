@@ -3,6 +3,7 @@
 // /api/account. Kept separate from auth.ts (login/register/reset lifecycle) so
 // the "manage my own account" surface is easy to find.
 import { Hono } from "hono";
+import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "../db";
@@ -10,15 +11,22 @@ import { getAuth, getLocale, getOrigin } from "../lib/http";
 import { log } from "../lib/log";
 import { createSession } from "../lib/session";
 import { hashToken } from "../lib/tokens";
-import { slPhone } from "../lib/field-rules";
-import { sendEmailChangeConfirmation } from "../lib/verification";
+import { emailAddress, slPhone } from "../lib/field-rules";
+import {
+  sendEmailChangeAttemptNotice,
+  sendEmailChangeConfirmation,
+} from "../lib/verification";
 import {
   ALLOWED_IMAGE_TYPES,
   InvalidImageError,
   MAX_UPLOAD_SIZE,
+  removeStoredFile,
   storeImage,
 } from "../lib/storage";
-import { syncAvatarToProvider } from "../lib/providers";
+import {
+  syncAvatarToProvider,
+  syncContactToProvider,
+} from "../lib/providers";
 
 export const accountRoutes = new Hono();
 
@@ -45,6 +53,13 @@ accountRoutes.post("/avatar", async (c) => {
     return c.json({ error: "Image must be under 5MB" }, 400);
   }
 
+  // Capture the current avatar before we overwrite it so the old object can be
+  // reclaimed after the swap — otherwise every replace leaks the prior file.
+  const prior = await db.user.findUnique({
+    where: { id: auth.userId },
+    select: { avatarUrl: true },
+  });
+
   let avatarUrl: string;
   try {
     avatarUrl = await storeImage("user", file, "avatars");
@@ -57,6 +72,13 @@ accountRoutes.post("/avatar", async (c) => {
     where: { id: auth.userId },
     data: { avatarUrl },
   });
+  // The new URL is committed — reclaim the previous file. Best-effort: a failed
+  // cleanup must never fail the user's update (removeStoredFile swallows too).
+  // Guard against removing the just-set object if the store returned the same
+  // URL.
+  if (prior?.avatarUrl && prior.avatarUrl !== avatarUrl) {
+    await removeStoredFile(prior.avatarUrl);
+  }
   await syncAvatarToProvider(auth.userId, avatarUrl);
   // Re-issue the session so the top-nav avatar (carried in the JWT) updates
   // without a re-login.
@@ -73,10 +95,20 @@ accountRoutes.post("/avatar", async (c) => {
 accountRoutes.delete("/avatar", async (c) => {
   const auth = getAuth(c);
   if (!auth) return c.json({ error: "Unauthorized" }, 401);
+  // Grab the current avatar so we can delete the stored object after clearing
+  // the row — clearing it alone would orphan the file.
+  const prior = await db.user.findUnique({
+    where: { id: auth.userId },
+    select: { avatarUrl: true },
+  });
   const updated = await db.user.update({
     where: { id: auth.userId },
     data: { avatarUrl: null },
   });
+  // Best-effort reclaim of the removed file (never fails the request).
+  if (prior?.avatarUrl) {
+    await removeStoredFile(prior.avatarUrl);
+  }
   await syncAvatarToProvider(auth.userId, null);
   await createSession(c, {
     userId: updated.id,
@@ -113,6 +145,13 @@ accountRoutes.put("/profile", async (c) => {
     data: { name: parsed.data.name, phone: parsed.data.phone },
   });
 
+  // Mirror the new name/phone onto the denormalized Provider contact columns
+  // (#553) — best-effort, no-op for users without a provider profile.
+  await syncContactToProvider(auth.userId, {
+    name: updated.name,
+    phone: updated.phone,
+  });
+
   // The session JWT carries the display name (used in the header/UserMenu);
   // reissue it so the cached name matches immediately without a re-login.
   await createSession(c, {
@@ -129,7 +168,19 @@ accountRoutes.put("/profile", async (c) => {
 // ---------------------------------------------------------------------------
 // POST /api/account/email/change — request a change; emails the NEW address
 // ---------------------------------------------------------------------------
-const emailSchema = z.object({ email: z.string().trim().email() });
+// Normalize (trim + lowercase) with the shared rule that register/login/forgot
+// use, so a mixed-case new address is compared against the lowercase address we
+// actually store: the taken-check can't miss a case-variant of an existing
+// account, and the value we later persist is one that password login (which
+// lowercases its input) can still match (security-audit M8).
+//
+// password is optional: social-only accounts (#398) have none, so a valid
+// session is their re-auth. Password accounts must confirm it (checked below,
+// #504).
+const emailSchema = z.object({
+  email: emailAddress,
+  password: z.string().min(1).optional(),
+});
 
 accountRoutes.post("/email/change", async (c) => {
   const auth = getAuth(c);
@@ -147,19 +198,48 @@ accountRoutes.post("/email/change", async (c) => {
     return c.json({ error: "That is already your email address." }, 400);
   }
 
-  // Same 409 as registration when the address is taken — no new enumeration
-  // surface beyond what register already exposes.
-  const taken = await db.user.findUnique({ where: { email: newEmail } });
-  if (taken) {
-    return c.json({ error: "An account with this email already exists." }, 409);
+  // #504: changing the login email is a sensitive op, so re-authenticate the
+  // current password before issuing the confirmation link — the same guard
+  // delete-account and change-password use. Social-only accounts (#398) have no
+  // passwordHash; for them the valid session IS the re-auth, so they keep the
+  // session-only path. This check depends only on the caller's own hash, so it
+  // costs the same whether or not the target address is free and never becomes
+  // an enumeration signal itself.
+  if (user.passwordHash) {
+    if (
+      !parsed.data.password ||
+      !(await bcrypt.compare(parsed.data.password, user.passwordHash))
+    ) {
+      return c.json({ error: "Incorrect password." }, 400);
+    }
   }
 
-  try {
-    await sendEmailChangeConfirmation(user.id, newEmail, getOrigin(c), getLocale(c));
-  } catch (e) {
-    log.error("change-email send failed", { context: "account", err: e });
-    return c.json({ error: "Could not send the confirmation email." }, 500);
+  // #503: anti-enumeration. Whether or not the target address already belongs to
+  // another account, answer with the SAME generic success — a distinguishable
+  // 409 "already exists" here let a signed-in attacker probe which addresses
+  // have accounts (the leak register/login/forgot-password already close). When
+  // the address IS taken we do NOT start a change; instead we mail the real
+  // owner an out-of-band "someone tried to move an account to your email" notice.
+  // Both branches fire their mail and-forget it (never awaited, like
+  // forgot-password / register #498) and return the identical shape, so the
+  // taken branch is neither observably different nor measurably faster.
+  const taken = await db.user.findUnique({ where: { email: newEmail } });
+  if (taken) {
+    void sendEmailChangeAttemptNotice(newEmail, getOrigin(c), getLocale(c)).catch(
+      (e) =>
+        log.error("email-change-attempt notice failed", { context: "account", err: e })
+    );
+    return c.json({ ok: true });
   }
+
+  void sendEmailChangeConfirmation(
+    user.id,
+    newEmail,
+    getOrigin(c),
+    getLocale(c)
+  ).catch((e) =>
+    log.error("change-email send failed", { context: "account", err: e })
+  );
 
   return c.json({ ok: true });
 });
@@ -181,17 +261,24 @@ accountRoutes.post("/email/confirm", async (c) => {
     where: { tokenHash: hashToken(parsed.data.token) },
   });
   if (!record || record.expiresAt < new Date()) {
+    // deleteMany, not delete: a double-submit races to delete the same row and
+    // delete() throws P2025 on the loser (a spurious 500). deleteMany no-ops.
     if (record) {
-      await db.emailChangeToken.delete({ where: { id: record.id } });
+      await db.emailChangeToken.deleteMany({ where: { id: record.id } });
     }
     return c.json({ error: "expired" }, 400);
   }
+
+  // The stored token address was already normalized at request time; lowercase
+  // it again on write as a belt-and-braces guard so the persisted email is
+  // always the lowercase form password login compares against (M8).
+  const newEmail = record.newEmail.trim().toLowerCase();
 
   try {
     await db.$transaction([
       db.user.update({
         where: { id: record.userId },
-        data: { email: record.newEmail, emailVerified: new Date() },
+        data: { email: newEmail, emailVerified: new Date() },
       }),
       // Single-use: consume every pending change token for this user.
       db.emailChangeToken.deleteMany({ where: { userId: record.userId } }),
@@ -204,6 +291,11 @@ accountRoutes.post("/email/confirm", async (c) => {
     }
     throw e;
   }
+
+  // Mirror the new address onto the denormalized Provider contact email (#553)
+  // so inquiry/lead notifications follow the account — best-effort, no-op for
+  // users without a provider profile.
+  await syncContactToProvider(record.userId, { email: newEmail });
 
   return c.json({ ok: true });
 });

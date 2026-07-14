@@ -10,8 +10,11 @@ import { accountRoutes } from "./routes/account";
 import { authRoutes } from "./routes/auth";
 import { oauthRoutes } from "./routes/oauth";
 import { favoritesRoutes } from "./routes/favorites";
+import { savedSearchesRoutes } from "./routes/saved-searches";
+import { internalSavedSearchesRoutes } from "./routes/internal-saved-searches";
 import { adminRoutes } from "./routes/admin";
 import { internalUsersRoutes } from "./routes/internal-users";
+import { internalMaintenanceRoutes } from "./routes/internal-maintenance";
 
 export const app = new Hono();
 
@@ -38,10 +41,13 @@ app.route("/api/auth", authRoutes);
 app.route("/api/auth", oauthRoutes);
 app.route("/api/account", accountRoutes);
 app.route("/api/favorites", favoritesRoutes);
+app.route("/api/saved-searches", savedSearchesRoutes);
+app.route("/internal/saved-searches", internalSavedSearchesRoutes);
 app.route("/", adminUsersRoutes);
 app.route("/api/admin/impersonate", adminImpersonationRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/internal/users", internalUsersRoutes);
+app.route("/", internalMaintenanceRoutes);
 
 // Fallbacks mirror the monolith's Next.js behavior.
 app.notFound((c) => c.json({ error: "Not found" }, 404));

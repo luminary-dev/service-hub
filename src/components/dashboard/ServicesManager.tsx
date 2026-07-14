@@ -32,6 +32,9 @@ export default function ServicesManager({
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // Two-step delete (#562): first tap arms the row, second confirms.
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const router = useRouter();
   const locale = useLocale();
   const s2 = useT().dashboard.services;
@@ -70,49 +73,71 @@ export default function ServicesManager({
       price: Number(draft.price),
       priceType: draft.priceType,
     };
-    const res =
-      editing === "new"
-        ? await fetch("/api/provider/services", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          })
-        : await fetch(`/api/provider/services/${editing}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-    setLoading(false);
-    if (res.ok) {
-      const { service } = await res.json();
-      setServices((list) =>
+    try {
+      const res =
         editing === "new"
-          ? [...list, { ...service, description: service.description ?? "" }]
-          : list.map((s) =>
-              s.id === editing
-                ? { ...service, description: service.description ?? "" }
-                : s,
-            ),
-      );
-      setEditing(null);
-      router.refresh();
-    } else {
-      const d = await res.json().catch(() => ({}));
-      setError(d.error ?? s2.saveError);
+          ? await fetch("/api/provider/services", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            })
+          : await fetch(`/api/provider/services/${editing}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+      if (res.ok) {
+        const { service } = await res.json();
+        setServices((list) =>
+          editing === "new"
+            ? [...list, { ...service, description: service.description ?? "" }]
+            : list.map((s) =>
+                s.id === editing
+                  ? { ...service, description: service.description ?? "" }
+                  : s,
+              ),
+        );
+        setEditing(null);
+        router.refresh();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setError(d.error ?? s2.saveError);
+      }
+    } catch {
+      // Network failure — recover instead of wedging the button (#363).
+      setError(s2.saveError);
+    } finally {
+      setLoading(false);
     }
   }
 
-  async function remove(id: string) {
+  function askRemove(id: string) {
     if (services.length === 1) {
       setError(s2.keepOne);
       return;
     }
-    const res = await fetch(`/api/provider/services/${id}`, {
-      method: "DELETE",
-    });
-    if (res.ok) {
-      setServices((list) => list.filter((s) => s.id !== id));
-      router.refresh();
+    setError("");
+    setConfirmingId(id);
+  }
+
+  async function remove(id: string) {
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/provider/services/${id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setServices((list) => list.filter((s) => s.id !== id));
+        router.refresh();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setError(d.error ?? s2.deleteError);
+      }
+    } catch {
+      setError(s2.deleteError);
+    } finally {
+      setDeletingId(null);
+      setConfirmingId(null);
     }
   }
 
@@ -167,7 +192,7 @@ export default function ServicesManager({
               />
               <select
                 className="input w-36"
-                aria-label={s2.pricePh}
+                aria-label={s2.priceType}
                 value={draft.priceType}
                 onChange={(e) =>
                   setDraft({ ...draft, priceType: e.target.value })
@@ -210,20 +235,40 @@ export default function ServicesManager({
                 </span>
               </p>
             </div>
-            <div className="flex shrink-0 gap-2">
-              <button
-                onClick={() => startEdit(s)}
-                className="text-sm font-medium text-ink-500 hover:text-ink-800"
-              >
-                {s2.edit}
-              </button>
-              <button
-                onClick={() => remove(s.id)}
-                className="text-sm font-medium text-red-500 hover:text-red-600"
-              >
-                {s2.delete}
-              </button>
-            </div>
+            {confirmingId === s.id ? (
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                <span className="text-sm text-ink-600">{s2.confirmDelete}</span>
+                <button
+                  onClick={() => remove(s.id)}
+                  disabled={deletingId !== null}
+                  className="text-sm font-semibold text-red-600 hover:text-red-700 disabled:opacity-50"
+                >
+                  {deletingId === s.id ? s2.deleting : s2.delete}
+                </button>
+                <button
+                  onClick={() => setConfirmingId(null)}
+                  disabled={deletingId !== null}
+                  className="text-sm font-medium text-ink-500 hover:text-ink-800 disabled:opacity-50"
+                >
+                  {s2.cancel}
+                </button>
+              </div>
+            ) : (
+              <div className="flex shrink-0 gap-2">
+                <button
+                  onClick={() => startEdit(s)}
+                  className="text-sm font-medium text-ink-500 hover:text-ink-800"
+                >
+                  {s2.edit}
+                </button>
+                <button
+                  onClick={() => askRemove(s.id)}
+                  className="text-sm font-medium text-red-500 hover:text-red-600"
+                >
+                  {s2.delete}
+                </button>
+              </div>
+            )}
           </li>
         ))}
       </ul>

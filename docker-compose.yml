@@ -9,16 +9,26 @@ x-service-env: &service-env
   NOTIFICATION_SERVICE_URL: http://notification-service:4005
   MEDIA_SERVICE_URL: http://media-service:4006
   CHAT_SERVICE_URL: http://chat-service:4007
+  SEARCH_SERVICE_URL: http://search-service:4008
+  TRUST_SAFETY_SERVICE_URL: http://trust-safety-service:4009
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # PostGIS-enabled Postgres 16 (search & discovery RFC): same PG16 data-dir
+    # format as the previous postgres:16-alpine — the pgdata volume mounts
+    # unchanged; the image only adds the extension packages search_db needs
+    # (CREATE EXTENSION postgis requires them present in the image).
+    image: postgis/postgis:16-3.5-alpine
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
       # 5433 on the host: many dev machines already run a local Postgres on 5432.
-      - "5433:5432"
+      # Loopback-bound (#387) — like every service port below (4000-4009), so on
+      # shared wifi nobody else can reach Postgres (well-known dev password) or
+      # hit a service directly with the dev internal secret and forged x-user-*
+      # headers. Only web (:3000) stays LAN-reachable, for phone testing.
+      - "127.0.0.1:5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
@@ -35,6 +45,11 @@ services:
       PORT: 4001
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/identity_db
       AUTH_SECRET: ${AUTH_SECRET:-dev-only-secret}
+      # Shared session-revocation list (#374): identity publishes each
+      # sessionVersion bump here so the gateway can enforce revocations without
+      # calling identity. Unset → publishing is a no-op (gateway falls back to
+      # its identity lookup).
+      REDIS_URL: redis://redis:6379
       # Social login (#398) — optional; unset → "Continue with Google" disabled.
       # For the Docker path, put these in the repo-root .env (compose reads that
       # for substitution); the host path (dev-all.sh) reads the service .env.
@@ -43,9 +58,11 @@ services:
       FACEBOOK_CLIENT_ID: ${FACEBOOK_CLIENT_ID:-}
       FACEBOOK_CLIENT_SECRET: ${FACEBOOK_CLIENT_SECRET:-}
     ports:
-      - "4001:4001"
+      - "127.0.0.1:4001:4001"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck: &node-healthcheck
       test: ["CMD-SHELL", "wget -qO- http://localhost:$$PORT/healthz > /dev/null || exit 1"]
@@ -61,7 +78,7 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/provider_db
       # Uploads now go through media-service; no local upload volume here.
     ports:
-      - "4002:4002"
+      - "127.0.0.1:4002:4002"
     depends_on:
       postgres:
         condition: service_healthy
@@ -77,7 +94,7 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/review_db
       # Uploads now go through media-service; no local upload volume here.
     ports:
-      - "4003:4003"
+      - "127.0.0.1:4003:4003"
     depends_on:
       postgres:
         condition: service_healthy
@@ -92,7 +109,7 @@ services:
       PORT: 4004
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/job_db
     ports:
-      - "4004:4004"
+      - "127.0.0.1:4004:4004"
     depends_on:
       postgres:
         condition: service_healthy
@@ -103,10 +120,19 @@ services:
     environment:
       <<: *service-env
       PORT: 4005
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/notification_db
+      # Email delivery queue (BRPOPLPUSH + retries); unset → degraded
+      # one-attempt direct sends (in-app notifications unaffected).
+      REDIS_URL: redis://redis:6379
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM:-}
     ports:
-      - "4005:4005"
+      - "127.0.0.1:4005:4005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck: *node-healthcheck
 
   media-service:
@@ -121,7 +147,7 @@ services:
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
       R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
     ports:
-      - "4006:4006"
+      - "127.0.0.1:4006:4006"
     volumes:
       # The callers' original upload volumes, remounted under per-namespace
       # dirs so existing files and their URLs keep resolving with no migration.
@@ -138,7 +164,37 @@ services:
       # Holds the LLM credential (isolated from the web runtime); unset → 503.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     ports:
-      - "4007:4007"
+      - "127.0.0.1:4007:4007"
+    healthcheck: *node-healthcheck
+
+  search-service:
+    build: ./services/search-service
+    environment:
+      <<: *service-env
+      PORT: 4008
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/search_db
+    ports:
+      - "127.0.0.1:4008:4008"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck: *node-healthcheck
+
+  # Trust & safety extraction, phase 1 (docs/rfcs/trust-safety-service.md):
+  # unified reports + moderation audit store. DARK LAUNCH — the gateway does
+  # not route to it yet; deployed so the cutover release is a routing flip.
+  # :4008 is reserved for search-service (Stage-2 Track 1), so this takes :4009.
+  trust-safety-service:
+    build: ./services/trust-safety-service
+    environment:
+      <<: *service-env
+      PORT: 4009
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/trust_safety_db
+    ports:
+      - "127.0.0.1:4009:4009"
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck: *node-healthcheck
 
   redis:
@@ -160,7 +216,7 @@ services:
       # to the per-instance in-memory store.
       REDIS_URL: redis://redis:6379
     ports:
-      - "4000:4000"
+      - "127.0.0.1:4000:4000"
     depends_on:
       redis:
         condition: service_healthy
@@ -175,6 +231,10 @@ services:
       job-service:
         condition: service_healthy
       notification-service:
+        condition: service_healthy
+      search-service:
+        condition: service_healthy
+      trust-safety-service:
         condition: service_healthy
     healthcheck: *node-healthcheck
 

@@ -2,6 +2,16 @@ import { CATEGORIES, PRICE_TYPES } from "./constants";
 
 export type Locale = "en" | "si";
 
+// Notification payloads (#394, RFC stateful-notification-service) are stored
+// JSON rows rendered into sentences at read time, so a user who switches
+// EN↔SI sees their whole feed in the new language. Fields are read
+// defensively — a malformed payload degrades to a generic line, never
+// "undefined". Shared by both locales' render maps below.
+export type NotificationPayload = Record<string, unknown>;
+const nstr = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+const nnum = (v: unknown): string =>
+  typeof v === "number" && Number.isFinite(v) ? String(v) : "";
+
 const en = {
   meta: {
     title: "Baas.lk — Find trusted tradespeople in Sri Lanka",
@@ -31,6 +41,13 @@ const en = {
     themeLight: "Light theme",
     themeDark: "Dark theme",
   },
+  // Localized display names for the role enum (#565).
+  roles: {
+    CUSTOMER: "Customer",
+    PROVIDER: "Provider",
+    ADMIN: "Admin",
+    SUPPORT: "Support",
+  } as Record<string, string>,
   a11y: {
     skipToContent: "Skip to main content",
     rated: (rating: string) => `Rated ${rating} out of 5`,
@@ -56,6 +73,11 @@ const en = {
     post: "Post job",
     posting: "Posting…",
     postError: "Could not post the job. Please try again.",
+    errTitle: "Please enter a job title (at least 5 characters).",
+    errCategory: "Please select the service you need.",
+    errDistrict: "Please select a district.",
+    errDescription: "Please describe the job (at least 10 characters).",
+    errBudget: "Enter a budget of Rs. 100 or more, or leave it blank.",
     boardTitle: "Jobs matching your trade",
     boardSubtitle: (cat: string, district: string) =>
       `Open ${cat} jobs in ${district}.`,
@@ -66,6 +88,7 @@ const en = {
     sending: "Sending…",
     respondError: "Could not send your response.",
     respondedTag: "Responded",
+    responseSent: "Response sent — the customer will see it.",
     postedOn: "Posted",
     budgetTag: (n: string) => `Budget: Rs. ${n}`,
     myTitle: "Your posted jobs",
@@ -83,6 +106,13 @@ const en = {
     prev: "← Previous",
     next: "Next →",
     pageOf: (p: number, t: number) => `Page ${p} of ${t}`,
+    // Captions for the jobs-header StatReadout instruments.
+    stats: {
+      matching: "Matching",
+      responded: "Responded",
+      posted: "Posted",
+      open: "Open",
+    },
   },
   home: {
     heroTitle1: "The tradespeople Sri Lanka",
@@ -129,17 +159,10 @@ const en = {
       "Create a free profile with your photos, rates and contact details. Customers across Sri Lanka search Baas.lk every day for someone exactly like you.",
     ctaCreate: "Create your profile",
     ctaSee: "See who's on it",
-    cardCall: "Call",
-    cardConsult: "Consultation",
-    cardQuote:
-      "“Transformed our bare backyard into a beautiful tropical garden. Worth every rupee.”",
-    cardQuoteBy: "— Tharindu, Kandy",
-    cardAnswered: "Inquiry answered in 2 hours",
-    heroWorkerAlt: "A builder in safety gear holding a hammer",
     heroTeaAlt: "Tea pluckers working on a Sri Lankan estate",
+    statusOnline: "Online",
     // Hero slider (#447)
     sliderRegion: "Featured trades",
-    sliderBadge: "Verified trade",
     sliderPrev: "Previous trade",
     sliderNext: "Next trade",
     sliderGoto: (n: number) => `Show trade ${n}`,
@@ -154,6 +177,25 @@ const en = {
   },
   browse: {
     title: "All Professionals",
+    // Keyword-rich <title>/<description> for the category & district listing
+    // pages (#513). Passed the already-localized category label; the site name
+    // is appended by the root title template.
+    metaTitle: (category: string | null, district: string | null) =>
+      category && district
+        ? `${category} in ${district}, Sri Lanka`
+        : category
+          ? `${category} in Sri Lanka`
+          : district
+            ? `Trusted tradespeople in ${district}, Sri Lanka`
+            : "Find trusted tradespeople in Sri Lanka",
+    metaDesc: (category: string | null, district: string | null) =>
+      category && district
+        ? `Find and hire trusted ${category} in ${district}, Sri Lanka. Browse profiles, real work photos and rates, and contact your baas directly on Baas.lk.`
+        : category
+          ? `Find and hire trusted ${category} across Sri Lanka. Browse profiles, real work photos and rates, and contact your baas directly on Baas.lk.`
+          : district
+            ? `Find and hire trusted tradespeople in ${district}, Sri Lanka. Browse profiles, real work photos and rates, and contact your baas directly on Baas.lk.`
+            : "Browse trusted tradespeople across Sri Lanka on Baas.lk. See profiles, real work photos and rates, and contact your baas directly.",
     found: (n: number, district: string | null) =>
       `${n} professional${n === 1 ? "" : "s"} found ${district ? `in ${district}` : "across Sri Lanka"}`,
     searchPh: "Search by name, skill or city…",
@@ -173,6 +215,7 @@ const en = {
     prev: "← Previous",
     next: "Next →",
     pageOf: (p: number, t: number) => `Page ${p} of ${t}`,
+    paginationLabel: "Pagination",
     sortLabel: "Sort by",
     sort: {
       recommended: "Recommended",
@@ -182,6 +225,44 @@ const en = {
       experience: "Most experienced",
       newest: "Newest",
     },
+    // Captions for the registry-header StatReadout instruments.
+    stats: {
+      total: "Total",
+      trades: "Trades",
+      districts: "Districts",
+    },
+    // Saved searches (#516)
+    saveSearch: "Save this search",
+    saveSearchNameLabel: "Search name",
+    saveSearchSave: "Save",
+    saveSearchSaving: "Saving…",
+    saveSearchHint: "We'll email you when a new professional matches.",
+    // Map view (#48, search RFC phase 3). The list stays the primary, fully
+    // accessible representation; the map is progressive enhancement.
+    viewLabel: "Results view",
+    viewList: "List",
+    viewMap: "Map",
+    skipMap: "Skip the map to the result list",
+    mapRegionLabel: "Map of nearby professionals",
+    mapListLabel: "Nearby professionals",
+    nearMe: "Near me",
+    locating: "Finding your location…",
+    geoDenied:
+      "We couldn't access your location — choose a district to center the map instead.",
+    centerDistrict: "Center map on district",
+    radiusLabel: "Search radius",
+    radiusOption: (n: number) => `${n} km`,
+    mapPrompt:
+      "See professionals near you: use your location, or pick a district to center the map.",
+    mapCount: (n: number, km: number) =>
+      `${n} pinned professional${n === 1 ? "" : "s"} within ${km} km`,
+    mapEmptyTitle: "No pinned professionals here yet",
+    mapEmptyBody:
+      "Try a wider radius or another district. Professionals without a map pin still appear in the list view.",
+    mapError: "Couldn't load nearby professionals.",
+    mapRetry: "Try again",
+    markerLabel: (name: string, category: string, km: number) =>
+      `${name}, ${category}, ${km} km`,
   },
   card: {
     available: "Available",
@@ -191,6 +272,7 @@ const en = {
     save: "Save",
     saved: "Saved",
     verified: "Verified",
+    kmAway: (km: number) => `${km} km away`,
   },
   account: {
     title: "My account",
@@ -198,6 +280,14 @@ const en = {
     savedTitle: "Saved professionals",
     empty: "You haven't saved any professionals yet.",
     emptyCta: "Browse professionals",
+    // Saved searches (#516)
+    searchesTitle: "Saved searches",
+    searchesEmpty:
+      "No saved searches yet. Save one from the professionals page and we'll email you when a new professional matches.",
+    searchesHint:
+      "We email you when a newly joined professional matches one of these searches.",
+    searchesView: "View results",
+    searchesDelete: "Remove",
     inquiriesTitle: "My inquiries",
     inquiriesEmpty:
       "You haven't sent any inquiries yet. Contact a professional from their profile and it will show up here.",
@@ -227,6 +317,8 @@ const en = {
     emailNew: "New email address",
     emailVerifiedTag: "Verified",
     emailUnverifiedTag: "Unverified",
+    // Sensitive-op re-auth (#504) — shown only for accounts with a password.
+    emailPassword: "Current password",
     changeEmail: "Change email",
     changingEmail: "Sending…",
     emailChangeSent: (email: string) =>
@@ -247,6 +339,94 @@ const en = {
     leavingProvider: "Closing…",
     leaveProviderDone: "Your provider profile has been closed.",
     cancel: "Cancel",
+    // Captions for the account-header StatReadout instruments.
+    stats: {
+      saved: "Saved",
+      sent: "Sent",
+      reviews: "Reviews",
+    },
+  },
+  // In-app notification center (#394, RFC stateful-notification-service).
+  notifications: {
+    // Navbar bell
+    bell: "Notifications",
+    bellUnread: (n: number) => `Notifications, ${n} unread`,
+    unreadStatus: (n: number) =>
+      `${n} unread notification${n === 1 ? "" : "s"}`,
+    viewAll: "View all",
+    empty: "You're all caught up.",
+    loadError: "Could not load notifications.",
+    unread: "Unread",
+    // Feed page (/account/notifications)
+    title: "Notifications",
+    subtitle: "Replies, reviews, matches and updates from your account.",
+    markAllRead: "Mark all as read",
+    markingAll: "Marking…",
+    allRead: "All notifications marked as read.",
+    markError: "Could not mark as read. Please try again.",
+    feedEmpty: "No notifications yet.",
+    feedEmptyBody:
+      "Inquiry replies, new reviews and matching jobs will show up here as they happen.",
+    loadMore: "Show older",
+    loadingMore: "Loading…",
+    // Sentence per catalog type, built from the stored payload at read time.
+    fallback: "You have a new notification.",
+    render: {
+      NEW_INQUIRY: (p: NotificationPayload) =>
+        `${nstr(p.customerName) || "A customer"} sent you a new inquiry.`,
+      THREAD_REPLY: (p: NotificationPayload) =>
+        `${nstr(p.senderName) || "Someone"} replied in your inquiry conversation.`,
+      NEW_REVIEW: (p: NotificationPayload) => {
+        const who = nstr(p.reviewerName) || "A customer";
+        const rating = nnum(p.rating);
+        return rating
+          ? `${who} left a ${rating}-star review on your profile.`
+          : `${who} left a review on your profile.`;
+      },
+      REVIEW_RESPONSE: (p: NotificationPayload) =>
+        `${nstr(p.providerName) || "The professional"} replied to your review.`,
+      VERIFICATION_APPROVED: (): string =>
+        "Your provider verification was approved.",
+      VERIFICATION_REJECTED: (p: NotificationPayload) => {
+        const reason = nstr(p.reason);
+        return reason
+          ? `Your provider verification was rejected: ${reason}`
+          : "Your provider verification was rejected.";
+      },
+      NEW_JOB_MATCH: (p: NotificationPayload) =>
+        `New job matching your trade in ${districtLabelLoc(nstr(p.district), "en")}: “${nstr(p.jobTitle)}”.`,
+      JOB_RESPONSE: (p: NotificationPayload) =>
+        `${nstr(p.providerName) || "A professional"} responded to your job “${nstr(p.jobTitle)}”.`,
+      SAVED_SEARCH_MATCH: (p: NotificationPayload) =>
+        `New match for a saved search: ${nstr(p.providerName)} in ${districtLabelLoc(nstr(p.district), "en")}.`,
+      REPORT_RESOLVED: (p: NotificationPayload): string =>
+        p.status === "DISMISSED"
+          ? "Your report was reviewed and dismissed."
+          : "Your report was reviewed and resolved.",
+    },
+    // Preferences (per-type email / in-app toggles on /account). The
+    // transactional auth/security emails are not in the catalog and can
+    // never be muted.
+    prefsTitle: "Notification preferences",
+    prefsHint:
+      "Choose how you hear about marketplace activity — by email, in the notification bell, or both. Security and account emails are always sent.",
+    prefsEmail: "Email",
+    prefsInApp: "In-app",
+    prefsError: "Could not save your preference. Please try again.",
+    prefsLoadError:
+      "Could not load your notification preferences. Refresh to try again.",
+    typeLabels: {
+      NEW_INQUIRY: "New inquiries",
+      THREAD_REPLY: "Message replies",
+      NEW_REVIEW: "New reviews",
+      REVIEW_RESPONSE: "Review responses",
+      VERIFICATION_APPROVED: "Verification approved",
+      VERIFICATION_REJECTED: "Verification rejected",
+      NEW_JOB_MATCH: "Matching jobs",
+      JOB_RESPONSE: "Job responses",
+      SAVED_SEARCH_MATCH: "Saved-search matches",
+      REPORT_RESOLVED: "Report outcomes",
+    },
   },
   security: {
     link: "Account security",
@@ -308,6 +488,8 @@ const en = {
     sent: "Inquiry sent. The provider will be in touch.",
     sendError: "Couldn't send the inquiry. Please try again.",
     cancelled: "Cancelled — nothing was sent.",
+    signInPrompt: "Please sign in to use the assistant.",
+    signInCta: "Sign in",
   },
   errors: {
     notFoundTitle: "Page not found",
@@ -371,6 +553,15 @@ const en = {
     statOpenReports: "Open reports",
     statActiveProviders: "Active providers",
     statSuspendedProviders: "Suspended providers",
+    // Captions for the admin-header StatReadout instruments.
+    stats: {
+      total: "Total",
+      active: "Active",
+      inactive: "Inactive",
+      open: "Open",
+      pending: "Pending",
+      docs: "Docs",
+    },
     manageTitle: "Manage",
     chartSignupsTitle: "Signups over time",
     chartCategoryTitle: "Providers by category",
@@ -413,6 +604,7 @@ const en = {
     catLabelEn: "English label",
     catLabelSi: "Sinhala label",
     catIcon: "Icon",
+    catIconDefault: "Default (from slug)",
     catSortOrder: "Sort order",
     catActive: "Active",
     catInactive: "Inactive",
@@ -444,8 +636,15 @@ const en = {
     reportedProvider: "Provider",
     reportedPhoto: "Work photo",
     reportedReview: "Review",
+    reportedInquiry: "Inquiry",
+    reportedJob: "Job post",
+    reportedJobResponse: "Job response",
+    reportedMessage: "Message",
+    msgSenderProvider: "Sent by the provider",
+    msgSenderCustomer: "Sent by the customer",
     reportAnonymous: "Anonymous",
     reportedBy: "Reported by",
+    reportSystem: "System (auto-flagged)",
     reportTargetGone: "This content no longer exists.",
     reportContentRemoved: "Removed",
     viewProvider: "View provider",
@@ -468,6 +667,8 @@ const en = {
     auditTargetReview: "Review",
     auditTargetReport: "Report",
     auditTargetCategory: "Category",
+    auditTargetJob: "Job",
+    auditTargetMessage: "Message",
     auditActions: {
       verify: "Verified provider",
       unverify: "Unverified provider",
@@ -482,6 +683,10 @@ const en = {
       "dismiss-report": "Dismissed report",
       "create-category": "Created category",
       "edit-category": "Edited category",
+      "hide-job": "Took down job",
+      "unhide-job": "Restored job",
+      "delete-message": "Removed message",
+      "restore-message": "Restored message",
     },
     // Providers list filters (#224)
     adminSearchPh: "Search by name or email…",
@@ -536,6 +741,10 @@ const en = {
     jobDescription: "Description",
     jobResponseFrom: "From",
     jobView: "View",
+    // Job takedown (#376)
+    jobHiddenTag: "Taken down",
+    jobHide: "Take down",
+    jobUnhide: "Restore",
     // Notification badges on the admin hub cards (#233).
     notificationsNewAria: (n: number) =>
       `${n} new since you last checked`,
@@ -555,6 +764,9 @@ const en = {
     roleProvider: "Provider",
     roleAdmin: "Admin",
     roleSupport: "Support",
+    // Role changes are staged in the select and committed via this explicit
+    // button (#563): a closed native select fires change per arrow keypress.
+    applyRole: "Apply role",
     lockedTag: "Locked",
     lock: "Lock",
     unlock: "Unlock",
@@ -621,12 +833,27 @@ const en = {
     workPhoto: "Work photo",
     photoViewer: "Photo viewer",
     closePhoto: "Close photo viewer",
+    // Captions for the profile-hero StatReadout instruments.
+    stats: {
+      expYears: "Exp · yrs",
+      rating: "Rating",
+      reviews: "Reviews",
+    },
   },
   toast: {
     favAdded: "Saved to your list.",
     favRemoved: "Removed from your saved list.",
     favError: "Could not update your saved professionals.",
+    // Saved searches (#516)
+    searchSaved: "Search saved — we'll email you when a new professional matches.",
+    searchSaveError: "Could not save this search.",
+    searchLimit:
+      "Saved search limit reached. Remove one from your account page first.",
+    searchRemoved: "Saved search removed.",
+    searchRemoveError: "Could not remove the saved search.",
     reviewSaved: "Your review has been saved.",
+    responseSaved: "Your response has been posted.",
+    responseDeleted: "Your response has been removed.",
     dismiss: "Dismiss",
     adminVerified: "Provider verified.",
     adminUnverified: "Provider unverified.",
@@ -650,6 +877,20 @@ const en = {
     adminVerificationRejectError: "Failed to reject verification.",
     adminCategorySaved: "Category saved.",
     adminCategoryAdded: "Category added.",
+    adminJobHidden: "Job taken down.",
+    adminJobRestored: "Job restored.",
+    adminJobHideError: "Failed to take down job.",
+    adminJobRestoreError: "Failed to restore job.",
+    adminRoleChanged: "Role updated.",
+    adminRoleChangeError: "Failed to change role.",
+    adminUserLocked: "Account locked.",
+    adminUserUnlocked: "Account unlocked.",
+    adminUserLockError: "Failed to lock account.",
+    adminUserUnlockError: "Failed to unlock account.",
+    adminForceLogout: "User signed out of all sessions.",
+    adminForceLogoutError: "Failed to force sign-out.",
+    inquiryStatusError: "Failed to update the inquiry.",
+    jobStatusError: "Failed to update the job.",
   },
   inquiry: {
     title: (name: string) => `Send an inquiry to ${name}`,
@@ -688,11 +929,37 @@ const en = {
     tooManyPhotos: (max: number) => `A review can have at most ${max} photos.`,
     removePhoto: "Remove photo",
     starLabel: (n: number) => `${n} star${n === 1 ? "" : "s"}`,
+    // Optional per-dimension sub-ratings (#528).
+    dimensionsLabel: "Rate specific aspects (optional)",
+    dimensions: {
+      quality: "Quality of work",
+      punctuality: "Punctuality",
+      value: "Value for money",
+      communication: "Communication",
+    },
+    dimensionStarLabel: (dimension: string, n: number) =>
+      `${dimension}: ${n} star${n === 1 ? "" : "s"}`,
+    breakdown: "Rating breakdown",
+    distribution: "Rating distribution",
+    notRated: "Not rated yet",
+    distributionRow: (star: number, count: number) =>
+      `${star} star${star === 1 ? "" : "s"}: ${count} review${count === 1 ? "" : "s"}`,
+    // Provider responses (#395).
+    respond: "Respond",
+    editResponse: "Edit response",
+    deleteResponse: "Delete response",
+    responseFrom: (name: string) => `Response from ${name}`,
+    yourResponse: "Your response",
+    responsePh: "Thank the customer or address their feedback…",
+    postResponse: "Post response",
+    responseError: "Could not save your response.",
   },
   report: {
     reportProvider: "Report this provider",
     reportPhoto: "Report this photo",
     reportReview: "Report this review",
+    reportJob: "Report this job",
+    reportMessage: "Report this message",
     button: "Report",
     sub: "Tell us what's wrong and our team will take a look.",
     reason: "Reason",
@@ -731,6 +998,7 @@ const en = {
     errGeneric: "Social sign-in failed. Please try again.",
     errEmail: "Your social account didn’t share a verified email address.",
     errUnavailable: "Social sign-in isn’t available right now.",
+    errLocked: "This account is temporarily locked. Try again later or reset your password.",
     dataUse: "We only use your name and email to set up your account — nothing is posted on your behalf.",
   },
   welcome: {
@@ -760,7 +1028,8 @@ const en = {
     title: "Choose a new password",
     sub: "Enter a new password for your account.",
     password: "New password",
-    passwordHint: "At least 6 characters.",
+    passwordHint:
+      "At least 10 characters. Avoid common or easily guessed passwords.",
     submit: "Reset password",
     submitting: "Resetting…",
     doneTitle: "Password updated",
@@ -817,7 +1086,8 @@ const en = {
     email: "Email",
     phone: "Phone number",
     password: "Password",
-    passwordHint: "At least 6 characters.",
+    passwordHint:
+      "At least 10 characters. Avoid common or easily guessed passwords.",
     create: "Create account",
     creating: "Creating account…",
     failed: "Registration failed. Please try again.",
@@ -835,8 +1105,23 @@ const en = {
     dashboard: "Dashboard",
     browse: "Browse Professionals",
     createAccount: "Create an Account",
+    terms: "Terms of Service",
+    privacy: "Privacy Policy",
     made1: "Made with",
     made2: "for Sri Lanka",
+  },
+  // Registration consent + legal-page links (#62). The agree/continue
+  // sentences are split around the two links so each locale keeps natural
+  // word order.
+  legal: {
+    terms: "Terms of Service",
+    privacy: "Privacy Policy",
+    agreePrefix: "I agree to the ",
+    agreeJoin: " and ",
+    agreeSuffix: ".",
+    continuePrefix: "By continuing, you agree to the ",
+    continueSuffix: ".",
+    errAgree: "Please agree to the Terms of Service and Privacy Policy.",
   },
   dashboard: {
     title: "Dashboard",
@@ -872,6 +1157,9 @@ const en = {
       townCity: "Town / City",
       headline: "Headline",
       about: "About",
+      headlineSi: "Headline (Sinhala)",
+      aboutSi: "About (Sinhala)",
+      sinhalaHint: "Optional — shown to visitors browsing in Sinhala.",
       contactSocial: "Contact & social links",
       whatsapp: "WhatsApp",
       altPhone: "Alternate phone",
@@ -891,6 +1179,7 @@ const en = {
       titlePh: "Service title",
       descPh: "Short description (optional)",
       pricePh: "Price (Rs.)",
+      priceType: "Price type",
       save: "Save",
       saving: "Saving…",
       cancel: "Cancel",
@@ -899,6 +1188,10 @@ const en = {
       titlePriceRequired: "A title and a valid price are required.",
       keepOne: "Keep at least one service on your profile.",
       saveError: "Could not save service.",
+      // Delete confirmation + failure feedback (#562)
+      confirmDelete: "Delete this service?",
+      deleting: "Deleting…",
+      deleteError: "Could not delete service.",
     },
     photos: {
       profilePicture: "Profile picture",
@@ -917,6 +1210,11 @@ const en = {
       empty: "No work photos yet. Upload your first one above.",
       uploadError: "Upload failed. Please try again.",
       delete: "Delete",
+      // Delete confirmation + failure feedback (#562)
+      confirmDelete: "Delete this photo?",
+      deleting: "Deleting…",
+      deleteError: "Could not delete photo.",
+      cancel: "Cancel",
       // Multi-photo upload with progress (#53)
       dropTitle: "Drag & drop photos here",
       dropOr: "or",
@@ -946,7 +1244,23 @@ const en = {
       statusNew: "NEW",
       statusResponded: "RESPONDED",
       statusClosed: "CLOSED",
+      loadMore: (n: number) => `Load more (${n} remaining)`,
+      loadingMore: "Loading…",
+      loadMoreError: "Could not load more inquiries. Please try again.",
     },
+  },
+  // Shared client-side validation messages (#378). Forms validate on submit
+  // (with noValidate) so errors are announced and linked to their fields via
+  // aria-describedby instead of relying on native browser bubbles.
+  fieldErrors: {
+    summaryTitle: "Please fix the following:",
+    name: "Please enter your name (at least 2 characters).",
+    email: "Please enter a valid email address.",
+    phone: "Please enter a valid phone number (at least 9 digits).",
+    passwordRequired: "Please enter your password.",
+    passwordMin: (n: number) => `Password must be at least ${n} characters.`,
+    messageMin: (n: number) =>
+      `Please enter a message of at least ${n} characters.`,
   },
   providerReg: {
     title: "Join as a Professional",
@@ -954,6 +1268,7 @@ const en = {
     steps: ["Account", "Profile", "Contact & Socials", "Services & Rates"],
     stepOf: (n: number, total: number, label: string) =>
       `Step ${n} of ${total}: ${label}`,
+    stepCompleted: "completed",
     back: "← Back",
     continue: "Continue →",
     create: "Create my profile",
@@ -973,6 +1288,13 @@ const en = {
     about: "About you & your work",
     aboutPh:
       "Describe your skills, the kinds of jobs you take on, areas you cover, and what makes your work stand out…",
+    headlineSi: "Headline (Sinhala)",
+    headlineSiPh: "උදා: වසර 10+ පළපුරුද්දක් සහිත විශ්වාසවන්ත රථ අලුත්වැඩියා",
+    aboutSi: "About you & your work (Sinhala)",
+    aboutSiPh:
+      "ඔබේ කුසලතා, ඔබ බාරගන්නා වැඩ වර්ග, ආවරණය කරන ප්‍රදේශ, සහ ඔබේ වැඩ කැපී පෙනෙන්නේ ඇයිද යන්න විස්තර කරන්න…",
+    sinhalaOptional:
+      "Optional — a Sinhala version, shown to visitors browsing in Sinhala.",
     district: "District",
     selectPlaceholder: "Select…",
     townCity: "Town / City",
@@ -994,19 +1316,54 @@ const en = {
     serviceTitlePh: "Service title, e.g. Full house wiring",
     serviceDescPh: "Short description (optional)",
     pricePh: "Price (Rs.)",
+    priceType: "Price type",
     addAnother: "+ Add another service",
     errName: "Please enter your full name.",
     errEmail: "Please enter a valid email.",
     errPhone: "Please enter a valid phone number.",
-    errPassword: "Password must be at least 6 characters.",
+    errPassword:
+      "Password must be at least 10 characters. Avoid common or easily guessed passwords.",
     errCategory: "Please choose your service category.",
     errHeadline: "Add a short headline (at least 5 characters).",
     errBio: "Tell customers about yourself (at least 20 characters).",
     errDistrict: "Please select your district.",
     errCity: "Please enter your town or city.",
     errServiceCount: "Add at least one service.",
-    errServiceTitle: "Every service needs a title.",
-    errServicePrice: "Every service needs a valid price.",
+    errServiceTitle: (n: number) => `Service ${n} needs a title.`,
+    errServicePrice: (n: number) => `Service ${n} needs a valid price.`,
+    asideWorkerAlt: "A tradesperson at work in Sri Lanka",
+    asideBadge: "Registry",
+  },
+  // Multi-district service area (#502): shared by the registration wizard,
+  // the dashboard profile form and the public profile page.
+  serviceDistricts: {
+    label: "Districts you serve",
+    hint: "Choose up to 5 districts you cover — your home district is always included.",
+    homeBadge: "Home",
+    areasLabel: "Service areas",
+    limitReached: "You can serve at most 5 districts.",
+  },
+  // Geo capture (#48, search & discovery RFC phase 1): the optional map-pin
+  // picker shared by the registration wizard and the dashboard profile form,
+  // plus the public profile's mini-map.
+  location: {
+    label: "Location pin (optional)",
+    hint: "Drop a pin on your base location so customers can find you on the map once map search launches. Skipping it is fine — your district listing is unaffected.",
+    mapLabel:
+      "Map of Sri Lanka. Click your location or drag the pin. You can also type the coordinates below.",
+    mapLoading: "Loading map…",
+    pinSet: (lat: number, lng: number) =>
+      `Pin set at ${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+    pinNotSet: "No pin set yet.",
+    latitude: "Latitude",
+    longitude: "Longitude",
+    manualHint: "Prefer the keyboard? Type the coordinates instead.",
+    clear: "Clear pin",
+    errOutOfBounds: "The pin must be within Sri Lanka.",
+    errPair: "Enter both latitude and longitude, or clear both.",
+    profileLocation: "Location",
+    mapImageAlt: (name: string) => `Map showing the approximate location of ${name}`,
+    viewOnOsm: "View on OpenStreetMap",
   },
 };
 
@@ -1041,6 +1398,12 @@ const si: Dict = {
     themeLight: "ලා තේමාව",
     themeDark: "අඳුරු තේමාව",
   },
+  roles: {
+    CUSTOMER: "පාරිභෝගික",
+    PROVIDER: "සේවා සපයන්නා",
+    ADMIN: "පරිපාලක",
+    SUPPORT: "සහාය",
+  },
   a11y: {
     skipToContent: "ප්‍රධාන අන්තර්ගතයට යන්න",
     rated: (rating: string) => `5න් ${rating}ක ඇගයීම`,
@@ -1066,6 +1429,11 @@ const si: Dict = {
     post: "රැකියාව පළ කරන්න",
     posting: "පළ කරමින්…",
     postError: "රැකියාව පළ කළ නොහැකි විය. නැවත උත්සාහ කරන්න.",
+    errTitle: "කරුණාකර රැකියා නාමයක් ඇතුළත් කරන්න (අවම අකුරු 5ක්).",
+    errCategory: "කරුණාකර අවශ්‍ය සේවාව තෝරන්න.",
+    errDistrict: "කරුණාකර දිස්ත්‍රික්කයක් තෝරන්න.",
+    errDescription: "කරුණාකර වැඩේ විස්තර කරන්න (අවම අකුරු 10ක්).",
+    errBudget: "රු. 100ක් හෝ වැඩි අයවැයක් ඇතුළත් කරන්න, නැතහොත් හිස්ව තබන්න.",
     boardTitle: "ඔබේ ක්ෂේත්‍රයට ගැලපෙන රැකියා",
     boardSubtitle: (cat: string, district: string) =>
       `${district} හි විවෘත ${cat} රැකියා.`,
@@ -1076,6 +1444,7 @@ const si: Dict = {
     sending: "යවමින්…",
     respondError: "ඔබේ ප්‍රතිචාරය යැවිය නොහැකි විය.",
     respondedTag: "ප්‍රතිචාර දක්වා ඇත",
+    responseSent: "ප්‍රතිචාරය යවන ලදී — පාරිභෝගිකයාට එය පෙනෙනු ඇත.",
     postedOn: "පළ කළේ",
     budgetTag: (n: string) => `අයවැය: රු. ${n}`,
     myTitle: "ඔබ පළ කළ රැකියා",
@@ -1092,6 +1461,12 @@ const si: Dict = {
     prev: "← පෙර",
     next: "ඊළඟ →",
     pageOf: (p: number, t: number) => `පිටුව ${p} / ${t}`,
+    stats: {
+      matching: "ගැලපෙන",
+      responded: "ප්‍රතිචාර දැක්වූ",
+      posted: "පළ කළ",
+      open: "විවෘත",
+    },
   },
   home: {
     heroTitle1: "විශ්වාසවන්ත කාර්මිකයන්,",
@@ -1138,17 +1513,10 @@ const si: Dict = {
       "ඡායාරූප, ගාස්තු සහ සම්බන්ධතා විස්තර සමඟ නොමිලේ ගිණුමක් හදන්න. ලංකාව පුරා පාරිභෝගිකයන් හැමදාම ඔබ වගේ කෙනෙක්ව සොයනවා.",
     ctaCreate: "ඔබේ ගිණුම හදන්න",
     ctaSee: "කවුද ඉන්නේ බලන්න",
-    cardCall: "අමතන්න",
-    cardConsult: "උපදේශනය",
-    cardQuote:
-      "“අපේ හිස් වත්ත ලස්සන නිවර්තන උයනක් කළා. හැම රුපියලක්ම වටිනවා.”",
-    cardQuoteBy: "— තරිඳු, මහනුවර",
-    cardAnswered: "පැය 2කින් පිළිතුරු ලැබුණා",
-    heroWorkerAlt: "ආරක්ෂිත උපකරණ පැළඳ මිටියක් අතැතිව සිටින ගොඩනැගිලි කම්කරුවෙක්",
     heroTeaAlt: "ශ්‍රී ලාංකික තේ වතුයායක වැඩ කරන තේ දළු නෙළන්නන්",
+    statusOnline: "සබැඳියි",
     // Hero slider (#447)
     sliderRegion: "විශේෂිත වෘත්තීන්",
-    sliderBadge: "සත්‍යාපිත වෘත්තිය",
     sliderPrev: "පෙර වෘත්තිය",
     sliderNext: "ඊළඟ වෘත්තිය",
     sliderGoto: (n: number) => `වෘත්තිය ${n} පෙන්වන්න`,
@@ -1163,6 +1531,22 @@ const si: Dict = {
   },
   browse: {
     title: "සියලු වෘත්තිකයන්",
+    metaTitle: (category: string | null, district: string | null) =>
+      category && district
+        ? `${district} හි ${category} — ශ්‍රී ලංකාව`
+        : category
+          ? `ශ්‍රී ලංකාවේ ${category}`
+          : district
+            ? `${district} හි විශ්වාසවන්ත කාර්මිකයන්`
+            : "ශ්‍රී ලංකාවේ විශ්වාසවන්ත කාර්මිකයන් සොයන්න",
+    metaDesc: (category: string | null, district: string | null) =>
+      category && district
+        ? `${district} හි විශ්වාසවන්ත ${category} සොයාගෙන බඳවා ගන්න. පැතිකඩ, සැබෑ වැඩ ඡායාරූප සහ ගාස්තු බලා, ඔබේ බාස් සමඟ Baas.lk හරහා සෘජුවම සම්බන්ධ වන්න.`
+        : category
+          ? `ලංකාව පුරා විශ්වාසවන්ත ${category} සොයාගෙන බඳවා ගන්න. පැතිකඩ, සැබෑ වැඩ ඡායාරූප සහ ගාස්තු බලා, ඔබේ බාස් සමඟ Baas.lk හරහා සෘජුවම සම්බන්ධ වන්න.`
+          : district
+            ? `${district} හි විශ්වාසවන්ත කාර්මිකයන් සොයාගෙන බඳවා ගන්න. පැතිකඩ, සැබෑ වැඩ ඡායාරූප සහ ගාස්තු බලා, ඔබේ බාස් සමඟ Baas.lk හරහා සෘජුවම සම්බන්ධ වන්න.`
+            : "ලංකාව පුරා විශ්වාසවන්ත කාර්මිකයන් Baas.lk හරහා සොයන්න. පැතිකඩ, සැබෑ වැඩ ඡායාරූප සහ ගාස්තු බලා, ඔබේ බාස් සමඟ සෘජුවම සම්බන්ධ වන්න.",
     found: (n: number, district: string | null) =>
       district
         ? `${district} හි වෘත්තිකයන් ${n}ක් හමු විය`
@@ -1185,6 +1569,7 @@ const si: Dict = {
     prev: "← පෙර",
     next: "ඊළඟ →",
     pageOf: (p: number, t: number) => `පිටුව ${p} / ${t}`,
+    paginationLabel: "පිටු සංචාලනය",
     sortLabel: "අනුපිළිවෙල",
     sort: {
       recommended: "නිර්දේශිත",
@@ -1194,6 +1579,42 @@ const si: Dict = {
       experience: "වැඩිම පළපුරුද්ද",
       newest: "අලුත්ම",
     },
+    stats: {
+      total: "මුළු ගණන",
+      trades: "ක්ෂේත්‍ර",
+      districts: "දිස්ත්‍රික්ක",
+    },
+    // Saved searches (#516)
+    saveSearch: "මෙම සෙවුම සුරකින්න",
+    saveSearchNameLabel: "සෙවුමේ නම",
+    saveSearchSave: "සුරකින්න",
+    saveSearchSaving: "සුරකිමින්…",
+    saveSearchHint: "නව වෘත්තිකයෙක් ගැලපෙන විට අපි ඔබට විද්‍යුත් තැපෑලෙන් දන්වන්නෙමු.",
+    // Map view (#48)
+    viewLabel: "ප්‍රතිඵල දසුන",
+    viewList: "ලැයිස්තුව",
+    viewMap: "සිතියම",
+    skipMap: "සිතියම මඟහැර ප්‍රතිඵල ලැයිස්තුවට යන්න",
+    mapRegionLabel: "අවට වෘත්තිකයන්ගේ සිතියම",
+    mapListLabel: "අවට වෘත්තිකයන්",
+    nearMe: "මා අසල",
+    locating: "ඔබේ ස්ථානය සොයමින්…",
+    geoDenied:
+      "ඔබේ ස්ථානය ලබාගත නොහැකි විය — ඒ වෙනුවට සිතියම මැදට ගැනීමට දිස්ත්‍රික්කයක් තෝරන්න.",
+    centerDistrict: "සිතියම මැද කරන දිස්ත්‍රික්කය",
+    radiusLabel: "සෙවුම් අරය",
+    radiusOption: (n: number) => `කි.මී. ${n}`,
+    mapPrompt:
+      "ඔබ අසල වෘත්තිකයන් බලන්න: ඔබේ ස්ථානය භාවිතා කරන්න, නැතිනම් දිස්ත්‍රික්කයක් තෝරන්න.",
+    mapCount: (n: number, km: number) =>
+      `කි.මී. ${km}ක් ඇතුළත පින් කළ වෘත්තිකයන් ${n}ක්`,
+    mapEmptyTitle: "මෙතැන පින් කළ වෘත්තිකයන් තවම නැහැ",
+    mapEmptyBody:
+      "වඩා පුළුල් අරයක් හෝ වෙනත් දිස්ත්‍රික්කයක් උත්සාහ කරන්න. සිතියම් පින් නොමැති වෘත්තිකයන් ලැයිස්තු දසුනේ දිගටම පෙනේ.",
+    mapError: "අවට වෘත්තිකයන් පූරණය කළ නොහැකි විය.",
+    mapRetry: "නැවත උත්සාහ කරන්න",
+    markerLabel: (name: string, category: string, km: number) =>
+      `${name}, ${category}, කි.මී. ${km}`,
   },
   card: {
     available: "සූදානම්",
@@ -1203,6 +1624,7 @@ const si: Dict = {
     save: "සුරකින්න",
     saved: "සුරකා ඇත",
     verified: "සත්‍යාපිතයි",
+    kmAway: (km: number) => `කි.මී. ${km}ක් දුරින්`,
   },
   account: {
     title: "මගේ ගිණුම",
@@ -1210,6 +1632,14 @@ const si: Dict = {
     savedTitle: "සුරකින ලද වෘත්තිකයන්",
     empty: "ඔබ තවම කිසිම වෘත්තිකයෙක් සුරකා නැත.",
     emptyCta: "වෘත්තිකයන් බලන්න",
+    // Saved searches (#516)
+    searchesTitle: "සුරැකි සෙවුම්",
+    searchesEmpty:
+      "තවම සුරැකි සෙවුම් නැත. වෘත්තිකයන් පිටුවෙන් සෙවුමක් සුරකින්න — නව වෘත්තිකයෙක් ගැලපෙන විට අපි විද්‍යුත් තැපෑලෙන් දන්වන්නෙමු.",
+    searchesHint:
+      "මෙම සෙවුම්වලට ගැලපෙන නව වෘත්තිකයෙක් එක් වූ විට අපි ඔබට විද්‍යුත් තැපෑලෙන් දන්වන්නෙමු.",
+    searchesView: "ප්‍රතිඵල බලන්න",
+    searchesDelete: "ඉවත් කරන්න",
     inquiriesTitle: "මගේ විමසීම්",
     inquiriesEmpty:
       "ඔබ තවම විමසුමක් යවා නැත. වෘත්තිකයෙකුගේ පැතිකඩෙන් සම්බන්ධ වූ විට එය මෙහි දිස්වේ.",
@@ -1239,6 +1669,7 @@ const si: Dict = {
     emailNew: "නව විද්‍යුත් තැපැල් ලිපිනය",
     emailVerifiedTag: "සත්‍යාපිතයි",
     emailUnverifiedTag: "සත්‍යාපනය නොකළ",
+    emailPassword: "වත්මන් මුරපදය",
     changeEmail: "විද්‍යුත් තැපෑල වෙනස් කරන්න",
     changingEmail: "යවමින්…",
     emailChangeSent: (email: string) =>
@@ -1259,6 +1690,92 @@ const si: Dict = {
     leavingProvider: "වසමින්…",
     leaveProviderDone: "ඔබේ වෘත්තික පැතිකඩ වසා ඇත.",
     cancel: "අවලංගු කරන්න",
+    stats: {
+      saved: "සුරකා ඇත",
+      sent: "යවා ඇත",
+      reviews: "සමාලෝචන",
+    },
+  },
+  // In-app notification center (#394, RFC stateful-notification-service).
+  notifications: {
+    // Navbar bell
+    bell: "දැනුම්දීම්",
+    bellUnread: (n: number) => `දැනුම්දීම්, නොකියවූ ${n}`,
+    unreadStatus: (n: number) => `නොකියවූ දැනුම්දීම් ${n}`,
+    viewAll: "සියල්ල බලන්න",
+    empty: "නව දැනුම්දීම් නැත.",
+    loadError: "දැනුම්දීම් පූරණය කළ නොහැකි විය.",
+    unread: "නොකියවූ",
+    // Feed page (/account/notifications)
+    title: "දැනුම්දීම්",
+    subtitle: "පිළිතුරු, සමාලෝචන, ගැලපීම් සහ ඔබේ ගිණුමේ යාවත්කාලීන.",
+    markAllRead: "සියල්ල කියවූ ලෙස සලකුණු කරන්න",
+    markingAll: "සලකුණු කරමින්…",
+    allRead: "සියලු දැනුම්දීම් කියවූ ලෙස සලකුණු කරන ලදී.",
+    markError: "සලකුණු කළ නොහැකි විය. නැවත උත්සාහ කරන්න.",
+    feedEmpty: "තවම දැනුම්දීම් නැත.",
+    feedEmptyBody:
+      "විමසුම් පිළිතුරු, නව සමාලෝචන සහ ගැලපෙන රැකියා සිදු වන විට මෙහි දිස්වේ.",
+    loadMore: "පැරණි ඒවා පෙන්වන්න",
+    loadingMore: "පූරණය වෙමින්…",
+    // Sentence per catalog type, built from the stored payload at read time.
+    fallback: "ඔබට නව දැනුම්දීමක් ඇත.",
+    render: {
+      NEW_INQUIRY: (p: NotificationPayload) =>
+        `${nstr(p.customerName) || "පාරිභෝගිකයෙක්"} ඔබට නව විමසුමක් එවා ඇත.`,
+      THREAD_REPLY: (p: NotificationPayload) =>
+        `${nstr(p.senderName) || "කෙනෙක්"} ඔබේ විමසුම් සංවාදයට පිළිතුරු දී ඇත.`,
+      NEW_REVIEW: (p: NotificationPayload) => {
+        const who = nstr(p.reviewerName) || "පාරිභෝගිකයෙක්";
+        const rating = nnum(p.rating);
+        return rating
+          ? `${who} ඔබේ පැතිකඩට තරු ${rating} සමාලෝචනයක් පළ කර ඇත.`
+          : `${who} ඔබේ පැතිකඩට සමාලෝචනයක් පළ කර ඇත.`;
+      },
+      REVIEW_RESPONSE: (p: NotificationPayload) =>
+        `${nstr(p.providerName) || "වෘත්තිකයා"} ඔබේ සමාලෝචනයට පිළිතුරු දී ඇත.`,
+      VERIFICATION_APPROVED: () =>
+        "ඔබේ වෘත්තික සත්‍යාපනය අනුමත කරන ලදී.",
+      VERIFICATION_REJECTED: (p: NotificationPayload) => {
+        const reason = nstr(p.reason);
+        return reason
+          ? `ඔබේ වෘත්තික සත්‍යාපනය ප්‍රතික්ෂේප විය: ${reason}`
+          : "ඔබේ වෘත්තික සත්‍යාපනය ප්‍රතික්ෂේප විය.";
+      },
+      NEW_JOB_MATCH: (p: NotificationPayload) =>
+        `${districtLabelLoc(nstr(p.district), "si")} හි ඔබේ වෘත්තියට ගැලපෙන නව රැකියාවක්: “${nstr(p.jobTitle)}”.`,
+      JOB_RESPONSE: (p: NotificationPayload) =>
+        `${nstr(p.providerName) || "වෘත්තිකයෙක්"} ඔබේ “${nstr(p.jobTitle)}” රැකියාවට ප්‍රතිචාර දක්වා ඇත.`,
+      SAVED_SEARCH_MATCH: (p: NotificationPayload) =>
+        `සුරැකි සෙවුමකට නව ගැලපීමක්: ${districtLabelLoc(nstr(p.district), "si")} හි ${nstr(p.providerName)}.`,
+      REPORT_RESOLVED: (p: NotificationPayload) =>
+        p.status === "DISMISSED"
+          ? "ඔබේ වාර්තාව සමාලෝචනය කර ප්‍රතික්ෂේප කරන ලදී."
+          : "ඔබේ වාර්තාව සමාලෝචනය කර විසඳන ලදී.",
+    },
+    // Preferences (per-type email / in-app toggles on /account). The
+    // transactional auth/security emails are not in the catalog and can
+    // never be muted.
+    prefsTitle: "දැනුම්දීම් අභිරුචි",
+    prefsHint:
+      "වෙළඳපොළ ක්‍රියාකාරකම් ගැන ඔබ දැනුවත් වන ආකාරය තෝරන්න — විද්‍යුත් තැපෑලෙන්, දැනුම්දීම් සීනුවෙන්, හෝ දෙකෙන්ම. ආරක්ෂක සහ ගිණුම් විද්‍යුත් තැපැල් සැමවිටම යවනු ලැබේ.",
+    prefsEmail: "විද්‍යුත් තැපෑල",
+    prefsInApp: "යෙදුම තුළ",
+    prefsError: "අභිරුචිය සුරැකිය නොහැකි විය. නැවත උත්සාහ කරන්න.",
+    prefsLoadError:
+      "දැනුම්දීම් අභිරුචි පූරණය කළ නොහැකි විය. නැවත උත්සාහ කිරීමට පිටුව නැවුම් කරන්න.",
+    typeLabels: {
+      NEW_INQUIRY: "නව විමසීම්",
+      THREAD_REPLY: "පණිවිඩ පිළිතුරු",
+      NEW_REVIEW: "නව සමාලෝචන",
+      REVIEW_RESPONSE: "සමාලෝචන පිළිතුරු",
+      VERIFICATION_APPROVED: "සත්‍යාපනය අනුමත වීම",
+      VERIFICATION_REJECTED: "සත්‍යාපනය ප්‍රතික්ෂේප වීම",
+      NEW_JOB_MATCH: "ගැලපෙන රැකියා",
+      JOB_RESPONSE: "රැකියා ප්‍රතිචාර",
+      SAVED_SEARCH_MATCH: "සුරැකි සෙවුම් ගැලපීම්",
+      REPORT_RESOLVED: "වාර්තා ප්‍රතිඵල",
+    },
   },
   security: {
     link: "ගිණුම් ආරක්ෂාව",
@@ -1320,6 +1837,8 @@ const si: Dict = {
     sent: "විමසීම යවන ලදී. වෘත්තිකයා ඔබ හා සම්බන්ධ වනු ඇත.",
     sendError: "විමසීම යැවිය නොහැකි විය. නැවත උත්සාහ කරන්න.",
     cancelled: "අවලංගු කරන ලදී — කිසිවක් යවා නැත.",
+    signInPrompt: "සහායක භාවිතයට කරුණාකර පිවිසෙන්න.",
+    signInCta: "පිවිසෙන්න",
   },
   errors: {
     notFoundTitle: "පිටුව හමු නොවීය",
@@ -1379,6 +1898,14 @@ const si: Dict = {
     statOpenReports: "විවෘත වාර්තා",
     statActiveProviders: "සක්‍රිය වෘත්තිකයන්",
     statSuspendedProviders: "අත්හිටුවූ වෘත්තිකයන්",
+    stats: {
+      total: "මුළු ගණන",
+      active: "සක්‍රිය",
+      inactive: "අක්‍රිය",
+      open: "විවෘත",
+      pending: "පොරොත්තුවෙන්",
+      docs: "ලේඛන",
+    },
     manageTitle: "කළමනාකරණය",
     chartSignupsTitle: "කාලයත් සමඟ ලියාපදිංචි වීම්",
     chartCategoryTitle: "ක්ෂේත්‍රය අනුව වෘත්තිකයන්",
@@ -1422,6 +1949,7 @@ const si: Dict = {
     catLabelEn: "ඉංග්‍රීසි නම",
     catLabelSi: "සිංහල නම",
     catIcon: "අයිකනය",
+    catIconDefault: "පෙරනිමිය (slug අනුව)",
     catSortOrder: "අනුපිළිවෙල",
     catActive: "සක්‍රිය",
     catInactive: "අක්‍රිය",
@@ -1453,8 +1981,15 @@ const si: Dict = {
     reportedProvider: "වෘත්තිකයා",
     reportedPhoto: "වැඩ ඡායාරූපය",
     reportedReview: "සමාලෝචනය",
+    reportedInquiry: "විමසුම",
+    reportedJob: "රැකියා දැන්වීම",
+    reportedJobResponse: "රැකියා ප්‍රතිචාරය",
+    reportedMessage: "පණිවිඩය",
+    msgSenderProvider: "වෘත්තිකයා යැවූ",
+    msgSenderCustomer: "පාරිභෝගිකයා යැවූ",
     reportAnonymous: "නිර්නාමික",
     reportedBy: "වාර්තා කළේ",
+    reportSystem: "පද්ධතිය (ස්වයංක්‍රීය)",
     reportTargetGone: "මෙම අන්තර්ගතය තවදුරටත් නොපවතී.",
     reportContentRemoved: "ඉවත් කර ඇත",
     viewProvider: "වෘත්තිකයා බලන්න",
@@ -1477,6 +2012,8 @@ const si: Dict = {
     auditTargetReview: "සමාලෝචනය",
     auditTargetReport: "වාර්තාව",
     auditTargetCategory: "ක්ෂේත්‍රය",
+    auditTargetJob: "රැකියාව",
+    auditTargetMessage: "පණිවිඩය",
     auditActions: {
       verify: "වෘත්තිකයා සත්‍යාපනය කළා",
       unverify: "වෘත්තිකයාගේ සත්‍යාපනය ඉවත් කළා",
@@ -1491,6 +2028,10 @@ const si: Dict = {
       "dismiss-report": "වාර්තාව ඉවත ලෑවා",
       "create-category": "ක්ෂේත්‍රය සාදන ලදී",
       "edit-category": "ක්ෂේත්‍රය සංස්කරණය කළා",
+      "hide-job": "රැකියා දැන්වීම ඉවත් කළා",
+      "unhide-job": "රැකියා දැන්වීම ප්‍රතිසාධනය කළා",
+      "delete-message": "පණිවිඩය ඉවත් කළා",
+      "restore-message": "පණිවිඩය ප්‍රතිසාධනය කළා",
     },
     // Providers list filters (#224)
     adminSearchPh: "නම හෝ විද්‍යුත් තැපෑලෙන් සොයන්න…",
@@ -1544,6 +2085,10 @@ const si: Dict = {
     jobDescription: "විස්තරය",
     jobResponseFrom: "වෙතින්",
     jobView: "බලන්න",
+    // Job takedown (#376)
+    jobHiddenTag: "ඉවත් කර ඇත",
+    jobHide: "ඉවත් කරන්න",
+    jobUnhide: "ප්‍රතිසාධනය කරන්න",
     notificationsNewAria: (n: number) =>
       `ඔබ අවසන් වරට පරීක්ෂා කළ දා සිට නව ${n}ක්`,
     notificationsCountAria: (n: number) => `පොරොත්තුවෙන් ${n}`,
@@ -1561,6 +2106,7 @@ const si: Dict = {
     roleProvider: "වෘත්තික",
     roleAdmin: "පරිපාලක",
     roleSupport: "සහාය",
+    applyRole: "භූමිකාව යොදන්න",
     lockedTag: "අගුලු දමා ඇත",
     lock: "අගුලු දමන්න",
     unlock: "අගුල හරින්න",
@@ -1622,12 +2168,26 @@ const si: Dict = {
     workPhoto: "වැඩ ඡායාරූපය",
     photoViewer: "ඡායාරූප දර්ශකය",
     closePhoto: "ඡායාරූප දර්ශකය වසන්න",
+    stats: {
+      expYears: "පළපුරුද්ද · අවු.",
+      rating: "ඇගයීම",
+      reviews: "සමාලෝචන",
+    },
   },
   toast: {
     favAdded: "ඔබේ ලැයිස්තුවට සුරකින ලදී.",
     favRemoved: "සුරකින ලද ලැයිස්තුවෙන් ඉවත් කරන ලදී.",
     favError: "සුරකින ලද වෘත්තිකයන් යාවත්කාලීන කළ නොහැකි විය.",
+    // Saved searches (#516)
+    searchSaved:
+      "සෙවුම සුරකින ලදී — නව වෘත්තිකයෙක් ගැලපෙන විට අපි විද්‍යුත් තැපෑලෙන් දන්වන්නෙමු.",
+    searchSaveError: "මෙම සෙවුම සුරැකිය නොහැකි විය.",
+    searchLimit: "සුරැකි සෙවුම් සීමාවට ළඟා වී ඇත. පළමුව ගිණුම් පිටුවෙන් එකක් ඉවත් කරන්න.",
+    searchRemoved: "සුරැකි සෙවුම ඉවත් කරන ලදී.",
+    searchRemoveError: "සුරැකි සෙවුම ඉවත් කළ නොහැකි විය.",
     reviewSaved: "ඔබේ සමාලෝචනය සුරකින ලදී.",
+    responseSaved: "ඔබේ පිළිතුර පළ කරන ලදී.",
+    responseDeleted: "ඔබේ පිළිතුර ඉවත් කරන ලදී.",
     dismiss: "ඉවත් කරන්න",
     adminVerified: "සේවා සපයන්නා සත්‍යාපනය කරන ලදී.",
     adminUnverified: "සේවා සපයන්නාගේ සත්‍යාපනය ඉවත් කරන ලදී.",
@@ -1651,6 +2211,20 @@ const si: Dict = {
     adminVerificationRejectError: "සත්‍යාපනය ප්‍රතික්ෂේප කිරීමට අසමත් විය.",
     adminCategorySaved: "වර්ගය සුරකින ලදී.",
     adminCategoryAdded: "වර්ගය එකතු කරන ලදී.",
+    adminJobHidden: "රැකියා දැන්වීම ඉවත් කරන ලදී.",
+    adminJobRestored: "රැකියා දැන්වීම ප්‍රතිසාධනය කරන ලදී.",
+    adminJobHideError: "රැකියා දැන්වීම ඉවත් කිරීමට අසමත් විය.",
+    adminJobRestoreError: "රැකියා දැන්වීම ප්‍රතිසාධනය කිරීමට අසමත් විය.",
+    adminRoleChanged: "භූමිකාව යාවත්කාලීන කරන ලදී.",
+    adminRoleChangeError: "භූමිකාව වෙනස් කිරීමට අසමත් විය.",
+    adminUserLocked: "ගිණුම අගුලු දමන ලදී.",
+    adminUserUnlocked: "ගිණුමේ අගුල හරින ලදී.",
+    adminUserLockError: "ගිණුම අගුලු දැමීමට අසමත් විය.",
+    adminUserUnlockError: "ගිණුමේ අගුල හැරීමට අසමත් විය.",
+    adminForceLogout: "පරිශීලකයා සියලුම සැසිවලින් නික්මවන ලදී.",
+    adminForceLogoutError: "බලෙන් නික්මවීමට අසමත් විය.",
+    inquiryStatusError: "විමසුම යාවත්කාලීන කිරීමට අසමත් විය.",
+    jobStatusError: "රැකියාව යාවත්කාලීන කිරීමට අසමත් විය.",
   },
   inquiry: {
     title: (name: string) => `${name}ට විමසුමක් යවන්න`,
@@ -1689,11 +2263,36 @@ const si: Dict = {
     tooManyPhotos: (max: number) => `සමාලෝචනයකට උපරිම ඡායාරූප ${max}ක් තිබිය හැක.`,
     removePhoto: "ඡායාරූපය ඉවත් කරන්න",
     starLabel: (n: number) => `තරු ${n}`,
+    // Optional per-dimension sub-ratings (#528).
+    dimensionsLabel: "නිශ්චිත අංශ ඇගයීම (විකල්ප)",
+    dimensions: {
+      quality: "වැඩේ ගුණාත්මකභාවය",
+      punctuality: "වේලාවට පැමිණීම",
+      value: "මුදලට වටිනාකම",
+      communication: "සන්නිවේදනය",
+    },
+    dimensionStarLabel: (dimension: string, n: number) => `${dimension}: තරු ${n}`,
+    breakdown: "ඇගයීම් විශ්ලේෂණය",
+    distribution: "ඇගයීම් ව්‍යාප්තිය",
+    notRated: "තවම ඇගයුම් නැත",
+    distributionRow: (star: number, count: number) =>
+      `තරු ${star}: සමාලෝචන ${count}`,
+    // Provider responses (#395).
+    respond: "පිළිතුරු දෙන්න",
+    editResponse: "පිළිතුර වෙනස් කරන්න",
+    deleteResponse: "පිළිතුර මකන්න",
+    responseFrom: (name: string) => `${name} වෙතින් පිළිතුර`,
+    yourResponse: "ඔබේ පිළිතුර",
+    responsePh: "පාරිභෝගිකයාට ස්තූති කරන්න හෝ ඔවුන්ගේ අදහසට පිළිතුරු දෙන්න…",
+    postResponse: "පිළිතුර පළ කරන්න",
+    responseError: "පිළිතුර සුරැකීමට නොහැකි විය.",
   },
   report: {
     reportProvider: "මෙම වෘත්තිකයා වාර්තා කරන්න",
     reportPhoto: "මෙම ඡායාරූපය වාර්තා කරන්න",
     reportReview: "මෙම සමාලෝචනය වාර්තා කරන්න",
+    reportJob: "මෙම රැකියාව වාර්තා කරන්න",
+    reportMessage: "මෙම පණිවිඩය වාර්තා කරන්න",
     button: "වාර්තා කරන්න",
     sub: "ගැටලුව කුමක්දැයි කියන්න — අපේ කණ්ඩායම එය පරීක්ෂා කරයි.",
     reason: "හේතුව",
@@ -1732,6 +2331,7 @@ const si: Dict = {
     errGeneric: "සමාජ ජාල පිවිසීම අසාර්ථකයි. නැවත උත්සාහ කරන්න.",
     errEmail: "ඔබේ සමාජ ජාල ගිණුම තහවුරු කළ විද්‍යුත් තැපෑලක් බෙදා නොගත්තේය.",
     errUnavailable: "සමාජ ජාල පිවිසීම දැන් ලබා ගත නොහැක.",
+    errLocked: "මෙම ගිණුම තාවකාලිකව අගුළු දමා ඇත. පසුව නැවත උත්සාහ කරන්න හෝ මුරපදය යළි සකසන්න.",
     dataUse: "ඔබේ ගිණුම සෑදීමට අපි භාවිතා කරන්නේ ඔබේ නම සහ විද්‍යුත් තැපෑල පමණි — ඔබ වෙනුවෙන් කිසිවක් පළ නොකෙරේ.",
   },
   welcome: {
@@ -1761,7 +2361,8 @@ const si: Dict = {
     title: "නව මුරපදයක් තෝරන්න",
     sub: "ඔබේ ගිණුමට නව මුරපදයක් ඇතුළත් කරන්න.",
     password: "නව මුරපදය",
-    passwordHint: "අවම අකුරු 6ක්.",
+    passwordHint:
+      "අවම වශයෙන් අකුරු 10ක්. පොදු හෝ පහසුවෙන් අනුමාන කළ හැකි මුරපද වළක්වන්න.",
     submit: "මුරපදය යළි සකසන්න",
     submitting: "යළි සකසමින්…",
     doneTitle: "මුරපදය යාවත්කාලීන විය",
@@ -1818,7 +2419,8 @@ const si: Dict = {
     email: "විද්‍යුත් තැපෑල",
     phone: "දුරකථන අංකය",
     password: "මුරපදය",
-    passwordHint: "අවම අකුරු 6ක්.",
+    passwordHint:
+      "අවම වශයෙන් අකුරු 10ක්. පොදු හෝ පහසුවෙන් අනුමාන කළ හැකි මුරපද වළක්වන්න.",
     create: "ගිණුම හදන්න",
     creating: "හදමින්…",
     failed: "ලියාපදිංචිය අසාර්ථකයි. නැවත උත්සාහ කරන්න.",
@@ -1836,8 +2438,20 @@ const si: Dict = {
     dashboard: "පාලක පුවරුව",
     browse: "වෘත්තිකයන් බලන්න",
     createAccount: "ගිණුමක් හදන්න",
+    terms: "සේවා කොන්දේසි",
+    privacy: "රහස්‍යතා ප්‍රතිපත්තිය",
     made1: "හදන ලද්දේ",
     made2: "ලංකාවට ආදරයෙන්",
+  },
+  legal: {
+    terms: "සේවා කොන්දේසි",
+    privacy: "රහස්‍යතා ප්‍රතිපත්තිය",
+    agreePrefix: "මම ",
+    agreeJoin: " සහ ",
+    agreeSuffix: " පිළිගනිමි.",
+    continuePrefix: "ඉදිරියට යාමෙන්, ඔබ ",
+    continueSuffix: " පිළිගනී.",
+    errAgree: "කරුණාකර සේවා කොන්දේසි සහ රහස්‍යතා ප්‍රතිපත්තිය පිළිගන්න.",
   },
   dashboard: {
     title: "පාලක පුවරුව",
@@ -1873,6 +2487,9 @@ const si: Dict = {
       townCity: "නගරය",
       headline: "සිරස්තලය",
       about: "පිළිබඳව",
+      headlineSi: "සිරස්තලය (සිංහල)",
+      aboutSi: "පිළිබඳව (සිංහල)",
+      sinhalaHint: "විකල්පයි — සිංහලෙන් බලන අමුත්තන්ට පෙන්වයි.",
       contactSocial: "සම්බන්ධතා සහ සමාජ මාධ්‍ය",
       whatsapp: "WhatsApp",
       altPhone: "වෙනත් දුරකථනය",
@@ -1892,6 +2509,7 @@ const si: Dict = {
       titlePh: "සේවා නාමය",
       descPh: "කෙටි විස්තරයක් (අත්‍යවශ්‍ය නොවේ)",
       pricePh: "මිල (රු.)",
+      priceType: "මිල වර්ගය",
       save: "සුරකින්න",
       saving: "සුරකිමින්…",
       cancel: "අවලංගු කරන්න",
@@ -1900,6 +2518,9 @@ const si: Dict = {
       titlePriceRequired: "නාමයක් සහ වලංගු මිලක් අවශ්‍යයි.",
       keepOne: "ඔබේ පැතිකඩෙහි අවම වශයෙන් එක් සේවාවක් තබාගන්න.",
       saveError: "සේවාව සුරැකීමට නොහැකි විය.",
+      confirmDelete: "මෙම සේවාව මකන්නද?",
+      deleting: "මකමින්…",
+      deleteError: "සේවාව මැකීමට නොහැකි විය.",
     },
     photos: {
       profilePicture: "පැතිකඩ පින්තූරය",
@@ -1918,6 +2539,10 @@ const si: Dict = {
       empty: "තවම වැඩ ඡායාරූප නැත. ඉහළින් ඔබේ පළමු එක උඩුගත කරන්න.",
       uploadError: "උඩුගත කිරීම අසාර්ථකයි. නැවත උත්සාහ කරන්න.",
       delete: "මකන්න",
+      confirmDelete: "මෙම ඡායාරූපය මකන්නද?",
+      deleting: "මකමින්…",
+      deleteError: "ඡායාරූපය මැකීමට නොහැකි විය.",
+      cancel: "අවලංගු කරන්න",
       dropTitle: "ඡායාරූප මෙතැනට ඇද දමන්න",
       dropOr: "හෝ",
       browse: "ඡායාරූප තෝරන්න",
@@ -1944,7 +2569,21 @@ const si: Dict = {
       statusNew: "නව",
       statusResponded: "පිළිතුරු දී ඇත",
       statusClosed: "වසා ඇත",
+      loadMore: (n: number) => `තවත් පෙන්වන්න (ඉතිරි ${n})`,
+      loadingMore: "පූරණය වෙමින්…",
+      loadMoreError: "තවත් විමසුම් පූරණය කළ නොහැකි විය. නැවත උත්සාහ කරන්න.",
     },
+  },
+  fieldErrors: {
+    summaryTitle: "කරුණාකර පහත දෑ නිවැරදි කරන්න:",
+    name: "කරුණාකර ඔබේ නම ඇතුළත් කරන්න (අවම අකුරු 2ක්).",
+    email: "කරුණාකර වලංගු විද්‍යුත් තැපැල් ලිපිනයක් ඇතුළත් කරන්න.",
+    phone: "කරුණාකර වලංගු දුරකථන අංකයක් ඇතුළත් කරන්න (අවම ඉලක්කම් 9ක්).",
+    passwordRequired: "කරුණාකර ඔබේ මුරපදය ඇතුළත් කරන්න.",
+    passwordMin: (n: number) =>
+      `මුරපදය අවම වශයෙන් අකුරු ${n}ක් විය යුතුය.`,
+    messageMin: (n: number) =>
+      `කරුණාකර අවම අකුරු ${n}ක පණිවිඩයක් ඇතුළත් කරන්න.`,
   },
   providerReg: {
     title: "වෘත්තිකයෙක් ලෙස එක්වන්න",
@@ -1952,6 +2591,7 @@ const si: Dict = {
     steps: ["ගිණුම", "පැතිකඩ", "සම්බන්ධතා සහ සමාජ මාධ්‍ය", "සේවා සහ ගාස්තු"],
     stepOf: (n: number, total: number, label: string) =>
       `පියවර ${n} / ${total}: ${label}`,
+    stepCompleted: "සම්පූර්ණයි",
     back: "← ආපසු",
     continue: "ඉදිරියට →",
     create: "මගේ පැතිකඩ සාදන්න",
@@ -1971,6 +2611,13 @@ const si: Dict = {
     about: "ඔබ සහ ඔබේ වැඩ පිළිබඳව",
     aboutPh:
       "ඔබේ කුසලතා, ඔබ බාරගන්නා වැඩ වර්ග, ආවරණය කරන ප්‍රදේශ, සහ ඔබේ වැඩ කැපී පෙනෙන්නේ ඇයිද යන්න විස්තර කරන්න…",
+    headlineSi: "සිරස්තලය (සිංහල)",
+    headlineSiPh: "උදා: වසර 10+ පළපුරුද්දක් සහිත විශ්වාසවන්ත රථ අලුත්වැඩියා",
+    aboutSi: "ඔබ සහ ඔබේ වැඩ පිළිබඳව (සිංහල)",
+    aboutSiPh:
+      "ඔබේ කුසලතා, ඔබ බාරගන්නා වැඩ වර්ග, ආවරණය කරන ප්‍රදේශ, සහ ඔබේ වැඩ කැපී පෙනෙන්නේ ඇයිද යන්න විස්තර කරන්න…",
+    sinhalaOptional:
+      "විකල්පයි — සිංහලෙන් බලන අමුත්තන්ට පෙන්වන සිංහල අනුවාදයකි.",
     district: "දිස්ත්‍රික්කය",
     selectPlaceholder: "තෝරන්න…",
     townCity: "නගරය",
@@ -1992,19 +2639,49 @@ const si: Dict = {
     serviceTitlePh: "සේවා නාමය, උදා: සම්පූර්ණ ගෙදර වයරින්",
     serviceDescPh: "කෙටි විස්තරයක් (අත්‍යවශ්‍ය නොවේ)",
     pricePh: "මිල (රු.)",
+    priceType: "මිල වර්ගය",
     addAnother: "+ තවත් සේවාවක් එක් කරන්න",
     errName: "කරුණාකර ඔබේ සම්පූර්ණ නම ඇතුළත් කරන්න.",
     errEmail: "කරුණාකර වලංගු විද්‍යුත් තැපෑලක් ඇතුළත් කරන්න.",
     errPhone: "කරුණාකර වලංගු දුරකථන අංකයක් ඇතුළත් කරන්න.",
-    errPassword: "මුරපදය අවම වශයෙන් අකුරු 6ක් විය යුතුය.",
+    errPassword:
+      "මුරපදය අවම වශයෙන් අකුරු 10ක් විය යුතුය. පොදු හෝ පහසුවෙන් අනුමාන කළ හැකි මුරපද වළක්වන්න.",
     errCategory: "කරුණාකර ඔබේ සේවා ක්ෂේත්‍රය තෝරන්න.",
     errHeadline: "කෙටි සිරස්තලයක් එක් කරන්න (අවම අකුරු 5ක්).",
     errBio: "පාරිභෝගිකයන්ට ඔබ ගැන කියන්න (අවම අකුරු 20ක්).",
     errDistrict: "කරුණාකර ඔබේ දිස්ත්‍රික්කය තෝරන්න.",
     errCity: "කරුණාකර ඔබේ නගරය ඇතුළත් කරන්න.",
     errServiceCount: "අවම වශයෙන් එක් සේවාවක් එක් කරන්න.",
-    errServiceTitle: "සෑම සේවාවකටම නාමයක් අවශ්‍යයි.",
-    errServicePrice: "සෑම සේවාවකටම වලංගු මිලක් අවශ්‍යයි.",
+    errServiceTitle: (n: number) => `සේවාව ${n}ට නාමයක් අවශ්‍යයි.`,
+    errServicePrice: (n: number) => `සේවාව ${n}ට වලංගු මිලක් අවශ්‍යයි.`,
+    asideWorkerAlt: "ශ්‍රී ලංකාවේ වැඩ කරමින් සිටින කාර්මිකයෙක්",
+    asideBadge: "ලියාපදිංචිය",
+  },
+  serviceDistricts: {
+    label: "ඔබ සේවය සපයන දිස්ත්‍රික්ක",
+    hint: "ඔබ ආවරණය කරන දිස්ත්‍රික්ක උපරිම 5ක් තෝරන්න — ඔබේ මුල් දිස්ත්‍රික්කය සැමවිටම ඇතුළත් වේ.",
+    homeBadge: "මුල් දිස්ත්‍රික්කය",
+    areasLabel: "සේවා ප්‍රදේශ",
+    limitReached: "ඔබට උපරිම දිස්ත්‍රික්ක 5ක් දක්වා සේවය සැපයිය හැක.",
+  },
+  location: {
+    label: "සිතියම් පින් (අත්‍යවශ්‍ය නොවේ)",
+    hint: "සිතියම් සෙවීම ආරම්භ වූ පසු පාරිභෝගිකයන්ට ඔබව සිතියමෙන් සොයාගත හැකි වන පරිදි ඔබේ මූලික ස්ථානයට පින් එකක් දමන්න. මඟහැරීම ගැටලුවක් නොවේ — ඔබේ දිස්ත්‍රික් ලැයිස්තුවට බලපෑමක් නැත.",
+    mapLabel:
+      "ශ්‍රී ලංකා සිතියම. ඔබේ ස්ථානය ක්ලික් කරන්න හෝ පින් එක ඇදගෙන යන්න. පහතින් ඛණ්ඩාංක ටයිප් කිරීමටද හැක.",
+    mapLoading: "සිතියම පූරණය වෙමින්…",
+    pinSet: (lat: number, lng: number) =>
+      `පින් එක ${lat.toFixed(4)}, ${lng.toFixed(4)} හි තබා ඇත`,
+    pinNotSet: "තවම පින් එකක් තබා නැත.",
+    latitude: "අක්ෂාංශ",
+    longitude: "දේශාංශ",
+    manualHint: "යතුරුපුවරුවෙන්ද? ඛණ්ඩාංක කෙලින්ම ටයිප් කරන්න.",
+    clear: "පින් ඉවත් කරන්න",
+    errOutOfBounds: "පින් එක ශ්‍රී ලංකාව තුළ විය යුතුය.",
+    errPair: "අක්ෂාංශ සහ දේශාංශ දෙකම ඇතුළත් කරන්න, නැතහොත් දෙකම හිස් කරන්න.",
+    profileLocation: "ස්ථානය",
+    mapImageAlt: (name: string) => `${name}ගේ ආසන්න ස්ථානය පෙන්වන සිතියම`,
+    viewOnOsm: "OpenStreetMap හි බලන්න",
   },
 };
 
@@ -2077,4 +2754,18 @@ export function districtLabelLoc(name: string, locale: Locale) {
 export function priceTypeLabelLoc(value: string, locale: Locale) {
   if (locale === "si") return PRICE_TYPES_SI[value] ?? value;
   return PRICE_TYPES.find((p) => p.value === value)?.label ?? value;
+}
+
+// Bilingual free-text fields (#515): providers may supply an optional Sinhala
+// variant of their headline/bio. Under the Sinhala locale we show it when
+// present and fall back to the English original otherwise; the English locale
+// always shows the English text. Kept here so cards and the profile page
+// resolve the variant the same way.
+export function bilingualText(
+  en: string,
+  si: string | null | undefined,
+  locale: Locale
+): string {
+  if (locale === "si" && si && si.trim() !== "") return si;
+  return en;
 }

@@ -1,19 +1,41 @@
 import { Hono } from "hono";
 import { db } from "../db";
 import { logAudit } from "../lib/audit";
-import { getAuth, s2s } from "../lib/http";
-import { listProviderReviews, normalizeTake } from "../lib/provider-reviews";
+import { moderateContent } from "../lib/auto-report";
+import { getAuth, getLocale, getOrigin, s2s } from "../lib/http";
+import { emitNotification } from "../lib/notify";
+import {
+  listProviderReviews,
+  normalizeTake,
+  toPublicReview,
+} from "../lib/provider-reviews";
 import {
   InvalidImageError,
   removeStoredFile,
   storeImage,
   validateImage,
 } from "../lib/storage";
-import { MAX_REVIEW_PHOTOS, reviewSchema } from "../lib/validation";
+import { fetchRatingSummary } from "../lib/rating-summary";
+import { pushRatingsToSearchIndex } from "../lib/search-index";
+import {
+  MAX_REVIEW_PHOTOS,
+  REVIEW_DIMENSIONS,
+  reviewResponseSchema,
+  reviewSchema,
+} from "../lib/validation";
 
 const PROVIDER_SERVICE_URL = process.env.PROVIDER_SERVICE_URL ?? "http://localhost:4002";
+const IDENTITY_SERVICE_URL =
+  process.env.IDENTITY_SERVICE_URL ?? "http://localhost:4001";
 
-type ProviderSummary = { id: string; userId: string; suspended: boolean };
+// `contactEmail` (optional for rollout safety against an older provider-service)
+// addresses the owner's new-review notification.
+type ProviderSummary = {
+  id: string;
+  userId: string;
+  suspended: boolean;
+  contactEmail?: string;
+};
 
 // Review gate (#25): a review must be backed by a real interaction — the
 // reviewer having sent this provider an inquiry through the platform. The
@@ -67,11 +89,22 @@ reviews.get("/api/providers/:id/reviews", async (c) => {
     // degrade open
   }
 
-  const { reviews: page, nextCursor } = await listProviderReviews(id, {
-    take: normalizeTake(c.req.query("take"), 10),
-    cursor: c.req.query("cursor") || undefined,
-  });
-  return c.json({ reviews: page, nextCursor });
+  // `summary` (#528) aggregates over ALL of the provider's non-deleted reviews
+  // (not just this page) so the profile can render the dimension breakdown and
+  // 5→1 star distribution accurately regardless of pagination. The web profile
+  // reads it directly here — no provider-service/gateway change needed.
+  const [{ reviews: page, nextCursor }, summary] = await Promise.all([
+    listProviderReviews(id, {
+      take: normalizeTake(c.req.query("take"), 10),
+      cursor: c.req.query("cursor") || undefined,
+    }),
+    fetchRatingSummary(id),
+  ]);
+  // Project to the PUBLIC shape before responding: this endpoint returns JSON
+  // straight to any (even anonymous) client, so it must not leak the reviewer's
+  // userId or moderation state (#L6). The internal /by-provider route keeps the
+  // full DTO for the owner/admin paths that legitimately need userId.
+  return c.json({ reviews: page.map(toPublicReview), nextCursor, summary });
 });
 
 // Port of the monolith's POST /api/providers/[id]/reviews (rate limiting now
@@ -136,9 +169,20 @@ reviews.post("/api/providers/:id/reviews", async (c) => {
   if (!form) {
     return c.json({ error: "Invalid input" }, 400);
   }
+  // Optional per-dimension sub-ratings (#528): only read a dimension when the
+  // form actually carries a value. A blank field becomes `undefined` (omitted)
+  // rather than 0 — which would fail the 1–5 check — so on create the column
+  // defaults to null and on edit an untouched dimension keeps its stored value.
+  const dimensions: Record<string, number | undefined> = {};
+  for (const dim of REVIEW_DIMENSIONS) {
+    const raw = form.get(dim);
+    const trimmed = typeof raw === "string" ? raw.trim() : "";
+    dimensions[dim] = trimmed === "" ? undefined : Number(trimmed);
+  }
   const parsed = reviewSchema.safeParse({
     rating: Number(form.get("rating")),
     comment: String(form.get("comment") ?? ""),
+    ...dimensions,
   });
   if (!parsed.success) {
     return c.json({ error: "Invalid input" }, 400);
@@ -180,7 +224,15 @@ reviews.post("/api/providers/:id/reviews", async (c) => {
     }
   }
 
-  await db.$transaction(async (tx) => {
+  // Checked before the upsert so the NEW_REVIEW notification fires only on the
+  // FIRST publish — editing a review must not re-ping the provider on every
+  // save (#L6). Mirrors the review-response route's first-response gate.
+  const existingReview = await db.review.findUnique({
+    where: { providerId_userId: { providerId: id, userId: auth.userId } },
+    select: { id: true },
+  });
+
+  const reviewId = await db.$transaction(async (tx) => {
     const review = await tx.review.upsert({
       where: { providerId_userId: { providerId: id, userId: auth.userId } },
       // Reaching here means the interaction gate passed, so every review we
@@ -196,8 +248,168 @@ reviews.post("/api/providers/:id/reviews", async (c) => {
         data: photoUrls.map((url) => ({ reviewId: review.id, url })),
       });
     }
+    return review.id;
   });
 
+  // Content filter (#375): AFTER the write on purpose — the review stays
+  // visible and a filter hit only queues a SYSTEM report for admin triage.
+  await moderateContent("REVIEW", reviewId, { comment: parsed.data.comment });
+
+  // Search-index rating push (search RFC §4.2) — fire-and-forget, best-effort.
+  void pushRatingsToSearchIndex([id]);
+
+  // Tell the provider a review was published on their profile (#393): in-app
+  // + email via the notification event — best-effort, never fails the review.
+  // The owner's userId/contactEmail rode in on the summary fetched above. Only
+  // a first publish notifies (#L6); an edit updates the review silently.
+  if (!existingReview) {
+    await emitNotification({
+      type: "NEW_REVIEW",
+      recipients: [
+        { userId: provider.userId, email: provider.contactEmail, locale: getLocale(c) },
+      ],
+      payload: { reviewerName: auth.name, rating: parsed.data.rating },
+      link: `/providers/${id}`,
+      origin: getOrigin(c),
+    });
+  }
+
+  return c.json({ ok: true });
+});
+
+// Provider responses to reviews (#395): the reviewed profile's OWNER may keep
+// one public reply per review. Shared gate for the upsert + delete routes:
+// load the (non-moderated) review, then verify over S2S that the caller owns
+// the reviewed provider profile. Ownership decides whether a write is allowed,
+// so an upstream failure fails loudly (502) — mirroring the review-create gate.
+async function gateReviewResponse(
+  reviewId: string,
+  userId: string
+): Promise<
+  | { ok: true; review: { id: string; userId: string; providerId: string } }
+  | { ok: false; status: 403 | 404 | 502; error: string }
+> {
+  const review = await db.review.findUnique({
+    where: { id: reviewId },
+    select: { id: true, userId: true, providerId: true, deletedAt: true },
+  });
+  // Soft-deleted reviews 404 like missing ones — the public page hides them,
+  // and a response to a moderated review would be invisible anyway.
+  if (!review || review.deletedAt) {
+    return { ok: false, status: 404, error: "Review not found" };
+  }
+
+  let provider: ProviderSummary | null = null;
+  try {
+    const res = await s2s(
+      PROVIDER_SERVICE_URL,
+      `/internal/providers/${review.providerId}/summary`
+    );
+    if (res.status === 404) {
+      provider = null;
+    } else if (!res.ok) {
+      return { ok: false, status: 502, error: "Upstream service unavailable" };
+    } else {
+      const data = (await res.json()) as { provider: ProviderSummary | null };
+      provider = data.provider ?? null;
+    }
+  } catch {
+    return { ok: false, status: 502, error: "Upstream service unavailable" };
+  }
+  // A suspended provider's profile (and its reviews) 404s publicly; it must
+  // not keep posting replies either.
+  if (!provider || provider.suspended || provider.userId !== userId) {
+    return {
+      ok: false,
+      status: 403,
+      error: "Only the reviewed provider can respond",
+    };
+  }
+  return {
+    ok: true,
+    review: { id: review.id, userId: review.userId, providerId: review.providerId },
+  };
+}
+
+// Create-or-edit (upsert — one response per review, so posting again replaces
+// the text). Rate limiting lives in the gateway, same as review creation.
+reviews.post("/api/reviews/:id/response", async (c) => {
+  const auth = getAuth(c);
+  if (!auth) {
+    return c.json({ error: "Sign in to respond" }, 401);
+  }
+
+  const gate = await gateReviewResponse(c.req.param("id"), auth.userId);
+  if (!gate.ok) {
+    return c.json({ error: gate.error }, gate.status);
+  }
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = reviewResponseSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid input" }, 400);
+  }
+
+  // Checked before the upsert so only a FIRST response notifies the reviewer —
+  // editing the reply must not re-ping them on every save.
+  const existing = await db.reviewResponse.findUnique({
+    where: { reviewId: gate.review.id },
+    select: { id: true },
+  });
+
+  await db.reviewResponse.upsert({
+    where: { reviewId: gate.review.id },
+    create: { reviewId: gate.review.id, text: parsed.data.text },
+    update: { text: parsed.data.text },
+  });
+
+  if (!existing) {
+    // Tell the review's author the provider replied (#393): in-app + email via
+    // the notification event — best-effort, never fails the response. The
+    // author's email is hydrated from identity (a failed lookup degrades to
+    // in-app only); providerName is the caller's identity-header name, which
+    // the provider's public contactName mirrors (#553).
+    let email: string | undefined;
+    try {
+      const res = await s2s(
+        IDENTITY_SERVICE_URL,
+        `/internal/users?ids=${encodeURIComponent(gate.review.userId)}`
+      );
+      if (res.ok) {
+        const data = (await res.json()) as {
+          users?: { id: string; email: string }[];
+        };
+        email = data.users?.find((u) => u.id === gate.review.userId)?.email;
+      }
+    } catch {
+      // degrade to in-app only
+    }
+    await emitNotification({
+      type: "REVIEW_RESPONSE",
+      recipients: [{ userId: gate.review.userId, email, locale: getLocale(c) }],
+      payload: { providerName: auth.name },
+      link: `/providers/${gate.review.providerId}`,
+      origin: getOrigin(c),
+    });
+  }
+
+  return c.json({ ok: true });
+});
+
+// Remove the response. Idempotent: deleting a review with no response is a
+// no-op 200 (deleteMany), matching the service's other best-effort removals.
+reviews.delete("/api/reviews/:id/response", async (c) => {
+  const auth = getAuth(c);
+  if (!auth) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const gate = await gateReviewResponse(c.req.param("id"), auth.userId);
+  if (!gate.ok) {
+    return c.json({ error: gate.error }, gate.status);
+  }
+
+  await db.reviewResponse.deleteMany({ where: { reviewId: gate.review.id } });
   return c.json({ ok: true });
 });
 
@@ -239,11 +451,26 @@ reviews.delete("/api/admin/reviews/:id", async (c) => {
     return c.json({ error: "Forbidden" }, 403);
   }
   const id = c.req.param("id");
-  await db.review.updateMany({
+  // Resolve the provider before the write so the search-index rating push
+  // below has its target even though updateMany itself returns no rows.
+  const review = await db.review.findUnique({
+    where: { id },
+    select: { providerId: true },
+  });
+  // updateMany returns count 0 when the id doesn't exist; report that as a 404
+  // rather than a misleading 200, and don't write a fabricated audit entry for
+  // a review that was never touched (matches provider admin.ts photo restore).
+  const { count } = await db.review.updateMany({
     where: { id },
     data: { deletedAt: new Date() },
   });
+  if (count === 0) {
+    return c.json({ error: "Review not found" }, 404);
+  }
   await logAudit(c, "delete-review", "REVIEW", id);
+  // A soft-deleted review leaves the aggregates — push the recount (search
+  // RFC §4.2, fire-and-forget).
+  if (review) void pushRatingsToSearchIndex([review.providerId]);
   return c.json({ ok: true });
 });
 
@@ -253,7 +480,21 @@ reviews.patch("/api/admin/reviews/:id/restore", async (c) => {
     return c.json({ error: "Forbidden" }, 403);
   }
   const id = c.req.param("id");
-  await db.review.updateMany({ where: { id }, data: { deletedAt: null } });
+  const review = await db.review.findUnique({
+    where: { id },
+    select: { providerId: true },
+  });
+  // 404 (not a misleading 200) + no fabricated audit entry when the id doesn't
+  // exist — matches the delete route above and provider admin.ts photo restore.
+  const { count } = await db.review.updateMany({
+    where: { id },
+    data: { deletedAt: null },
+  });
+  if (count === 0) {
+    return c.json({ error: "Review not found" }, 404);
+  }
   await logAudit(c, "restore-review", "REVIEW", id);
+  // Restoring re-enters the aggregates — push the recount (search RFC §4.2).
+  if (review) void pushRatingsToSearchIndex([review.providerId]);
   return c.json({ ok: true });
 });

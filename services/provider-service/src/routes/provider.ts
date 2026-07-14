@@ -4,11 +4,19 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
+import { moderateContent } from "../lib/auto-report";
 import {
   districtEnum,
+  GEO_PAIR_MESSAGE,
+  geoPairState,
+  latitudeField,
+  longitudeField,
+  MAX_SERVICE_DISTRICTS,
+  normalizeServiceDistricts,
   optionalSlPhone,
   optionalWebUrl,
   priceRupees,
+  serviceDistrictsField,
   slPhone,
 } from "../lib/field-rules";
 import { categoryValidator } from "../lib/categories";
@@ -19,6 +27,10 @@ import {
   syncIdentityProfile,
 } from "../lib/clients";
 import { getCurrentProvider } from "../lib/provider-auth";
+import { isSupportOrAdmin, s2s } from "../lib/http";
+import { syncProviderIndex } from "../lib/search-index";
+import { moneyToNumber } from "../lib/money";
+import { normalizePagination } from "../lib/admin-list";
 import { unreadCounts } from "./messages";
 import {
   ALLOWED_IMAGE_TYPES,
@@ -31,31 +43,59 @@ import {
 
 export const providerDashboardRoutes = new Hono();
 
+const MEDIA_SERVICE_URL =
+  process.env.MEDIA_SERVICE_URL ?? "http://localhost:4006";
+
+// The dashboard embeds only the first page of inquiries (#372) — deeper pages
+// come from the paginated GET /api/provider/inquiries. Counts ride along so
+// the stats/badges track the full inbox, not just the embedded slice.
+const DASHBOARD_INQUIRIES_TAKE = 20;
+
 // Everything the dashboard page needs in one payload: the provider with its
-// contact info (emailVerified fresh from identity), services, photos,
-// inquiries, a rating summary from review-service and the count of open jobs
-// matching the provider's trade — all peer reads degrade gracefully.
+// contact info (emailVerified fresh from identity), services, photos, the
+// first page of inquiries (+ totals), a rating summary from review-service and
+// the count of open jobs matching the provider's trade — all peer reads
+// degrade gracefully.
 providerDashboardRoutes.get("/api/provider/dashboard", async (c) => {
   const provider = await getCurrentProvider(c);
   if (!provider) {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  const [services, photos, inquiries, emailVerified, ratings, openJobsCount] =
-    await Promise.all([
-      db.service.findMany({ where: { providerId: provider.id }, orderBy: { price: "asc" } }),
-      db.workPhoto.findMany({
-        where: { providerId: provider.id, deletedAt: null },
-        orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
-      }),
-      db.inquiry.findMany({
-        where: { providerId: provider.id },
-        orderBy: { createdAt: "desc" },
-      }),
-      fetchEmailVerified(provider.userId),
-      fetchRatings([provider.id]),
-      fetchOpenJobsCount(provider.category, provider.district, provider.userId),
-    ]);
+  const [
+    services,
+    photos,
+    inquiries,
+    inquiriesTotal,
+    newInquiriesCount,
+    emailVerified,
+    ratings,
+    openJobsCount,
+  ] = await Promise.all([
+    db.service.findMany({ where: { providerId: provider.id }, orderBy: { price: "asc" } }),
+    db.workPhoto.findMany({
+      where: { providerId: provider.id, deletedAt: null },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+    }),
+    db.inquiry.findMany({
+      where: { providerId: provider.id },
+      orderBy: { createdAt: "desc" },
+      take: DASHBOARD_INQUIRIES_TAKE,
+    }),
+    db.inquiry.count({ where: { providerId: provider.id } }),
+    db.inquiry.count({ where: { providerId: provider.id, status: "NEW" } }),
+    fetchEmailVerified(provider.userId),
+    fetchRatings([provider.id]),
+    fetchOpenJobsCount(
+      provider.category,
+      // Served set (#502); rows predating the backfill (tests, partial
+      // fixtures) fall back to the primary district.
+      provider.serviceDistricts?.length
+        ? provider.serviceDistricts
+        : [provider.district],
+      provider.userId
+    ),
+  ]);
 
   const r = ratings[provider.id];
   return c.json({
@@ -67,9 +107,13 @@ providerDashboardRoutes.get("/api/provider/dashboard", async (c) => {
         phone: provider.contactPhone,
         emailVerified,
       },
-      services,
+      // price is DECIMAL in the DB (#371) — a Decimal JSON-serializes as a
+      // string, so convert back to the number this payload has always carried.
+      services: services.map((s) => ({ ...s, price: moneyToNumber(s.price) })),
       photos,
       inquiries,
+      inquiriesTotal,
+      newInquiriesCount,
       ratingSummary: { rating: r?.rating ?? null, count: r?.count ?? 0 },
     },
     openJobsCount,
@@ -111,8 +155,22 @@ const profileSchema = z.object({
   category: z.string().min(1).max(40),
   headline: z.string().min(5).max(120),
   bio: z.string().min(20).max(2000),
+  // Optional Sinhala variants (#515). No minimum (they're optional), same
+  // maximums as the English originals; empty/absent clears to null.
+  headlineSi: z.string().max(120).optional().or(z.literal("")).nullish(),
+  bioSi: z.string().max(2000).optional().or(z.literal("")).nullish(),
   district: districtEnum,
+  // Multi-district service area (#502): the districts the provider serves.
+  // Optional so pre-#502 clients keep working; the primary district is always
+  // (re)added by normalizeServiceDistricts below.
+  serviceDistricts: serviceDistrictsField,
   city: z.string().min(1).max(60),
+  // Optional map pin (#48, geo-capture phase of the search RFC). Bounds-checked
+  // against the Sri Lanka box; the both-or-neither pair rule is enforced after
+  // parsing (geoPairState below). Absent leaves the stored pin untouched;
+  // explicit nulls clear it — the awayUntil contract.
+  latitude: latitudeField,
+  longitude: longitudeField,
   experience: z.number().int().min(0).max(60),
   available: z.boolean(),
   awayUntil: awayUntilField,
@@ -139,12 +197,37 @@ providerDashboardRoutes.put("/api/provider/profile", async (c) => {
   if (!(await categoryValidator.isValidCategory(parsed.data.category))) {
     return c.json({ error: "Invalid category" }, 400);
   }
+  // Map pin (#48): the coordinates are a pair — a lone latitude (or a
+  // number/null mix) must never persist. "unset" (both absent) leaves the
+  // stored pin untouched via the undefined spread below; "clear" (both null)
+  // clears it.
+  if (geoPairState(parsed.data.latitude, parsed.data.longitude) === "invalid") {
+    return c.json({ error: GEO_PAIR_MESSAGE }, 400);
+  }
   const { name, phone, ...profile } = parsed.data;
+
+  // Served set (#502): dedupe, pin the (possibly changed) primary district,
+  // refuse a union over the cap rather than silently truncating.
+  const serviceDistricts = normalizeServiceDistricts(
+    profile.district,
+    profile.serviceDistricts
+  );
+  if (!serviceDistricts) {
+    return c.json(
+      {
+        error: `You can serve at most ${MAX_SERVICE_DISTRICTS} districts (including your own)`,
+      },
+      400
+    );
+  }
 
   const updated = await db.provider.update({
     where: { id: provider.id },
     data: {
       ...profile,
+      serviceDistricts,
+      headlineSi: profile.headlineSi || null,
+      bioSi: profile.bioSi || null,
       whatsapp: profile.whatsapp || null,
       phone2: profile.phone2 || null,
       facebook: profile.facebook || null,
@@ -160,6 +243,19 @@ providerDashboardRoutes.put("/api/provider/profile", async (c) => {
   // Keep identity's user row in sync (name/phone). Best-effort: our
   // denormalized copy is the write we own.
   await syncIdentityProfile(provider.userId, { name, phone });
+
+  // Search-index push (search RFC §4.2): the profile edit touches most indexed
+  // fields (pitch/districts/city/away mode/pin). Fire-and-forget, best-effort.
+  void syncProviderIndex(provider.id);
+
+  // Content filter (#375): AFTER the write on purpose — the profile stays
+  // visible and a filter hit only queues a SYSTEM report for admin triage.
+  await moderateContent("PROVIDER", provider.id, {
+    headline: profile.headline,
+    bio: profile.bio,
+    headlineSi: profile.headlineSi,
+    bioSi: profile.bioSi,
+  });
 
   return c.json({ provider: updated });
 });
@@ -193,7 +289,19 @@ providerDashboardRoutes.post("/api/provider/services", async (c) => {
     },
   });
 
-  return c.json({ service });
+  // Content filter (#375): service text is profile content, so a hit flags
+  // the provider (auto-report only — the write is never blocked).
+  await moderateContent("PROVIDER", provider.id, {
+    title: parsed.data.title,
+    description: parsed.data.description,
+  });
+
+  // Titles and prices are indexed (search RFC §4.2) — best-effort push.
+  void syncProviderIndex(provider.id);
+
+  // price comes back from Prisma as a Decimal (#371) — convert so the JSON
+  // payload keeps carrying a number.
+  return c.json({ service: { ...service, price: moneyToNumber(service.price) } });
 });
 
 providerDashboardRoutes.put("/api/provider/services/:id", async (c) => {
@@ -224,7 +332,17 @@ providerDashboardRoutes.put("/api/provider/services/:id", async (c) => {
     },
   });
 
-  return c.json({ service: updated });
+  // Content filter (#375): same PROVIDER-target flag as the create path.
+  await moderateContent("PROVIDER", provider.id, {
+    title: parsed.data.title,
+    description: parsed.data.description,
+  });
+
+  // Titles and prices are indexed (search RFC §4.2) — best-effort push.
+  void syncProviderIndex(provider.id);
+
+  // Same Decimal → number edge conversion as the create path (#371).
+  return c.json({ service: { ...updated, price: moneyToNumber(updated.price) } });
 });
 
 providerDashboardRoutes.delete("/api/provider/services/:id", async (c) => {
@@ -240,6 +358,10 @@ providerDashboardRoutes.delete("/api/provider/services/:id", async (c) => {
   }
 
   await db.service.delete({ where: { id } });
+
+  // Titles and prices are indexed (search RFC §4.2) — best-effort push.
+  void syncProviderIndex(provider.id);
+
   return c.json({ ok: true });
 });
 
@@ -272,13 +394,13 @@ providerDashboardRoutes.post("/api/provider/photos", async (c) => {
     throw e;
   }
 
-  if (kind === "avatar") {
-    await db.provider.update({
-      where: { id: provider.id },
-      data: { avatarUrl: url },
-    });
-    return c.json({ avatarUrl: url });
-  }
+  // Avatars are NOT set here (#647): the only writer of Provider.avatarUrl is
+  // the identity → `/internal/providers/avatar` mirror driven by
+  // `/api/account/avatar`, which keeps User.avatarUrl and the denormalized
+  // provider copy in step. A `kind=avatar` upload here wrote the provider copy
+  // WITHOUT syncing identity's User.avatarUrl, leaving the two out of step; the
+  // web only ever uploads avatars via `/api/account/avatar`, so this branch was
+  // dead. Removed — a `kind=avatar` request now falls through to a work photo.
 
   // Dedicated cover photo (#435): stored under the same namespace/prefix, set
   // on the provider (not added to the work gallery).
@@ -370,20 +492,37 @@ providerDashboardRoutes.delete("/api/provider/photos/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+// Paginated (#372): the inbox grows unbounded otherwise. `page`/`pageSize`
+// use the shared normalization (default 20, cap 100); the envelope adds
+// `total`/`page`/`pageSize` alongside the existing `inquiries` key so older
+// callers keep working. Unread counts are computed per page, not per inbox.
 providerDashboardRoutes.get("/api/provider/inquiries", async (c) => {
   const provider = await getCurrentProvider(c);
   if (!provider) {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  const inquiries = await db.inquiry.findMany({
-    where: { providerId: provider.id },
-    orderBy: { createdAt: "desc" },
+  const { page, pageSize } = normalizePagination({
+    page: c.req.query("page") ?? null,
+    pageSize: c.req.query("pageSize") ?? null,
   });
+  const where = { providerId: provider.id };
+  const [total, inquiries] = await Promise.all([
+    db.inquiry.count({ where }),
+    db.inquiry.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+  ]);
   const unread = await unreadCounts(inquiries, "PROVIDER");
 
   return c.json({
     inquiries: inquiries.map((i) => ({ ...i, unreadCount: unread[i.id] ?? 0 })),
+    total,
+    page,
+    pageSize,
   });
 });
 
@@ -425,7 +564,9 @@ providerDashboardRoutes.patch("/api/provider/inquiries/:id", async (c) => {
 });
 
 // Provider submits verification documents (NIC and/or business registration).
-// Sensitive PII — the stored URLs are only ever returned to admins.
+// Sensitive PII: stored under the media `verification` prefix, which the
+// gateway routes to the admin-gated serve route below instead of the public
+// media path (#500) — so the bytes are only ever viewable by ADMIN/SUPPORT.
 providerDashboardRoutes.post("/api/provider/verification", async (c) => {
   const provider = await getCurrentProvider(c);
   if (!provider) {
@@ -487,5 +628,37 @@ providerDashboardRoutes.post("/api/provider/verification", async (c) => {
     }),
   ]);
 
+  // verificationStatus is indexed (verified boost in the recommended sort) —
+  // best-effort push (search RFC §4.2).
+  void syncProviderIndex(provider.id);
+
   return c.json({ status: "PENDING" });
+});
+
+// Admin-gated delivery of a verification document (#500). These are PII (NIC /
+// business-registration scans), so the gateway routes
+// /api/files/provider/verification/* here — NOT to the public media path — and
+// only ADMIN/SUPPORT (who see the /api/admin/verifications queue that lists
+// them) may fetch the bytes. The document's stored URL is exactly this request
+// path, so we hand it straight to media's internal raw endpoint over S2S and
+// stream the bytes back; PII is marked private/no-store so it is never cached
+// by a shared cache. Pre-existing documents keep the same URL and are served
+// unchanged through this route.
+providerDashboardRoutes.get("/api/files/provider/verification/*", async (c) => {
+  if (!isSupportOrAdmin(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+  const res = await s2s(
+    MEDIA_SERVICE_URL,
+    `/internal/media/raw?url=${encodeURIComponent(c.req.path)}`
+  );
+  if (!res.ok) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  return c.body(new Uint8Array(await res.arrayBuffer()), 200, {
+    "content-type": res.headers.get("content-type") ?? "application/octet-stream",
+    "cache-control": "private, no-store",
+    "x-content-type-options": "nosniff",
+    "content-disposition": "inline",
+  });
 });

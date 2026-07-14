@@ -12,7 +12,8 @@ import { ToastProvider } from "@/components/ToastProvider";
 import ChatAssistant from "@/components/ChatAssistant";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import { getSession } from "@/lib/auth";
-import { getLocale } from "@/lib/locale";
+import { getLocale, getUrlLocale } from "@/lib/locale";
+import { siteOpenGraph } from "@/lib/seo";
 import { getTheme } from "@/lib/theme";
 import { dict } from "@/lib/i18n";
 import { SITE_NAME, SITE_URL } from "@/lib/site";
@@ -60,7 +61,7 @@ export const viewport: Viewport = {
 };
 
 export async function generateMetadata(): Promise<Metadata> {
-  const locale = await getLocale();
+  const [locale, urlLocale] = await Promise.all([getLocale(), getUrlLocale()]);
   const m = dict[locale].meta;
   return {
     metadataBase: new URL(SITE_URL),
@@ -72,14 +73,10 @@ export async function generateMetadata(): Promise<Metadata> {
     // — Next injects those <head> tags automatically. appleWebApp only exists
     // as metadata, so it's set explicitly here (#263).
     appleWebApp: { capable: true, title: SITE_NAME, statusBarStyle: "default" },
-    openGraph: {
-      title: m.title,
-      description: m.description,
-      siteName: SITE_NAME,
-      type: "website",
-      locale: locale === "si" ? "si_LK" : "en_US",
-      url: SITE_URL,
-    },
+    // No og:url here (#379): the layout doesn't know the page path, and a
+    // site-wide url would mismatch every non-home canonical. Pages that emit
+    // a canonical set their own matching og:url via siteOpenGraph(..., path).
+    openGraph: siteOpenGraph(locale, urlLocale),
     twitter: { card: "summary_large_image", title: m.title, description: m.description },
   };
 }
@@ -96,6 +93,11 @@ export default async function RootLayout({
   ]);
   const t = dict[locale];
   const impersonating = Boolean(session?.impersonatedBy);
+  // The chat assistant is a customer-facing concierge (#11) — it only helps
+  // signed-out visitors and CUSTOMERs find providers and draft inquiries. It
+  // has no purpose for PROVIDER/ADMIN/SUPPORT sessions, so scope it to the
+  // public/customer surface rather than mounting it on every route/role (#662).
+  const showAssistant = !session || session.role === "CUSTOMER";
 
   return (
     <html
@@ -139,7 +141,7 @@ export default async function RootLayout({
               {children}
             </main>
             <Footer />
-            <ChatAssistant />
+            {showAssistant && <ChatAssistant />}
           </ToastProvider>
         </I18nProvider>
       </body>
