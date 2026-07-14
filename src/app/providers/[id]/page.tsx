@@ -331,35 +331,39 @@ export default async function ProviderProfilePage({
         )}
       />
       {/* -- Cover banner (#701) ---------------------------------------- */}
-      {/* Full-width hero cover mirroring the listing card: the category cover
+      {/* Contained hero cover mirroring the listing card: the category cover
           leads, the provider's own cover is the fallback, then a flat
-          placeholder. Reuses the card's scrim, inset ring frame and kicker. */}
-      <section className="relative h-56 overflow-hidden bg-ink-100 sm:h-64">
-        {cover ? (
-          <Image
-            src={cover}
-            alt={t.profile.coverAlt(provider.user.name)}
-            fill
-            sizes="100vw"
-            priority
-            unoptimized={isSvg(cover)}
-            className="object-cover"
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center bg-[repeating-linear-gradient(45deg,var(--color-ink-100),var(--color-ink-100)_11px,var(--color-ink-200)_11px,var(--color-ink-200)_22px)]">
-            <CategoryIcon
-              slug={provider.category}
-              className="h-12 w-12 text-ink-400"
+          placeholder. Constrained to the content width and rounded so it reads
+          as a banner rather than a full-bleed letterbox strip on wide screens
+          (the covers are near-square, so a full-width band over-crops them). */}
+      <section className="mx-auto mt-6 max-w-6xl px-4 sm:px-6">
+        <div className="relative h-48 overflow-hidden rounded-xl bg-ink-100 sm:h-60 lg:h-72">
+          {cover ? (
+            <Image
+              src={cover}
+              alt={t.profile.coverAlt(provider.user.name)}
+              fill
+              sizes="(min-width: 1152px) 1104px, 100vw"
+              priority
+              unoptimized={isSvg(cover)}
+              className="object-cover"
             />
-          </div>
-        )}
-        {/* legibility scrim + printed frame */}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 via-black/0 to-black/15" />
-        <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-black/10" />
-        {/* category tag, overprinted like a magazine kicker */}
-        <span className="absolute left-4 top-4 rounded-sm bg-black/45 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-white backdrop-blur-sm">
-          {categoryLabelLoc(provider.category, locale)}
-        </span>
+          ) : (
+            <div className="flex h-full items-center justify-center bg-[repeating-linear-gradient(45deg,var(--color-ink-100),var(--color-ink-100)_11px,var(--color-ink-200)_11px,var(--color-ink-200)_22px)]">
+              <CategoryIcon
+                slug={provider.category}
+                className="h-12 w-12 text-ink-400"
+              />
+            </div>
+          )}
+          {/* legibility scrim + printed frame */}
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-black/0 to-black/10" />
+          <div className="pointer-events-none absolute inset-0 rounded-xl ring-1 ring-inset ring-black/10" />
+          {/* category tag, overprinted like a magazine kicker */}
+          <span className="absolute left-4 top-4 rounded-sm bg-black/45 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-white backdrop-blur-sm">
+            {categoryLabelLoc(provider.category, locale)}
+          </span>
+        </div>
       </section>
 
       {/* -- Blueprint hero band ---------------------------------------- */}
