@@ -4,7 +4,7 @@ import { getCookie } from "hono/cookie";
 import { proxy } from "hono/proxy";
 import { log } from "./log";
 import { getRequestId } from "./logging";
-import { resolveRoute, serviceUrl } from "./routes";
+import { isImpersonationBlocked, resolveRoute, serviceUrl } from "./routes";
 import {
   IMPERSONATION_COOKIE,
   SESSION_COOKIE,
@@ -159,6 +159,22 @@ export async function proxyRequest(c: Context) {
   const headers = await buildUpstreamHeaders(c, new URL(base).host);
 
   const method = c.req.method;
+
+  // #634: block the irreversible self-service ops while an impersonation session
+  // is in effect. buildUpstreamHeaders only sets x-impersonated-by after it has
+  // verified the impersonation cookie (both parties' sessionVersions current),
+  // so keying off the stamped header reuses that exact check — an expired or
+  // revoked impersonation has already fallen back to the admin's own identity
+  // and is not blocked.
+  if (headers.get("x-impersonated-by") && isImpersonationBlocked(method, url.pathname)) {
+    return c.json(
+      {
+        error:
+          "This action is disabled while viewing as another user. End impersonation to perform it.",
+      },
+      403
+    );
+  }
   const body =
     method === "GET" || method === "HEAD"
       ? undefined
