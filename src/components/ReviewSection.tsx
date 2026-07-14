@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { FaStar, FaXmark } from "@/components/icons";
+import EmailVerifyBanner from "./EmailVerifyBanner";
 import Stars from "./Stars";
 import Avatar from "./Avatar";
 import { isSvg } from "@/lib/image";
@@ -56,6 +57,7 @@ export default function ReviewSection({
   canReview,
   canRespond,
   signedIn,
+  emailUnverified = false,
   myReview,
   summary,
 }: {
@@ -66,6 +68,9 @@ export default function ReviewSection({
   // The profiled provider (owner) may keep one public reply per review (#395).
   canRespond: boolean;
   signedIn: boolean;
+  // Verified-email gate (#115): true for a signed-in reviewer who hasn't
+  // confirmed their email — the write form is disabled and a prompt shown.
+  emailUnverified?: boolean;
   myReview: { rating: number; comment: string; photos: ReviewPhoto[] } | null;
   summary: RatingSummary | null;
 }) {
@@ -198,7 +203,7 @@ export default function ReviewSection({
         <h2 className="text-lg font-semibold text-ink-900">
           {t.reviews.title(reviews.length)}
         </h2>
-        {canReview && !showForm && (
+        {canReview && !showForm && !emailUnverified && (
           <button onClick={() => setShowForm(true)} className="btn-secondary">
             {myReview ? t.reviews.edit : t.reviews.write}
           </button>
@@ -219,6 +224,15 @@ export default function ReviewSection({
           </Link>
         )}
       </div>
+
+      {/* Verified-email gate (#115): a signed-in reviewer who hasn't confirmed
+          their email sees a prompt + resend affordance instead of the write
+          button, mirroring the inquiry form and the backend 403. */}
+      {canReview && emailUnverified && (
+        <div className="mt-4">
+          <EmailVerifyBanner message={t.verify.reviewPrompt} />
+        </div>
+      )}
 
       {showForm && (
         <form

@@ -4,7 +4,14 @@ import { useState } from "react";
 import { FaEnvelope } from "@/components/icons";
 import { useT } from "./I18nProvider";
 
-export default function EmailVerifyBanner() {
+export default function EmailVerifyBanner({
+  message,
+}: {
+  // Optional context-specific copy (#115): defaults to the generic
+  // "please verify" text used on the dashboard; the action-gated forms pass
+  // their own prompt ("verify … to contact a provider" / "… to leave a review").
+  message?: string;
+} = {}) {
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">(
     "idle"
   );
@@ -25,7 +32,7 @@ export default function EmailVerifyBanner() {
       <div className="flex flex-wrap items-center justify-between gap-3 p-4">
         <p className="flex items-center gap-2.5 text-sm font-medium text-amber-900">
           <FaEnvelope className="h-4 w-4 text-amber-600" />
-          {t.verify.bannerText}
+          {message ?? t.verify.bannerText}
         </p>
         {state === "sent" ? (
           <span

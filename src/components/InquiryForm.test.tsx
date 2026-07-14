@@ -160,4 +160,29 @@ describe("InquiryForm", () => {
     }) as HTMLButtonElement;
     expect(button.disabled).toBe(false);
   });
+
+  // Verified-email gate (#115): a signed-in but unconfirmed user sees the
+  // verify prompt and cannot submit into a backend 403.
+  it("shows the verify-email prompt and disables submit when emailUnverified", () => {
+    render(
+      <InquiryForm
+        providerId="prov_1"
+        providerName="Sunil Perera"
+        defaultName="Kasun"
+        emailUnverified
+      />
+    );
+    expect(screen.getByText(dict.en.verify.inquiryPrompt)).toBeTruthy();
+    expect(
+      (screen.getByRole("button", { name: t.send }) as HTMLButtonElement).disabled
+    ).toBe(true);
+  });
+
+  it("does not show the verify prompt for a verified/anonymous user", () => {
+    renderForm();
+    expect(screen.queryByText(dict.en.verify.inquiryPrompt)).toBeNull();
+    expect(
+      (screen.getByRole("button", { name: t.send }) as HTMLButtonElement).disabled
+    ).toBe(false);
+  });
 });

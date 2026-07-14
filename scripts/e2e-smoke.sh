@@ -121,19 +121,28 @@ check "account page renders" "$(req cust GET "/account")" "Baas"
 check "favorite remove" "$(req cust DELETE "/api/favorites/$PROV_ID" | jq -r '.favorited')" "false"
 
 echo "== Inquiries + reviews =="
-check "inquiry create" "$(req cust POST "/api/providers/$PROV_ID/inquiries" -H 'content-type: application/json' \
+# Sending an inquiry and posting a review are gated on a verified email (#115),
+# same as posting a job (#556): the freshly registered customer is unverified
+# and must be blocked, so the real flow runs as a seeded (verified) customer.
+check "unverified inquiry blocked" "$(req cust POST "/api/providers/$PROV_ID/inquiries" -H 'content-type: application/json' \
+  -d '{"name":"E2E Customer","phone":"0770000001","message":"An unverified account must not be able to send this inquiry."}' | jq -r '.error')" "Verify your email"
+req vcust POST "/api/auth/login" -H 'content-type: application/json' \
+  -d '{"email":"dilani@example.com","password":"password123"}' > /dev/null
+check "inquiry create" "$(req vcust POST "/api/providers/$PROV_ID/inquiries" -H 'content-type: application/json' \
   -d '{"name":"E2E Customer","phone":"0770000001","message":"This is an end to end inquiry message."}' \
   | jq -r '.inquiry.status')" "NEW"
 # The review gate (#25) requires a real prior interaction with the SAME provider,
 # so establish an inquiry to prov_sampath before reviewing it.
-check "inquiry to review target" "$(req cust POST "/api/providers/prov_sampath/inquiries" -H 'content-type: application/json' \
+check "inquiry to review target" "$(req vcust POST "/api/providers/prov_sampath/inquiries" -H 'content-type: application/json' \
   -d '{"name":"E2E Customer","phone":"0770000001","message":"Interested in your services before I leave a review."}' \
   | jq -r '.inquiry.status')" "NEW"
-check "review create" "$(req cust POST "/api/providers/prov_sampath/reviews" \
+check "review create" "$(req vcust POST "/api/providers/prov_sampath/reviews" \
   -F rating=5 -F comment='Great work, E2E approved!' | jq -r '.ok')" "true"
+# Scan all reviews (not just [0]): the seeded customer may already carry a
+# review on prov_sampath, so an upsert doesn't necessarily become the newest.
 check "review visible" "$(curl -sS "http://localhost:4003/internal/by-provider/prov_sampath" \
   -H "x-internal-secret: ${INTERNAL_API_SECRET:-dev-internal-secret}" \
-  | jq -r '.reviews[0].comment')" "E2E approved"
+  | jq -r '.reviews | any(.[]; (.comment // "") | contains("E2E approved"))')" "true"
 
 echo "== Jobs (reverse marketplace) =="
 # Job posting is gated on a verified email (#556): the freshly registered
