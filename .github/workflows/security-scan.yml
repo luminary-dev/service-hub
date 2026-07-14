@@ -156,3 +156,36 @@ jobs:
       # visible in the run log without failing it. No `continue-on-error` here.
       - name: npm audit (production dependencies)
         run: npm audit --omit=dev --audit-level=critical
+
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      # fetch-depth: 0 so gitleaks can walk the full history on push events and
+      # the PR commit range on pull_request events (a shallow clone would only
+      # see the tip commit and miss a secret introduced earlier in the branch).
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0
+
+      # Secret scanning: Trivy/npm-audit cover dependency + OS CVEs but do NOT
+      # scan the tree for committed secrets. This repo is PUBLIC and the deploy
+      # renders the server `.env` from GitHub secrets, so a single leaked
+      # AUTH_SECRET / INTERNAL_API_SECRET / DB password is game-over (#669).
+      #
+      # We invoke the OSS gitleaks binary DIRECTLY via its official image rather
+      # than `gitleaks/gitleaks-action`: that action gates org-owned repos behind
+      # a paid GITLEAKS_LICENSE (free only for personal accounts), and this repo
+      # lives under the `luminary-dev` org. The `gitleaks` binary itself is MIT
+      # and has no such gate. The image is pinned by digest (matching
+      # actionlint.yml's `docker://` pin, #573); the `# v…` tag is documentation.
+      # `git .` scans the full commit history (fetch-depth: 0 above), `--config`
+      # loads `.gitleaks.toml` (default ruleset + the repo's dummy-fixture
+      # allowlist), and `--exit-code=1` makes any finding GATE the build.
+      - name: Scan for committed secrets
+        uses: docker://ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+        with:
+          args: git --config=.gitleaks.toml --redact --exit-code=1 --no-banner .
