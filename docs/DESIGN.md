@@ -115,8 +115,10 @@ FM-Bindumathi has no Sinhala Unicode glyphs.
   - `.hero-tick-active` — a soft brand halo breathes behind the active tick;
     an rAF-driven gauge fills across the bottom edge in sync with auto-advance.
   - Controls: prev/next (nudge on hover), a segmented tick selector, arrow-key
-    nav, and pause on hover/focus. Same `aspect-[4/5]` plate (no layout shift);
-    first slide keeps `priority` for LCP.
+    nav, an explicit pause/play toggle (the WCAG 2.2.2 stop mechanism), and
+    pause on hover/focus. Same `aspect-[4/5]` plate (no layout shift); the first
+    slide is `preload`ed (Next 16's replacement for the deprecated `priority`)
+    for LCP.
 - Everything is guarded by `prefers-reduced-motion: reduce`, which cancels the
   animations and transitions. The slider additionally halts auto-advance and all
   its motion under reduced motion (via `useSyncExternalStore` on the media

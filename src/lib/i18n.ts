@@ -165,6 +165,8 @@ const en = {
     sliderRegion: "Featured trades",
     sliderPrev: "Previous trade",
     sliderNext: "Next trade",
+    sliderPause: "Pause slideshow",
+    sliderPlay: "Play slideshow",
     sliderGoto: (n: number) => `Show trade ${n}`,
     sliderStatus: (n: number, total: number, trade: string) =>
       `Trade ${n} of ${total}: ${trade}`,
@@ -1519,6 +1521,8 @@ const si: Dict = {
     sliderRegion: "විශේෂිත වෘත්තීන්",
     sliderPrev: "පෙර වෘත්තිය",
     sliderNext: "ඊළඟ වෘත්තිය",
+    sliderPause: "දර්ශනාවලිය නවත්වන්න",
+    sliderPlay: "දර්ශනාවලිය ධාවනය කරන්න",
     sliderGoto: (n: number) => `වෘත්තිය ${n} පෙන්වන්න`,
     sliderStatus: (n: number, total: number, trade: string) =>
       `වෘත්තිය ${n}/${total}: ${trade}`,
