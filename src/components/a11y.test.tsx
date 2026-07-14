@@ -20,6 +20,13 @@ import { I18nProvider } from "./I18nProvider";
 import { ToastProvider, useToast } from "./ToastProvider";
 import MobileMenu from "./MobileMenu";
 import UserMenu from "./UserMenu";
+import NotificationBell from "./NotificationBell";
+import NotificationsFeed from "./NotificationsFeed";
+import NotificationPreferences from "./NotificationPreferences";
+import {
+  NOTIFICATION_TYPES,
+  type NotificationDTO,
+} from "@/lib/notifications";
 import EmailVerifyBanner from "./EmailVerifyBanner";
 import ProviderCard, { type ProviderCardDTO } from "./ProviderCard";
 import FilterBar from "./FilterBar";
@@ -622,6 +629,96 @@ describe("axe: messaging", () => {
 
     fireEvent.click(screen.getByRole("button", { name: t.assistant.open }));
     expect(screen.getByRole("dialog", { name: t.assistant.title })).toBeDefined();
+    await expectNoAxeViolations(container);
+  }, AXE_TIMEOUT);
+});
+
+describe("axe: notifications", () => {
+  const notificationsFixture: NotificationDTO[] = [
+    {
+      id: "ntf_1",
+      type: "NEW_INQUIRY",
+      payload: { customerName: "Kasun" },
+      link: "/dashboard?tab=inquiries",
+      readAt: null,
+      createdAt: "2026-07-01T09:00:00.000Z",
+    },
+    {
+      id: "ntf_2",
+      type: "VERIFICATION_APPROVED",
+      payload: {},
+      link: "/dashboard",
+      readAt: "2026-06-30T10:00:00.000Z",
+      createdAt: "2026-06-30T09:00:00.000Z",
+    },
+  ];
+
+  it("notification bell (closed and open) has no violations", async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (String(url).startsWith("/api/notifications/unread-count")) {
+        return Promise.resolve({ ok: true, json: async () => ({ count: 1 }) });
+      }
+      if (String(url).startsWith("/api/notifications/read")) {
+        return Promise.resolve({ ok: true, json: async () => ({ ok: true }) });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({
+          notifications: notificationsFixture,
+          nextCursor: null,
+        }),
+      });
+    });
+    const { container } = render(
+      <I18nProvider locale="en">
+        <NotificationBell />
+      </I18nProvider>
+    );
+    // The trigger carries the unread count in its accessible name.
+    const trigger = await screen.findByRole("button", {
+      name: t.notifications.bellUnread(1),
+    });
+    await expectNoAxeViolations(container);
+
+    fireEvent.click(trigger);
+    await screen.findByRole("link", { name: t.notifications.viewAll });
+    await expectNoAxeViolations(container);
+  }, AXE_TIMEOUT);
+
+  it("notifications feed has no violations", async () => {
+    const { container } = render(
+      <I18nProvider locale="en">
+        <ToastProvider>
+          <NotificationsFeed
+            initial={notificationsFixture}
+            initialCursor="ntf_2"
+          />
+        </ToastProvider>
+      </I18nProvider>
+    );
+    expect(
+      screen.getByRole("button", { name: t.notifications.markAllRead })
+    ).toBeDefined();
+    await expectNoAxeViolations(container);
+  }, AXE_TIMEOUT);
+
+  it("notification preferences matrix has no violations", async () => {
+    const { container } = render(
+      <I18nProvider locale="en">
+        <ToastProvider>
+          <NotificationPreferences
+            initial={NOTIFICATION_TYPES.map((type) => ({
+              type,
+              emailEnabled: true,
+              inAppEnabled: true,
+            }))}
+          />
+        </ToastProvider>
+      </I18nProvider>
+    );
+    expect(screen.getAllByRole("checkbox")).toHaveLength(
+      NOTIFICATION_TYPES.length * 2
+    );
     await expectNoAxeViolations(container);
   }, AXE_TIMEOUT);
 });

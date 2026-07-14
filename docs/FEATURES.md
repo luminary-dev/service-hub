@@ -28,6 +28,8 @@ The user-facing flows are split into focused pages:
 - **[Favorites](features/favorites.md)** — saving providers.
 - **[Saved searches & alerts](features/saved-searches.md)** — saving a
   providers search and getting emailed when a new professional matches.
+- **[In-app notifications](features/notifications.md)** — the navbar bell,
+  the `/account/notifications` feed, and per-type delivery preferences.
 - **[AI chat assistant](features/chat.md)** — the marketplace concierge.
 - **[Bilingual EN/SI & theme](features/i18n-and-theme.md)** — the localization
   and light/dark theming.
