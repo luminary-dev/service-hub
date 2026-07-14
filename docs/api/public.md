@@ -134,7 +134,7 @@ Every route requires a provider owned by the authenticated user (else
 | `POST /api/provider/services` | role: PROVIDER (owner) | Add a service `{ title, description?, price, priceType }` → `{ service }`. |
 | `PUT /api/provider/services/:id` | role: PROVIDER (owner) | Update own service (404 if not owned). |
 | `DELETE /api/provider/services/:id` | role: PROVIDER (owner) | Delete own service. |
-| `POST /api/provider/photos` | role: PROVIDER (owner) | Multipart upload; `kind=cover` sets the dedicated `coverPhoto` (#435), else creates a WorkPhoto. (`kind=avatar` still handled but the web now uploads avatars via `/api/account/avatar`.) 5 MB, jpeg/png/webp. |
+| `POST /api/provider/photos` | role: PROVIDER (owner) | Multipart upload; `kind=cover` sets the dedicated `coverPhoto` (#435), else creates a WorkPhoto. (`kind=avatar` was removed (#647) — avatars go through `/api/account/avatar`, which keeps `User.avatarUrl` and the provider copy in step; this endpoint never wrote `User.avatarUrl`.) 5 MB, jpeg/png/webp. |
 | `DELETE /api/provider/cover` | role: PROVIDER (owner) | Clears the dedicated cover (#435) → the card falls back to the first work photo / category image. |
 | `PATCH /api/provider/photos/order` | role: PROVIDER (owner) | `{ ids }` → `sortOrder`; ids not owned are ignored. |
 | `DELETE /api/provider/photos/:id` | role: PROVIDER (owner) | Hard-delete own photo + remove the file. |
@@ -179,9 +179,9 @@ Reasons enum: `spam`, `scam`, `offensive`, `fake`, `other`.
 |---|---|---|
 | `POST /api/jobs` | authenticated (verified email) | Post a job `{ category, district, title, description, budget? }` (category checked S2S) → `{ id }`. Unverified email → 403; over 10 posts per account per rolling 24 h → 429 (#556). |
 | `PATCH /api/jobs/:id` | authenticated (owner) | `{ status: OPEN\|CLOSED }`; non-owner → 404. |
-| `POST /api/jobs/:id/responses` | authenticated (PROVIDER) | Respond `{ message }`; provider gate + same category/served-districts scope as the board (#502); open + dup checks; a job hidden by admin takedown (#376) → 404; emails the customer best-effort → `{ ok: true }`. |
-| `GET /api/jobs/board` | authenticated (PROVIDER) | OPEN jobs matching the provider's category and **any of their served districts** (`serviceDistricts`, #502), excluding own and admin-hidden (#376), with customer names + `responded`. Paginated → `{ jobs, total, page, pageSize }`. |
-| `GET /api/jobs/mine` | authenticated | Own jobs with responses hydrated with provider `{ name, phone }`. Paginated → `{ jobs, total, page, pageSize }`. |
+| `POST /api/jobs/:id/responses` | authenticated (PROVIDER) | Respond `{ message }`; provider gate (a **suspended** provider is 403'd, #642) + same category/served-districts scope as the board (#502); open + dup checks; a job hidden by admin takedown (#376) → 404; emails the customer best-effort → `{ ok: true }`. |
+| `GET /api/jobs/board` | authenticated (PROVIDER) | OPEN jobs matching the provider's category and **any of their served districts** (`serviceDistricts`, #502), excluding own and admin-hidden (#376), with customer names + `responded`. A **suspended** provider is 403'd (#642) — a hidden profile keeps its role but loses board access. Paginated → `{ jobs, total, page, pageSize }`. |
+| `GET /api/jobs/mine` | authenticated | Own jobs with responses hydrated with provider `{ name, phone }`. A **suspended** responder's contact details are withheld (name → `Unknown`, phone → `null`), matching the public listings it's already dropped from (#642). Paginated → `{ jobs, total, page, pageSize }`. |
 
 Board/mine pagination: `page` ≥ 1, `pageSize`/`take` default 20, capped **50**.
 
