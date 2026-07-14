@@ -93,6 +93,11 @@ export default async function RootLayout({
   ]);
   const t = dict[locale];
   const impersonating = Boolean(session?.impersonatedBy);
+  // The chat assistant is a customer-facing concierge (#11) — it only helps
+  // signed-out visitors and CUSTOMERs find providers and draft inquiries. It
+  // has no purpose for PROVIDER/ADMIN/SUPPORT sessions, so scope it to the
+  // public/customer surface rather than mounting it on every route/role (#662).
+  const showAssistant = !session || session.role === "CUSTOMER";
 
   return (
     <html
@@ -136,7 +141,7 @@ export default async function RootLayout({
               {children}
             </main>
             <Footer />
-            <ChatAssistant />
+            {showAssistant && <ChatAssistant />}
           </ToastProvider>
         </I18nProvider>
       </body>

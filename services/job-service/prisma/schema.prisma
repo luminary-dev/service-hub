@@ -95,6 +95,12 @@ model Report {
   @@index([targetType, targetId])
   // Report queue orders newest-first.
   @@index([createdAt])
+  // #651: a PARTIAL unique index `Report_open_reporter_key` on
+  // ("targetType","targetId","reporterId") WHERE status='OPEN' AND
+  // reporterId IS NOT NULL enforces one OPEN report per (target, reporter).
+  // Prisma's DSL can't express a filtered unique index, so it lives only in the
+  // hand-written migration (20260714140000_report_open_dedup); the report
+  // handler catches the P2002 as idempotent success.
 }
 
 // Moderation audit trail (#227 convention): one row per admin action taken

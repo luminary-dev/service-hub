@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { DISTRICTS } from "@/lib/constants";
 import {
   categoryOptionLabel,
@@ -25,6 +25,7 @@ export default function FilterBar({
   priceMax: initialPriceMax = "",
   ratingMin: initialRatingMin = "",
   availableOnly: initialAvailableOnly = false,
+  page = 1,
   categories = STATIC_CATEGORY_OPTIONS,
 }: {
   q: string;
@@ -35,6 +36,7 @@ export default function FilterBar({
   priceMax?: string;
   ratingMin?: string;
   availableOnly?: boolean;
+  page?: number;
   categories?: CategoryOption[];
 }) {
   const [q, setQ] = useState(initialQ);
@@ -45,6 +47,10 @@ export default function FilterBar({
   const [priceMax, setPriceMax] = useState(initialPriceMax);
   const [ratingMin, setRatingMin] = useState(initialRatingMin);
   const [availableOnly, setAvailableOnly] = useState(initialAvailableOnly);
+  // The sort value currently reflected in the URL. Blur only commits when the
+  // value actually changed (#658) — tabbing through the closed select without
+  // picking a new option must not navigate.
+  const committedSortRef = useRef<SortKey>(initialSort);
   const router = useRouter();
   const locale = useLocale();
   const t = useT();
@@ -56,6 +62,9 @@ export default function FilterBar({
     sort?: SortKey;
     ratingMin?: string;
     availableOnly?: boolean;
+    // Changing a filter resets pagination (drops `page`); a sort-only change
+    // keeps the current page so the user stays where they were (#658).
+    keepPage?: boolean;
   }) {
     const params = new URLSearchParams();
     const nq = next.q ?? q;
@@ -72,6 +81,7 @@ export default function FilterBar({
     if (nr) params.set("ratingMin", nr);
     if (na) params.set("availableOnly", "1");
     if (ns !== "recommended") params.set("sort", ns);
+    if (next.keepPage && page > 1) params.set("page", String(page));
     router.push(localizedHref(`/providers?${params.toString()}`, locale));
   }
 
@@ -189,7 +199,15 @@ export default function FilterBar({
           // Commit on blur, not on every change: a closed native select
           // fires `change` on each arrow keypress, so applying there would
           // navigate (and remount, losing focus) mid-browse (WCAG 3.2.2).
-          onBlur={(e) => apply({ sort: e.target.value as SortKey })}
+          // Only commit when the value actually changed — blur fires on any
+          // focus loss (e.g. tabbing past), and an unconditional apply would
+          // reset pagination for free (#658). A sort-only change keeps `page`.
+          onBlur={(e) => {
+            const next = e.target.value as SortKey;
+            if (next === committedSortRef.current) return;
+            committedSortRef.current = next;
+            apply({ sort: next, keepPage: true });
+          }}
           className="input cursor-pointer !w-auto !py-2"
         >
           {SORT_KEYS.map((key) => (

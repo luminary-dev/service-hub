@@ -5,6 +5,7 @@
 // rate-limits these endpoints (the "report" budget) to blunt drive-by spam.
 // Thread messages are private, so their report route additionally requires
 // the caller to be a thread party.
+import { Prisma } from "@prisma/client";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
@@ -52,15 +53,25 @@ async function fileReport(
     }
   }
 
-  await db.report.create({
-    data: {
-      targetType,
-      targetId,
-      reporterId: auth?.userId ?? null,
-      reason,
-      details,
-    },
-  });
+  try {
+    await db.report.create({
+      data: {
+        targetType,
+        targetId,
+        reporterId: auth?.userId ?? null,
+        reason,
+        details,
+      },
+    });
+  } catch (e) {
+    // Lost the race with a concurrent report from the same user for the same
+    // target: the partial unique index `Report_open_reporter_key` (#651) fired.
+    // The other request already filed the OPEN report, so this is idempotent
+    // success, not a 500.
+    if (!(e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002")) {
+      throw e;
+    }
+  }
   return c.json({ ok: true });
 }
 

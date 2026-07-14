@@ -6,6 +6,7 @@
 // the same shape and semantics as provider-service's /api/admin/reports and
 // review-service's /api/admin/review-reports, under its own path so the
 // gateway can route by owner.
+import { Prisma } from "@prisma/client";
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
@@ -66,15 +67,25 @@ reports.post("/api/jobs/:id/report", async (c) => {
     }
   }
 
-  await db.report.create({
-    data: {
-      targetType: "JOB",
-      targetId: id,
-      reporterId: auth?.userId ?? null,
-      reason,
-      details,
-    },
-  });
+  try {
+    await db.report.create({
+      data: {
+        targetType: "JOB",
+        targetId: id,
+        reporterId: auth?.userId ?? null,
+        reason,
+        details,
+      },
+    });
+  } catch (e) {
+    // Lost the race with a concurrent report from the same user for the same
+    // job: the partial unique index `Report_open_reporter_key` (#651) fired.
+    // The other request already filed the OPEN report, so this is idempotent
+    // success, not a 500.
+    if (!(e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002")) {
+      throw e;
+    }
+  }
   return c.json({ ok: true });
 });
 
