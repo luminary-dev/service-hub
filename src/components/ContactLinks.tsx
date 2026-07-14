@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { IconType } from "@/components/icons";
 import {
+  FaEnvelope,
   FaFacebookF,
   FaGlobe,
   FaInstagram,
@@ -17,19 +18,26 @@ function normalizeUrl(v: string) {
   return v.startsWith("http") ? v : `https://${v}`;
 }
 
-// The digits fetched on demand from POST /api/providers/:id/contact.
-type Contact = { phone: string | null; whatsapp: string | null; phone2: string | null };
+// The digits + email fetched on demand from POST /api/providers/:id/contact.
+type Contact = {
+  phone: string | null;
+  whatsapp: string | null;
+  phone2: string | null;
+  email: string | null;
+};
 
-// Phone/WhatsApp numbers are PII and easy to scrape, so the server keeps them
-// out of the profile payload (#64) — it only tells us whether each exists
-// (has* flags). We reveal the real digits on an explicit tap, fetching them
-// from a rate-limited endpoint, so anonymous page HTML never carries them.
-// Social links are public handles, not phone numbers, so they render inline.
+// Phone/WhatsApp numbers AND the email address are PII and easy to scrape, so
+// the server keeps them out of the profile payload (#64/#655) — it only tells
+// us whether each exists (has* flags). We reveal the real values on an explicit
+// tap, fetching them from a rate-limited endpoint, so anonymous page HTML never
+// carries them. Social links are public handles, not contact details, so they
+// render inline.
 export default function ContactLinks(props: {
   providerId: string;
   hasPhone: boolean;
   hasWhatsapp: boolean;
   hasPhone2: boolean;
+  hasEmail: boolean;
   facebook: string | null;
   instagram: string | null;
   tiktok: string | null;
@@ -42,7 +50,8 @@ export default function ContactLinks(props: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
 
-  const hasAnyNumber = props.hasPhone || props.hasWhatsapp || props.hasPhone2;
+  const hasAnyContact =
+    props.hasPhone || props.hasWhatsapp || props.hasPhone2 || props.hasEmail;
 
   async function reveal() {
     setLoading(true);
@@ -75,7 +84,7 @@ export default function ContactLinks(props: {
 
   return (
     <div className="flex flex-col items-start gap-3 sm:items-end">
-      {hasAnyNumber && !contact && (
+      {hasAnyContact && !contact && (
         <button
           type="button"
           onClick={reveal}
@@ -114,6 +123,14 @@ export default function ContactLinks(props: {
             <p className="text-sm text-ink-500">
               {props.altLabel ?? "Alt:"} {contact.phone2}
             </p>
+          )}
+          {contact.email && (
+            <a
+              href={`mailto:${contact.email}`}
+              className="inline-flex items-center gap-2 text-sm font-medium text-brand-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2"
+            >
+              <FaEnvelope className="h-3.5 w-3.5" /> {contact.email}
+            </a>
           )}
         </>
       )}
