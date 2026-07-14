@@ -37,10 +37,10 @@ CI (`.github/workflows/ci.yml`) runs on pushes and PRs to `dev` and `prod`, in
 four jobs:
 
 - **`web`** — a matrix of `typecheck` / `lint` / `test` / `build` for the web app.
-- **`services`** — a matrix of `typecheck` / `test` / `build` across all eight
+- **`services`** — a matrix of `typecheck` / `test` / `build` across all ten
   service packages (identity, provider, review, job, notification, media, chat,
-  api-gateway).
-- **`coverage`** — `npm run coverage` for the web app and each service (nine
+  search, trust-safety, api-gateway).
+- **`coverage`** — `npm run coverage` for the web app and each service (eleven
   packages), enforcing the low baseline thresholds in each package's vitest
   config and uploading the reports as artifacts. A ratchet, not a gate: it
   passes today and only trips if coverage regresses below the floor (#262).
