@@ -28,6 +28,9 @@ type ProviderByUser = {
   district: string;
   // Multi-district service area (#502) — always includes `district`.
   serviceDistricts?: string[];
+  // Suspended profiles keep their role but lose board access (#642). Optional
+  // so a pre-#642 provider-service payload (no field) reads as not-suspended.
+  suspended?: boolean;
 };
 
 // The districts a provider serves (#502). Falls back to the primary district
@@ -204,6 +207,12 @@ jobs.get("/board", async (c) => {
       403
     );
   }
+  // Suspended providers keep their PROVIDER role but must lose board access
+  // (#642) — a hidden profile shouldn't see or reach open jobs. Mirrors how
+  // review-service blocks a suspended provider from posting review replies.
+  if (provider.suspended) {
+    return c.json({ error: "Your provider profile is suspended" }, 403);
+  }
 
   // Pagination (#203): the board is unbounded otherwise — cap the page and
   // count the full match set so the web board can page through on demand.
@@ -366,6 +375,11 @@ jobs.post("/:id/responses", async (c) => {
       { error: "Only registered professionals can respond to jobs" },
       403
     );
+  }
+  // A suspended provider can't respond either (#642) — same gate as the board
+  // above, and the same rule review-service applies to review replies.
+  if (provider.suspended) {
+    return c.json({ error: "Your provider profile is suspended" }, 403);
   }
 
   const id = c.req.param("id");

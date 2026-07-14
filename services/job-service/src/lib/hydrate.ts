@@ -28,7 +28,12 @@ export async function fetchUsers(
   return map;
 }
 
-// Batch provider hydration from provider-service (contact name/phone).
+// Batch provider hydration from provider-service (contact name/phone). A
+// suspended provider's contact details are withheld (#642): the batch endpoint
+// returns its `suspended` flag, and a hidden profile must not keep leaking its
+// name/phone to a customer's my-jobs list — those columns are nulled so the
+// response falls back to "Unknown" / no phone, matching the public listings a
+// suspended profile is already dropped from.
 export async function fetchProviders(
   ids: string[]
 ): Promise<Map<string, { contactName: string | null; contactPhone: string | null }>> {
@@ -39,10 +44,18 @@ export async function fetchProviders(
     const res = await s2s(PROVIDER_URL, `/internal/providers?ids=${batch.join(",")}`);
     if (!res.ok) return map;
     const data = (await res.json()) as {
-      providers: { id: string; contactName: string | null; contactPhone: string | null }[];
+      providers: {
+        id: string;
+        contactName: string | null;
+        contactPhone: string | null;
+        suspended?: boolean;
+      }[];
     };
     for (const p of data.providers) {
-      map.set(p.id, { contactName: p.contactName, contactPhone: p.contactPhone });
+      map.set(p.id, {
+        contactName: p.suspended ? null : p.contactName,
+        contactPhone: p.suspended ? null : p.contactPhone,
+      });
     }
   } catch (e) {
     log.error("provider hydration failed", { context: "jobs", err: e });

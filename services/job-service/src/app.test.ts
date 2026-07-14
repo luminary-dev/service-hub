@@ -64,6 +64,8 @@ describe("GET /internal/jobs/count", () => {
     expect(dbMock.jobRequest.count).toHaveBeenCalledWith({
       where: {
         status: "OPEN",
+        // Admin-hidden jobs excluded so the badge matches the board (#647).
+        hiddenAt: null,
         category: "plumbing",
         district: { in: ["Colombo", "Gampaha"] },
       },
@@ -78,6 +80,7 @@ describe("GET /internal/jobs/count", () => {
     expect(dbMock.jobRequest.count).toHaveBeenCalledWith({
       where: {
         status: "OPEN",
+        hiddenAt: null,
         category: "plumbing",
         district: { in: ["Colombo"] },
       },

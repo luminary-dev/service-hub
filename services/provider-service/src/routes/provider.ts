@@ -394,13 +394,13 @@ providerDashboardRoutes.post("/api/provider/photos", async (c) => {
     throw e;
   }
 
-  if (kind === "avatar") {
-    await db.provider.update({
-      where: { id: provider.id },
-      data: { avatarUrl: url },
-    });
-    return c.json({ avatarUrl: url });
-  }
+  // Avatars are NOT set here (#647): the only writer of Provider.avatarUrl is
+  // the identity → `/internal/providers/avatar` mirror driven by
+  // `/api/account/avatar`, which keeps User.avatarUrl and the denormalized
+  // provider copy in step. A `kind=avatar` upload here wrote the provider copy
+  // WITHOUT syncing identity's User.avatarUrl, leaving the two out of step; the
+  // web only ever uploads avatars via `/api/account/avatar`, so this branch was
+  // dead. Removed — a `kind=avatar` request now falls through to a work photo.
 
   // Dedicated cover photo (#435): stored under the same namespace/prefix, set
   // on the provider (not added to the work gallery).

@@ -178,4 +178,34 @@ describe("notifySavedSearchMatches", () => {
       notifySavedSearchMatches(PROVIDER, "https://baas.lk")
     ).resolves.toBeUndefined();
   });
+
+  // #636: s2s resolves (never throws) on a non-ok status, so the cooldown
+  // stamp must be gated on `res.ok` — otherwise a rejected ingestion would
+  // burn the cooldown with nothing delivered. A failed events POST must skip
+  // the `notified` call entirely.
+  it("does not stamp the cooldown when notification ingestion fails", async () => {
+    s2sMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          savedSearches: [
+            { id: "s1", userId: "u1", query: null, locale: "en", email: "a@b.lk" },
+          ],
+        })
+      )
+      // The events POST comes back non-ok (e.g. notification-service 5xx).
+      .mockResolvedValueOnce(jsonResponse({}, false));
+
+    await expect(
+      notifySavedSearchMatches(PROVIDER, "https://baas.lk")
+    ).resolves.toBeUndefined();
+
+    const eventsCalled = s2sMock.mock.calls.some(
+      ([, path]) => path === "/internal/notifications/events"
+    );
+    const notifiedCalled = s2sMock.mock.calls.some(
+      ([, path]) => path === "/internal/saved-searches/notified"
+    );
+    expect(eventsCalled).toBe(true);
+    expect(notifiedCalled).toBe(false);
+  });
 });

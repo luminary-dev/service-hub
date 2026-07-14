@@ -112,21 +112,46 @@ describe("GET /api/inquiries/:id/messages — thread party gate", () => {
     expect(res.status).toBe(404);
   });
 
-  it("lets the filing customer read and marks their side read", async () => {
+  it("lets the filing customer read and marks their side read up to the newest message (#638)", async () => {
     dbMock.inquiry.findUnique.mockResolvedValue(inquiryRow());
+    const newest = new Date("2026-01-03T10:00:00Z");
+    dbMock.inquiryMessage.findMany.mockResolvedValue([
+      { id: "m1", sender: "PROVIDER", body: "earlier", createdAt: new Date("2026-01-02T10:00:00Z") },
+      { id: "m2", sender: "PROVIDER", body: "latest", createdAt: newest },
+    ]);
     const res = await req("/api/inquiries/inq1/messages", { role: "CUSTOMER", userId: "cust-1" });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.party).toBe("CUSTOMER");
-    expect(dbMock.inquiry.update.mock.calls[0][0].data).toHaveProperty("customerLastReadAt");
+    // Marker anchors to the newest returned message's createdAt — never now().
+    expect(dbMock.inquiry.update.mock.calls[0][0].data).toEqual({
+      customerLastReadAt: newest,
+    });
   });
 
   it("lets the receiving provider read and marks their side read", async () => {
     dbMock.inquiry.findUnique.mockResolvedValue(inquiryRow());
+    const newest = new Date("2026-01-03T10:00:00Z");
+    dbMock.inquiryMessage.findMany.mockResolvedValue([
+      { id: "m1", sender: "CUSTOMER", body: "hi", createdAt: newest },
+    ]);
     const res = await req("/api/inquiries/inq1/messages", { role: "PROVIDER", userId: "prov-owner" });
     expect(res.status).toBe(200);
     expect((await res.json()).party).toBe("PROVIDER");
-    expect(dbMock.inquiry.update.mock.calls[0][0].data).toHaveProperty("providerLastReadAt");
+    expect(dbMock.inquiry.update.mock.calls[0][0].data).toEqual({
+      providerLastReadAt: newest,
+    });
+  });
+
+  // #638: an empty page (no new messages on this poll) must NOT touch the read
+  // marker — that was the write-amplification + lost-unread bug (stamping now()
+  // on every poll, after the SELECT).
+  it("does not advance the read marker when the page returned no messages", async () => {
+    dbMock.inquiry.findUnique.mockResolvedValue(inquiryRow());
+    dbMock.inquiryMessage.findMany.mockResolvedValue([]);
+    const res = await req("/api/inquiries/inq1/messages", { role: "CUSTOMER", userId: "cust-1" });
+    expect(res.status).toBe(200);
+    expect(dbMock.inquiry.update).not.toHaveBeenCalled();
   });
 
   it("excludes messages removed by admin takedown (#376)", async () => {
