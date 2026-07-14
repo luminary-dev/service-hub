@@ -15,9 +15,21 @@ export async function logAudit(
 ): Promise<void> {
   const adminId = getAuth(c)?.userId;
   if (!adminId) return;
+  // #634: under an admin impersonation session the gateway stamps
+  // x-impersonated-by with the REAL admin's id while x-user-id (hence adminId
+  // above) is the impersonated target. Capture the real admin so an audited
+  // action taken while impersonating isn't misattributed to the target.
+  const impersonatedBy = c.req.header("x-impersonated-by") || null;
   try {
     await db.adminAuditLog.create({
-      data: { adminId, action, targetType, targetId, reason: reason || null },
+      data: {
+        adminId,
+        action,
+        targetType,
+        targetId,
+        reason: reason || null,
+        impersonatedBy,
+      },
     });
   } catch {
     // Best-effort — see note above.

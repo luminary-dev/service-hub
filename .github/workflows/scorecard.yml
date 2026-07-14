@@ -1,0 +1,72 @@
+name: Scorecard supply-chain
+
+# OpenSSF Scorecard (#669): scores this PUBLIC repo's supply-chain posture
+# weekly and on every push to the default branch, then publishes the findings
+# to the Security tab. It complements the scans we already run — where Trivy /
+# npm-audit / gitleaks look at deps, OS packages and committed secrets,
+# Scorecard grades the *practices*: are actions SHA-pinned (cf. #573/#386), is
+# branch protection on, is Dependabot configured, is there a token-permissions
+# regression, etc. So it surfaces drift like an unpinned action slipping back
+# in, straight to the Security tab.
+#
+# This is the standard published Scorecard template. It runs ONLY on the
+# default branch (`dev`) + a weekly schedule + on branch-protection changes —
+# not on PRs — because publishing requires the default-branch OIDC identity.
+on:
+  # Re-run when a branch protection rule changes (Scorecard reads it).
+  branch_protection_rule:
+  schedule:
+    - cron: "20 7 * * 1" # Mondays 07:20 UTC
+  push:
+    branches: [dev] # dev is this repo's default branch
+  workflow_dispatch:
+
+# Cancel superseded runs per ref; mirrors ci.yml / security-scan.yml.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege at the top; the analysis job elevates only what it needs.
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      # Upload the SARIF result to the code-scanning / Security tab.
+      security-events: write
+      # Publish results to the OpenSSF API + read the OIDC token Scorecard uses
+      # to attest the run (needed by `publish_results: true`).
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - name: Run Scorecard analysis
+        uses: ossf/scorecard-action@4eaacf0543bb3f2c246792bd56e8cdeffafb205a # v2.4.3
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          # Publish results to the OpenSSF REST API so the score is visible on
+          # the public Scorecard dashboard (and enables a README badge later).
+          # Free for public repos; requires the `id-token: write` above.
+          publish_results: true
+
+      # Retain the SARIF as a build artifact for a few days for debugging even
+      # if the Security-tab upload below is throttled.
+      - name: Upload artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: scorecard-sarif
+          path: results.sarif
+          retention-days: 5
+
+      - name: Upload results to GitHub Security
+        uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4
+        with:
+          sarif_file: results.sarif
+          category: scorecard

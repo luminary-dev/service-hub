@@ -8,6 +8,7 @@ import { db } from "../db";
 import { categoryValidator } from "../lib/categories";
 import { DISTRICTS } from "../lib/constants";
 import { getAuth, getLocale } from "../lib/http";
+import { advisoryXactLock } from "../lib/locks";
 
 export const savedSearchesRoutes = new Hono();
 
@@ -83,33 +84,46 @@ savedSearchesRoutes.post("/", async (c) => {
     return c.json({ error: "Invalid district" }, 400);
   }
 
-  // Saving the same filters twice is a no-op returning the existing row, so a
+  // The dup check + per-user cap + insert run inside one transaction guarded by
+  // a per-user advisory lock, so a concurrent double-submit can't race the
+  // check-then-act: two simultaneous saves can't both read count < cap and
+  // overshoot MAX_SAVED_SEARCHES, nor both insert the same filters (a plain
+  // transaction wouldn't serialize them — see lib/locks). Saving the same
+  // filters twice is still a no-op returning the existing row, so a
   // double-click / re-save never burns a slot.
-  const existing = await db.savedSearch.findFirst({
-    where: { userId: auth.userId, query, category, district },
-    select: publicSelect,
-  });
-  if (existing) {
-    return c.json({ savedSearch: existing });
-  }
+  const result = await db.$transaction(async (tx) => {
+    await advisoryXactLock(tx, "saved-search", auth.userId);
 
-  const count = await db.savedSearch.count({ where: { userId: auth.userId } });
-  if (count >= MAX_SAVED_SEARCHES) {
+    const existing = await tx.savedSearch.findFirst({
+      where: { userId: auth.userId, query, category, district },
+      select: publicSelect,
+    });
+    if (existing) return { kind: "existing" as const, savedSearch: existing };
+
+    const count = await tx.savedSearch.count({ where: { userId: auth.userId } });
+    if (count >= MAX_SAVED_SEARCHES) return { kind: "capped" as const };
+
+    const savedSearch = await tx.savedSearch.create({
+      data: {
+        userId: auth.userId,
+        name,
+        query,
+        category,
+        district,
+        locale: getLocale(c),
+      },
+      select: publicSelect,
+    });
+    return { kind: "created" as const, savedSearch };
+  });
+
+  if (result.kind === "capped") {
     return c.json({ error: "Saved search limit reached" }, 429);
   }
-
-  const savedSearch = await db.savedSearch.create({
-    data: {
-      userId: auth.userId,
-      name,
-      query,
-      category,
-      district,
-      locale: getLocale(c),
-    },
-    select: publicSelect,
-  });
-  return c.json({ savedSearch }, 201);
+  if (result.kind === "existing") {
+    return c.json({ savedSearch: result.savedSearch });
+  }
+  return c.json({ savedSearch: result.savedSearch }, 201);
 });
 
 // DELETE /api/saved-searches/:id — idempotent, own rows only.

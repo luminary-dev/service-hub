@@ -106,10 +106,15 @@ const facebook: OAuthAdapter = {
     return {
       providerAccountId: String(data.id),
       email: typeof data.email === "string" ? data.email : null,
-      // Facebook verifies the email on file, so a returned address is treated
-      // as verified for auto-linking (a slightly weaker guarantee than Google's
-      // explicit email_verified claim — see docs/AUTHZ.md).
-      emailVerified: typeof data.email === "string",
+      // Facebook's Graph API exposes NO per-request email-verification signal —
+      // an address here is merely one on file, which is not proof the person
+      // signing in controls it. Treating mere presence as "verified" let a
+      // Facebook account with a victim's email auto-claim the victim's existing
+      // password account (#635, account takeover). So Facebook emails are always
+      // UNVERIFIED for the purpose of auto-linking: the callback creates a new
+      // account from the address but never links it to a pre-existing one.
+      // (Google, by contrast, supplies an explicit email_verified claim.)
+      emailVerified: false,
       name: typeof data.name === "string" ? data.name : null,
     };
   },

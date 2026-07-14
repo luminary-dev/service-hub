@@ -85,6 +85,28 @@ rotatable — so job-service requires a verified email (403 otherwise) and allow
 at most **10 posts per account per rolling 24 h** (429 beyond that), checked
 against the jobs table before the write.
 
+Several other endpoints carry a **per-user resource cap** to bound how much a
+single account can accumulate (independent of request rate):
+
+| Resource | Cap per user | Over-limit |
+| --- | --- | --- |
+| Saved searches (identity, #516) | 20 | 429 |
+| Favorites (identity, #647) | 100 (new favorites only; re-favoriting is idempotent) | 429 |
+| Job posts / rolling 24 h (job, #556) | 10 | 429 |
+| Review photos / review (review) | 3 | 400 |
+| Work-gallery photos / provider (provider, #647) | 30 (soft-deleted don't count) | 400 |
+
+These are all **check-then-act** ("count the caller's rows, then insert"), which
+a concurrent double-submit could otherwise race into a small overshoot. Each is
+made race-safe (#647 L5): the count/dup check and the insert run in one
+interactive transaction that first takes a **transaction-scoped Postgres
+advisory lock** keyed by `(feature, userId)` (`pg_advisory_xact_lock`, see each
+service's `src/lib/locks.ts`), so concurrent submits for the same user
+serialize — a plain transaction alone wouldn't (under READ COMMITTED neither
+sees the other's uncommitted rows). For the photo caps, the batch is validated
+and stored first; if the in-transaction re-check finds the cap raced, the write
+rolls back and the just-stored files are cleaned up.
+
 Over-limit requests get `429` with a JSON body
 (`{ "error": "Too many requests. Please slow down and try again shortly." }`)
 and a `Retry-After` header (seconds until the oldest hit leaves the window).

@@ -41,14 +41,23 @@ social login just as on password login (#641), bounced back to
 - Linked social identities live in the `Account` table (`(provider,
   providerAccountId)` → `userId`); a user may hold both a password and one or
   more OAuth identities.
-- **Auto-linking** only happens on a provider-**verified** email — an existing
-  account is claimed by a matching verified email. Google supplies an explicit
-  `email_verified` claim; Facebook has none, so a Facebook-returned email is
-  treated as verified (Facebook verifies emails on file — a slightly weaker
-  guarantee, accepted for auto-linking). A Facebook account that shares **no**
-  email is never auto-linked: it gets a new CUSTOMER keyed on the provider id
-  with a non-deliverable placeholder email, which the user can later replace via
-  the change-email flow (#396).
+- **Auto-linking** to a pre-existing account only happens on a provider-**verified**
+  email (#635) — a matching verified email claims the existing account. Google
+  supplies an explicit `email_verified` claim; **Facebook exposes no
+  verification signal** at all (the Graph `/me` lookup returns only an address
+  on file, which is not proof the person signing in controls it), so a
+  Facebook-returned email is treated as **unverified** and is **never
+  auto-linked to an existing account**. Treating mere presence as "verified"
+  previously let a Facebook account carrying a victim's email silently claim the
+  victim's existing password account — an account-takeover vector, now closed.
+  When a Facebook email **collides** with an existing account the callback
+  refuses (bounces back to `/login?error=oauth_email`): the user must sign in
+  with their existing method (a confirm-to-link flow is a tracked follow-up).
+  When it does **not** collide, a new CUSTOMER is created from the real address
+  but left `emailVerified: null` until confirmed. A Facebook account that shares
+  **no** email is never auto-linked either: it gets a new CUSTOMER keyed on the
+  provider id with a non-deliverable placeholder email, which the user can later
+  replace via the change-email flow (#396).
 - Social signups have **no password** (`User.passwordHash` is nullable):
   password login returns the uniform 401, change-password directs them to the
   reset flow, and delete-account and change-email skip the password re-auth (the
@@ -341,10 +350,31 @@ their perspective (#234). Implemented in
   defence in depth: one admin session never rides in as another admin, of
   either tier). The check reuses the `isAdminTierRole` role predicate in
   `lib/http.ts` rather than a hardcoded `=== "ADMIN"` string.
+- **Irreversible self-service ops are blocked while impersonating (#634).**
+  Impersonation is a read-mostly "view as"; it must not become a way to
+  irreversibly act on someone else's account. The **gateway** — the single
+  public entry — rejects these POSTs with **403** whenever an impersonation
+  session is in effect (i.e. it has verified the impersonation cookie and
+  stamped `x-impersonated-by`): account deletion (`/api/auth/delete-account`),
+  login-email change (`/api/account/email/change`, `/api/account/email/confirm`),
+  and reverting the provider role (`/api/auth/leave-provider`). The guard lives
+  centrally in the gateway (`lib/routes.ts` `isImpersonationBlocked` +
+  `lib/proxy.ts`) so the blocked set can't drift per-service; everything else
+  stays usable so the admin can still reproduce the target's experience. A
+  non-impersonated (real) session is unaffected.
 - **Logged.** Every start writes an `ImpersonationLog` row (`adminId`,
   `targetUserId`, `startedAt`); `/end` best-effort stamps `endedAt` on the open
   row. This is a standalone log for the feature and is intended to be reconciled
-  with the general `AdminAuditLog` (#227) later.
+  with the general `AdminAuditLog` (#227) later. Separately, any identity
+  `AdminAuditLog` write taken *while impersonating* records the real admin in a
+  nullable **`impersonatedBy`** column (#634): under impersonation the row's
+  `adminId` is the impersonated **target** (the effective session identity), so
+  `impersonatedBy` — sourced from the gateway-stamped `x-impersonated-by` header
+  in `logAudit` — is what attributes the action to the admin who actually drove
+  it. Cross-service audit attribution (provider/review/job keep their own
+  `AdminAuditLog`) is a tracked follow-up; in practice those admin writes are
+  unreachable under impersonation anyway, since impersonation forwards the
+  target's (non-admin) role and the destructive handlers gate on `isFullAdmin`.
 
 ## Tier enforcement is end-to-end
 

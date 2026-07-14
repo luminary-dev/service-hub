@@ -184,6 +184,55 @@ describe("GET /api/auth/oauth/:provider/callback", () => {
     );
   });
 
+  // #635: a Facebook email is unverified (the Graph API exposes no verification
+  // signal), so it must never auto-link to a PRE-EXISTING account — that was an
+  // account-takeover vector.
+  it("refuses to link an UNVERIFIED (facebook) email to an existing account", async () => {
+    fetchIdentity.mockResolvedValue({
+      providerAccountId: "fb-88",
+      email: "victim@example.com",
+      emailVerified: false,
+      name: "Attacker",
+    });
+    db.account.findUnique.mockResolvedValue(null);
+    db.user.findUnique.mockResolvedValue({
+      id: "victim-1",
+      role: "CUSTOMER",
+      name: "Victim",
+      sessionVersion: 0,
+      passwordHash: "hash",
+    });
+    const res = await get(fbCbUrl, goodCookie);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(`${ORIGIN}/login?error=oauth_email`);
+    // No link created, no session minted for the victim's account.
+    expect(db.account.create).not.toHaveBeenCalled();
+    expect(res.headers.get("set-cookie") ?? "").not.toContain("sh_session=");
+  });
+
+  it("creates a new UNVERIFIED account from a facebook email with no collision", async () => {
+    fetchIdentity.mockResolvedValue({
+      providerAccountId: "fb-99",
+      email: "Fresh.Fb@Example.com",
+      emailVerified: false,
+      name: "Fresh",
+    });
+    db.account.findUnique.mockResolvedValue(null);
+    db.user.findUnique.mockResolvedValue(null);
+    const res = await get(fbCbUrl, goodCookie);
+    expect(res.headers.get("location")).toBe(`${ORIGIN}/welcome`);
+    expect(res.headers.get("set-cookie")).toContain("sh_session=");
+    // Real (lowercased) email is kept, but never stamped verified.
+    expect(txUserCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          email: "fresh.fb@example.com",
+          emailVerified: null,
+        }),
+      })
+    );
+  });
+
   it("facebook without an email creates a placeholder-keyed account (no block)", async () => {
     fetchIdentity.mockResolvedValue({
       providerAccountId: "fb-77",

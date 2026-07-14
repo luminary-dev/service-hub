@@ -1372,6 +1372,9 @@ const en = {
     profileLocation: "Location",
     mapImageAlt: (name: string) => `Map showing the approximate location of ${name}`,
     viewOnOsm: "View on OpenStreetMap",
+    // Required OpenStreetMap credit line. "© OpenStreetMap" stays verbatim (a
+    // brand/legal attribution); only the trailing word is translated.
+    osmContributors: "contributors",
   },
 };
 
@@ -2696,6 +2699,7 @@ const si: Dict = {
     profileLocation: "ස්ථානය",
     mapImageAlt: (name: string) => `${name}ගේ ආසන්න ස්ථානය පෙන්වන සිතියම`,
     viewOnOsm: "OpenStreetMap හි බලන්න",
+    osmContributors: "දායකයෝ",
   },
 };
 
