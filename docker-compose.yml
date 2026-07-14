@@ -33,10 +33,18 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      # Probe over TCP (-h 127.0.0.1), NOT the default local socket: the postgres
+      # image runs its multi-DB init against a temporary socket-only server
+      # (listen_addresses='') before restarting the real TCP listener. A socket
+      # probe reports healthy during that window, so dependents get released early
+      # and their `prisma migrate deploy` hits P1001 over TCP (flaky e2e boot, #686).
+      # A TCP probe only passes once init is done and the real server accepts
+      # connections the way the services actually connect.
+      test: ["CMD-SHELL", "pg_isready -U postgres -h 127.0.0.1"]
       interval: 3s
       timeout: 3s
       retries: 20
+      start_period: 15s
 
   identity-service:
     build: ./services/identity-service
