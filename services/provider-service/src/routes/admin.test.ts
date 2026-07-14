@@ -70,9 +70,10 @@ vi.mock("../lib/notify", () => ({
 }));
 
 import { app } from "../app";
-import { fetchRatingsResult } from "../lib/clients";
+import { fetchRatings, fetchRatingsResult } from "../lib/clients";
 import { emitNotification } from "../lib/notify";
 
+const fetchRatingsMock = vi.mocked(fetchRatings);
 const fetchRatingsResultMock = vi.mocked(fetchRatingsResult);
 const emitNotificationMock = vi.mocked(emitNotification);
 
@@ -130,6 +131,7 @@ beforeEach(() => {
   dbMock.adminAuditLog.create.mockResolvedValue({});
   dbMock.adminAuditLog.findMany.mockResolvedValue([]);
   // Default: ratings hydrated fully with no reviews (review-service healthy).
+  fetchRatingsMock.mockResolvedValue({});
   fetchRatingsResultMock.mockResolvedValue({ ok: true, ratings: {} });
 });
 
@@ -1149,5 +1151,74 @@ describe("GET /api/admin/providers?sort=mostReviews — bounded ranking (#372)",
     expect(body.page).toBe(1);
     expect(body.pageSize).toBe(2);
     expect(body.providers).toHaveLength(2);
+  });
+});
+
+// #229 regression: the list route must return the same per-row `quality`
+// object the detail route does (qualityScore + rating + reviewCount +
+// openReportCount). It was dropped in the search-service refactor, which
+// SSR-crashed /admin/providers on `p.quality.qualityScore`. e2e missed it
+// because it only exercises the API + /admin root, not the list PAGE render.
+describe("GET /api/admin/providers — per-row quality score (#229)", () => {
+  it("attaches quality (with a numeric qualityScore) to every provider in the default sort", async () => {
+    dbMock.provider.count.mockResolvedValue(2);
+    dbMock.provider.findMany.mockResolvedValue([
+      { id: "p1", contactName: "P1", contactEmail: "p1@x.lk", createdAt: new Date(), _count: { photos: 0 } },
+      { id: "p2", contactName: "P2", contactEmail: "p2@x.lk", createdAt: new Date(), _count: { photos: 0 } },
+    ]);
+    fetchRatingsMock.mockResolvedValue({
+      p1: { rating: 4, count: 3 },
+      p2: { rating: 0, count: 0 },
+    });
+    // Open USER-report counts feed the quality penalty: p1 has 2, p2 none.
+    dbMock.report.groupBy.mockResolvedValue([{ targetId: "p1", _count: { _all: 2 } }]);
+
+    const res = await req("/api/admin/providers", { role: "ADMIN" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.providers).toHaveLength(2);
+    for (const p of body.providers) {
+      expect(typeof p.quality.qualityScore).toBe("number");
+    }
+    const p1 = body.providers.find((p: { id: string }) => p.id === "p1");
+    // rating 4/5 → ratingComponent 80; 2 open reports × 15 = 30 penalty → 50.
+    expect(p1.quality).toMatchObject({
+      rating: 4,
+      reviewCount: 3,
+      openReportCount: 2,
+      qualityScore: 50,
+    });
+    const p2 = body.providers.find((p: { id: string }) => p.id === "p2");
+    // No reviews → neutral 70 baseline, no reports.
+    expect(p2.quality).toMatchObject({
+      reviewCount: 0,
+      openReportCount: 0,
+      qualityScore: 70,
+    });
+    // The report penalty is scoped to OPEN USER reports (matches detail route).
+    expect(dbMock.report.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          targetType: "PROVIDER",
+          targetId: { in: ["p1", "p2"] },
+          status: "OPEN",
+          source: "USER",
+        }),
+      })
+    );
+  });
+
+  it("attaches quality to every provider in the mostReviews sort too", async () => {
+    dbMock.provider.findMany.mockResolvedValue([
+      { id: "p1", contactName: "P1", contactEmail: "p1@x.lk", createdAt: new Date(2026, 0, 1), _count: { photos: 0 } },
+    ]);
+    fetchRatingsMock.mockResolvedValue({ p1: { rating: 5, count: 10 } });
+    dbMock.report.groupBy.mockResolvedValue([]);
+
+    const res = await req("/api/admin/providers?sort=mostReviews", { role: "ADMIN" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // rating 5/5, no reports → 100.
+    expect(body.providers[0].quality.qualityScore).toBe(100);
   });
 });
