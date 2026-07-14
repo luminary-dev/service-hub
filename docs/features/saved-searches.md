@@ -1,8 +1,9 @@
 # Saved searches & new-match alerts
 
 
-Signed-in **customers** can save a `/providers` search and get emailed when a
-newly joined professional matches it (#516). Complements
+Signed-in **customers** can save a `/providers` search and get notified
+(in-app + email) when a newly joined professional matches it (#516).
+Complements
 [favorites](favorites.md): a favorite pins a specific provider, a saved search
 pins a *need* ("electrician in Matara") before the right provider exists.
 
@@ -53,20 +54,22 @@ provider-service fans out, after responding and entirely best-effort:
    (`findFirst` on `id` + the search where-clause, including category-label
    resolution) — so a saved search matches exactly when the new provider
    would appear in its results. Bounded at 50 distinct queries per create.
-3. Matched owners are deduped by email, capped at 200 recipients, batched per
-   locale to `POST notification /internal/email/new-provider-match` (which
-   acks 202 and sends the EN/SI "new match" email in the background, linking
-   to the new provider's profile). The email names the provider's primary
-   (base) district — the same one their card shows — even when the search
-   matched a secondary served district.
+3. Matched owners are deduped by user, capped at 200 recipients, and handed to
+   `POST notification /internal/notifications/events` as one batched
+   `SAVED_SEARCH_MATCH` event (each recipient carries the locale their search
+   was saved under). notification-service acks 202, writes the in-app feed
+   rows inline and queues the EN/SI "new match" emails behind per-user
+   notification preferences, linking to the new provider's profile. The
+   notification names the provider's primary (base) district — the same one
+   their card shows — even when the search matched a secondary served
+   district.
 4. `POST identity /internal/saved-searches/notified` stamps `lastNotifiedAt`
-   on the searches whose owners actually made a batch.
+   on the searches whose owners actually made the batch.
 
 Known limits (v0.1, by design): alerts fire only on new-profile publish (not
 on profile edits, reactivation, or un-suspension); the free-text match
 inspects the profile as registered (Sinhala headline/bio variants added later
 are still matched — the check runs against the committed row); a failure
-anywhere is logged and dropped rather than retried. There is no in-app
-notification center yet — email is the only delivery channel.
+anywhere is logged and dropped rather than retried.
 
 ---

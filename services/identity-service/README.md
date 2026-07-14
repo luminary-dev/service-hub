@@ -67,7 +67,7 @@ the gateway-forwarded `x-user-id` / `x-user-role` / `x-user-name` headers.
 | GET | `/internal/users/:id/session-version` | `{ v }` — the gateway's revocation check (`null` if the user is gone). |
 | GET | `/internal/users/count` | `{ count }`. |
 | PATCH | `/internal/users/:id` | `{ name?, phone? }` profile sync from provider-service. |
-| GET | `/internal/saved-searches/candidates?category&districts&excludeUserId?` | Saved searches a newly published provider could match (#516; `districts` = the full served set, #502): verified CUSTOMER owners only, ≥24 h since `lastNotifiedAt`, capped 500 → `{ savedSearches: [{ id, query, locale, email }] }`. |
+| GET | `/internal/saved-searches/candidates?category&districts&excludeUserId?` | Saved searches a newly published provider could match (#516; `districts` = the full served set, #502): verified CUSTOMER owners only, ≥24 h since `lastNotifiedAt`, capped 500 → `{ savedSearches: [{ id, userId, query, locale, email }] }`. |
 | POST | `/internal/saved-searches/notified` | `{ ids }` — stamp `lastNotifiedAt` after the fan-out emailed those searches' owners. |
 
 `GET /healthz` → `{ ok: true, service: "identity-service" }` (no secret; checks Postgres).
@@ -107,7 +107,7 @@ all increment it. The gateway checks it via `GET /internal/users/:id/session-ver
 | `PROVIDER_SERVICE_URL` | `http://localhost:4002` | Registration orchestration, favorites check |
 | `REVIEW_SERVICE_URL` | `http://localhost:4003` | Account-deletion erase fan-out |
 | `JOB_SERVICE_URL` | `http://localhost:4004` | Account-deletion erase fan-out |
-| `NOTIFICATION_SERVICE_URL` | `http://localhost:4005` | Verification / reset emails |
+| `NOTIFICATION_SERVICE_URL` | `http://localhost:4005` | Verification / reset emails + account-deletion erase fan-out |
 | `WEB_ORIGIN` | `http://localhost:3000` | Fallback origin for email links (normally the `x-origin` header) |
 
 ## Gateway / S2S model

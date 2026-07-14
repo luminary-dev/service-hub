@@ -6,7 +6,8 @@
 The provider profile's `InquiryForm` collects name, phone, optional email, and
 a message (10–2000 chars) and submits
 `POST /api/providers/{providerId}/inquiries`. The provider gets a best-effort
-email notification. Inquiries are rate-limited (see
+`NEW_INQUIRY` notification (in-app + email via notification-service's events
+endpoint) linking to the new thread. Inquiries are rate-limited (see
 [RATE_LIMITING.md](../RATE_LIMITING.md)).
 
 Inquiry text and every thread message also pass the write-time
@@ -27,7 +28,10 @@ Both render `MessageThread`, which:
 - loads the full thread from `GET /api/inquiries/{id}/messages` on mount;
 - **polls every 5 s** (`POLL_MS = 5000`) using `?after={lastSeen}` and dedupes
   by message id (no websockets);
-- sends with `POST /api/inquiries/{id}/messages` (body up to 2000 chars);
+- sends with `POST /api/inquiries/{id}/messages` (body up to 2000 chars); the
+  other party gets a best-effort `THREAD_REPLY` notification (#393 — in-app +
+  email, linking to their side of the thread; anonymous inquiries have no
+  customer account, so a provider reply to one notifies nobody);
 - each counterpart message carries a **Report** action
   (`POST /api/messages/{id}/report`, #376, thread parties only) feeding the
   [admin reports queue](../admin/moderation.md#reports-queue); a message an

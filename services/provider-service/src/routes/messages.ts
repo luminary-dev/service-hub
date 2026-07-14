@@ -6,7 +6,8 @@ import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { db } from "../db";
 import { moderateContent } from "../lib/auto-report";
-import { getAuth } from "../lib/http";
+import { getAuth, getLocale, getOrigin } from "../lib/http";
+import { emitNotification } from "../lib/notify";
 import {
   lastReadField,
   otherParty,
@@ -22,7 +23,11 @@ async function loadThread(c: Context, id: string) {
   const auth = getAuth(c);
   const inquiry = await db.inquiry.findUnique({
     where: { id },
-    include: { provider: { select: { id: true, userId: true, contactName: true } } },
+    include: {
+      provider: {
+        select: { id: true, userId: true, contactName: true, contactEmail: true },
+      },
+    },
   });
   if (!inquiry) return null;
   const party = resolveThreadParty(inquiry, auth);
@@ -123,6 +128,33 @@ messagesRoutes.post("/api/inquiries/:id/messages", async (c) => {
   // delivered as normal and a filter hit only queues a SYSTEM report (on the
   // thread's inquiry — the report's details carry the offending excerpt).
   await moderateContent("INQUIRY", inquiry.id, { message: parsed.data.body });
+
+  // Tell the OTHER party there is a new reply (#393): in-app + email via the
+  // notification event — best-effort, never fails the message. Anonymous
+  // inquiries carry no customer account (userId null), so a provider reply to
+  // one notifies nobody; the inquiry's optional email is the customer's
+  // address, the provider's is the denormalized contactEmail.
+  const recipient =
+    party === "PROVIDER"
+      ? inquiry.userId
+        ? { userId: inquiry.userId, email: inquiry.email ?? undefined }
+        : null
+      : { userId: inquiry.provider.userId, email: inquiry.provider.contactEmail };
+  if (recipient) {
+    await emitNotification({
+      type: "THREAD_REPLY",
+      recipients: [{ ...recipient, locale: getLocale(c) }],
+      payload: {
+        senderName:
+          party === "PROVIDER" ? inquiry.provider.contactName : inquiry.name,
+      },
+      link:
+        party === "PROVIDER"
+          ? `/account/inquiries/${inquiry.id}`
+          : `/dashboard/inquiries/${inquiry.id}`,
+      origin: getOrigin(c),
+    });
+  }
 
   return c.json({
     message: {

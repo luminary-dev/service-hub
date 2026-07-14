@@ -330,10 +330,11 @@ internalRoutes.post("/internal/providers/contact", async (c) => {
 // availability are display concerns the board itself doesn't filter on). So the
 // set emailed about a new job is precisely the set that would see it on their
 // board. `excludeUserId` drops the poster if they happen to also be a provider,
-// mirroring the board's not-own-job rule. Returns each match's denormalized
-// `contactEmail` — the same address recorded at registration and the canonical
-// provider contact (customer emails live in identity, but provider emails live
-// here). Capped and deduped by email so no provider is alerted twice.
+// mirroring the board's not-own-job rule. Returns each match's `userId` (the
+// in-app notification recipient) plus the denormalized `contactEmail` — the
+// same address recorded at registration and the canonical provider contact
+// (customer emails live in identity, but provider emails live here). Capped
+// and deduped by email so no provider is alerted twice.
 const MAX_MATCHING_PROVIDERS = 200;
 
 internalRoutes.get("/internal/providers/matching", async (c) => {
@@ -350,7 +351,7 @@ internalRoutes.get("/internal/providers/matching", async (c) => {
       suspended: false,
       ...(excludeUserId ? { NOT: { userId: excludeUserId } } : {}),
     },
-    select: { id: true, contactName: true, contactEmail: true },
+    select: { id: true, userId: true, contactName: true, contactEmail: true },
     take: MAX_MATCHING_PROVIDERS,
   });
   // Dedupe by contact email — two profiles could share an address; a provider
@@ -478,12 +479,13 @@ internalRoutes.post("/internal/maintenance/sweep-orphans", async (c) => {
 });
 
 // Existence/suspended check (favorites, reviews). Always 200 — the caller
-// decides its own 404 semantics.
+// decides its own 404 semantics. `contactEmail` lets review-service address
+// the owner's new-review notification without a second lookup (#393).
 internalRoutes.get("/internal/providers/:id/summary", async (c) => {
   const id = c.req.param("id");
   const provider = await db.provider.findUnique({
     where: { id },
-    select: { id: true, userId: true, suspended: true },
+    select: { id: true, userId: true, suspended: true, contactEmail: true },
   });
   return c.json({ provider: provider ?? null });
 });

@@ -33,9 +33,13 @@ vi.mock("../db", () => ({
     report: { findFirst: reportFindFirst, create: reportCreate, update: reportUpdate },
   },
 }));
+vi.mock("../lib/notify", () => ({
+  emitNotification: vi.fn().mockResolvedValue(undefined),
+}));
 
 import { app } from "../app";
 import { s2s } from "../lib/http";
+import { emitNotification } from "../lib/notify";
 
 const SECRET = "dev-internal-secret";
 const PROVIDER_ID = "prov_1";
@@ -46,7 +50,12 @@ const s2sMock = vi.mocked(s2s);
 function providerSummaryResponse() {
   return new Response(
     JSON.stringify({
-      provider: { id: PROVIDER_ID, userId: "user_owner", suspended: false },
+      provider: {
+        id: PROVIDER_ID,
+        userId: "user_owner",
+        suspended: false,
+        contactEmail: "owner@baas.lk",
+      },
     }),
     { status: 200, headers: { "content-type": "application/json" } }
   );
@@ -96,6 +105,7 @@ beforeEach(() => {
   reportFindFirst.mockClear();
   reportCreate.mockClear();
   reportUpdate.mockClear();
+  vi.mocked(emitNotification).mockClear();
 });
 
 describe("POST /api/providers/:id/reviews — interaction gate (#25)", () => {
@@ -144,6 +154,30 @@ describe("POST /api/providers/:id/reviews — interaction gate (#25)", () => {
     const res = await postReview({ "x-user-id": "" });
     expect(res.status).toBe(401);
     expect(s2sMock).not.toHaveBeenCalled();
+  });
+
+  // NEW_REVIEW notification (#393): the provider owner hears about a
+  // published review in-app + by email through the generic ingestion event.
+  it("emits NEW_REVIEW to the provider owner after the write", async () => {
+    wireS2s({ interaction: "exists" });
+    const res = await postReview({ "x-user-name": "Dilani" });
+    expect(res.status).toBe(200);
+    expect(emitNotification).toHaveBeenCalledWith({
+      type: "NEW_REVIEW",
+      recipients: [
+        { userId: "user_owner", email: "owner@baas.lk", locale: "en" },
+      ],
+      payload: { reviewerName: "Dilani", rating: 5 },
+      link: `/providers/${PROVIDER_ID}`,
+      origin: expect.any(String),
+    });
+  });
+
+  it("emits nothing when the gate blocks the review", async () => {
+    wireS2s({ interaction: "none" });
+    const res = await postReview();
+    expect(res.status).toBe(403);
+    expect(emitNotification).not.toHaveBeenCalled();
   });
 });
 

@@ -22,12 +22,14 @@ vi.mock("../lib/clients", () => ({
   fetchRatings: vi.fn().mockResolvedValue({}),
   fetchProviderReviews: vi.fn().mockResolvedValue({ reviews: [], nextCursor: null }),
   fetchReviewCount: vi.fn().mockResolvedValue(0),
-  sendInquiryEmail: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("../lib/notify", () => ({
+  emitNotification: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { app } from "../app";
 import { __resetCategoryImageCache } from "./providers";
-import { sendInquiryEmail } from "../lib/clients";
+import { emitNotification } from "../lib/notify";
 
 const SECRET = "dev-internal-secret";
 type Role = "ADMIN" | "SUPPORT" | "CUSTOMER" | "PROVIDER" | null;
@@ -474,7 +476,28 @@ describe("POST /api/providers/:id/inquiries", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ inquiry: null });
     expect(dbMock.inquiry.create).not.toHaveBeenCalled();
-    expect(sendInquiryEmail).not.toHaveBeenCalled();
+    expect(emitNotification).not.toHaveBeenCalled();
+  });
+
+  // NEW_INQUIRY notification (#394): the provider owner gets an in-app +
+  // email notification through the generic ingestion event, addressed by
+  // userId + denormalized contactEmail, linking to the new thread.
+  it("emits a NEW_INQUIRY event to the provider owner on create", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({
+      id: "p1",
+      userId: "owner-1",
+      contactEmail: "n@baas.lk",
+    });
+    dbMock.inquiry.create.mockResolvedValue({ id: "inq1" });
+    const res = await req("/api/providers/p1/inquiries", { method: "POST", body: valid });
+    expect(res.status).toBe(200);
+    expect(emitNotification).toHaveBeenCalledWith({
+      type: "NEW_INQUIRY",
+      recipients: [{ userId: "owner-1", email: "n@baas.lk", locale: "en" }],
+      payload: { customerName: valid.name },
+      link: "/dashboard/inquiries/inq1",
+      origin: expect.any(String),
+    });
   });
 
   // Write-time content filter (#375): a denylist hit auto-files a SYSTEM
@@ -490,7 +513,7 @@ describe("POST /api/providers/:id/inquiries", () => {
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ inquiry: { id: "inq1" } });
-    expect(sendInquiryEmail).toHaveBeenCalled();
+    expect(emitNotification).toHaveBeenCalled();
     expect(dbMock.report.create).toHaveBeenCalledWith({
       data: {
         targetType: "INQUIRY",

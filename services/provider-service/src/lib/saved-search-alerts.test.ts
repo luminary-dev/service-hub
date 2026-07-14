@@ -1,6 +1,7 @@
 // Unit tests for the saved-search new-match fan-out (#516): candidate fetch,
-// free-text query evaluation against the committed row, per-locale batching,
-// email dedupe and cooldown bookkeeping — all best-effort.
+// free-text query evaluation against the committed row, the single batched
+// notification event (per-recipient locale, userId dedupe) and cooldown
+// bookkeeping — all best-effort.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { notifySavedSearchMatches } from "./saved-search-alerts";
 import { s2s } from "./http";
@@ -67,15 +68,15 @@ describe("notifySavedSearchMatches", () => {
     );
   });
 
-  it("emails query-less matches per locale, dedupes addresses and stamps the cooldown", async () => {
+  it("notifies query-less matches in one event, dedupes owners and stamps the cooldown", async () => {
     s2sMock
       .mockResolvedValueOnce(
         jsonResponse({
           savedSearches: [
-            { id: "s1", query: null, locale: "en", email: "A@b.lk" },
-            { id: "s2", query: null, locale: "si", email: "c@d.lk" },
-            // Same address as s1 (different case): one email, both stamped.
-            { id: "s3", query: null, locale: "en", email: "a@B.lk" },
+            { id: "s1", userId: "u1", query: null, locale: "en", email: "a@b.lk" },
+            { id: "s2", userId: "u2", query: null, locale: "si", email: "c@d.lk" },
+            // Same owner as s1: one recipient, both searches stamped.
+            { id: "s3", userId: "u1", query: null, locale: "en", email: "a@b.lk" },
           ],
         })
       )
@@ -84,22 +85,22 @@ describe("notifySavedSearchMatches", () => {
     await notifySavedSearchMatches(PROVIDER, "https://baas.lk");
 
     const notifyCalls = s2sMock.mock.calls.filter(
-      ([, path]) => path === "/internal/email/new-provider-match"
+      ([, path]) => path === "/internal/notifications/events"
     );
-    expect(notifyCalls).toHaveLength(2);
-    const bodies = notifyCalls.map(([, , init]) =>
-      JSON.parse(String(init?.body))
-    );
-    expect(bodies).toContainEqual({
-      recipients: ["a@b.lk"],
-      url: "https://baas.lk/providers/prov1",
-      providerName: "Nimal Perera",
-      district: "Colombo",
-      locale: "en",
+    expect(notifyCalls).toHaveLength(1);
+    const [, , init] = notifyCalls[0];
+    // The origin rides as x-origin so the email channel can build absolute
+    // links; the event's own link stays relative.
+    expect(init?.headers).toEqual({ "x-origin": "https://baas.lk" });
+    expect(JSON.parse(String(init?.body))).toEqual({
+      type: "SAVED_SEARCH_MATCH",
+      recipients: [
+        { userId: "u1", email: "a@b.lk", locale: "en" },
+        { userId: "u2", email: "c@d.lk", locale: "si" },
+      ],
+      payload: { providerName: "Nimal Perera", district: "Colombo" },
+      link: "/providers/prov1",
     });
-    expect(bodies).toContainEqual(
-      expect.objectContaining({ recipients: ["c@d.lk"], locale: "si" })
-    );
 
     const notified = s2sMock.mock.calls.find(
       ([, path]) => path === "/internal/saved-searches/notified"
@@ -114,8 +115,8 @@ describe("notifySavedSearchMatches", () => {
       .mockResolvedValueOnce(
         jsonResponse({
           savedSearches: [
-            { id: "s1", query: "wiring", locale: "en", email: "a@b.lk" },
-            { id: "s2", query: "plumber", locale: "en", email: "c@d.lk" },
+            { id: "s1", userId: "u1", query: "wiring", locale: "en", email: "a@b.lk" },
+            { id: "s2", userId: "u2", query: "plumber", locale: "en", email: "c@d.lk" },
           ],
         })
       )
@@ -134,11 +135,11 @@ describe("notifySavedSearchMatches", () => {
       expect(args.where.AND[0]).toEqual({ id: "prov1" });
     }
     const notifyCalls = s2sMock.mock.calls.filter(
-      ([, path]) => path === "/internal/email/new-provider-match"
+      ([, path]) => path === "/internal/notifications/events"
     );
     expect(notifyCalls).toHaveLength(1);
     expect(JSON.parse(String(notifyCalls[0][2]?.body)).recipients).toEqual([
-      "a@b.lk",
+      { userId: "u1", email: "a@b.lk", locale: "en" },
     ]);
     const notified = s2sMock.mock.calls.find(
       ([, path]) => path === "/internal/saved-searches/notified"
@@ -150,7 +151,7 @@ describe("notifySavedSearchMatches", () => {
     s2sMock.mockResolvedValueOnce(
       jsonResponse({
         savedSearches: [
-          { id: "s1", query: "plumber", locale: "en", email: "a@b.lk" },
+          { id: "s1", userId: "u1", query: "plumber", locale: "en", email: "a@b.lk" },
         ],
       })
     );

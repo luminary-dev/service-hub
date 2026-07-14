@@ -7,6 +7,7 @@ import { z } from "zod";
 import { db } from "../db";
 import { logAudit } from "../lib/audit";
 import { getAuth, isSupportOrAdmin } from "../lib/http";
+import { emitNotification } from "../lib/notify";
 import { normalizePagination, sliceOpenClosed } from "../lib/pagination";
 
 export const reports = new Hono();
@@ -232,6 +233,12 @@ reports.patch("/api/admin/review-reports/:id", async (c) => {
   }
 
   const id = c.req.param("id");
+  // Loaded before the write so the resolve notification below can address the
+  // reporter (updateMany returns only a count).
+  const report = await db.report.findUnique({
+    where: { id },
+    select: { reporterId: true, targetType: true },
+  });
   // Audit trail (#223): stamp who closed the report and when.
   const { count } = await db.report.updateMany({
     where: { id },
@@ -250,6 +257,16 @@ reports.patch("/api/admin/review-reports/:id", async (c) => {
     "REPORT",
     id
   );
+  // Tell the reporter their report was actioned — in-app only in v1 (no email
+  // template); anonymous and SYSTEM reports carry no reporterId and skip.
+  if (report?.reporterId) {
+    await emitNotification({
+      type: "REPORT_RESOLVED",
+      recipients: [{ userId: report.reporterId }],
+      payload: { targetType: report.targetType, status: parsed.data.status },
+      link: "/",
+    });
+  }
   return c.json({ ok: true });
 });
 
@@ -277,8 +294,12 @@ reports.patch("/api/admin/review-reports", async (c) => {
 
   const where = { id: { in: parsed.data.ids } };
   // Capture the ids actually matched before the write so the audit log records
-  // real targets (unknown ids in the request list are skipped by updateMany).
-  const affected = await db.report.findMany({ where, select: { id: true } });
+  // real targets (unknown ids in the request list are skipped by updateMany)
+  // and the resolve notifications below can address the reporters.
+  const affected = await db.report.findMany({
+    where,
+    select: { id: true, reporterId: true, targetType: true },
+  });
   const { count } = await db.report.updateMany({
     where,
     data: {
@@ -292,6 +313,16 @@ reports.patch("/api/admin/review-reports", async (c) => {
   const action =
     parsed.data.status === "RESOLVED" ? "resolve-report" : "dismiss-report";
   await Promise.all(affected.map((r) => logAudit(c, action, "REPORT", r.id)));
+  // Tell the reporters (in-app only in v1) — one batched event (this queue
+  // only holds REVIEW reports); anonymous/SYSTEM reports skip.
+  await emitNotification({
+    type: "REPORT_RESOLVED",
+    recipients: affected
+      .filter((r) => r.reporterId)
+      .map((r) => ({ userId: r.reporterId as string })),
+    payload: { targetType: LOCAL_TARGET_TYPE, status: parsed.data.status },
+    link: "/",
+  });
   return c.json({ ok: true, count });
 });
 

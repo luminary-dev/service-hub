@@ -5,6 +5,7 @@ import { db } from "../db";
 import { moderateContent } from "../lib/auto-report";
 import { getAuth, getLocale, getOrigin, s2s } from "../lib/http";
 import { log } from "../lib/log";
+import { emitNotification } from "../lib/notify";
 import { jobSchema, jobResponseSchema } from "../lib/job-schema";
 import { moneyToNumberOrNull } from "../lib/money";
 import { categoryValidator } from "../lib/categories";
@@ -13,7 +14,6 @@ import { normalizeListQuery } from "../lib/query";
 
 const IDENTITY_URL = process.env.IDENTITY_SERVICE_URL ?? "http://localhost:4001";
 const PROVIDER_URL = process.env.PROVIDER_SERVICE_URL ?? "http://localhost:4002";
-const NOTIFICATION_URL = process.env.NOTIFICATION_SERVICE_URL ?? "http://localhost:4005";
 
 // Per-account daily posting cap (#556): the per-IP gateway rule alone lets one
 // rotating attacker trigger the provider fan-out repeatedly; this bounds what a
@@ -133,13 +133,14 @@ jobs.post("/", async (c) => {
     description: parsed.data.description,
   });
 
-  // Lead-gen fan-out (#501): email the providers whose category + district
+  // Lead-gen fan-out (#501): notify the providers whose category + district
   // match this job so they don't have to browse the board to find it — the
   // forward direction of the existing job-response notification below. Ask
-  // provider-service for the matching contact emails (it mirrors the board's
+  // provider-service for the matching providers (it mirrors the board's
   // scoping + suspended gate, caps + dedupes), then hand the whole list to
-  // notification-service in one batched call — which acks immediately (202)
-  // and sends in the background (#557), so this await stays well inside the
+  // notification-service's event ingestion in one batched call — which acks
+  // immediately (202), writes the in-app rows and queues the emails behind
+  // per-user preferences (#557/#394), so this await stays well inside the
   // s2s budget. Best-effort: a provider-lookup or notification failure is
   // logged and never fails the post (mirrors the response flow's block).
   try {
@@ -153,23 +154,28 @@ jobs.post("/", async (c) => {
     );
     if (res.ok) {
       const data = (await res.json()) as {
-        providers: { id: string; contactName: string | null; contactEmail: string }[];
+        providers: {
+          id: string;
+          userId: string;
+          contactName: string | null;
+          contactEmail: string;
+        }[];
       };
-      const recipients = [
-        ...new Set(data.providers.map((p) => p.contactEmail).filter(Boolean)),
-      ].slice(0, 200);
-      if (recipients.length > 0) {
-        await s2s(NOTIFICATION_URL, "/internal/email/new-job", {
-          method: "POST",
-          body: JSON.stringify({
-            recipients,
-            url: `${getOrigin(c)}/jobs`,
-            jobTitle: job.title,
-            district: job.district,
-            locale: getLocale(c),
-          }),
-        });
-      }
+      const locale = getLocale(c);
+      await emitNotification({
+        type: "NEW_JOB_MATCH",
+        recipients: data.providers
+          .filter((p) => p.userId)
+          .slice(0, 200)
+          .map((p) => ({
+            userId: p.userId,
+            email: p.contactEmail || undefined,
+            locale,
+          })),
+        payload: { jobTitle: job.title, district: job.district },
+        link: "/jobs",
+        origin: getOrigin(c),
+      });
     }
   } catch (e) {
     log.error("new-job notification failed", { context: "jobs", err: e });
@@ -429,22 +435,24 @@ jobs.post("/:id/responses", async (c) => {
     message: parsed.data.message,
   });
 
-  // Best-effort notification to the customer — never fail the response on this.
+  // Best-effort notification to the customer — never fail the response on
+  // this. In-app + email via the notification event; the email address is
+  // hydrated from identity and its absence degrades to in-app only.
   try {
     const users = await fetchUsers([job.customerId]);
-    const to = users.get(job.customerId)?.email;
-    if (to) {
-      await s2s(NOTIFICATION_URL, "/internal/email/job-response", {
-        method: "POST",
-        body: JSON.stringify({
-          to,
-          url: `${getOrigin(c)}/jobs`,
-          providerName: auth.name,
-          jobTitle: job.title,
+    await emitNotification({
+      type: "JOB_RESPONSE",
+      recipients: [
+        {
+          userId: job.customerId,
+          email: users.get(job.customerId)?.email,
           locale: getLocale(c),
-        }),
-      });
-    }
+        },
+      ],
+      payload: { providerName: auth.name, jobTitle: job.title },
+      link: "/jobs",
+      origin: getOrigin(c),
+    });
   } catch (e) {
     log.error("notification failed", { context: "job-response", err: e });
   }

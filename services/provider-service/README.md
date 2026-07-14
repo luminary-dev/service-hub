@@ -30,7 +30,7 @@ Runs on **:4002** behind the api-gateway — never public; every request except
 | GET | `/api/providers/:id` | Legacy detail (provider + services + photos + contact as `user`); suspended → 404 unless admin. |
 | GET | `/api/providers/:id/full` | Full profile-page payload incl. paginated reviews and `avgResponseMs`. |
 | GET | `/api/providers/:id/card` | OG-image payload (name, category, location, rating, verification). |
-| POST | `/api/providers/:id/inquiries` | Create an inquiry (optional session; best-effort email to provider). |
+| POST | `/api/providers/:id/inquiries` | Create an inquiry (optional session; best-effort NEW_INQUIRY notification to the provider). |
 | GET | `/api/stats` | `{ providerCount, reviewCount }`. |
 
 ### Provider dashboard (require a PROVIDER session owning a provider, else 401)
@@ -94,9 +94,9 @@ shown only to full admins); other reports are `USER`-sourced.
 | GET | `/internal/categories` | Category list for siblings' validation caches. |
 | POST | `/internal/providers` | Registration orchestration (idempotent on `userId`) → `{ id }`. A fresh create also fires the best-effort saved-search alert fan-out (#516, `src/lib/saved-search-alerts.ts`) after responding. |
 | GET | `/internal/providers/by-user/:userId` | The provider owned by a user (login / job-board gate). |
-| GET | `/internal/providers/matching?category&district&excludeUserId?` | Matching providers' contact emails for the new-job fan-out (#501); mirrors the board scoping, capped ≤ 200, deduped. |
+| GET | `/internal/providers/matching?category&district&excludeUserId?` | Matching providers (`userId` + contact email) for the new-job fan-out (#501); mirrors the board scoping, capped ≤ 200, deduped. |
 | GET | `/internal/providers?ids=` | Batch hydration (≤ 500). |
-| GET | `/internal/providers/:id/summary` | Existence / suspended check. |
+| GET | `/internal/providers/:id/summary` | Existence / suspended check (+ `userId`/`contactEmail` for the NEW_REVIEW notification). |
 | GET | `/internal/inquiries/exists?providerId&userId` | Review-gating check. |
 | POST | `/internal/users/:id/erase` | Account-deletion fan-out (deletes provider + files + sent inquiries). |
 | POST | `/internal/maintenance/sweep-orphans` | Remove stored files with no DB reference (via media). |
@@ -134,7 +134,7 @@ and the full admin moderation surface (single + bulk).
 | `IDENTITY_SERVICE_URL` | `http://localhost:4001` | profile sync, emailVerified |
 | `REVIEW_SERVICE_URL` | `http://localhost:4003` | ratings, reviews, counts |
 | `JOB_SERVICE_URL` | `http://localhost:4004` | dashboard open-jobs badge |
-| `NOTIFICATION_SERVICE_URL` | `http://localhost:4005` | inquiry emails |
+| `NOTIFICATION_SERVICE_URL` | `http://localhost:4005` | notification events (inquiry, thread reply, verification, saved-search match, report resolution) |
 | `MEDIA_SERVICE_URL` | `http://localhost:4006` | image upload / serve / sweep (S2S) |
 
 ## Run

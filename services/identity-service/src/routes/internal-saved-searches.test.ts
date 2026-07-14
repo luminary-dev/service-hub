@@ -33,15 +33,18 @@ describe("GET /internal/saved-searches/candidates", () => {
 
   it("scopes by category/districts (null = any), cooldown, role and verified email", async () => {
     db.savedSearch.findMany.mockResolvedValue([
-      { id: "s1", query: "wiring", locale: "si", user: { email: "a@b.lk" } },
+      { id: "s1", userId: "u1", query: "wiring", locale: "si", user: { email: "a@b.lk" } },
     ]);
 
     const res = await app.request(
       "/internal/saved-searches/candidates?category=electrician&districts=Colombo&excludeUserId=u9"
     );
     expect(res.status).toBe(200);
+    // `userId` addresses the in-app half of the SAVED_SEARCH_MATCH event.
     expect(await res.json()).toEqual({
-      savedSearches: [{ id: "s1", query: "wiring", locale: "si", email: "a@b.lk" }],
+      savedSearches: [
+        { id: "s1", userId: "u1", query: "wiring", locale: "si", email: "a@b.lk" },
+      ],
     });
 
     const where = db.savedSearch.findMany.mock.calls[0][0].where;

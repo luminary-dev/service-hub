@@ -1,19 +1,20 @@
+// Transactional auth/security emails ONLY — these are not notifications and
+// take no preferences, so they keep dedicated routes permanently. Marketplace
+// events (inquiry, thread reply, reviews, job match/response, saved-search
+// match, ...) flow through POST /internal/notifications/events instead
+// (routes/events.ts); the four legacy per-event email routes were deleted
+// when their callers migrated (RFC stateful-notification-service, phase 3).
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import {
   accountExistsEmail,
   changeEmail,
   emailChangeAttemptEmail,
-  inquiryEmail,
-  jobResponseEmail,
-  newJobEmail,
-  newProviderMatchEmail,
   passwordResetEmail,
   sendMail,
   verifyEmail,
   type Locale,
 } from "../lib/email";
-import { log } from "../lib/log";
 
 export const emailRoutes = new Hono();
 
@@ -25,39 +26,6 @@ function coerceLocale(value: unknown): Locale {
 const baseSchema = z.object({
   to: z.string().email(),
   url: z.string().min(1),
-  locale: z.unknown().optional(),
-});
-
-const jobResponseSchema = baseSchema.extend({
-  providerName: z.string().min(1),
-  jobTitle: z.string().min(1),
-});
-
-const inquirySchema = baseSchema.extend({
-  customerName: z.string().min(1),
-});
-
-// New-matching-job alert (#501). Unlike the single-recipient templates this is
-// a fan-out: job-service resolves the matching providers once and hands the
-// whole (already capped + deduped) recipient list here, so one S2S call emails
-// them all. Cap mirrors provider-service's MAX_MATCHING_PROVIDERS.
-const newJobSchema = z.object({
-  recipients: z.array(z.string().email()).min(1).max(200),
-  url: z.string().min(1),
-  jobTitle: z.string().min(1),
-  district: z.string().min(1),
-  locale: z.unknown().optional(),
-});
-
-// Saved-search new-match alert (#516) — the reverse-direction fan-out:
-// provider-service resolves the matching saved searches once and hands the
-// (already capped + deduped, per-locale) recipient list here. Cap mirrors
-// provider-service's MAX_ALERT_RECIPIENTS.
-const newProviderMatchSchema = z.object({
-  recipients: z.array(z.string().email()).min(1).max(200),
-  url: z.string().min(1),
-  providerName: z.string().min(1),
-  district: z.string().min(1),
   locale: z.unknown().optional(),
 });
 
@@ -114,88 +82,3 @@ emailRoutes.post("/email-change-attempt", async (c) => {
   return c.json({ ok: true, delivered });
 });
 
-emailRoutes.post("/inquiry", async (c) => {
-  const parsed = inquirySchema.safeParse(await readBody(c));
-  if (!parsed.success) return c.json({ error: "Invalid input" }, 400);
-  const { to, url, customerName, locale } = parsed.data;
-  const { subject, html } = inquiryEmail(url, customerName, coerceLocale(locale));
-  const { delivered } = await sendMail({ to, subject, html });
-  return c.json({ ok: true, delivered });
-});
-
-emailRoutes.post("/new-job", async (c) => {
-  const parsed = newJobSchema.safeParse(await readBody(c));
-  if (!parsed.success) return c.json({ error: "Invalid input" }, 400);
-  const { recipients, url, jobTitle, district, locale } = parsed.data;
-  const { subject, html } = newJobEmail(url, jobTitle, district, coerceLocale(locale));
-  // Dedupe defensively (job-service already dedupes, but the recipient list is
-  // untrusted here) and send one copy per provider. Accept-and-return (#557):
-  // a 200-recipient sequential send cannot finish inside the caller's 5s s2s
-  // budget, so ack immediately and fan out in the background. The fan-out stays
-  // best-effort — a single failed send must not sink the rest — and the
-  // delivered count is logged instead of returned.
-  const unique = [...new Set(recipients.map((r) => r.toLowerCase()))];
-  void (async () => {
-    let delivered = 0;
-    for (const to of unique) {
-      try {
-        const { delivered: sent } = await sendMail({ to, subject, html });
-        if (sent) delivered++;
-      } catch {
-        // best-effort — keep going for the remaining recipients
-      }
-    }
-    log.info("new-job fan-out complete", {
-      context: "email",
-      accepted: unique.length,
-      delivered,
-    });
-  })();
-  return c.json({ ok: true, accepted: unique.length }, 202);
-});
-
-emailRoutes.post("/new-provider-match", async (c) => {
-  const parsed = newProviderMatchSchema.safeParse(await readBody(c));
-  if (!parsed.success) return c.json({ error: "Invalid input" }, 400);
-  const { recipients, url, providerName, district, locale } = parsed.data;
-  const { subject, html } = newProviderMatchEmail(
-    url,
-    providerName,
-    district,
-    coerceLocale(locale)
-  );
-  // Same accept-and-return contract as /new-job (#557): defensive dedupe, ack
-  // 202 immediately, fan out best-effort in the background, log the count.
-  const unique = [...new Set(recipients.map((r) => r.toLowerCase()))];
-  void (async () => {
-    let delivered = 0;
-    for (const to of unique) {
-      try {
-        const { delivered: sent } = await sendMail({ to, subject, html });
-        if (sent) delivered++;
-      } catch {
-        // best-effort — keep going for the remaining recipients
-      }
-    }
-    log.info("new-provider-match fan-out complete", {
-      context: "email",
-      accepted: unique.length,
-      delivered,
-    });
-  })();
-  return c.json({ ok: true, accepted: unique.length }, 202);
-});
-
-emailRoutes.post("/job-response", async (c) => {
-  const parsed = jobResponseSchema.safeParse(await readBody(c));
-  if (!parsed.success) return c.json({ error: "Invalid input" }, 400);
-  const { to, url, providerName, jobTitle, locale } = parsed.data;
-  const { subject, html } = jobResponseEmail(
-    url,
-    providerName,
-    jobTitle,
-    coerceLocale(locale)
-  );
-  const { delivered } = await sendMail({ to, subject, html });
-  return c.json({ ok: true, delivered });
-});

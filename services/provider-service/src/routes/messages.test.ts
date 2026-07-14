@@ -25,8 +25,12 @@ const { dbMock, txMock } = vi.hoisted(() => {
 });
 
 vi.mock("../db", () => ({ db: dbMock }));
+vi.mock("../lib/notify", () => ({
+  emitNotification: vi.fn().mockResolvedValue(undefined),
+}));
 
 import { app } from "../app";
+import { emitNotification } from "../lib/notify";
 
 const SECRET = "dev-internal-secret";
 type Role = "CUSTOMER" | "PROVIDER" | "ADMIN" | null;
@@ -56,12 +60,18 @@ function inquiryRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "inq1",
     userId: "cust-1",
+    email: "kamal@example.com",
     status: "NEW",
     message: "Original inquiry message",
     createdAt: new Date("2026-01-01"),
     name: "Kamal",
     respondedAt: null,
-    provider: { id: "prov1", userId: "prov-owner", contactName: "Nimal" },
+    provider: {
+      id: "prov1",
+      userId: "prov-owner",
+      contactName: "Nimal",
+      contactEmail: "nimal@baas.lk",
+    },
     ...overrides,
   };
 }
@@ -179,6 +189,78 @@ describe("POST /api/inquiries/:id/messages", () => {
     });
     const updateArg = txMock.inquiry.update.mock.calls[0][0];
     expect(updateArg.data).not.toHaveProperty("status");
+  });
+});
+
+// THREAD_REPLY notification (#393): after the message lands, the OTHER party
+// gets an in-app + email notification through the generic ingestion event.
+describe("POST /api/inquiries/:id/messages — THREAD_REPLY notification", () => {
+  it("a provider reply notifies the filing customer, linking their thread view", async () => {
+    dbMock.inquiry.findUnique.mockResolvedValue(inquiryRow());
+    const res = await req("/api/inquiries/inq1/messages", {
+      method: "POST",
+      body: { body: "On my way tomorrow morning." },
+      role: "PROVIDER",
+      userId: "prov-owner",
+    });
+    expect(res.status).toBe(200);
+    expect(emitNotification).toHaveBeenCalledWith({
+      type: "THREAD_REPLY",
+      recipients: [
+        { userId: "cust-1", email: "kamal@example.com", locale: "en" },
+      ],
+      payload: { senderName: "Nimal" },
+      link: "/account/inquiries/inq1",
+      origin: expect.any(String),
+    });
+  });
+
+  it("a customer reply notifies the provider owner at their contactEmail", async () => {
+    dbMock.inquiry.findUnique.mockResolvedValue(inquiryRow());
+    const res = await req("/api/inquiries/inq1/messages", {
+      method: "POST",
+      body: { body: "Thanks, see you then." },
+      role: "CUSTOMER",
+      userId: "cust-1",
+    });
+    expect(res.status).toBe(200);
+    expect(emitNotification).toHaveBeenCalledWith({
+      type: "THREAD_REPLY",
+      recipients: [
+        { userId: "prov-owner", email: "nimal@baas.lk", locale: "en" },
+      ],
+      payload: { senderName: "Kamal" },
+      link: "/dashboard/inquiries/inq1",
+      origin: expect.any(String),
+    });
+  });
+
+  it("a provider reply to an ANONYMOUS inquiry notifies nobody (no account)", async () => {
+    dbMock.inquiry.findUnique.mockResolvedValue(inquiryRow({ userId: null }));
+    // Anonymous threads are only readable by the provider party.
+    const res = await req("/api/inquiries/inq1/messages", {
+      method: "POST",
+      body: { body: "Please call me to discuss." },
+      role: "PROVIDER",
+      userId: "prov-owner",
+    });
+    expect(res.status).toBe(200);
+    expect(emitNotification).not.toHaveBeenCalled();
+  });
+
+  it("an inquiry without a customer email still notifies in-app (email omitted)", async () => {
+    dbMock.inquiry.findUnique.mockResolvedValue(inquiryRow({ email: null }));
+    const res = await req("/api/inquiries/inq1/messages", {
+      method: "POST",
+      body: { body: "On my way tomorrow morning." },
+      role: "PROVIDER",
+      userId: "prov-owner",
+    });
+    expect(res.status).toBe(200);
+    const call = vi.mocked(emitNotification).mock.calls[0][0];
+    expect(call.recipients).toEqual([
+      { userId: "cust-1", email: undefined, locale: "en" },
+    ]);
   });
 });
 

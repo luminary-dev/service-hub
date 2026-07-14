@@ -60,15 +60,19 @@ internalSavedSearchesRoutes.get("/candidates", async (c) => {
     take: MAX_CANDIDATES,
     select: {
       id: true,
+      userId: true,
       query: true,
       locale: true,
       user: { select: { email: true } },
     },
   });
 
+  // `userId` addresses the in-app half of the alert (notification events are
+  // keyed by recipient userId); `email` remains the delivery address.
   return c.json({
     savedSearches: rows.map((s) => ({
       id: s.id,
+      userId: s.userId,
       query: s.query,
       locale: s.locale,
       email: s.user.email,

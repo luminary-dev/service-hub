@@ -6,7 +6,8 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { Context } from "hono";
 import { db } from "../db";
-import { getAuth, isFullAdmin, isSupportOrAdmin } from "../lib/http";
+import { getAuth, getOrigin, isFullAdmin, isSupportOrAdmin } from "../lib/http";
+import { emitNotification } from "../lib/notify";
 import {
   ALLOWED_IMAGE_TYPES,
   InvalidImageError,
@@ -337,6 +338,19 @@ adminRoutes.patch("/api/admin/verifications/:id", async (c) => {
   });
   await logAudit(c, approved ? "verify" : "reject-verification", "PROVIDER", id);
 
+  // Tell the owner their verification was decided (#393): in-app + email via
+  // the notification event — best-effort, never fails the moderation action.
+  // The rejection reason is truncated to the event payload's 500-char bound.
+  await emitNotification({
+    type: approved ? "VERIFICATION_APPROVED" : "VERIFICATION_REJECTED",
+    recipients: [{ userId: provider.userId, email: provider.contactEmail }],
+    payload: approved
+      ? {}
+      : { reason: parsed.data.reason?.slice(0, 500) || undefined },
+    link: "/dashboard",
+    origin: getOrigin(c),
+  });
+
   return c.json({ status: approved ? "VERIFIED" : "REJECTED" });
 });
 
@@ -365,8 +379,12 @@ adminRoutes.patch("/api/admin/verifications", async (c) => {
   const approved = action === "approve";
   const where = { id: { in: ids }, verificationStatus: "PENDING" };
   // Only the still-PENDING ids are transitioned (and reported in `count`), so
-  // capture exactly those before the write to audit the real targets.
-  const affected = await db.provider.findMany({ where, select: { id: true } });
+  // capture exactly those before the write to audit the real targets (and to
+  // address the owner notifications below).
+  const affected = await db.provider.findMany({
+    where,
+    select: { id: true, userId: true, contactEmail: true },
+  });
   const { count } = await db.provider.updateMany({
     where,
     data: {
@@ -382,6 +400,16 @@ adminRoutes.patch("/api/admin/verifications", async (c) => {
   await Promise.all(
     affected.map((p) => logAudit(c, auditAction, "PROVIDER", p.id))
   );
+
+  // Tell every affected owner (#393) — one batched event (≤200 recipients,
+  // the schema's own cap), same best-effort contract as the single PATCH.
+  await emitNotification({
+    type: approved ? "VERIFICATION_APPROVED" : "VERIFICATION_REJECTED",
+    recipients: affected.map((p) => ({ userId: p.userId, email: p.contactEmail })),
+    payload: approved ? {} : { reason: reason?.slice(0, 500) || undefined },
+    link: "/dashboard",
+    origin: getOrigin(c),
+  });
 
   return c.json({ status: approved ? "VERIFIED" : "REJECTED", count });
 });
@@ -709,6 +737,12 @@ adminRoutes.patch("/api/admin/reports/:id", async (c) => {
   }
 
   const id = c.req.param("id");
+  // Loaded before the write so the resolve notification below can address the
+  // reporter (updateMany returns only a count).
+  const report = await db.report.findUnique({
+    where: { id },
+    select: { reporterId: true, targetType: true },
+  });
   // Audit trail (#223): stamp who closed the report and when.
   const { count } = await db.report.updateMany({
     where: { id },
@@ -727,6 +761,16 @@ adminRoutes.patch("/api/admin/reports/:id", async (c) => {
     "REPORT",
     id
   );
+  // Tell the reporter their report was actioned — in-app only in v1 (no email
+  // template); anonymous and SYSTEM reports carry no reporterId and skip.
+  if (report?.reporterId) {
+    await emitNotification({
+      type: "REPORT_RESOLVED",
+      recipients: [{ userId: report.reporterId }],
+      payload: { targetType: report.targetType, status: parsed.data.status },
+      link: "/",
+    });
+  }
   return c.json({ ok: true });
 });
 
@@ -752,8 +796,12 @@ adminRoutes.patch("/api/admin/reports", async (c) => {
   // single-report PATCH above so bulk-closed reports carry the same metadata.
   const where = { id: { in: parsed.data.ids } };
   // Capture the ids actually matched before the write so the audit log records
-  // real targets (unknown ids in the request list are skipped).
-  const affected = await db.report.findMany({ where, select: { id: true } });
+  // real targets (unknown ids in the request list are skipped) and the resolve
+  // notifications below can address the reporters.
+  const affected = await db.report.findMany({
+    where,
+    select: { id: true, reporterId: true, targetType: true },
+  });
   const { count } = await db.report.updateMany({
     where,
     data: {
@@ -767,6 +815,23 @@ adminRoutes.patch("/api/admin/reports", async (c) => {
   const action =
     parsed.data.status === "RESOLVED" ? "resolve-report" : "dismiss-report";
   await Promise.all(affected.map((r) => logAudit(c, action, "REPORT", r.id)));
+  // Tell the reporters (in-app only in v1): the payload carries the target
+  // type, so batch one event per type; anonymous/SYSTEM reports skip.
+  const reportersByTargetType = new Map<string, string[]>();
+  for (const r of affected) {
+    if (!r.reporterId) continue;
+    const list = reportersByTargetType.get(r.targetType) ?? [];
+    list.push(r.reporterId);
+    reportersByTargetType.set(r.targetType, list);
+  }
+  for (const [targetType, userIds] of reportersByTargetType) {
+    await emitNotification({
+      type: "REPORT_RESOLVED",
+      recipients: userIds.map((userId) => ({ userId })),
+      payload: { targetType, status: parsed.data.status },
+      link: "/",
+    });
+  }
   return c.json({ ok: true, count });
 });
 

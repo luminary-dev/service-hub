@@ -58,9 +58,10 @@ their URLs. Reached only through the api-gateway; every request except
 | `PORT` | `4003` | listen port |
 | `DATABASE_URL` | — | Postgres (`review_db`) |
 | `INTERNAL_API_SECRET` | `dev-internal-secret` (required in production) | S2S auth |
-| `IDENTITY_SERVICE_URL` | `http://localhost:4001` | reviewer name hydration |
+| `IDENTITY_SERVICE_URL` | `http://localhost:4001` | reviewer name/email hydration |
 | `PROVIDER_SERVICE_URL` | `http://localhost:4002` | provider existence + prior-interaction check |
 | `MEDIA_SERVICE_URL` | `http://localhost:4006` | photo storage / serving / sweep |
+| `NOTIFICATION_SERVICE_URL` | `http://localhost:4005` | notification events (NEW_REVIEW / REVIEW_RESPONSE / report resolution) |
 | `WEB_ORIGIN` | `http://localhost:3000` | origin fallback |
 
 ## Gateway / S2S model

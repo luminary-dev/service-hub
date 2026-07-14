@@ -71,10 +71,6 @@ describe("internal secret enforcement", () => {
     "/internal/email/password-reset",
     "/internal/email/account-exists",
     "/internal/email/email-change-attempt",
-    "/internal/email/job-response",
-    "/internal/email/new-job",
-    "/internal/email/new-provider-match",
-    "/internal/email/inquiry",
     "/internal/notifications/events",
     "/internal/users/u1/erase",
     "/api/notifications/read",
@@ -102,8 +98,6 @@ describe("input validation", () => {
     "/internal/email/password-reset",
     "/internal/email/account-exists",
     "/internal/email/email-change-attempt",
-    "/internal/email/job-response",
-    "/internal/email/inquiry",
   ])("returns 400 for an invalid body on %s", async (path) => {
     const res = await postWithSecret(path, { to: "a@b.lk" }); // missing url
     expect(res.status).toBe(400);
@@ -123,79 +117,33 @@ describe("input validation", () => {
     expect(await res.json()).toEqual({ error: "Invalid input" });
   });
 
-  it("returns 400 when job-response is missing providerName/jobTitle", async () => {
-    const res = await postWithSecret("/internal/email/job-response", {
-      to: "a@b.lk",
-      url: "https://baas.lk/jobs",
-    });
-    expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: "Invalid input" });
-  });
-
-  it("returns 400 when new-job is missing recipients/jobTitle/district", async () => {
-    const res = await postWithSecret("/internal/email/new-job", {
-      url: "https://baas.lk/jobs",
-    });
-    expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: "Invalid input" });
-  });
-
-  it("returns 400 when a new-job recipient is not a valid email", async () => {
-    const res = await postWithSecret("/internal/email/new-job", {
-      recipients: ["not-an-email"],
-      url: "https://baas.lk/jobs",
-      jobTitle: "Fix a leaking tap",
-      district: "Colombo",
-    });
-    expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: "Invalid input" });
-  });
-
-  it("returns 400 when new-provider-match is missing recipients/providerName/district", async () => {
-    const res = await postWithSecret("/internal/email/new-provider-match", {
-      url: "https://baas.lk/providers/prov1",
-    });
-    expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: "Invalid input" });
-  });
-
-  it("returns 400 when a new-provider-match recipient is not a valid email", async () => {
-    const res = await postWithSecret("/internal/email/new-provider-match", {
-      recipients: ["not-an-email"],
-      url: "https://baas.lk/providers/prov1",
-      providerName: "Nimal Perera",
-      district: "Colombo",
-    });
-    expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: "Invalid input" });
-  });
-
-  it("returns 400 when inquiry is missing customerName", async () => {
-    const res = await postWithSecret("/internal/email/inquiry", {
-      to: "a@b.lk",
-      url: "https://baas.lk/dashboard",
-    });
-    expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: "Invalid input" });
-  });
-
   it.each([
     "/internal/email/verify",
     "/internal/email/password-reset",
     "/internal/email/change-email",
     "/internal/email/email-change-attempt",
-    "/internal/email/job-response",
-    "/internal/email/inquiry",
   ])("returns 400 when `to` is not a valid email on %s", async (path) => {
     const res = await postWithSecret(path, {
       to: "not-an-email",
       url: "https://baas.lk",
-      providerName: "Nimal Perera",
-      jobTitle: "Fix a leaking tap",
-      customerName: "Dilani Fernando",
     });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "Invalid input" });
+  });
+
+  it("404s the retired marketplace email routes (migrated to /internal/notifications/events)", async () => {
+    for (const path of [
+      "/internal/email/inquiry",
+      "/internal/email/job-response",
+      "/internal/email/new-job",
+      "/internal/email/new-provider-match",
+    ]) {
+      const res = await postWithSecret(path, {
+        to: "a@b.lk",
+        url: "https://baas.lk",
+      });
+      expect(res.status, path).toBe(404);
+    }
   });
 });
 
@@ -233,65 +181,6 @@ describe("happy paths (no RESEND_API_KEY → console fallback)", () => {
     const res = await postWithSecret("/internal/email/email-change-attempt", {
       to: "owner@example.com",
       url: "https://baas.lk/login",
-      locale: "si",
-    });
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, delivered: false });
-  });
-
-  it("POST /internal/email/job-response", async () => {
-    const res = await postWithSecret("/internal/email/job-response", {
-      to: "user@example.com",
-      url: "https://baas.lk/jobs",
-      providerName: "Nimal Perera",
-      jobTitle: "Fix a leaking tap",
-    });
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, delivered: false });
-  });
-
-  it("POST /internal/email/new-job acks 202 before the fan-out (#557)", async () => {
-    const res = await postWithSecret("/internal/email/new-job", {
-      recipients: ["jane@example.com", "sam@example.com"],
-      url: "https://baas.lk/jobs",
-      jobTitle: "Fix a leaking tap",
-      district: "Colombo",
-      locale: "si",
-    });
-    expect(res.status).toBe(202);
-    // Deduped recipient count; delivery happens in the background and is
-    // logged, not returned.
-    expect(await res.json()).toEqual({ ok: true, accepted: 2 });
-  });
-
-  it("POST /internal/email/new-job dedupes case-insensitive recipients", async () => {
-    const res = await postWithSecret("/internal/email/new-job", {
-      recipients: ["jane@example.com", "JANE@example.com"],
-      url: "https://baas.lk/jobs",
-      jobTitle: "Fix a leaking tap",
-      district: "Colombo",
-    });
-    expect(res.status).toBe(202);
-    expect(await res.json()).toEqual({ ok: true, accepted: 1 });
-  });
-
-  it("POST /internal/email/new-provider-match acks 202 with the deduped count (#516)", async () => {
-    const res = await postWithSecret("/internal/email/new-provider-match", {
-      recipients: ["jane@example.com", "JANE@example.com", "sam@example.com"],
-      url: "https://baas.lk/providers/prov1",
-      providerName: "Nimal Perera",
-      district: "Colombo",
-      locale: "si",
-    });
-    expect(res.status).toBe(202);
-    expect(await res.json()).toEqual({ ok: true, accepted: 2 });
-  });
-
-  it("POST /internal/email/inquiry", async () => {
-    const res = await postWithSecret("/internal/email/inquiry", {
-      to: "provider@example.com",
-      url: "https://baas.lk/dashboard",
-      customerName: "Dilani Fernando",
       locale: "si",
     });
     expect(res.status).toBe(200);

@@ -76,9 +76,11 @@ function wireS2s(opts: {
   users?: { id: string; name: string; email: string }[];
   providers?: { id: string; contactName: string | null; contactPhone: string | null }[];
   // #501 forward fan-out: matching providers returned to the create path, and
-  // whether the matching lookup / new-job notification blows up.
-  matching?: { id: string; contactName: string | null; contactEmail: string }[] | "fail";
-  newJob?: "fail";
+  // whether the matching lookup / notification-event ingestion blows up.
+  matching?:
+    | { id: string; userId: string; contactName: string | null; contactEmail: string }[]
+    | "fail";
+  events?: "fail";
   // #556 gate: the emailVerified value identity returns for any looked-up user
   // (verified by default); "fail" makes the identity lookup blow up.
   emailVerified?: string | null | "fail";
@@ -88,7 +90,7 @@ function wireS2s(opts: {
     users = [],
     providers = [],
     matching = [],
-    newJob,
+    events,
     emailVerified = "2026-01-01T00:00:00.000Z",
   } = opts;
   s2sMock.mockImplementation(async (_base: string, path: string) => {
@@ -119,11 +121,10 @@ function wireS2s(opts: {
       });
     }
     if (path.includes("/internal/providers?ids=")) return json({ providers });
-    if (path.includes("/internal/email/new-job")) {
-      if (newJob === "fail") throw new Error("notification down");
+    if (path.includes("/internal/notifications/events")) {
+      if (events === "fail") throw new Error("notification down");
       return json({ ok: true, accepted: 0 }, 202);
     }
-    if (path.includes("/internal/email/job-response")) return json({ ok: true });
     throw new Error(`unexpected s2s path: ${path}`);
   });
 }
@@ -251,8 +252,8 @@ describe("POST /api/jobs (create)", () => {
     });
     wireS2s({
       matching: [
-        { id: "prov_1", contactName: "Jane", contactEmail: "jane@example.com" },
-        { id: "prov_2", contactName: "Sam", contactEmail: "sam@example.com" },
+        { id: "prov_1", userId: "u1", contactName: "Jane", contactEmail: "jane@example.com" },
+        { id: "prov_2", userId: "u2", contactName: "Sam", contactEmail: "sam@example.com" },
       ],
     });
     const res = await req(
@@ -272,15 +273,24 @@ describe("POST /api/jobs (create)", () => {
     expect(matchCall?.[1]).toContain("district=Colombo");
     expect(matchCall?.[1]).toContain(`excludeUserId=${CUSTOMER_ID}`);
 
-    // Every matching provider's email is handed to notification in one call.
+    // Every matching provider (userId + email) is handed to the ingestion
+    // endpoint in one batched NEW_JOB_MATCH event (#394).
     const notifyCall = s2sMock.mock.calls.find(([, p]) =>
-      p.includes("/internal/email/new-job")
+      p.includes("/internal/notifications/events")
     );
     expect(notifyCall).toBeDefined();
     const body = JSON.parse((notifyCall?.[2]?.body as string) ?? "{}");
-    expect(body.recipients).toEqual(["jane@example.com", "sam@example.com"]);
-    expect(body.jobTitle).toBe(validJob.title);
-    expect(body.district).toBe("Colombo");
+    expect(body).toEqual({
+      type: "NEW_JOB_MATCH",
+      recipients: [
+        { userId: "u1", email: "jane@example.com", locale: "en" },
+        { userId: "u2", email: "sam@example.com", locale: "en" },
+      ],
+      payload: { jobTitle: validJob.title, district: "Colombo" },
+      link: "/jobs",
+    });
+    // The origin rides as x-origin so the email channel can build absolute links.
+    expect(notifyCall?.[2]?.headers).toHaveProperty("x-origin");
   });
 
   it("skips the notification call when no providers match", async () => {
@@ -298,7 +308,7 @@ describe("POST /api/jobs (create)", () => {
     );
     expect(res.status).toBe(200);
     const notifyCall = s2sMock.mock.calls.find(([, p]) =>
-      p.includes("/internal/email/new-job")
+      p.includes("/internal/notifications/events")
     );
     expect(notifyCall).toBeUndefined();
   });
@@ -328,8 +338,10 @@ describe("POST /api/jobs (create)", () => {
       district: "Colombo",
     });
     wireS2s({
-      matching: [{ id: "prov_1", contactName: "Jane", contactEmail: "jane@example.com" }],
-      newJob: "fail",
+      matching: [
+        { id: "prov_1", userId: "u1", contactName: "Jane", contactEmail: "jane@example.com" },
+      ],
+      events: "fail",
     });
     const res = await req(
       "/api/jobs",
@@ -663,12 +675,26 @@ describe("POST /api/jobs/:id/responses (provider responds)", () => {
     const res = await req(
       "/api/jobs/job_1/responses",
       { method: "POST", body: JSON.stringify(message) },
-      { "x-user-id": PROVIDER_USER_ID }
+      { "x-user-id": PROVIDER_USER_ID, "x-user-name": "Pro%20Vider" }
     );
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
     expect(dbMock.jobResponse.create).toHaveBeenCalledWith({
       data: { jobRequestId: "job_1", providerId: "prov_1", message: message.message },
+    });
+    // JOB_RESPONSE notification to the job's customer, email hydrated from
+    // identity (#394).
+    const notifyCall = s2sMock.mock.calls.find(([, p]) =>
+      p.includes("/internal/notifications/events")
+    );
+    expect(notifyCall).toBeDefined();
+    expect(JSON.parse((notifyCall?.[2]?.body as string) ?? "{}")).toEqual({
+      type: "JOB_RESPONSE",
+      recipients: [
+        { userId: CUSTOMER_ID, email: "cust@example.com", locale: "en" },
+      ],
+      payload: { providerName: "Pro Vider", jobTitle: openJob.title },
+      link: "/jobs",
     });
   });
 

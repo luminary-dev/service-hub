@@ -36,6 +36,7 @@ const { dbMock } = vi.hoisted(() => ({
       delete: vi.fn(),
     },
     reviewResponse: {
+      findUnique: vi.fn(),
       upsert: vi.fn(),
       deleteMany: vi.fn(),
     },
@@ -53,9 +54,13 @@ const { dbMock } = vi.hoisted(() => ({
   },
 }));
 vi.mock("../db", () => ({ db: dbMock }));
+vi.mock("../lib/notify", () => ({
+  emitNotification: vi.fn().mockResolvedValue(undefined),
+}));
 
 import { app } from "../app";
 import { s2s } from "../lib/http";
+import { emitNotification } from "../lib/notify";
 import { removeStoredFile } from "../lib/storage";
 
 const SECRET = "dev-internal-secret";
@@ -291,6 +296,7 @@ describe("POST /api/providers/:id/reviews (summary + photo branches)", () => {
 describe("POST/DELETE /api/reviews/:id/response", () => {
   const REVIEW_ROW = {
     id: "rev1",
+    userId: REVIEWER_ID,
     providerId: PROVIDER_ID,
     deletedAt: null,
   };
@@ -367,6 +373,32 @@ describe("POST/DELETE /api/reviews/:id/response", () => {
       create: { reviewId: "rev1", text: "Thank you for the kind words!" },
       update: { text: "Thank you for the kind words!" },
     });
+  });
+
+  // REVIEW_RESPONSE notification (#393): the review's author hears about a
+  // FIRST reply (in-app + email via the ingestion event); edits stay silent.
+  it("a first response emits REVIEW_RESPONSE to the review author", async () => {
+    dbMock.review.findUnique.mockResolvedValue(REVIEW_ROW);
+    dbMock.reviewResponse.findUnique.mockResolvedValue(null);
+    const res = await postResponse("Thank you!", { "x-user-name": "Nimal" });
+    expect(res.status).toBe(200);
+    expect(emitNotification).toHaveBeenCalledWith({
+      type: "REVIEW_RESPONSE",
+      // wireS2s's identity hydration returns no users → email omitted,
+      // the notification degrades to in-app only.
+      recipients: [{ userId: REVIEWER_ID, email: undefined, locale: "en" }],
+      payload: { providerName: "Nimal" },
+      link: `/providers/${PROVIDER_ID}`,
+      origin: expect.any(String),
+    });
+  });
+
+  it("editing an existing response does not re-notify the author", async () => {
+    dbMock.review.findUnique.mockResolvedValue(REVIEW_ROW);
+    dbMock.reviewResponse.findUnique.mockResolvedValue({ id: "resp1" });
+    const res = await postResponse("Thank you again!");
+    expect(res.status).toBe(200);
+    expect(emitNotification).not.toHaveBeenCalled();
   });
 
   it("DELETE removes the owner's response and is idempotent", async () => {
@@ -702,6 +734,43 @@ describe("PATCH /api/admin/review-reports/:id (resolve / dismiss)", () => {
     expect(res.status).toBe(200);
     expect(dbMock.adminAuditLog.create).toHaveBeenCalled();
   });
+
+  // REPORT_RESOLVED notification: the reporter hears their report was
+  // actioned (in-app only in v1); anonymous/SYSTEM reports emit nothing.
+  it("emits REPORT_RESOLVED to the reporter on resolve", async () => {
+    dbMock.report.findUnique.mockResolvedValue({
+      reporterId: REVIEWER_ID,
+      targetType: "REVIEW",
+    });
+    dbMock.report.updateMany.mockResolvedValue({ count: 1 });
+    const res = await req(
+      "/api/admin/review-reports/rep1",
+      { method: "PATCH", body: JSON.stringify({ status: "DISMISSED" }) },
+      { "x-user-id": "sup_1", "x-user-role": "SUPPORT" }
+    );
+    expect(res.status).toBe(200);
+    expect(emitNotification).toHaveBeenCalledWith({
+      type: "REPORT_RESOLVED",
+      recipients: [{ userId: REVIEWER_ID }],
+      payload: { targetType: "REVIEW", status: "DISMISSED" },
+      link: "/",
+    });
+  });
+
+  it("emits nothing for an anonymous/SYSTEM report", async () => {
+    dbMock.report.findUnique.mockResolvedValue({
+      reporterId: null,
+      targetType: "REVIEW",
+    });
+    dbMock.report.updateMany.mockResolvedValue({ count: 1 });
+    const res = await req(
+      "/api/admin/review-reports/rep1",
+      { method: "PATCH", body: JSON.stringify({ status: "RESOLVED" }) },
+      { "x-user-id": "sup_1", "x-user-role": "SUPPORT" }
+    );
+    expect(res.status).toBe(200);
+    expect(emitNotification).not.toHaveBeenCalled();
+  });
 });
 
 describe("PATCH /api/admin/review-reports (bulk resolve / dismiss)", () => {
@@ -738,6 +807,31 @@ describe("PATCH /api/admin/review-reports (bulk resolve / dismiss)", () => {
     );
     expect(res.status).toBe(200);
     expect(dbMock.adminAuditLog.create).toHaveBeenCalledTimes(2);
+  });
+
+  it("batches one REPORT_RESOLVED event for the reporters, skipping anonymous", async () => {
+    dbMock.report.findMany.mockResolvedValue([
+      { id: "rep1", reporterId: "cust-1", targetType: "REVIEW" },
+      { id: "rep2", reporterId: null, targetType: "REVIEW" }, // SYSTEM/anonymous
+      { id: "rep3", reporterId: "cust-2", targetType: "REVIEW" },
+    ]);
+    dbMock.report.updateMany.mockResolvedValue({ count: 3 });
+    const res = await req(
+      "/api/admin/review-reports",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ ids: ["rep1", "rep2", "rep3"], status: "RESOLVED" }),
+      },
+      { "x-user-id": "sup_1", "x-user-role": "SUPPORT" }
+    );
+    expect(res.status).toBe(200);
+    expect(emitNotification).toHaveBeenCalledTimes(1);
+    expect(emitNotification).toHaveBeenCalledWith({
+      type: "REPORT_RESOLVED",
+      recipients: [{ userId: "cust-1" }, { userId: "cust-2" }],
+      payload: { targetType: "REVIEW", status: "RESOLVED" },
+      link: "/",
+    });
   });
 });
 

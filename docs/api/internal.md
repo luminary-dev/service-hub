@@ -17,7 +17,7 @@ using the shared `s2s()` helper (one bounded retry on idempotent GETs).
 | `GET /internal/users/:id/session-version` | Gateway revocation check → `{ v: number \| null }`. |
 | `GET /internal/users/count` | Total user count. |
 | `PATCH /internal/users/:id` | Profile sync `{ name?, phone? }` from provider-service. |
-| `GET /internal/saved-searches/candidates?category=&districts=a,b&excludeUserId=` | Saved-search alert feed (#516): the searches a newly published provider could match, joined with the owner's email → `{ savedSearches: [{ id, query, locale, email }] }`. `districts` is the provider's full served set (#502 multi-district), so a search for any served district qualifies; a null filter on a search means "any". Only current CUSTOMER accounts with a verified email, cooled down ≥24 h since `lastNotifiedAt`; capped at 500 (oldest first). Free-text `query` is returned unevaluated — provider-service decides the actual match. |
+| `GET /internal/saved-searches/candidates?category=&districts=a,b&excludeUserId=` | Saved-search alert feed (#516): the searches a newly published provider could match, joined with the owner's email → `{ savedSearches: [{ id, userId, query, locale, email }] }` (`userId` addresses the in-app half of the `SAVED_SEARCH_MATCH` notification). `districts` is the provider's full served set (#502 multi-district), so a search for any served district qualifies; a null filter on a search means "any". Only current CUSTOMER accounts with a verified email, cooled down ≥24 h since `lastNotifiedAt`; capped at 500 (oldest first). Free-text `query` is returned unevaluated — provider-service decides the actual match. |
 | `POST /internal/saved-searches/notified` | Cooldown bookkeeping (#516): `{ ids[] (≤500) }` — stamps `lastNotifiedAt` on the searches whose owners were just emailed. |
 | `POST /internal/maintenance/sweep-orphans` | Remove orphaned `user`-namespace avatar files (#555, ops tooling). |
 
@@ -28,14 +28,14 @@ using the shared `s2s()` helper (one bounded retry on idempotent GETs).
 | `GET /internal/categories` | Full category list (incl. inactive) for peers' validation caches. |
 | `POST /internal/providers` | Registration orchestration (called by identity); optional `serviceDistricts` served set (#502) is deduped with the primary `district` pinned first, defaulting to `[district]`; optional `latitude`/`longitude` map pin (#48 — both or neither, Sri Lanka bounding box re-checked, else 400); idempotent on the unique userId → `{ id }`. A fresh create also fires the saved-search alert fan-out (#516) after responding — fetch matching candidates from identity (scoped to the full served set), evaluate free-text queries with `buildBrowseWhere` pinned to the new row, batch per-locale to notification, stamp the cooldown. Best-effort, never on the idempotent duplicate path. |
 | `GET /internal/providers/by-user/:userId` | Provider owned by a user (login / job-board gate) — includes the `serviceDistricts` served set (#502). |
-| `GET /internal/providers/matching?category&district&excludeUserId?` | Lead-gen fan-out (#501): non-suspended providers whose `category` matches and whose `serviceDistricts` set contains the district (#502) — capped at 200, deduped by contact email → `{ providers }`. |
+| `GET /internal/providers/matching?category&district&excludeUserId?` | Lead-gen fan-out (#501): non-suspended providers whose `category` matches and whose `serviceDistricts` set contains the district (#502) — capped at 200, deduped by contact email → `{ providers: [{ id, userId, contactName, contactEmail }] }` (`userId` addresses the in-app half of the `NEW_JOB_MATCH` notification). |
 | `POST /internal/providers/by-user/:userId/deactivate` | Self-downgrade (#403, called by identity `leave-provider`): hide the user's provider profile (`suspended = true`; `adminSuspended` untouched, so an active ADMIN suspension survives, #550). Idempotent. |
 | `POST /internal/providers/by-user/:userId/reactivate` | Re-upgrade (#403, called by identity `complete-provider` and the admin CUSTOMER→PROVIDER promotion): clear `suspended`. Refuses an ADMIN suspension with 409 (#550) — only the admin unsuspend action clears `adminSuspended`. Idempotent otherwise — answers `{ reactivated: false }` when no profile exists, which the admin promotion treats as a 400 (#554). |
 | `POST /internal/providers/avatar` | Denormalized avatar sync from identity (#434), `{ userId, avatarUrl }` — updates the provider's cached `avatarUrl`. No-op if the user has no provider. |
 | `POST /internal/providers/contact` | Denormalized contact sync from identity (#553), `{ userId, name?, email?, phone? }` — mirrors account name/phone edits and email changes onto the cached `contactName`/`contactEmail`/`contactPhone`. Only provided fields are written; no-op if the user has no provider. |
 | `GET /internal/providers?ids=` | Batch provider hydration (≤500). |
 | `GET /internal/inquiries/exists?providerId=&userId=` | Review gate — has this user inquired with this provider? → `{ exists }`. |
-| `GET /internal/providers/:id/summary` | Existence/suspended check (favorites, reviews) — always 200. |
+| `GET /internal/providers/:id/summary` | Existence/suspended check (favorites, reviews) — always 200 → `{ provider: { id, userId, suspended, contactEmail } \| null }` (`contactEmail` lets review-service address the owner's `NEW_REVIEW` notification). |
 | `POST /internal/users/:id/erase` | Account-deletion fan-out: delete the user's provider + files + sent inquiries. Idempotent. |
 | `POST /internal/maintenance/sweep-orphans` | Remove stored files no row references, in the `provider` **and** `category` namespaces (#555, ops tooling). |
 
@@ -63,15 +63,31 @@ Generic marketplace-event ingestion (RFC stateful-notification-service):
 | Method + path | Purpose |
 |---|---|
 | `POST /internal/notifications/events` | One endpoint for all catalog events: `{ type, recipients: [{ userId, email?, name?, locale? }] (≤200, deduped by userId), payload, link }`. `type` ∈ `NEW_INQUIRY \| THREAD_REPLY \| NEW_REVIEW \| REVIEW_RESPONSE \| VERIFICATION_APPROVED \| VERIFICATION_REJECTED \| NEW_JOB_MATCH \| JOB_RESPONSE \| SAVED_SEARCH_MATCH \| REPORT_RESOLVED`; `payload` is zod-validated per type (e.g. `NEW_JOB_MATCH` → `{ jobTitle, district }`, `NEW_REVIEW` → `{ reviewerName, rating }`); `link` is a **relative** path (email links are rebuilt absolute from `x-origin`). Validate → load `NotificationPreference` overrides → write in-app rows **inline** (durable even if Redis/Resend is down) → enqueue one email job per email-enabled recipient with an `email` → ack `202 { ok, accepted }` before any send (#557 contract). Recipients without an email get in-app only; `REPORT_RESOLVED` is in-app only (no email template in v1). Delivery: Redis queue (`notify:email`, BRPOPLPUSH worker, processing-list reclaim, 3 attempts at 30s×2^n) falling back to one-attempt direct sends when Redis is unavailable. |
-| `POST /internal/users/:id/erase` | Account-deletion fan-out: delete the user's notifications + preference overrides. Idempotent. (identity starts calling it when the emitters migrate.) |
+| `POST /internal/users/:id/erase` | Account-deletion fan-out: delete the user's notifications + preference overrides. Idempotent. Called by identity's erase orchestration. |
 
-Email routes. Single-recipient sends return `{ ok, delivered }`
-(`delivered:false` when `RESEND_API_KEY` is unset — console fallback). Bodies
-carry `{ to, url, locale, ... }`. The five auth routes are permanent (they are
-not notifications and take no preferences); the four marketplace routes
-(`/inquiry`, `/job-response`, `/new-job`, `/new-provider-match`) remain only
-until their callers migrate to `/internal/notifications/events`, then get
-deleted.
+**Event emitters.** Every emit is best-effort *after* the owning write — a
+notification failure is logged and never fails the trigger (each emitting
+service carries the shared `lib/notify.ts` helper; saved-search alerts call
+the endpoint directly so a failed send skips the cooldown stamp):
+
+| Event | Emitting service → call site | Recipient |
+|---|---|---|
+| `NEW_INQUIRY` | provider — `POST /api/providers/:id/inquiries` | Provider owner (denormalized `contactEmail`). |
+| `THREAD_REPLY` | provider — `POST /api/inquiries/:id/messages` | The *other* thread party; anonymous inquiries (no customer account) emit nothing on a provider reply. |
+| `NEW_REVIEW` | review — `POST /api/providers/:id/reviews` | Provider owner (`userId`/`contactEmail` from the `/summary` fetch the gate already makes). |
+| `REVIEW_RESPONSE` | review — `POST /api/reviews/:id/response` (first response only; edits stay silent) | Review author; email hydrated via identity `GET /internal/users?ids=` (degrades to in-app only). |
+| `VERIFICATION_APPROVED` / `VERIFICATION_REJECTED` | provider — `PATCH /api/admin/verifications/:id` + bulk `PATCH /api/admin/verifications` | Provider owner(s); rejection `reason` truncated to the payload's 500-char bound. |
+| `NEW_JOB_MATCH` | job — `POST /api/jobs` (after the `/internal/providers/matching` lookup) | Matched providers (≤200), one batched event. |
+| `JOB_RESPONSE` | job — `POST /api/jobs/:id/responses` | Job's customer; email hydrated from identity. |
+| `SAVED_SEARCH_MATCH` | provider — `lib/saved-search-alerts.ts` (on profile publish) | Saved-search owners (≤200, deduped by user), each with the locale their search was saved under. |
+| `REPORT_RESOLVED` | provider / review / job — the single + bulk report resolve `PATCH`es | Reporter (in-app only in v1); anonymous/SYSTEM reports (no `reporterId`) skip. |
+
+Email routes — transactional auth/security messages **only** (they are not
+notifications and take no preferences; the four legacy marketplace routes
+`/inquiry`, `/job-response`, `/new-job`, `/new-provider-match` were deleted
+once their callers moved to `/internal/notifications/events`). Sends return
+`{ ok, delivered }` (`delivered:false` when `RESEND_API_KEY` is unset —
+console fallback). Bodies carry `{ to, url, locale? }`.
 
 | Method + path | Purpose |
 |---|---|
@@ -80,10 +96,6 @@ deleted.
 | `POST /internal/email/change-email` | Change-email confirmation message (#396), sent to the new address. |
 | `POST /internal/email/account-exists` | "Account already exists" notice (#373/#498), sent to the real owner when a registration reuses their email. |
 | `POST /internal/email/email-change-attempt` | "Someone tried to move an account to your email" notice (#503), sent to the real owner when a change-email targets their (taken) address. |
-| `POST /internal/email/inquiry` | New-inquiry notification (`customerName`). |
-| `POST /internal/email/job-response` | Job-response notification (`providerName`, `jobTitle`). |
-| `POST /internal/email/new-job` | New-matching-job fan-out (#501): `{ recipients[] (≤200), url, jobTitle, district, locale? }`. Acks `202 { ok, accepted }` immediately and sends in the background (#557); the delivered count is logged, not returned. |
-| `POST /internal/email/new-provider-match` | Saved-search new-match fan-out (#516): `{ recipients[] (≤200), url, providerName, district, locale? }`. Same accept-and-return contract as `/new-job`. |
 
 ### media-service
 

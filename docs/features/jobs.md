@@ -15,20 +15,20 @@ identity-service S2S; unverified → 403) with a **per-account cap of 10 posts
 per rolling 24h** (429 beyond that) — both gates run before the job is saved,
 so a blocked post never triggers the provider fan-out.
 
-**On a successful post, matching providers are emailed (#501).** After the job
-is saved, job-service fans out a best-effort notification to every provider
-whose **category matches the job and whose service area contains the job's
-district** (`Provider.serviceDistricts`, #502 — the same scoping the board
-applies, suspended profiles excluded, the poster excluded). It asks
-provider-service for the matching contact emails
-(`GET /internal/providers/matching`, capped at 200 and deduped) and hands the
-whole list to notification-service in one batched call
-(`POST /internal/email/new-job`, EN/SI "new matching job" template).
-notification-service **acks the batch immediately (202) and sends in the
-background** (#557), so the customer's post never waits on up to 200 sends. The
-fan-out is wrapped so a provider-lookup or email failure is logged and **never
-fails the post** — this is the forward direction of the response-notification
-below.
+**On a successful post, matching providers are notified (#501/#394).** After
+the job is saved, job-service fans out a best-effort `NEW_JOB_MATCH`
+notification to every provider whose **category matches the job and whose
+service area contains the job's district** (`Provider.serviceDistricts`, #502
+— the same scoping the board applies, suspended profiles excluded, the poster
+excluded). It asks provider-service for the matching providers
+(`GET /internal/providers/matching`, userId + contact email, capped at 200 and
+deduped) and hands the whole list to notification-service in one batched call
+(`POST /internal/notifications/events`), which **acks immediately (202)**,
+writes the in-app feed rows inline and queues the EN/SI "new matching job"
+emails behind per-user notification preferences (#557), so the customer's post
+never waits on up to 200 sends. The fan-out is wrapped so a provider-lookup or
+notification failure is logged and **never fails the post** — this is the
+forward direction of the response-notification below.
 
 ### The provider job board — response scoping
 
@@ -51,8 +51,9 @@ a reported job down (it leaves the board and stops accepting responses — see
 Only registered providers may respond, and the server **re-enforces the scoping
 rule**: responding to your own job (400), or to a job outside your category or
 served districts (403 "This job is outside your category or district"), or to a job that
-is not OPEN (400) all fail. One response per provider per job. The customer gets
-a best-effort email.
+is not OPEN (400) all fail. One response per provider per job. The customer
+gets a best-effort `JOB_RESPONSE` notification (in-app + email, via the same
+events endpoint).
 
 Job titles/descriptions and response messages also pass the write-time
 [content filter](../admin/moderation.md#content-filter-write-time-auto-reports)

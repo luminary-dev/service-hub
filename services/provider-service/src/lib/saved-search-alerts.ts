@@ -4,9 +4,10 @@
 // scoping, cooldown, verified-email + customer-role gates all applied there),
 // evaluate any free-text query against the committed row with the same
 // where-clause browse uses, then hand the recipient list to
-// notification-service (which acks 202 and sends in the background, #557).
-// Entirely best-effort: the profile create already committed, so every failure
-// here is logged and swallowed.
+// notification-service's event ingestion (which writes the in-app rows,
+// queues the emails behind per-user preferences and acks 202 before any send,
+// #557/#394). Entirely best-effort: the profile create already committed, so
+// every failure here is logged and swallowed.
 import { db } from "../db";
 import { s2s } from "./http";
 import { log } from "./log";
@@ -22,7 +23,13 @@ const MAX_ALERT_RECIPIENTS = 200;
 // (never falsely matched) and the overflow is logged.
 const MAX_QUERY_CHECKS = 50;
 
-type Candidate = { id: string; query: string | null; locale: string; email: string };
+type Candidate = {
+  id: string;
+  userId: string;
+  query: string | null;
+  locale: string;
+  email: string;
+};
 
 export type NewProviderAlert = {
   id: string;
@@ -108,37 +115,41 @@ export async function notifySavedSearchMatches(
     });
     if (matched.length === 0) return;
 
-    // One email per address, batched per locale (a saved search carries the
-    // locale it was created under). Only searches whose address actually made
-    // a batch are stamped notified, so a capped-out search stays eligible.
-    const recipientsByLocale = new Map<string, string[]>();
+    // One ingestion call: notification-service dedupes by userId, writes the
+    // in-app rows and queues one email per recipient — each carrying the
+    // locale its search was created under. Only searches whose owner actually
+    // made the batch are stamped notified, so a capped-out search stays
+    // eligible. The raw s2s (not the swallowing emitNotification helper) is
+    // deliberate: a thrown send failure must skip the cooldown stamp below.
+    const recipients: { userId: string; email: string; locale: "en" | "si" }[] = [];
     const accepted = new Set<string>();
     const notifiedIds: string[] = [];
     for (const s of matched) {
-      const email = s.email.toLowerCase();
-      if (!accepted.has(email)) {
+      if (!accepted.has(s.userId)) {
         if (accepted.size >= MAX_ALERT_RECIPIENTS) continue;
-        accepted.add(email);
-        const locale = s.locale === "si" ? "si" : "en";
-        const batch = recipientsByLocale.get(locale) ?? [];
-        batch.push(email);
-        recipientsByLocale.set(locale, batch);
+        accepted.add(s.userId);
+        recipients.push({
+          userId: s.userId,
+          email: s.email,
+          locale: s.locale === "si" ? "si" : "en",
+        });
       }
       notifiedIds.push(s.id);
     }
 
-    for (const [locale, recipients] of recipientsByLocale) {
-      await s2s(NOTIFICATION_URL, "/internal/email/new-provider-match", {
-        method: "POST",
-        body: JSON.stringify({
-          recipients,
-          url: `${origin}/providers/${provider.id}`,
+    await s2s(NOTIFICATION_URL, "/internal/notifications/events", {
+      method: "POST",
+      headers: { "x-origin": origin },
+      body: JSON.stringify({
+        type: "SAVED_SEARCH_MATCH",
+        recipients,
+        payload: {
           providerName: provider.contactName,
           district: provider.district,
-          locale,
-        }),
-      });
-    }
+        },
+        link: `/providers/${provider.id}`,
+      }),
+    });
 
     await s2s(IDENTITY_URL, "/internal/saved-searches/notified", {
       method: "POST",
