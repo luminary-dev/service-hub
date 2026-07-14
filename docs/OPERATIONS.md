@@ -107,16 +107,16 @@ exhaust the single VPS:
 Runs on push and PR to `dev` and `prod`. Jobs:
 
 - **Fast per-package matrix** — `web` runs `typecheck / lint / test / build`;
-  each of the eight services runs `typecheck / test / build`. `fail-fast:
+  each of the ten services runs `typecheck / test / build`. `fail-fast:
   false`, Node 22, npm cache.
-- **`coverage`** (#262) — per package (web + 8 services), runs `npm run coverage`
+- **`coverage`** (#262) — per package (web + 10 services), runs `npm run coverage`
   (vitest v8 provider) and uploads the HTML/JSON report as an artifact plus a
   step-summary table. Thresholds are a **deliberately low ratchet floor
   (currently 5% lines/functions/branches/statements)** that passes today; the
   job only fails if coverage regresses below the floor. Raise the floors as the
   suites grow.
 - **`e2e` compose-smoke** (#241) — **PRs only** (booting the full stack is
-  heavy). Pre-builds the nine compose images with `docker/bake-action` reusing
+  heavy). Pre-builds the eleven compose images with `docker/bake-action` reusing
   deploy.yml's per-image GHA layer cache (read-only — no `cache-to`, so a
   feature branch can't write the shared cache; #573), boots the stack with
   `docker compose up -d --no-build --wait`, waits for web on :3000, **seeds
@@ -170,7 +170,7 @@ sh` install (a moving upstream branch).
 - **Trivy filesystem scan** — `trivy fs` over the lockfiles
   (CRITICAL/HIGH/MEDIUM). **Report-only**: uploads SARIF to the Security tab,
   never fails the build.
-- **Trivy image scan** (#238) — builds each of the nine images and scans the
+- **Trivy image scan** (#238) — builds each of the ten images in its matrix and scans the
   base-image / OS packages (`vuln-type: os`). **Gating**: fails the build on
   fixable HIGH/CRITICAL OS vulns (`severity: HIGH,CRITICAL`, `ignore-unfixed`,
   `exit-code: 1`); SARIF still uploads so all findings surface.
@@ -302,11 +302,12 @@ One-time setup, then run the whole stack on the host:
 
 ```bash
 npm run setup       # scripts/setup.sh — installs all packages, writes .env files
-                    # from the examples, starts Postgres, migrates + seeds the 5 DBs
-npm run dev:all     # scripts/dev-all.sh — Postgres (docker) + all 8 services + web
+                    # from the examples, starts Postgres, migrates + seeds the 6
+                    # stateful DBs (search's derived index is migrated, not seeded)
+npm run dev:all     # scripts/dev-all.sh — Postgres (docker) + all 10 services + web
 ```
 
-`dev:all` runs Postgres in Docker and the eight services + web as host
+`dev:all` runs Postgres in Docker and the ten services + web as host
 processes, prefixing each stream with its name; Ctrl-C stops everything. It
 exports a shared `AUTH_SECRET` (so web and identity agree) and picks
 `ANTHROPIC_API_KEY` from the shell or root `.env` (empty → the chat assistant
@@ -316,9 +317,9 @@ To run everything in containers instead (closest to prod):
 
 ```bash
 docker compose up -d --build      # dev compose: builds locally, all services + web
-# the container images run NODE_ENV=production, so seed the 5 data services
+# the container images run NODE_ENV=production, so seed the 6 data services
 # explicitly (setup.sh seeds for you on the host path; the container path does not):
-for s in identity-service provider-service review-service job-service notification-service; do
+for s in identity-service provider-service review-service job-service notification-service trust-safety-service; do
   docker compose exec -e SEED_DEMO_DATA=true "$s" npm run db:seed
 done
 npm run e2e                       # scripts/e2e-smoke.sh against the running stack
@@ -331,8 +332,9 @@ board is intentionally empty — jobs are customer-created) are both expected.
 **Local data is disposable.** We do not preserve or migrate data between runs —
 the seeds are dummy data only. When a run's state gets in the way, reset to a
 clean, seeded stack with `scripts/dev-reset.sh`, which tears everything down
-**including volumes** (`docker compose down -v`), rebuilds (`up -d --build`), and
-reseeds the five databases:
+**including volumes** (`docker compose down -v`), rebuilds (`up -d --build`),
+reseeds the stateful databases, and rebuilds the derived search index via the
+reindex sweep:
 
 ```bash
 ./scripts/dev-reset.sh            # down -v → up -d --build → reseed

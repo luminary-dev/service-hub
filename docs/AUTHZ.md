@@ -262,7 +262,7 @@ Backend admin routes live in:
 `services/provider-service/src/routes/admin.ts`,
 `services/identity-service/src/routes/{admin.ts,admin-users.ts,admin-impersonation.ts}`,
 `services/job-service/src/routes/{admin.ts,reports.ts}`,
-`services/review-service/src/routes/reports.ts`.
+`services/review-service/src/routes/{reports.ts,reviews.ts}`.
 
 ## Audit log
 
