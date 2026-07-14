@@ -224,6 +224,14 @@ reviews.post("/api/providers/:id/reviews", async (c) => {
     }
   }
 
+  // Checked before the upsert so the NEW_REVIEW notification fires only on the
+  // FIRST publish — editing a review must not re-ping the provider on every
+  // save (#L6). Mirrors the review-response route's first-response gate.
+  const existingReview = await db.review.findUnique({
+    where: { providerId_userId: { providerId: id, userId: auth.userId } },
+    select: { id: true },
+  });
+
   const reviewId = await db.$transaction(async (tx) => {
     const review = await tx.review.upsert({
       where: { providerId_userId: { providerId: id, userId: auth.userId } },
@@ -252,16 +260,19 @@ reviews.post("/api/providers/:id/reviews", async (c) => {
 
   // Tell the provider a review was published on their profile (#393): in-app
   // + email via the notification event — best-effort, never fails the review.
-  // The owner's userId/contactEmail rode in on the summary fetched above.
-  await emitNotification({
-    type: "NEW_REVIEW",
-    recipients: [
-      { userId: provider.userId, email: provider.contactEmail, locale: getLocale(c) },
-    ],
-    payload: { reviewerName: auth.name, rating: parsed.data.rating },
-    link: `/providers/${id}`,
-    origin: getOrigin(c),
-  });
+  // The owner's userId/contactEmail rode in on the summary fetched above. Only
+  // a first publish notifies (#L6); an edit updates the review silently.
+  if (!existingReview) {
+    await emitNotification({
+      type: "NEW_REVIEW",
+      recipients: [
+        { userId: provider.userId, email: provider.contactEmail, locale: getLocale(c) },
+      ],
+      payload: { reviewerName: auth.name, rating: parsed.data.rating },
+      link: `/providers/${id}`,
+      origin: getOrigin(c),
+    });
+  }
 
   return c.json({ ok: true });
 });
@@ -446,10 +457,16 @@ reviews.delete("/api/admin/reviews/:id", async (c) => {
     where: { id },
     select: { providerId: true },
   });
-  await db.review.updateMany({
+  // updateMany returns count 0 when the id doesn't exist; report that as a 404
+  // rather than a misleading 200, and don't write a fabricated audit entry for
+  // a review that was never touched (matches provider admin.ts photo restore).
+  const { count } = await db.review.updateMany({
     where: { id },
     data: { deletedAt: new Date() },
   });
+  if (count === 0) {
+    return c.json({ error: "Review not found" }, 404);
+  }
   await logAudit(c, "delete-review", "REVIEW", id);
   // A soft-deleted review leaves the aggregates — push the recount (search
   // RFC §4.2, fire-and-forget).
@@ -467,7 +484,15 @@ reviews.patch("/api/admin/reviews/:id/restore", async (c) => {
     where: { id },
     select: { providerId: true },
   });
-  await db.review.updateMany({ where: { id }, data: { deletedAt: null } });
+  // 404 (not a misleading 200) + no fabricated audit entry when the id doesn't
+  // exist — matches the delete route above and provider admin.ts photo restore.
+  const { count } = await db.review.updateMany({
+    where: { id },
+    data: { deletedAt: null },
+  });
+  if (count === 0) {
+    return c.json({ error: "Review not found" }, 404);
+  }
   await logAudit(c, "restore-review", "REVIEW", id);
   // Restoring re-enters the aggregates — push the recount (search RFC §4.2).
   if (review) void pushRatingsToSearchIndex([review.providerId]);

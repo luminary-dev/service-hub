@@ -45,10 +45,10 @@ using the shared `s2s()` helper (one bounded retry on idempotent GETs).
 
 | Method + path | Purpose |
 |---|---|
-| `GET /internal/ratings?providerIds=a,b,c` | Batch rating summaries → `{ ratings }`. Each entry: `{ rating, count }` (authoritative for ranking) plus the additive per-dimension averages and 5→1 star `distribution` (#528) — existing consumers keep reading `rating`/`count`. Also the ratings feed for search-service's reindex sweep. |
+| `GET /internal/ratings?providerIds=a,b,c` | Batch rating summaries → `{ ratings }`. Each entry: `{ rating, count }` (authoritative for ranking) plus the additive per-dimension averages and 5→1 star `distribution` (#528) — existing consumers keep reading `rating`/`count`. Also the ratings feed for search-service's reindex sweep. `providerIds` is capped at 500 (`MAX_BATCH_IDS`), matching the peer batch endpoints. |
 | `GET /internal/by-provider/:id?take&cursor&includeDeleted` | Reviews for one provider (cursor-paginated) → `{ reviews, nextCursor }`. Each review carries the provider's reply as `response` (#395), threaded through provider-service's `/full` composition unchanged. |
 | `GET /internal/count` | Total (non-deleted) review count. |
-| `POST /internal/users/:id/erase` | Account-deletion fan-out: delete the user's reviews + photo files. Idempotent. |
+| `POST /internal/users/:id/erase` | Account-deletion fan-out: delete the user's authored reviews + photo files. If the user owned a provider profile (resolved over S2S from provider-service), also hard-delete the reviews *received* by that profile — which cascades the public `ReviewResponse` replies the user authored (#645) and those reviews' photo rows — since the profile itself is being deleted. Idempotent; degrades to authored-only cleanup if provider-service is unreachable (a retried erase finishes the job). |
 | `POST /internal/maintenance/sweep-orphans` | Remove orphaned review-photo files (ops tooling). |
 
 ### search-service
