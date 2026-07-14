@@ -30,9 +30,10 @@ const CATEGORIES = [
   ...c,
   active: true,
   sortOrder: (i + 1) * 10,
-  // Default cover image (#436) — an AI trade photo per slug. Admins can replace
-  // it via the category manager; a reseed restores this default (dev only).
-  imageUrl: `/images/workers/${c.slug}-1.jpg`,
+  // Default cover image (#436) — a dedicated per-trade cover photo per slug
+  // (public/images/categories/<slug>.jpg). Admins can replace it via the
+  // category manager; a reseed restores this default (dev only).
+  imageUrl: `/images/categories/${c.slug}.jpg`,
 }));
 
 // Deterministic IDs so cross-service references line up with the
