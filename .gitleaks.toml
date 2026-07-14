@@ -1,0 +1,36 @@
+# gitleaks configuration (#669).
+#
+# Extends gitleaks' bundled default ruleset (all upstream provider-token rules
+# stay active) and layers a SMALL allowlist for this repo's known, intentional
+# dummy fixtures — so a real leak stays loud while the committed placeholders
+# don't drown the signal. The repo is public and the deploy renders the server
+# `.env` from GitHub secrets (never committed), so nothing here weakens coverage
+# of real credentials.
+title = "service-hub gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known non-secret placeholders committed on purpose."
+
+# Files that only ever hold placeholders or empty keys:
+#   - `.env.example` / `.env.prod.example` — env templates (prod values are
+#     blank; dev uses obvious `dev-only-secret`-style stand-ins).
+#   - `docker-compose*.yml` — the dev compose wires the same dummy defaults
+#     (`${AUTH_SECRET:-dev-only-secret}`); the rendered prod `.env` is
+#     gitignored and never lives in the tree.
+paths = [
+  '''\.env\.example$''',
+  '''\.env\.prod\.example$''',
+  '''(^|/)docker-compose([.-].*)?\.yml$''',
+]
+
+# Dev-only placeholder values wired into compose defaults, templates, CI, and
+# the demo seed. None of these are real credentials.
+regexes = [
+  '''dev-only-secret''',
+  '''dev-internal-secret''',
+  '''ci-dummy-secret''',
+  '''password123''',
+]

@@ -156,3 +156,32 @@ jobs:
       # visible in the run log without failing it. No `continue-on-error` here.
       - name: npm audit (production dependencies)
         run: npm audit --omit=dev --audit-level=critical
+
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      # fetch-depth: 0 so gitleaks can walk the full history on push events and
+      # the PR commit range on pull_request events (a shallow clone would only
+      # see the tip commit and miss a secret introduced earlier in the branch).
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0
+
+      # Secret scanning: Trivy/npm-audit cover dependency + OS CVEs but do NOT
+      # scan the tree for committed secrets. This repo is PUBLIC and the deploy
+      # renders the server `.env` from GitHub secrets, so a single leaked
+      # AUTH_SECRET / INTERNAL_API_SECRET / DB password is game-over (#669).
+      # gitleaks-action is free for public repos; GITLEAKS_LICENSE is only
+      # required to scan PRIVATE org repos, so no license secret is wired here.
+      # Config lives in `.gitleaks.toml` (extends the default ruleset + a small
+      # allowlist for the repo's intentional dummy fixtures). The action exits
+      # non-zero on a finding, so a leak GATES the build.
+      - name: Scan for committed secrets
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml

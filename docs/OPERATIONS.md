@@ -197,10 +197,21 @@ sh` install (a moving upstream branch).
   **Gates on CRITICAL** (#386): a critical production-dependency advisory fails
   the build. `npm audit` still prints the full report, so HIGH/moderate/low
   advisories stay visible in the log without blocking.
+- **gitleaks** (#669) — secret scanning over the git history (full history on
+  push, the PR commit range on `pull_request`). Trivy/`npm audit` cover
+  dependency + OS CVEs but never scan the tree for **committed secrets**, and
+  the repo is public, so a leaked `AUTH_SECRET` / `INTERNAL_API_SECRET` / DB
+  password would be game-over. **Gating**: the `gitleaks/gitleaks-action` (SHA-
+  pinned; free for public repos — `GITLEAKS_LICENSE` is only needed to scan
+  private org repos) exits non-zero on a finding and fails the build. Rules
+  come from gitleaks' default set plus a small repo allowlist in
+  [`.gitleaks.toml`](../.gitleaks.toml) for the intentional dummy fixtures
+  (`.env*.example`, the dev `docker-compose*.yml`, and placeholders like
+  `dev-only-secret` / `password123`).
 
 Like CI, this workflow uses the same `concurrency` group to cancel superseded
 runs, and each job has a `timeout-minutes` cap (10 for the `trivy` fs scan, 30
-for the `trivy-image` build+scan, 15 for `npm-audit`).
+for the `trivy-image` build+scan, 15 for `npm-audit`, 10 for `gitleaks`).
 
 All Trivy SARIF is uploaded via `github/codeql-action/upload-sarif` to the
 GitHub Security tab.
@@ -220,6 +231,25 @@ To adjust it, use the repo's **Settings → Code security → Code scanning →
 default setup** (e.g. upgrade the query suite from `default` to `extended`);
 there is no file to edit here. The `github/codeql-action/upload-sarif` used in
 `security-scan.yml` is unrelated — it is only the transport for Trivy's SARIF.
+
+## OpenSSF Scorecard (`scorecard.yml`)
+
+Where Trivy / `npm audit` / gitleaks scan the *contents* (deps, OS packages,
+secrets), **Scorecard** grades the repo's supply-chain *practices* and posts
+the results to the Security tab. It runs the standard published
+`ossf/scorecard-action` (#669, SHA-pinned) on a **weekly** schedule (Mondays
+07:20 UTC), on every **push to the default branch (`dev`)**, on
+`branch_protection_rule` changes, and via `workflow_dispatch` — **not on PRs**,
+because publishing needs the default-branch OIDC identity.
+
+It checks things the repo already does well and flags regressions: are actions
+**SHA-pinned** (cf. #573/#386), is **branch protection** on, is **Dependabot**
+configured, are workflow **token permissions** least-privilege, etc. Top-level
+`permissions: read-all`; the analysis job elevates only `security-events: write`
+(SARIF upload) and `id-token: write` (`publish_results: true` posts the score to
+the public OpenSSF dashboard and enables a README badge later). 15-minute
+`timeout-minutes` cap and the shared `concurrency` cancel group. Results are
+**report-only** — a low sub-score never fails a build.
 
 ## actionlint (`actionlint.yml`)
 
