@@ -96,7 +96,7 @@ jobs:
 
       - name: Scan image (base-image / OS packages)
         # vuln-type os: npm packages are already covered by the lockfile scan
-        # above; this job exists for the node:26-alpine layer (musl, openssl,
+        # above; this job exists for the node:24-alpine layer (musl, openssl,
         # busybox, ...). Gating (#238): fail the build on HIGH/CRITICAL OS-package
         # vulns that have a fix available (ignore-unfixed keeps the gate
         # actionable — no failing on advisories we can't remediate). The SARIF is
@@ -148,7 +148,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
-          node-version: 22
+          node-version: 24
       # Gates on CRITICAL (#386): `--audit-level=critical` only sets a non-zero
       # exit code when a CRITICAL advisory is present, so a critical production
       # dependency vuln now blocks the build. `npm audit` still prints the full

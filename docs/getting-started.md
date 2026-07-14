@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Node 22+ (services and web target Node 22; newer works)
+- Node 24 (services, web, and the production images all target Node 24 LTS; see `.nvmrc`)
 - Docker (Postgres, and optionally the full containerized stack)
 
 ## First run

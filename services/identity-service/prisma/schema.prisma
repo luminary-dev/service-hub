@@ -118,6 +118,12 @@ model AdminAuditLog {
   targetType String
   targetId   String
   reason     String?
+  // When the action was taken from an admin impersonation session (#634),
+  // `adminId` is the impersonated *target* (the effective session identity),
+  // so the row alone would misattribute the write to the target. This nullable
+  // column records the REAL admin driving the impersonation (from the
+  // gateway-stamped x-impersonated-by header); null for ordinary actions.
+  impersonatedBy String?
   createdAt  DateTime @default(now())
 
   @@index([adminId])

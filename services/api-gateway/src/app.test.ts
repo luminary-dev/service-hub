@@ -441,6 +441,82 @@ describe("admin impersonation (#234)", () => {
   });
 });
 
+describe("impersonation write-block (#634)", () => {
+  beforeEach(() => {
+    clearSessionVersionCache();
+  });
+
+  async function impersonationCookie() {
+    const token = await signImpersonation({
+      userId: "target-1",
+      role: "CUSTOMER",
+      name: "Target User",
+      sv: 0,
+      impersonatedBy: "admin-1",
+    });
+    return `impersonation_session=${token}`;
+  }
+
+  // The proxied request carries the full route path in its URL; the S2S
+  // session-version lookups the impersonation check makes hit
+  // /internal/users/.../session-version instead, so keying on the path
+  // distinguishes "reached the upstream route" from "verified the session".
+  const reachedUpstream = (path: string) =>
+    upstreamRequests.some((r) => r.url.includes(path));
+
+  it.each([
+    ["/api/auth/delete-account", "198.51.100.10"],
+    ["/api/auth/leave-provider", "198.51.100.11"],
+    ["/api/account/email/change", "198.51.100.12"],
+    ["/api/account/email/confirm", "198.51.100.13"],
+  ])("blocks POST %s while impersonating with a 403 and no proxy", async (path, ip) => {
+    const res = await app.request(path, {
+      method: "POST",
+      headers: {
+        cookie: await impersonationCookie(),
+        "sec-fetch-site": "same-origin",
+        "x-forwarded-for": ip,
+      },
+    });
+    expect(res.status).toBe(403);
+    expect(reachedUpstream(path)).toBe(false);
+  });
+
+  it("still proxies a NON-sensitive POST while impersonating (e.g. logout)", async () => {
+    const res = await app.request("/api/auth/logout", {
+      method: "POST",
+      headers: {
+        cookie: await impersonationCookie(),
+        "sec-fetch-site": "same-origin",
+        "x-forwarded-for": "198.51.100.14",
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(reachedUpstream("/api/auth/logout")).toBe(true);
+    expect(upstreamRequests.at(-1)!.headers.get("x-impersonated-by")).toBe("admin-1");
+  });
+
+  it("allows the sensitive POST for a normal (non-impersonated) session", async () => {
+    const session = await signSession({
+      userId: "u-1",
+      role: "CUSTOMER",
+      name: "Real User",
+      sv: 0,
+    });
+    const res = await app.request("/api/auth/delete-account", {
+      method: "POST",
+      headers: {
+        cookie: `sh_session=${session}`,
+        "sec-fetch-site": "same-origin",
+        "x-forwarded-for": "198.51.100.15",
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(reachedUpstream("/api/auth/delete-account")).toBe(true);
+    expect(upstreamRequests.at(-1)!.headers.get("x-impersonated-by")).toBeNull();
+  });
+});
+
 describe("body limit", () => {
   it("rejects oversized request bodies with 413 before proxying", async () => {
     const big = "a".repeat(6 * 1024 * 1024 + 1024); // just over the 6MB cap

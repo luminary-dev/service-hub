@@ -126,7 +126,7 @@ Runs on push and PR to `dev` and `prod`. Jobs:
 
 - **Fast per-package matrix** — `web` runs `typecheck / lint / test / build`;
   each of the ten services runs `typecheck / test / build`. `fail-fast:
-  false`, Node 22, npm cache.
+  false`, Node 24, npm cache.
 - **`coverage`** (#262) — per package (web + 10 services), runs `npm run coverage`
   (vitest v8 provider) and uploads the HTML/JSON report as an artifact plus a
   step-summary table. Thresholds are a **deliberately low ratchet floor
@@ -337,9 +337,13 @@ with `sudo ./scripts/install-backup-cron.sh`) runs `scripts/backup-cron.sh` —
 logical `pg_dump -Fc` per database (`scripts/backup-dbs.sh`; 14 local / 30
 offsite snapshot retention), an offsite copy to a dedicated R2 bucket, a
 restore-verification into a scratch Postgres (`scripts/verify-backup.sh`), and
-a success ping to a heartbeat monitor (a missed ping alerts). Upload volumes
-are tarred alongside — or Cloudflare R2 when the `R2_*` vars are set (durable
-managed storage, no self-managed backup needed). Restore with
+a success ping to a heartbeat monitor (a missed ping alerts). Uploaded images
+are covered too (#663): in **local-disk media mode** the `provider_uploads` /
+`review_uploads` volumes are tarred into the same snapshot and shipped/pruned
+offsite with the dumps; when the media **`R2_*`** vars are set the images live
+in Cloudflare R2 (durable managed storage) and the tar is skipped. The script
+reads the live mode from the running media-service container and logs which
+applies; a scheduled run that finds **neither** fails loudly. Restore with
 `scripts/restore-db.sh`. Redis is intentionally **not** backed up: rate-limit
 windows are ephemeral by design, and the session-revocation list (#374) is a
 mirror of identity_db's `sessionVersion` (which is backed up) — but it *is*

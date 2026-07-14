@@ -14,6 +14,12 @@ const { db } = vi.hoisted(() => ({
       create: vi.fn(),
       deleteMany: vi.fn(),
     },
+    // The dup-check + cap + insert run inside an interactive transaction
+    // guarded by a per-user advisory lock (#647 L5). tx === db here, so the
+    // route's tx.* calls resolve to the same mocked methods; $executeRaw is
+    // the advisory-lock acquisition.
+    $executeRaw: vi.fn(async () => 0),
+    $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(db)),
   },
 }));
 
@@ -177,6 +183,19 @@ describe("POST /api/saved-searches", () => {
     const res = await req("POST", "/api/saved-searches", valid);
     expect(res.status).toBe(429);
     expect(db.savedSearch.create).not.toHaveBeenCalled();
+  });
+
+  it("runs the dup-check + cap + insert under a per-user advisory lock (#647 L5)", async () => {
+    db.savedSearch.findFirst.mockResolvedValue(null);
+    db.savedSearch.count.mockResolvedValue(0);
+    db.savedSearch.create.mockResolvedValue({ id: "s1", ...valid, createdAt: new Date() });
+
+    const res = await req("POST", "/api/saved-searches", valid);
+    expect(res.status).toBe(201);
+    // The whole check-then-act is wrapped in one transaction, and the advisory
+    // lock is acquired inside it so concurrent submits serialize.
+    expect(db.$transaction).toHaveBeenCalledTimes(1);
+    expect(db.$executeRaw).toHaveBeenCalledTimes(1);
   });
 
   it("rejects invalid bodies", async () => {
