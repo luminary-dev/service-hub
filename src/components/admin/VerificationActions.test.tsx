@@ -13,10 +13,10 @@ vi.mock("next/navigation", () => ({
 const t = dict.en;
 const fetchMock = vi.fn();
 
-function renderActions() {
+function renderActions(role = "ADMIN") {
   return render(
     <ToastProvider>
-      <VerificationActions providerId="prov_1" />
+      <VerificationActions providerId="prov_1" role={role} />
     </ToastProvider>
   );
 }
@@ -76,5 +76,33 @@ describe("VerificationActions", () => {
     const toast = await screen.findByRole("alert");
     expect(toast.textContent).toContain(t.toast.adminVerificationApproveError);
     expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("keeps both actions enabled for ADMIN", () => {
+    renderActions("ADMIN");
+    expect(
+      (screen.getByRole("button", { name: t.admin.approve }) as HTMLButtonElement)
+        .disabled
+    ).toBe(false);
+    expect(
+      (screen.getByRole("button", { name: t.admin.reject }) as HTMLButtonElement)
+        .disabled
+    ).toBe(false);
+  });
+
+  it("disables both actions for SUPPORT with an explanatory title", () => {
+    renderActions("SUPPORT");
+    const approve = screen.getByRole("button", {
+      name: t.admin.approve,
+    }) as HTMLButtonElement;
+    const reject = screen.getByRole("button", {
+      name: t.admin.reject,
+    }) as HTMLButtonElement;
+    expect(approve.disabled).toBe(true);
+    expect(reject.disabled).toBe(true);
+    expect(approve.title).toBe(t.admin.insufficientPermissions);
+    expect(reject.title).toBe(t.admin.insufficientPermissions);
+    fireEvent.click(approve);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
