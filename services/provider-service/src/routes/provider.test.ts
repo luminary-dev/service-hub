@@ -20,6 +20,14 @@ const { dbMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("../db", () => ({ db: dbMock }));
+// Search-index pushes (search RFC) are fired (not awaited) from these routes.
+vi.mock("../lib/search-index", () => ({
+  buildIndexDocument: vi.fn(() => ({})),
+  INDEX_SERVICE_SELECT: { title: true, price: true },
+  syncProviderIndex: vi.fn(() => Promise.resolve()),
+  syncProviderIndexByUser: vi.fn(() => Promise.resolve()),
+  deleteProviderIndex: vi.fn(() => Promise.resolve()),
+}));
 vi.mock("../lib/clients", () => ({
   fetchEmailVerified: vi.fn().mockResolvedValue("2026-01-01"),
   fetchOpenJobsCount: vi.fn().mockResolvedValue(0),

@@ -1,0 +1,81 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Derived, rebuildable search index over public provider card data (search &
+// discovery RFC, docs/rfcs/search-discovery-service.md). provider-service owns
+// the source of truth and pushes full documents S2S on every indexed write;
+// review-service pushes the denormalized rating aggregates; the reindex sweep
+// (POST /internal/search/reindex) self-heals drift. One row per PUBLICLY
+// VISIBLE provider — suspended/erased providers are deleted from the index,
+// never flagged, so no query can leak a hidden profile. No contact PII is
+// stored here at all (no phone/email columns).
+//
+// The migration (hand-written, 0_init) adds what this DSL cannot express:
+// the PostGIS `location geography(Point,4326)` column is GENERATED from
+// latitude/longitude, and the `tsv_en`/`tsv_si` tsvector columns are GENERATED
+// from the text fields ('english' config for EN with stemming; 'simple' for
+// Sinhala — Postgres has no Sinhala stemmer), plus the GIN/GiST indexes.
+// Unsupported() fields are ignored by the Prisma client's reads and writes,
+// which is exactly right for generated columns.
+model ProviderIndex {
+  providerId  String @id
+  userId      String
+  contactName String
+  category    String
+  headline    String
+  bio         String
+  headlineSi  String?
+  bioSi       String?
+  city        String
+  district    String
+  // Full served set (#502) — always contains the primary district. District
+  // filtering is a membership test on this array (GIN-indexed).
+  serviceDistricts String[] @default([])
+  // Flattened service titles, for the free-text OR arm (browse matches any
+  // single title, so queries unnest — never match across title boundaries).
+  serviceTitles String[] @default([])
+  // Every service price (#371 whole LKR rupees as DECIMAL). The priceMin/
+  // priceMax filter matches when ANY price falls inside the range — min/max
+  // aggregates alone cannot express that (a provider with services at 10 and
+  // 100 must NOT match [40, 60]), so the full list is kept.
+  servicePrices Decimal[] @db.Decimal(12, 2)
+  // Cheapest service — today's `fromPrice`, used by the price sort.
+  minPrice   Decimal? @db.Decimal(12, 2)
+  available  Boolean  @default(true)
+  awayUntil  DateTime?
+  verificationStatus String @default("NONE")
+  experience Int      @default(0)
+  // Optional map pin (#48), mirrored from provider-service. Both set or both
+  // null; the `location` geography column below is generated from the pair.
+  latitude  Float?
+  longitude Float?
+  // Rating aggregates, denormalized from review-service so rating filter/sort
+  // finally run DB-side. ratingAvg is null while ratingCount is 0 (matches
+  // browse's "no reviews" → null rating semantics).
+  ratingAvg   Float?
+  ratingCount Int   @default(0)
+  // Source-row timestamps (provider-service's), NOT this row's: createdAt
+  // drives the newest sort + recency boost; updatedAt is the last-write-wins
+  // guard for the idempotent full-document upsert.
+  createdAt DateTime
+  updatedAt DateTime
+
+  // GENERATED columns (see the 0_init migration): the PostGIS point for
+  // ST_DWithin/KNN and the per-language tsvectors. Unsupported = excluded from
+  // every Prisma read/write; the query plane reaches them via raw SQL.
+  location Unsupported("geography(Point, 4326)")?
+  tsvEn    Unsupported("tsvector")?              @map("tsv_en")
+  tsvSi    Unsupported("tsvector")?              @map("tsv_si")
+
+  // Straight filters.
+  @@index([category, district])
+  @@index([district])
+  @@index([serviceDistricts(ops: ArrayOps)], type: Gin)
+  @@index([createdAt])
+  @@index([ratingAvg])
+}

@@ -24,6 +24,11 @@ const { upsert, createMany, reportFindFirst, reportCreate, reportUpdate } = vi.h
     reportUpdate: vi.fn(async (_args: unknown) => ({ id: "rep_1" })),
   })
 );
+// Search-index rating pushes (search RFC) are fired (not awaited) from the
+// review write/moderation paths.
+vi.mock("../lib/search-index", () => ({
+  pushRatingsToSearchIndex: vi.fn(() => Promise.resolve()),
+}));
 vi.mock("../db", () => ({
   db: {
     $transaction: (fn: (tx: unknown) => unknown) =>

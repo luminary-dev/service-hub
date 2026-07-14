@@ -28,6 +28,7 @@ import {
 } from "../lib/clients";
 import { getCurrentProvider } from "../lib/provider-auth";
 import { isSupportOrAdmin, s2s } from "../lib/http";
+import { syncProviderIndex } from "../lib/search-index";
 import { moneyToNumber } from "../lib/money";
 import { normalizePagination } from "../lib/admin-list";
 import { unreadCounts } from "./messages";
@@ -243,6 +244,10 @@ providerDashboardRoutes.put("/api/provider/profile", async (c) => {
   // denormalized copy is the write we own.
   await syncIdentityProfile(provider.userId, { name, phone });
 
+  // Search-index push (search RFC §4.2): the profile edit touches most indexed
+  // fields (pitch/districts/city/away mode/pin). Fire-and-forget, best-effort.
+  void syncProviderIndex(provider.id);
+
   // Content filter (#375): AFTER the write on purpose — the profile stays
   // visible and a filter hit only queues a SYSTEM report for admin triage.
   await moderateContent("PROVIDER", provider.id, {
@@ -291,6 +296,9 @@ providerDashboardRoutes.post("/api/provider/services", async (c) => {
     description: parsed.data.description,
   });
 
+  // Titles and prices are indexed (search RFC §4.2) — best-effort push.
+  void syncProviderIndex(provider.id);
+
   // price comes back from Prisma as a Decimal (#371) — convert so the JSON
   // payload keeps carrying a number.
   return c.json({ service: { ...service, price: moneyToNumber(service.price) } });
@@ -330,6 +338,9 @@ providerDashboardRoutes.put("/api/provider/services/:id", async (c) => {
     description: parsed.data.description,
   });
 
+  // Titles and prices are indexed (search RFC §4.2) — best-effort push.
+  void syncProviderIndex(provider.id);
+
   // Same Decimal → number edge conversion as the create path (#371).
   return c.json({ service: { ...updated, price: moneyToNumber(updated.price) } });
 });
@@ -347,6 +358,10 @@ providerDashboardRoutes.delete("/api/provider/services/:id", async (c) => {
   }
 
   await db.service.delete({ where: { id } });
+
+  // Titles and prices are indexed (search RFC §4.2) — best-effort push.
+  void syncProviderIndex(provider.id);
+
   return c.json({ ok: true });
 });
 
@@ -612,6 +627,10 @@ providerDashboardRoutes.post("/api/provider/verification", async (c) => {
       data: { verificationStatus: "PENDING", verifiedAt: null },
     }),
   ]);
+
+  // verificationStatus is indexed (verified boost in the recommended sort) —
+  // best-effort push (search RFC §4.2).
+  void syncProviderIndex(provider.id);
 
   return c.json({ status: "PENDING" });
 });

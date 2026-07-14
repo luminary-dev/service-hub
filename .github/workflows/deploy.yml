@@ -40,6 +40,7 @@ jobs:
           - notification-service
           - media-service
           - chat-service
+          - search-service
           - trust-safety-service
           - api-gateway
     steps:
@@ -66,7 +67,7 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
 
-  # Move every :prod tag in one post-matrix job that only runs when ALL ten
+  # Move every :prod tag in one post-matrix job that only runs when ALL eleven
   # builds succeeded (#573). Tagging :prod inside the matrix re-pointed it
   # per-image as legs finished, so one failed leg (e.g. a media/sharp flake,
   # #351) left :prod as a mixed-version set that a manual `IMAGE_TAG=prod`
@@ -92,7 +93,8 @@ jobs:
         run: |
           for image in web identity-service provider-service review-service \
                        job-service notification-service media-service \
-                       chat-service trust-safety-service api-gateway; do
+                       chat-service search-service trust-safety-service \
+                       api-gateway; do
             docker buildx imagetools create \
               --tag "ghcr.io/luminary-dev/service-hub-$image:prod" \
               "ghcr.io/luminary-dev/service-hub-$image:$GITHUB_SHA"
@@ -138,6 +140,7 @@ jobs:
           REVIEW_DB_PASSWORD: ${{ secrets.REVIEW_DB_PASSWORD }}
           JOB_DB_PASSWORD: ${{ secrets.JOB_DB_PASSWORD }}
           NOTIFICATION_DB_PASSWORD: ${{ secrets.NOTIFICATION_DB_PASSWORD }}
+          SEARCH_DB_PASSWORD: ${{ secrets.SEARCH_DB_PASSWORD }}
           TRUST_SAFETY_DB_PASSWORD: ${{ secrets.TRUST_SAFETY_DB_PASSWORD }}
           REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
           WEB_ORIGIN: ${{ secrets.WEB_ORIGIN }}
@@ -181,8 +184,8 @@ jobs:
           {
             for k in AUTH_SECRET INTERNAL_API_SECRET POSTGRES_PASSWORD \
                      IDENTITY_DB_PASSWORD PROVIDER_DB_PASSWORD REVIEW_DB_PASSWORD \
-                     JOB_DB_PASSWORD NOTIFICATION_DB_PASSWORD TRUST_SAFETY_DB_PASSWORD \
-                     REDIS_PASSWORD WEB_ORIGIN \
+                     JOB_DB_PASSWORD NOTIFICATION_DB_PASSWORD SEARCH_DB_PASSWORD \
+                     TRUST_SAFETY_DB_PASSWORD REDIS_PASSWORD WEB_ORIGIN \
                      DOMAIN ACME_EMAIL ANTHROPIC_API_KEY RESEND_API_KEY EMAIL_FROM \
                      R2_ENDPOINT R2_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY \
                      GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET \

@@ -46,6 +46,16 @@ create_service_db provider provider_db "${PROVIDER_DB_PASSWORD:-}"
 create_service_db review review_db "${REVIEW_DB_PASSWORD:-}"
 create_service_db job job_db "${JOB_DB_PASSWORD:-}"
 create_service_db notification notification_db "${NOTIFICATION_DB_PASSWORD:-}"
+create_service_db search search_db "${SEARCH_DB_PASSWORD:-}"
 create_service_db trust_safety trust_safety_db "${TRUST_SAFETY_DB_PASSWORD:-}"
 
-echo "Per-service databases and roles created (identity, provider, review, job, notification, trust_safety)."
+# PostGIS for the search index (search & discovery RFC). NOT a trusted
+# extension — only a superuser can create it; the `search` role merely owns
+# its database — so it is bootstrapped here, and search-service's first
+# migration repeats CREATE EXTENSION IF NOT EXISTS as a no-op. Requires the
+# postgis/postgis compose image. An EXISTING data directory never re-runs
+# this file: run deploy/migrate-db-roles.sh once instead.
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname search_db \
+	-c "CREATE EXTENSION IF NOT EXISTS postgis;"
+
+echo "Per-service databases and roles created (identity, provider, review, job, notification, search, trust_safety)."
