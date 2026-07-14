@@ -47,10 +47,10 @@ write bucket and vice versa.
 each verifies the current password and is therefore a guessing oracle for a
 hijacked session. The five abuse-report endpoints (#50, #376) share a single
 `report` bucket keyed per IP, since (message reports excepted) anonymous
-submissions are allowed and the IP budget is the main spam control. The phone-number reveal (`contactReveal`, #64) sits
-on its own per-IP budget: provider phone/WhatsApp numbers are withheld from the
+submissions are allowed and the IP budget is the main spam control. The contact reveal (`contactReveal`, #64/#655) sits
+on its own per-IP budget: provider phone/WhatsApp numbers **and the contact email** are withheld from the
 public directory payloads and fetched only on an explicit tap, so this limit is
-the main defence against a crawler harvesting the whole directory's numbers.
+the main defence against a crawler harvesting the whole directory's contact details.
 Change-email (`resend`, #505) reuses the email-sending budget because it fires a
 confirmation email to an attacker-*chosen* address on every call, so an
 unthrottled endpoint is a mail-bomb vector. The four image-upload endpoints
@@ -84,6 +84,28 @@ each post fans out to up to 200 provider inboxes, and the per-IP rule alone is
 rotatable — so job-service requires a verified email (403 otherwise) and allows
 at most **10 posts per account per rolling 24 h** (429 beyond that), checked
 against the jobs table before the write.
+
+Several other endpoints carry a **per-user resource cap** to bound how much a
+single account can accumulate (independent of request rate):
+
+| Resource | Cap per user | Over-limit |
+| --- | --- | --- |
+| Saved searches (identity, #516) | 20 | 429 |
+| Favorites (identity, #647) | 100 (new favorites only; re-favoriting is idempotent) | 429 |
+| Job posts / rolling 24 h (job, #556) | 10 | 429 |
+| Review photos / review (review) | 3 | 400 |
+| Work-gallery photos / provider (provider, #647) | 30 (soft-deleted don't count) | 400 |
+
+These are all **check-then-act** ("count the caller's rows, then insert"), which
+a concurrent double-submit could otherwise race into a small overshoot. Each is
+made race-safe (#647 L5): the count/dup check and the insert run in one
+interactive transaction that first takes a **transaction-scoped Postgres
+advisory lock** keyed by `(feature, userId)` (`pg_advisory_xact_lock`, see each
+service's `src/lib/locks.ts`), so concurrent submits for the same user
+serialize — a plain transaction alone wouldn't (under READ COMMITTED neither
+sees the other's uncommitted rows). For the photo caps, the batch is validated
+and stored first; if the in-transaction re-check finds the cap raced, the write
+rolls back and the just-stored files are cleaned up.
 
 Over-limit requests get `429` with a JSON body
 (`{ "error": "Too many requests. Please slow down and try again shortly." }`)
@@ -200,13 +222,33 @@ bot filter — deliberately **not** a third-party CAPTCHA (see below).
   sent**. An empty/absent field is a normal submission (other clients, e.g. the
   chat agent, simply omit it). The client control only carries the value; the
   gate lives in the service.
-- **Why honeypot over CAPTCHA for v0.1.** A CAPTCHA (e.g. Cloudflare Turnstile)
-  needs an external provider, a site key, and a server-side secret — a separate
-  infrastructure/privacy decision, and the repo is public with runtime secrets
-  kept out of the tree. The honeypot is zero-dependency, zero-config, and has no
-  false positives for real users, so it is the right first line for v0.1.
-  Turnstile remains a future option if abuse escalates, layered on top of (not
-  replacing) the honeypot and the per-IP limit.
+- **Why honeypot over CAPTCHA for the inquiry form.** A CAPTCHA (e.g. Cloudflare
+  Turnstile) needs an external provider, a site key, and a server-side secret — a
+  separate infrastructure/privacy decision, and the repo is public with runtime
+  secrets kept out of the tree. For the anonymous inquiry form the honeypot is
+  zero-dependency, zero-config, and has no false positives for real users, so it
+  stays the first line there. Turnstile is layered **on top of** (not replacing)
+  the honeypot and the per-IP limit where it earns its keep.
+
+## Bot protection on registration (Cloudflare Turnstile, #633)
+
+Registration auto-logs-in a new signup, so its response still differs from the
+one a taken email gets — a residual enumeration oracle the per-IP `authSignup`
+limit (10/hr) only *slows*. `POST /api/auth/register` is therefore gated behind
+**Cloudflare Turnstile**, an actual bot barrier the throttle can't be.
+
+- **Server-side + authoritative.** When `TURNSTILE_SECRET_KEY` is set,
+  `identity-service` verifies the widget token via Cloudflare's siteverify
+  (`identity-service/src/lib/turnstile.ts`) before any account work — a
+  missing/invalid token is a `400`, a siteverify outage a retryable `503` (fail
+  closed). The web signup forms render the widget only when
+  `NEXT_PUBLIC_TURNSTILE_SITE_KEY` is set and include the token in the request.
+- **Optional and graceful.** With the keys unset (dev/local, or a deploy before
+  keys are provisioned) verification is skipped and registration behaves exactly
+  as before — so it ships safely ahead of key provisioning. See
+  [`../SECURITY.md`](../SECURITY.md) for the env vars and [`AUTHZ.md`](AUTHZ.md)
+  for the enumeration model. Login/forgot-password (already uniform-response)
+  could get the same widget later if abuse warrants it.
 - **Timing trap — deliberately skipped.** Rejecting implausibly fast
   submissions was considered but not implemented: the only stateless signal is a
   client-supplied render timestamp, which is both trivially forgeable and prone

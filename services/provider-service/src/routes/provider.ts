@@ -28,6 +28,7 @@ import {
 } from "../lib/clients";
 import { getCurrentProvider } from "../lib/provider-auth";
 import { isSupportOrAdmin, s2s } from "../lib/http";
+import { advisoryXactLock } from "../lib/locks";
 import { syncProviderIndex } from "../lib/search-index";
 import { moneyToNumber } from "../lib/money";
 import { normalizePagination } from "../lib/admin-list";
@@ -45,6 +46,16 @@ export const providerDashboardRoutes = new Hono();
 
 const MEDIA_SERVICE_URL =
   process.env.MEDIA_SERVICE_URL ?? "http://localhost:4006";
+
+// Per-provider work-gallery cap (#647 L5): the gallery was previously
+// unbounded, so one provider could accumulate work photos without limit. A
+// generous ceiling for a portfolio (soft-deleted/moderated photos don't count
+// against it), enforced race-safely like the review-photo cap.
+export const MAX_WORK_PHOTOS = 30;
+
+// Thrown inside the work-photo write transaction when the gallery is already at
+// MAX_WORK_PHOTOS; rolls back the insert and maps to a 400.
+class WorkPhotoCapError extends Error {}
 
 // The dashboard embeds only the first page of inquiries (#372) — deeper pages
 // come from the paginated GET /api/provider/inquiries. Counts ride along so
@@ -412,13 +423,39 @@ providerDashboardRoutes.post("/api/provider/photos", async (c) => {
     return c.json({ coverPhoto: url });
   }
 
-  const photo = await db.workPhoto.create({
-    data: {
-      providerId: provider.id,
-      url,
-      caption: typeof caption === "string" && caption ? caption : null,
-    },
-  });
+  // Per-provider gallery cap (#647 L5): count + insert run under a per-provider
+  // advisory lock so a concurrent double-submit can't race the count check past
+  // MAX_WORK_PHOTOS (a plain transaction wouldn't serialize the two — see
+  // lib/locks). Soft-deleted (moderated) photos don't count against the live
+  // gallery, matching the dashboard query.
+  let photo;
+  try {
+    photo = await db.$transaction(async (tx) => {
+      await advisoryXactLock(tx, "work-photos", provider.id);
+      const count = await tx.workPhoto.count({
+        where: { providerId: provider.id, deletedAt: null },
+      });
+      if (count >= MAX_WORK_PHOTOS) throw new WorkPhotoCapError();
+      return tx.workPhoto.create({
+        data: {
+          providerId: provider.id,
+          url,
+          caption: typeof caption === "string" && caption ? caption : null,
+        },
+      });
+    });
+  } catch (e) {
+    if (e instanceof WorkPhotoCapError) {
+      // The rolled-back transaction stored no row; remove the just-stored file
+      // so a rejected upload doesn't orphan media.
+      await removeStoredFile(url);
+      return c.json(
+        { error: `Your gallery can have at most ${MAX_WORK_PHOTOS} photos.` },
+        400
+      );
+    }
+    throw e;
+  }
 
   return c.json({ photo });
 });

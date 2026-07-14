@@ -173,6 +173,20 @@ token embeds the value it was minted with as the `sv` claim.
   locked-out cases. `forgot-password` always returns the same response
   regardless of whether the email exists, and sends the email fire-and-forget so
   timing doesn't leak existence.
+- **Registration bot protection (#633).** Registration auto-logs-in a new
+  signup, so its response (a `sh_session` cookie + user body) still differs from
+  the cookie-less `{ ok: true }` a taken email gets — a residual enumeration
+  oracle. Rather than dropping the auto-login, the endpoint is gated behind
+  **Cloudflare Turnstile** so the oracle can't be scripted on top of the per-IP
+  throttle. When `TURNSTILE_SECRET_KEY` is set, `identity-service` verifies a
+  widget token via Cloudflare's siteverify
+  (`identity-service/src/lib/turnstile.ts`) before any account work
+  (missing/invalid → `400`; siteverify outage → retryable `503`, fail closed).
+  The web signup forms render the widget only when
+  `NEXT_PUBLIC_TURNSTILE_SITE_KEY` is set. **Optional and graceful:** with the
+  keys unset (dev/local, or an unconfigured deploy) verification is skipped and
+  registration behaves exactly as before — so it can ship before the keys are
+  provisioned. See [`docs/AUTHZ.md`](docs/AUTHZ.md#roles) (enumeration section).
 - **Reset / verification tokens** (`lib/tokens.ts`): 32 random bytes; only the
   **SHA-256 hash** is stored, so a DB leak can't be replayed to reset accounts.
   Reset tokens are single-use (all of a user's tokens are consumed on use) with

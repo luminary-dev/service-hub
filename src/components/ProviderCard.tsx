@@ -22,7 +22,6 @@ import { localizedHref } from "@/lib/links";
 // and reviewCount come precomputed by review-service.
 export type ProviderCardDTO = {
   id: string;
-  userId: string;
   name: string;
   category: string;
   // Admin-managed per-trade cover (#436); the card's fallback when the provider

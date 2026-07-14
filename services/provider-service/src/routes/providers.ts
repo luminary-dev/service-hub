@@ -97,7 +97,6 @@ export function toCardDTO(
 ) {
   return {
     id: p.id,
-    userId: p.userId,
     name: p.contactName,
     category: p.category,
     categoryImageUrl: categoryImages?.get(p.category) ?? null,
@@ -140,26 +139,31 @@ export function toCardDTO(
   };
 }
 
-// Contact identity for the public payloads. Phone numbers are deliberately
-// omitted here (#64) — see contactFlags / the /:id/contact reveal below.
-function contactAsUser(p: { contactName: string; contactEmail: string }) {
-  return { name: p.contactName, email: p.contactEmail };
+// Contact identity for the public payloads. The email address is PII too
+// (#655) — it is deliberately omitted here alongside the phone numbers (#64);
+// see contactFlags / the /:id/contact reveal below. Only the display name,
+// which the directory already shows publicly, rides along.
+function contactAsUser(p: { contactName: string }) {
+  return { name: p.contactName };
 }
 
-// Phone numbers are PII and a prime scraping target (#64): never ship the raw
-// digits in the public directory payloads, or a crawler harvests every number
-// in one pass. Instead we surface booleans so the UI knows whether a "show
-// number" affordance applies; the web reveals the actual digits on an explicit
-// user action via POST /:id/contact (rate-limited at the gateway).
+// Phone numbers AND the contact email are PII and a prime scraping target
+// (#64/#655): never ship the raw digits or address in the public directory
+// payloads, or a crawler harvests every one in a single pass. Instead we
+// surface booleans so the UI knows whether a "show contact" affordance
+// applies; the web reveals the actual values on an explicit user action via
+// POST /:id/contact (rate-limited at the gateway).
 function contactFlags(p: {
   contactPhone: string | null;
   whatsapp: string | null;
   phone2: string | null;
+  contactEmail: string;
 }) {
   return {
     hasPhone: !!p.contactPhone,
     hasWhatsapp: !!p.whatsapp,
     hasPhone2: !!p.phone2,
+    hasEmail: !!p.contactEmail,
   };
 }
 
@@ -330,20 +334,35 @@ providersRoutes.get("/api/providers/:id", async (c) => {
   // Suspended profiles are hidden from the public (same gate as /:id/full and
   // the browse listing); without this, a suspended provider's full record —
   // including contact PII — leaks to anyone holding the id.
-  if (provider.suspended && getAuth(c)?.role !== "ADMIN") {
+  const auth = getAuth(c);
+  if (provider.suspended && auth?.role !== "ADMIN") {
     return c.json({ error: "Provider not found" }, 404);
   }
-  // Strip the raw phone columns (#64) — the public payload carries only
-  // booleans; the digits are fetched on demand via POST /:id/contact. Also drop
-  // rejectionReason (#506): it's admin-authored moderation text and must never
-  // reach a public caller (a REJECTED-but-live provider would otherwise leak
-  // it). It stays only on the owner-gated dashboard. The map pin (#48) is
-  // included only when set — unpinned profiles carry no coordinate keys.
-  const { contactPhone, whatsapp, phone2, rejectionReason, latitude, longitude, ...pub } =
-    provider;
+  // Strip the raw phone columns (#64) and the contact email (#655) — the public
+  // payload carries only booleans; the digits/address are fetched on demand via
+  // POST /:id/contact. Also drop rejectionReason (#506): it's admin-authored
+  // moderation text and must never reach a public caller (a REJECTED-but-live
+  // provider would otherwise leak it). It stays only on the owner-gated
+  // dashboard. userId is the owner's identity (#655): it never ships to
+  // anonymous or third-party callers — only re-added below when the caller is
+  // the owner (their own id) or an admin. The map pin (#48) is included only
+  // when set — unpinned profiles carry no coordinate keys.
+  const {
+    contactPhone,
+    whatsapp,
+    phone2,
+    rejectionReason,
+    contactEmail,
+    userId,
+    latitude,
+    longitude,
+    ...pub
+  } = provider;
+  const ownerOrAdmin = auth?.userId === userId || auth?.role === "ADMIN";
   return c.json({
     provider: {
       ...pub,
+      ...(ownerOrAdmin ? { userId } : {}),
       ...(latitude !== null && longitude !== null ? { latitude, longitude } : {}),
       // price is DECIMAL in the DB (#371) — a Decimal JSON-serializes as a
       // string, so convert back to the number this payload has always carried.
@@ -412,23 +431,30 @@ providersRoutes.get("/api/providers/:id/full", async (c) => {
       take: RESPONSE_TIME_SAMPLE,
     }),
   ]);
-  // Drop _count (internal), the raw phone columns (#64) — the profile page
-  // reveals the digits on demand via POST /:id/contact — and rejectionReason
-  // (#506), which is admin-only moderation text kept off every public payload.
-  // The map pin (#48) is included only when set.
+  // Drop _count (internal), the raw phone columns (#64) and the contact email
+  // (#655) — the profile page reveals the digits/address on demand via
+  // POST /:id/contact — and rejectionReason (#506), which is admin-only
+  // moderation text kept off every public payload. userId is the owner's
+  // identity (#655): kept off anonymous/third-party payloads, re-added below
+  // only for the owner (their own id, powering the profile's owner check) or an
+  // admin. The map pin (#48) is included only when set.
   const {
     _count,
     contactPhone,
     whatsapp,
     phone2,
     rejectionReason,
+    contactEmail,
+    userId,
     latitude,
     longitude,
     ...providerFields
   } = provider;
+  const ownerOrAdmin = auth?.userId === userId || auth?.role === "ADMIN";
   return c.json({
     provider: {
       ...providerFields,
+      ...(ownerOrAdmin ? { userId } : {}),
       ...(latitude !== null && longitude !== null ? { latitude, longitude } : {}),
       // price is DECIMAL in the DB (#371) — a Decimal JSON-serializes as a
       // string, so convert back to the number this payload has always carried.
@@ -478,17 +504,24 @@ providersRoutes.get("/api/providers/:id/card", async (c) => {
   });
 });
 
-// Phone-number reveal (#64). The public detail/profile payloads omit the raw
-// digits; the web fetches them here on an explicit "show number" action. It is
-// a POST (not a GET) so the gateway's rate limiter — which only guards writes —
-// throttles mass harvesting per IP without exposing every number in the
-// initial HTML. Suspended profiles stay hidden (same gate as the detail
-// routes); admins moderating a suspended profile still get through.
+// Contact reveal (#64/#655). The public detail/profile payloads omit the raw
+// phone digits AND the email address; the web fetches them here on an explicit
+// "show contact" action. It is a POST (not a GET) so the gateway's rate limiter
+// — which only guards writes — throttles mass harvesting per IP without
+// exposing every number/address in the initial HTML. Suspended profiles stay
+// hidden (same gate as the detail routes); admins moderating a suspended
+// profile still get through.
 providersRoutes.post("/api/providers/:id/contact", async (c) => {
   const id = c.req.param("id");
   const provider = await db.provider.findUnique({
     where: { id },
-    select: { contactPhone: true, whatsapp: true, phone2: true, suspended: true },
+    select: {
+      contactPhone: true,
+      whatsapp: true,
+      phone2: true,
+      contactEmail: true,
+      suspended: true,
+    },
   });
   if (!provider) {
     return c.json({ error: "Provider not found" }, 404);
@@ -500,6 +533,7 @@ providersRoutes.post("/api/providers/:id/contact", async (c) => {
     phone: provider.contactPhone,
     whatsapp: provider.whatsapp,
     phone2: provider.phone2,
+    email: provider.contactEmail,
   });
 });
 
