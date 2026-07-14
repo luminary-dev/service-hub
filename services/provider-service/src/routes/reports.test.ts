@@ -2,6 +2,7 @@
 // visitors can report), so the auth surface is about the signed-in dedupe
 // path — one OPEN report per (user, target), refreshed on re-report — versus
 // anonymous reports which always create a fresh row. Prisma is mocked.
+import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { dbMock } = vi.hoisted(() => ({
@@ -93,6 +94,23 @@ describe("POST /api/providers/:id/report", () => {
       data: { reason: "scam", details: "asked for money up front" },
     });
     expect(dbMock.report.create).not.toHaveBeenCalled();
+  });
+
+  it("treats the unique-constraint race (P2002) as idempotent success", async () => {
+    // Both concurrent requests miss the findFirst dedupe, both try to create;
+    // the partial unique index (#651) rejects the loser with P2002, which the
+    // handler swallows into the same 200 rather than a 500.
+    dbMock.provider.findUnique.mockResolvedValue({ id: "p1" });
+    dbMock.report.findFirst.mockResolvedValue(null);
+    dbMock.report.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("unique", {
+        code: "P2002",
+        clientVersion: "7",
+      })
+    );
+    const res = await req("/api/providers/p1/report", { body: valid, userId: "u1" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
   });
 });
 
