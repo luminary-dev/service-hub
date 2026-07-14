@@ -32,6 +32,7 @@ import {
 import { logAudit } from "../lib/audit";
 import { publishRevocation } from "../lib/revocation";
 import { removeStoredFile } from "../lib/storage";
+import { verifyTurnstile } from "../lib/turnstile";
 import {
   sendAccountExistsEmail,
   sendPasswordResetEmail,
@@ -53,6 +54,31 @@ authRoutes.post("/register", async (c) => {
     );
   }
   const data = parsed.data;
+
+  // Bot protection (#633): registration keeps auto-login, so the taken- vs
+  // fresh-email response still differs (that oracle is #373's residual). Rather
+  // than removing auto-login we gate the endpoint behind Cloudflare Turnstile so
+  // the oracle can't be scripted at scale. `turnstileToken` rides the JSON body
+  // (registerSchema strips it as an unknown key, so read it off the raw body).
+  // DEGRADES GRACEFULLY: when TURNSTILE_SECRET_KEY is unset (dev/local, or a
+  // deploy before keys are provisioned) verifyTurnstile returns ok and this is a
+  // no-op — behaving exactly as before. Runs first so a bot's request is
+  // rejected before any DB/S2S work.
+  const turnstileToken =
+    body && typeof (body as { turnstileToken?: unknown }).turnstileToken === "string"
+      ? (body as { turnstileToken: string }).turnstileToken
+      : undefined;
+  const bot = await verifyTurnstile(turnstileToken);
+  if (!bot.ok) {
+    // missing/invalid token → 400 (client can retry the challenge); a
+    // siteverify outage → 503 retryable (we fail closed but not as a 400).
+    return bot.reason === "unavailable"
+      ? c.json(
+          { error: "Could not verify you are human right now. Please try again." },
+          503
+        )
+      : c.json({ error: "Human verification failed. Please try again." }, 400);
+  }
 
   // Served set (#502): dedupe + pin the home district here (a friendly 400,
   // before the user row exists) rather than letting provider-service's own

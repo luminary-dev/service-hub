@@ -17,6 +17,7 @@ import { localizedHref } from "@/lib/links";
 import { useLocale, useT } from "@/components/I18nProvider";
 import { ConsentCheckbox } from "@/components/LegalConsent";
 import PasswordInput from "@/components/PasswordInput";
+import TurnstileWidget from "@/components/TurnstileWidget";
 import CategoryIcon from "@/components/CategoryIcon";
 import LocationPicker from "@/components/LocationPicker";
 import ServiceDistrictsPicker from "@/components/ServiceDistrictsPicker";
@@ -46,6 +47,7 @@ const emptyService: ServiceInput = {
 export default function ProviderRegisterForm({
   categories,
   authed = false,
+  turnstileSiteKey,
 }: {
   categories: CategoryOption[];
   // Authenticated "complete your provider profile" mode (#398): the user is
@@ -53,6 +55,10 @@ export default function ProviderRegisterForm({
   // skipped and we POST the profile to /api/auth/complete-provider instead of
   // creating a new account via /api/auth/register.
   authed?: boolean;
+  // Optional Turnstile site key (#633). Only used in guest (registration) mode
+  // — complete-provider (authed) creates no account, so it isn't the
+  // enumeration oracle this guards. Unset → no widget, submit as before.
+  turnstileSiteKey?: string;
 }) {
   // In authed mode the account step (0) is skipped entirely.
   const minStep = authed ? 1 : 0;
@@ -111,6 +117,11 @@ export default function ProviderRegisterForm({
   // neither.
   const [location, setLocation] = useState<GeoPoint | null>(null);
   const [agree, setAgree] = useState(false);
+  // Turnstile token (#633) + reset nonce. Only relevant in guest mode — the
+  // widget is rendered on the final step and gates the create submit.
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaReset, setCaptchaReset] = useState(0);
+  const showCaptcha = !authed && Boolean(turnstileSiteKey);
 
   function set(field: string, value: string) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -158,6 +169,9 @@ export default function ProviderRegisterForm({
           errs[`pr-service-${i}-price`] = r.errServicePrice(i + 1);
       });
       if (!agree) errs["pr-agree"] = t.legal.errAgree;
+      // Bot check (#633): only when the widget is present (guest + site key).
+      if (showCaptcha && !captchaToken)
+        errs["cf-turnstile"] = t.turnstile.required;
     }
     return errs;
   }
@@ -229,6 +243,8 @@ export default function ProviderRegisterForm({
                   name: form.name.trim(),
                   email: form.email.trim(),
                   password: form.password,
+                  // Dropped by JSON.stringify when empty → identity skips it.
+                  turnstileToken: captchaToken || undefined,
                   ...profile,
                 },
           ),
@@ -240,10 +256,13 @@ export default function ProviderRegisterForm({
       } else {
         const data = await res.json().catch(() => ({}));
         setError(data.error ?? r.createFailed);
+        // The single-use token is spent — fetch a fresh one for the retry.
+        if (showCaptcha) setCaptchaReset((n) => n + 1);
       }
     } catch {
       // Network failure — recover instead of wedging the submit button (#431).
       setError(r.createFailed);
+      if (showCaptcha) setCaptchaReset((n) => n + 1);
     } finally {
       setLoading(false);
     }
@@ -804,6 +823,30 @@ export default function ProviderRegisterForm({
               onChange={setAgree}
               {...errorProps("pr-agree")}
             />
+            {/* Bot protection (#633) — guest registration only. */}
+            {showCaptcha && (
+              <div>
+                <span className="label" id="cf-turnstile-label">
+                  {t.turnstile.label}
+                </span>
+                <TurnstileWidget
+                  id="cf-turnstile"
+                  siteKey={turnstileSiteKey}
+                  language={locale}
+                  onToken={setCaptchaToken}
+                  resetNonce={captchaReset}
+                />
+                {fieldErrors["cf-turnstile"] && (
+                  <p
+                    id="cf-turnstile-error"
+                    role="alert"
+                    className="mt-1 text-xs text-red-600"
+                  >
+                    {fieldErrors["cf-turnstile"]}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         )}
 

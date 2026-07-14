@@ -10,5 +10,12 @@ import ProviderRegisterForm from "./ProviderRegisterForm";
 // revalidate instead of force-dynamic + no-store.
 export default async function ProviderRegisterPage() {
   const categories = await fetchCategoryOptions({ revalidate: 300 });
-  return <ProviderRegisterForm categories={categories} />;
+  // Optional Turnstile site key (#633), read at request time (runtime env);
+  // unset → the form renders no widget and submits as before.
+  return (
+    <ProviderRegisterForm
+      categories={categories}
+      turnstileSiteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY}
+    />
+  );
 }
