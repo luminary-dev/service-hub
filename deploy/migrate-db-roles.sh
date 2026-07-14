@@ -6,7 +6,7 @@
 # state postgres-init.sh gives a fresh one:
 #
 #   - one LOGIN role per service (identity / provider / review / job /
-#     notification);
+#     notification / search / trust_safety);
 #   - each role owns its own database and every object in it (tables,
 #     sequences, views, enum types — all that Prisma migrations create);
 #   - CONNECT revoked from PUBLIC, granted only to the owning role.
@@ -19,12 +19,19 @@
 # first, then deploy the compose change that switches the DATABASE_URLs.
 #
 #   IDENTITY_DB_PASSWORD=… PROVIDER_DB_PASSWORD=… REVIEW_DB_PASSWORD=… \
-#   JOB_DB_PASSWORD=… NOTIFICATION_DB_PASSWORD=… ./deploy/migrate-db-roles.sh
+#   JOB_DB_PASSWORD=… NOTIFICATION_DB_PASSWORD=… SEARCH_DB_PASSWORD=… \
+#   TRUST_SAFETY_DB_PASSWORD=… ./deploy/migrate-db-roles.sh
 #
-# notification_db (RFC stateful-notification-service) may not exist yet on a
-# cluster that predates the stateful notification-service — it is created here
-# (idempotently) before its role/ownership migration, so this script remains
-# the single live-prod pre-step for the release that ships the service.
+# notification_db (RFC stateful-notification-service), search_db (search &
+# discovery RFC) and trust_safety_db (trust & safety extraction, dark launch)
+# may not exist yet on a cluster that predates those services — they are
+# created here (idempotently) before their role/ownership migration, so this
+# script remains the single live-prod pre-step for the releases that ship
+# them. search_db additionally gets the PostGIS extension created AS SUPERUSER
+# (PostGIS is not trusted; the `search` role merely owns its database), which
+# REQUIRES the postgres container to already run the postgis/postgis compose
+# image — run this only after that image swap is deployed (rollout order:
+# docs/DEPLOYMENT.md § "PostGIS + search_db rollout").
 #
 # Passwords are read from this shell's environment first (use the exact values
 # set as GitHub secrets; they land in DATABASE_URLs, so generate them URL-safe:
@@ -91,6 +98,17 @@ migrate provider provider_db "${PROVIDER_DB_PASSWORD:-}"
 migrate review review_db "${REVIEW_DB_PASSWORD:-}"
 migrate job job_db "${JOB_DB_PASSWORD:-}"
 migrate notification notification_db "${NOTIFICATION_DB_PASSWORD:-}"
+migrate search search_db "${SEARCH_DB_PASSWORD:-}"
+migrate trust_safety trust_safety_db "${TRUST_SAFETY_DB_PASSWORD:-}"
+
+# PostGIS for the search index (search & discovery RFC): not a trusted
+# extension, so only the superuser can create it — search-service's first
+# migration repeats CREATE EXTENSION IF NOT EXISTS as a no-op. Fails loudly if
+# the container still runs plain postgres:16-alpine (no extension packages).
+echo "==> search_db: ensuring the PostGIS extension (superuser)"
+"${COMPOSE[@]}" exec -T postgres \
+  psql -v ON_ERROR_STOP=1 -U postgres -d search_db \
+  -c "CREATE EXTENSION IF NOT EXISTS postgis;"
 
 echo "Done. Each service database is now owned by its own least-privilege role."
 echo "The superuser URLs keep working, so deploy the #387 compose change whenever ready."

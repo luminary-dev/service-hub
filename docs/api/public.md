@@ -102,6 +102,23 @@ time (EN↔SI re-renders the whole feed) — and a relative `link`.
 | `availableOnly` | `1`/`true` → effective-availability filter (away providers excluded). |
 | `ids` | Comma list (≤500) → exactly those non-suspended providers in input order, no paging. |
 
+### Search & geo discovery — search-service
+
+The search & discovery RFC's query plane
+([docs/rfcs/search-discovery-service.md](../rfcs/search-discovery-service.md)):
+a derived PostGIS index over public provider card data. `GET /api/providers`
+browse stays on provider-service until the web migrates (phase 3); for the
+shared params the two endpoints return the same providers (shadow-compared in
+`scripts/e2e-smoke.sh`). Free-text `q` additionally gets tsvector matches
+(English stemming; `simple` for Sinhala), so a stemmed word can return a
+superset of browse's substring matches. Rate-limited per IP (`search` bucket —
+the gateway's only GET budget).
+
+| Method + path | Auth | Summary |
+|---|---|---|
+| `GET /api/search/providers` | public | Superset of `GET /api/providers` browse: all its params (same table above — `q`, `category`, `district`, `priceMin`/`priceMax`, `ratingMin`, `availableOnly`, `sort`, `page`, `pageSize`/`take`, minus `ids`) **plus** `lat`/`lng` (both or neither; adds `distanceKm`, 1-decimal km, to every card), `radiusKm` (with a point only; clamped to 100) and `sort=distance` (nearest first; needs a point). Same `{ providers, total, page, pageSize }` envelope and card DTO (hydrated S2S from provider-service; rating fields come from the index). Rating filter/sort run DB-side — no candidate cap. 503 if card hydration is down. |
+| `GET /api/search/providers/nearby` | public | Radius + nearest-first (`lat`/`lng` required → else 400; `radiusKm` default 25, max 100). **Pinned providers only** — an unpinned provider is never in radius results. Accepts the same relational filters (`q`, `category`, `district`, price/rating/availability) + paging; every card carries `distanceKm`. |
+
 ### Provider dashboard — provider-service
 
 Every route requires a provider owned by the authenticated user (else

@@ -18,6 +18,11 @@ const { dbMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("./db", () => ({ db: dbMock }));
+// Search-index rating pushes (search RFC) are fired (not awaited) from the
+// review write/erase paths.
+vi.mock("./lib/search-index", () => ({
+  pushRatingsToSearchIndex: vi.fn(() => Promise.resolve()),
+}));
 vi.mock("./lib/storage", () => ({
   removeStoredFile: vi.fn().mockResolvedValue(undefined),
   sweepMedia: vi.fn().mockResolvedValue({ removed: 0, kept: 0 }),
@@ -130,6 +135,7 @@ describe("GET /internal/count", () => {
 describe("POST /internal/users/:id/erase", () => {
   it("returns { ok: true } and fans out the deletion", async () => {
     dbMock.reviewPhoto.findMany.mockResolvedValue([]);
+    dbMock.review.findMany.mockResolvedValue([]);
     dbMock.review.deleteMany.mockResolvedValue({ count: 0 });
     const res = await req("/internal/users/u1/erase", { method: "POST" });
     expect(res.status).toBe(200);

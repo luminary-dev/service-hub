@@ -34,6 +34,8 @@ using the shared `s2s()` helper (one bounded retry on idempotent GETs).
 | `POST /internal/providers/avatar` | Denormalized avatar sync from identity (#434), `{ userId, avatarUrl }` — updates the provider's cached `avatarUrl`. No-op if the user has no provider. |
 | `POST /internal/providers/contact` | Denormalized contact sync from identity (#553), `{ userId, name?, email?, phone? }` — mirrors account name/phone edits and email changes onto the cached `contactName`/`contactEmail`/`contactPhone`. Only provided fields are written; no-op if the user has no provider. |
 | `GET /internal/providers?ids=` | Batch provider hydration (≤500). |
+| `GET /internal/providers/cards?ids=` | Batched public **card DTO** hydration (≤500) for search-service's query plane (search RFC §4.1) — the same card shape browse builds (cover fallback, services, photos), rating fields zeroed (search-service overlays its own aggregates). Suspended providers excluded. Order not meaningful. |
+| `GET /internal/providers/export?cursor=&take=` | Reindex export for search-service's sweep (search RFC §4.2): every **non-suspended** provider as a full index document (the exact shape the push path PUTs), id-cursor paginated (`take` default 100, max 500) → `{ providers, nextCursor }`. No contact PII beyond the display name. |
 | `GET /internal/inquiries/exists?providerId=&userId=` | Review gate — has this user inquired with this provider? → `{ exists }`. |
 | `GET /internal/providers/:id/summary` | Existence/suspended check (favorites, reviews) — always 200. |
 | `POST /internal/users/:id/erase` | Account-deletion fan-out: delete the user's provider + files + sent inquiries. Idempotent. |
@@ -43,11 +45,27 @@ using the shared `s2s()` helper (one bounded retry on idempotent GETs).
 
 | Method + path | Purpose |
 |---|---|
-| `GET /internal/ratings?providerIds=a,b,c` | Batch rating summaries → `{ ratings }`. Each entry: `{ rating, count }` (authoritative for ranking) plus the additive per-dimension averages and 5→1 star `distribution` (#528) — existing consumers keep reading `rating`/`count`. |
+| `GET /internal/ratings?providerIds=a,b,c` | Batch rating summaries → `{ ratings }`. Each entry: `{ rating, count }` (authoritative for ranking) plus the additive per-dimension averages and 5→1 star `distribution` (#528) — existing consumers keep reading `rating`/`count`. Also the ratings feed for search-service's reindex sweep. |
 | `GET /internal/by-provider/:id?take&cursor&includeDeleted` | Reviews for one provider (cursor-paginated) → `{ reviews, nextCursor }`. Each review carries the provider's reply as `response` (#395), threaded through provider-service's `/full` composition unchanged. |
 | `GET /internal/count` | Total (non-deleted) review count. |
 | `POST /internal/users/:id/erase` | Account-deletion fan-out: delete the user's reviews + photo files. Idempotent. |
 | `POST /internal/maintenance/sweep-orphans` | Remove orphaned review-photo files (ops tooling). |
+
+### search-service
+
+The derived provider-search index (search & discovery RFC). Ingestion is
+push-based and best-effort: provider-service PUTs full documents fire-and-forget
+from every indexed write, review-service POSTs rating patches; the reindex
+sweep self-heals drift (run daily from ops tooling, like the sweep-orphans
+endpoints). Suspended/erased providers are **deleted** from the index.
+
+| Method + path | Purpose |
+|---|---|
+| `PUT /internal/search/providers/:id` | Full-document upsert (idempotent; last-write-wins on the source row's `updatedAt`, so replayed/out-of-order pushes never regress the index). Body = the document `provider-service/src/lib/search-index.ts` builds. Rating fields are never touched by this route. |
+| `DELETE /internal/search/providers/:id` | Remove a provider from the index (suspend / self-deactivate / erase). Idempotent. |
+| `POST /internal/search/ratings` | `{ providerId, ratingAvg, ratingCount }` rating-aggregate patch from review-service. No-op when the provider isn't indexed yet; a 0 count nulls the stored average. |
+| `POST /internal/search/reindex` | Full sweep: walks provider-service's `/internal/providers/export`, upserts everything, refreshes ratings via review-service's `/internal/ratings`, deletes index rows absent from the export → `{ indexed, skipped, deleted }`. Fails loudly (502) on a peer outage — an outage is never mistaken for an empty source. |
+| `GET /internal/search/stats` | `{ indexed, pinned }` — drift metric for the ops runbook (compare `indexed` against provider-service's non-suspended count). |
 
 ### job-service
 
@@ -98,6 +116,21 @@ deleted.
 | Method + path | Purpose |
 |---|---|
 | `POST /internal/chat/:persona/stream` | Streaming Claude tool loop (SSE). Persona `marketplace` today; tools `search_providers` + `create_inquiry` (call the gateway). 503 without `ANTHROPIC_API_KEY`, 404 for an unknown persona, 413 over 256 KB, 400 on empty history. Reached via the web `/agent/chat` proxy. |
+
+### trust-safety-service (dark launch)
+
+> **Dark launch** ([RFC](../rfcs/trust-safety-service.md) §8 phase 1): the
+> service is deployed and functional, but the owning services still write
+> their local Report/audit tables — nothing calls these endpoints until the
+> cutover PR switches provider/review/job's `auto-report`/`logAudit` helpers
+> to S2S. The owner-side `/internal/moderation/*` endpoints trust-safety
+> itself calls (target validation/hydration, takedown/restore) also land in
+> the cutover PR.
+
+| Method + path | Purpose |
+|---|---|
+| `POST /internal/reports/auto` | Content-filter ingestion (#375): `{ targetType, targetId, fields }` — runs the canonical bilingual filter and files/refreshes the one OPEN SYSTEM report per target → `{ ok, flagged }`. Callers stay best-effort (never fail the user's write). |
+| `POST /internal/audit` | Audit ingestion for owner-native admin actions that stay in place: `{ adminId, action, targetType, targetId, reason?, service: "provider"\|"review"\|"job" }` → one unified `AdminAuditLog` row. |
 
 ---
 

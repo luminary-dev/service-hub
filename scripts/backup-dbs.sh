@@ -22,7 +22,10 @@ COMPOSE=(docker compose -f "$COMPOSE_FILE")
 
 BACKUP_DIR="${BACKUP_DIR:-./backups}"
 RETENTION="${RETENTION:-14}"
-DATABASES=(identity_db provider_db review_db job_db notification_db)
+# search_db is deliberately EXCLUDED: it is a derived, rebuildable search
+# index (search & discovery RFC) — after any restore, repopulate it with
+# search-service's POST /internal/search/reindex instead (docs/BACKUPS.md).
+DATABASES=(identity_db provider_db review_db job_db notification_db trust_safety_db)
 
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 DEST="$BACKUP_DIR/$STAMP"
