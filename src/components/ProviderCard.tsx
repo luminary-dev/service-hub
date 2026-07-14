@@ -55,6 +55,13 @@ export type ProviderCardDTO = {
   fromPriceType: string | null;
   rating: number | null;
   reviewCount: number;
+  // Map pin (#48, search RFC phase 3), present only when the provider has
+  // dropped one. Optional so existing fixtures/consumers need no churn.
+  latitude?: number;
+  longitude?: number;
+  // 1-decimal km from the search point — only on geo results
+  // (`/api/search/providers/nearby`); renders as a distance note on the card.
+  distanceKm?: number;
 };
 
 export default function ProviderCard({
@@ -157,6 +164,12 @@ export default function ProviderCard({
                 {p.city} · {districtLabelLoc(p.district, locale)}
                 {p.experience > 0 && <> · {t.card.yrs(p.experience)}</>}
               </p>
+              {/* Distance from the searched point (#48) — geo results only. */}
+              {p.distanceKm !== undefined && (
+                <p className="mt-0.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-brand-700">
+                  {t.card.kmAway(p.distanceKm)}
+                </p>
+              )}
             </div>
           </div>
 

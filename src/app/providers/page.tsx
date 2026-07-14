@@ -11,9 +11,11 @@ import { getSession } from "@/lib/auth";
 import ProviderCard, { ProviderCardDTO } from "@/components/ProviderCard";
 import CategoryIcon from "@/components/CategoryIcon";
 import FilterBar from "@/components/FilterBar";
+import ProvidersView from "@/components/ProvidersView";
 import SaveSearchButton from "@/components/SaveSearchButton";
 import InView from "@/components/InView";
 import Pagination from "@/components/ui/Pagination";
+import { browseFilterParams, type BrowseFilters } from "@/lib/search-params";
 import { DISTRICTS } from "@/lib/constants";
 import Link from "next/link";
 
@@ -113,16 +115,20 @@ export default async function ProvidersPage({
   const ratingMin = numericParam(params.ratingMin);
   const availableOnly = params.availableOnly === "1";
 
-  // Search, filtering, ranking and pagination all happen in provider-service;
-  // the query params pass straight through the gateway.
-  const query = new URLSearchParams();
-  if (q) query.set("q", q);
-  if (category) query.set("category", category);
-  if (district) query.set("district", district);
-  if (priceMin) query.set("priceMin", priceMin);
-  if (priceMax) query.set("priceMax", priceMax);
-  if (ratingMin) query.set("ratingMin", ratingMin);
-  if (availableOnly) query.set("availableOnly", "1");
+  const filters: BrowseFilters = {
+    q,
+    category,
+    district,
+    priceMin,
+    priceMax,
+    ratingMin,
+    availableOnly,
+  };
+
+  // Search, filtering, ranking and pagination all happen in search-service
+  // (the RFC phase 3 cut-over — same params, envelope and card DTO browse
+  // served); the query params pass straight through the gateway.
+  const query = browseFilterParams(filters);
   query.set("sort", sort);
   query.set("page", String(page));
 
@@ -141,12 +147,26 @@ export default async function ProvidersPage({
     (!category || categories.some((c) => c.slug === category)) &&
     (!district || (DISTRICTS as readonly string[]).includes(district));
 
-  const listing = await apiJson<{
+  type Listing = {
     providers: ProviderCardDTO[];
     total: number;
     page: number;
     pageSize: number;
-  }>(`/api/providers?${query.toString()}`, cacheable ? { revalidate: 60 } : undefined);
+  };
+  const cacheOpts = cacheable ? { revalidate: 60 } : undefined;
+  let listing = await apiJson<Listing>(
+    `/api/search/providers?${query.toString()}`,
+    cacheOpts
+  );
+  if (!listing) {
+    // Transition fallback (RFC §5.2): while /api/providers browse still
+    // serves the identical envelope from provider-service, a search-service
+    // outage degrades to it instead of an empty listing.
+    listing = await apiJson<Listing>(
+      `/api/providers?${query.toString()}`,
+      cacheOpts
+    );
+  }
 
   const results = listing?.providers ?? [];
   const total = listing?.total ?? 0;
@@ -247,6 +267,10 @@ export default async function ProvidersPage({
         </div>
       )}
 
+      {/* List/map toggle (#48): the server-rendered list below stays the
+          primary view; the map view fetches /api/search/providers/nearby
+          client-side. */}
+      <ProvidersView filters={filters}>
       {results.length === 0 ? (
         <div className="card mt-8 flex flex-col items-center px-6 py-16 text-center">
           <FaMagnifyingGlass className="h-12 w-12 text-ink-300" />
@@ -290,6 +314,7 @@ export default async function ProvidersPage({
       )}
 
       <Pagination page={page} totalPages={totalPages} hrefFor={pageLink} locale={locale} />
+      </ProvidersView>
       </div>
     </div>
   );
