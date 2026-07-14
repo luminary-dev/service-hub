@@ -226,6 +226,16 @@ const RESPONSES = [
 ];
 
 async function main() {
+  // This is DUMMY demo data (fake reviews, photos, responses) — it must
+  // never reach a production database. Same guard as identity-service.
+  if (process.env.NODE_ENV === "production" && process.env.SEED_DEMO_DATA !== "true") {
+    console.error(
+      "Refusing to seed demo reviews with NODE_ENV=production " +
+        "(set SEED_DEMO_DATA=true to override deliberately)."
+    );
+    process.exit(1);
+  }
+
   await db.reviewPhoto.deleteMany();
   await db.review.deleteMany(); // responses cascade with their reviews
 

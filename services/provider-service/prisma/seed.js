@@ -1075,13 +1075,27 @@ const CUSTOMERS_FOR_INQUIRIES = [
 ];
 
 async function main() {
-  // Upserts keep the seed idempotent without wiping admin-added categories.
+  // Categories are real taxonomy (mechanic, electrician, ...), not demo data —
+  // upserts are idempotent and never wipe admin edits, so this part is safe
+  // (and needed) to run in production too.
   for (const cat of CATEGORIES) {
     await db.category.upsert({
       where: { slug: cat.slug },
       update: cat,
       create: cat,
     });
+  }
+
+  // Everything below this point is DUMMY demo data (fake providers, services,
+  // photos, inquiries) — it must never reach a production database. Same
+  // guard as identity-service.
+  if (process.env.NODE_ENV === "production" && process.env.SEED_DEMO_DATA !== "true") {
+    console.error(
+      "Refusing to seed demo providers with NODE_ENV=production " +
+        "(set SEED_DEMO_DATA=true to override deliberately). " +
+        "Categories above were still upserted — they're real taxonomy, not demo data."
+    );
+    process.exit(1);
   }
 
   await db.inquiry.deleteMany();

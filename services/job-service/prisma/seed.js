@@ -132,6 +132,17 @@ const RESPONSES = [
 ];
 
 async function main() {
+  // This is DUMMY demo data (fake job requests and responses) — it must
+  // never reach a production database. Same guard as identity-service.
+  if (process.env.NODE_ENV === "production" && process.env.SEED_DEMO_DATA !== "true") {
+    console.error(
+      "Refusing to seed demo jobs with NODE_ENV=production " +
+        "(set SEED_DEMO_DATA=true to override deliberately)."
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   await db.jobResponse.deleteMany();
   await db.jobRequest.deleteMany();
 
