@@ -100,10 +100,29 @@ FM-Bindumathi has no Sinhala Unicode glyphs.
 - Reusable animation classes live in `globals.css`: `.rise` (staggered entrance
   via `--rise-index`), `.reveal-js` / `.stagger` (scroll-reveal, toggled by the
   `InView` component), plus the home-hero set (`.roll-word`, `.orbit-ring`,
-  `.orbit-chip`, `.ticker-track`, `.floaty`, `.pulse-dot`) and photo effects
-  (`.kenburns`, `.scan-line`).
+  `.orbit-chip`, `.ticker-track`, `.floaty`, `.pulse-dot`), photo effects
+  (`.kenburns`, `.scan-line`) and the hero-slider set (`.hero-float`,
+  `.hero-sweep`, `.hero-rise`, `.hero-tick-active`).
+- **Hero slider** (`HeroSlider`, home page right column): the framed technical
+  plate is a self-advancing trade carousel. Layered motion, all on-theme:
+  - `.hero-float` — the whole plate drifts on a slow 11s x+y sway (a smooth
+    "flowing" motion, not a bob).
+  - Per slide: a **cross-fade + push-in zoom** (`scale 1.05→1`) over the
+    ongoing per-slide `.kenburns` drift.
+  - `.hero-sweep` — a brand scan-line wipes across on each change.
+  - `.hero-rise` — the trade badge, live counter and `Fig.0N` caption rise in
+    on each change (keyed remount replays the animation).
+  - `.hero-tick-active` — a soft brand halo breathes behind the active tick;
+    an rAF-driven gauge fills across the bottom edge in sync with auto-advance.
+  - Controls: prev/next (nudge on hover), a segmented tick selector, arrow-key
+    nav, an explicit pause/play toggle (the WCAG 2.2.2 stop mechanism), and
+    pause on hover/focus. Same `aspect-[4/5]` plate (no layout shift); the first
+    slide is `preload`ed (Next 16's replacement for the deprecated `priority`)
+    for LCP.
 - Everything is guarded by `prefers-reduced-motion: reduce`, which cancels the
-  animations and transitions.
+  animations and transitions. The slider additionally halts auto-advance and all
+  its motion under reduced motion (via `useSyncExternalStore` on the media
+  query) — it becomes a static, manually-navigable plate.
 
 ## Component utility classes (`@layer components`)
 

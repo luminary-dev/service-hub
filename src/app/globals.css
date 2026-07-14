@@ -476,7 +476,92 @@ p {
   }
   .hazard,
   .kenburns,
-  .scan-line {
+  .scan-line,
+  .hero-sweep {
+    animation: none !important;
+  }
+}
+
+/* Hero slider (#447) — a brand scan-line wipes across on each slide change,
+   echoing the .scan-line tile-hover motif but full-height and one-shot. Keyed
+   by the active index in React so it re-triggers per transition. */
+@keyframes heroSweep {
+  0% {
+    transform: translateX(-120%) skewX(-12deg);
+    opacity: 0;
+  }
+  12%,
+  70% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(120%) skewX(-12deg);
+    opacity: 0;
+  }
+}
+.hero-sweep {
+  animation: heroSweep 0.9s var(--ease-snap);
+}
+
+/* Per-slide caption/badge entrance — replays on each change (keyed remount). */
+@keyframes heroRise {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.hero-rise {
+  animation: heroRise 0.5s var(--ease-snap) both;
+}
+
+/* Whole-slider float — a slow, smooth drift (gentle x+y sway) rather than a
+   metronome bob, so the plate appears to flow. translate3d keeps it on the GPU. */
+@keyframes heroFloat {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  25% {
+    transform: translate3d(4px, -7px, 0);
+  }
+  50% {
+    transform: translate3d(0, -10px, 0);
+  }
+  75% {
+    transform: translate3d(-4px, -5px, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+.hero-float {
+  animation: heroFloat 11s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* Soft brand halo that breathes behind the active tick. */
+@keyframes heroTickGlow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0
+      color-mix(in oklch, var(--color-brand-500) 55%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 4px
+      color-mix(in oklch, var(--color-brand-500) 0%, transparent);
+  }
+}
+.hero-tick-active {
+  animation: heroTickGlow 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-rise,
+  .hero-tick-active,
+  .hero-float {
     animation: none !important;
   }
 }

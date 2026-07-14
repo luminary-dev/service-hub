@@ -1,5 +1,23 @@
 # Discovery
 
+### Home page (`/`)
+
+**`src/app/page.tsx`** is the landing surface: a hero with the search console
+(`SearchBar` + popular-query chips) on the left and, on the right, an **animated
+trade slider** (`HeroSlider`, #447). It's a framed technical plate that
+auto-advances through trade photos (mechanic, electrician, plumber, welder,
+carpenter, from `public/images/workers/`) with layered on-theme motion: a slow
+`.hero-float` drift on the whole plate, a per-slide cross-fade + push-in zoom
+over the Ken Burns drift, a brand scan-line wipe, rise-in badge/counter/`Fig.0N`
+caption, a breathing active tick and an auto-advance gauge. Controls: prev/next,
+a segmented tick selector, arrow-key nav, an explicit pause/play toggle (the
+WCAG 2.2.2 stop mechanism) and pause on hover/focus; the advance is
+`requestAnimationFrame`-driven so the gauge stays in sync. It honours
+`prefers-reduced-motion` (static, manually-navigable) and `preload`s the first
+slide (Next 16's replacement for the deprecated `priority`) for LCP; the frame
+is a fixed `aspect-[4/5]` so there's no layout shift. Localized EN/SI. Below the hero: the trade registry (category grid), a
+trust band, and featured/recent providers. See [DESIGN.md](../DESIGN.md#motion)
+for the motion primitives.
 
 ### Provider directory
 
