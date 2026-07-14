@@ -99,6 +99,7 @@ jobs:
           PROVIDER_DB_PASSWORD: ci-dummy-password
           REVIEW_DB_PASSWORD: ci-dummy-password
           JOB_DB_PASSWORD: ci-dummy-password
+          NOTIFICATION_DB_PASSWORD: ci-dummy-password
           TRUST_SAFETY_DB_PASSWORD: ci-dummy-password
           REDIS_PASSWORD: ci-dummy-password
           WEB_ORIGIN: https://ci.example.test
@@ -227,7 +228,7 @@ jobs:
         # The prod images run with NODE_ENV=production, where the seed script
         # refuses to create demo data unless explicitly overridden. Opt in here.
         run: |
-          for s in identity-service provider-service review-service job-service; do
+          for s in identity-service provider-service review-service job-service notification-service; do
             docker compose exec -T -e SEED_DEMO_DATA=true "$s" npm run db:seed
           done
       - name: Run e2e smoke
@@ -236,7 +237,7 @@ jobs:
         run: ./scripts/e2e-smoke.sh
       - name: Back up and restore-verify
         # Exercises the backup → restore-verification path (#389) against the
-        # seeded stack: dump all 4 DBs, restore them into a scratch container,
+        # seeded stack: dump all 5 DBs, restore them into a scratch container,
         # row-count the main tables — so a broken dump/restore script fails CI
         # instead of a real disaster recovery. (No BACKUP_R2_* here, so the
         # offsite leg is skipped with a warning.)

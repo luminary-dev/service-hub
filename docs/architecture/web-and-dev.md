@@ -40,7 +40,7 @@
   (tears the stack down **with volumes**, rebuilds, and reseeds — local data is
   disposable and never migrated between runs), `e2e-smoke.sh`,
   `baseline-migrations.sh`, `backup-dbs.sh`/`restore-db.sh`, `init-db.sql`
-  (creates the four databases), `sync-service-repos.sh` (subtree mirror),
+  (creates the five databases), `sync-service-repos.sh` (subtree mirror),
   `gen-icons.mjs`.
 - Production: `docker-compose.prod.yml` + `.env.prod.example` (Caddy TLS via
   `DOMAIN`/`ACME_EMAIL`, `IMAGE_TAG`, required `AUTH_SECRET`/

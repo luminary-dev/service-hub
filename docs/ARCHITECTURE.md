@@ -14,32 +14,32 @@ browser ── same-origin /api/* ──> Next.js web (:3000)
    │
    gateway (only public entry) verifies sh_session JWT, forwards identity
    headers (x-user-id / x-user-role / x-user-name) + x-internal-secret and routes to:
-     ├── identity-service     (:4001)  identity_db   User/auth/favorites/saved-searches/admin-users/impersonation
-     ├── provider-service     (:4002)  provider_db   providers/categories/inquiries/reports/admin
-     ├── review-service       (:4003)  review_db     reviews/review-reports/admin
-     ├── job-service          (:4004)  job_db        jobs/responses/job-reports/admin
-     ├── notification-service (:4005)  (no db)        email templates (internal-only)
-     ├── media-service        (:4006)  (no db)        upload bytes + sharp; serves /files/*
-     ├── chat-service         (:4007)  (no db)        streaming Claude assistant
+     ├── identity-service     (:4001)  identity_db      User/auth/favorites/saved-searches/admin-users/impersonation
+     ├── provider-service     (:4002)  provider_db      providers/categories/inquiries/reports/admin
+     ├── review-service       (:4003)  review_db        reviews/review-reports/admin
+     ├── job-service          (:4004)  job_db           jobs/responses/job-reports/admin
+     ├── notification-service (:4005)  notification_db  in-app notifications/preferences + email delivery (Redis queue)
+     ├── media-service        (:4006)  (no db)           upload bytes + sharp; serves /files/*
+     ├── chat-service         (:4007)  (no db)           streaming Claude assistant
      └── trust-safety-service (:4009)  trust_safety_db  unified reports/audit (DARK — no routes yet)
 ```
 
 (:4008 is reserved for search-service, the Stage-2 Track 1 extraction.)
 
 Infra: one **Postgres 16** cluster (host port 5433 → container 5432) holding
-five databases (`identity_db`, `provider_db`, `review_db`, `job_db`,
-`trust_safety_db`), and
-**Redis 7** (gateway rate-limit window). Each service owns its database — no
-service touches another's tables; cross-service data access goes through
-internal HTTP endpoints. notification/media/chat are stateless (no DB).
+six databases (`identity_db`, `provider_db`, `review_db`, `job_db`,
+`notification_db`, `trust_safety_db`), and **Redis 7** (gateway rate-limit
+window + notification-service's email delivery queue). Each service owns its
+database — no service touches another's tables; cross-service data access goes
+through internal HTTP endpoints. media/chat are stateless (no DB).
 
-The gateway never routes to notification-service (internal-only) or
-chat-service (the web app proxies `/agent/chat` straight to it — the gateway
-buffers, and a direct stream does not). Its `ServiceName` union is
-`identity | provider | review | job | media | trust-safety` —
-**trust-safety is wired but dark**: `resolveRoute` never returns it until the
-trust & safety cutover PR flips the report/moderation paths to it
-([RFC](rfcs/trust-safety-service.md), phase 1 of the phased rollout).
+The gateway never routes to chat-service (the web app proxies `/agent/chat`
+straight to it — the gateway buffers, and a direct stream does not). Its
+`ServiceName` union is `identity | provider | review | job | notification |
+media | trust-safety` — **trust-safety is wired but dark**: `resolveRoute`
+never returns it until the trust & safety cutover PR flips the
+report/moderation paths to it ([RFC](rfcs/trust-safety-service.md), phase 1 of
+the phased rollout).
 
 ## In detail
 

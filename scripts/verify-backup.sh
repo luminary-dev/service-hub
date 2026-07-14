@@ -44,7 +44,10 @@ if [ "$ready" -lt 3 ]; then
 fi
 
 # db → its main table (Prisma model names; no @@map, so quoted PascalCase).
-for pair in identity_db:User provider_db:Provider review_db:Review job_db:JobRequest trust_safety_db:Report; do
+# notification_db / trust_safety_db are exempt from the identity-style
+# zero-rows fatal below — a fresh notification feed or report queue can
+# legitimately be empty.
+for pair in identity_db:User provider_db:Provider review_db:Review job_db:JobRequest notification_db:Notification trust_safety_db:Report; do
   db="${pair%%:*}"
   table="${pair#*:}"
   dump="$SNAPSHOT/$db.dump"

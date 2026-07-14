@@ -6,4 +6,5 @@ CREATE DATABASE identity_db;
 CREATE DATABASE provider_db;
 CREATE DATABASE review_db;
 CREATE DATABASE job_db;
+CREATE DATABASE notification_db;
 CREATE DATABASE trust_safety_db;

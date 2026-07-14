@@ -45,6 +45,7 @@ create_service_db identity identity_db "${IDENTITY_DB_PASSWORD:-}"
 create_service_db provider provider_db "${PROVIDER_DB_PASSWORD:-}"
 create_service_db review review_db "${REVIEW_DB_PASSWORD:-}"
 create_service_db job job_db "${JOB_DB_PASSWORD:-}"
+create_service_db notification notification_db "${NOTIFICATION_DB_PASSWORD:-}"
 create_service_db trust_safety trust_safety_db "${TRUST_SAFETY_DB_PASSWORD:-}"
 
-echo "Per-service databases and roles created (identity, provider, review, job, trust_safety)."
+echo "Per-service databases and roles created (identity, provider, review, job, notification, trust_safety)."

@@ -1,4 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// The service is stateful now: /healthz probes Postgres and the notification
+// routes hit Prisma, so the client is mocked — no live DB in unit tests.
+const { dbMock } = vi.hoisted(() => ({
+  dbMock: {
+    $queryRaw: vi.fn().mockResolvedValue([{ "?column?": 1 }]),
+    notification: {
+      findMany: vi.fn().mockResolvedValue([]),
+      createMany: vi.fn().mockResolvedValue({ count: 0 }),
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      count: vi.fn().mockResolvedValue(0),
+    },
+    notificationPreference: {
+      findMany: vi.fn().mockResolvedValue([]),
+      upsert: vi.fn(),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
+  },
+}));
+vi.mock("./db", () => ({ db: dbMock }));
+
 import { app } from "./app";
 
 // The test environment must not have a Resend key: the happy paths below
@@ -25,10 +47,21 @@ beforeEach(() => {
 });
 
 describe("GET /healthz", () => {
-  it("responds without the internal secret", async () => {
+  it("responds without the internal secret when the DB is reachable", async () => {
     const res = await app.request("/healthz");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, service: "notification-service" });
+  });
+
+  it("degrades to 503 when the DB probe fails", async () => {
+    dbMock.$queryRaw.mockRejectedValueOnce(new Error("connection refused"));
+    const res = await app.request("/healthz");
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({
+      ok: false,
+      service: "notification-service",
+      db: "down",
+    });
   });
 });
 
@@ -42,6 +75,10 @@ describe("internal secret enforcement", () => {
     "/internal/email/new-job",
     "/internal/email/new-provider-match",
     "/internal/email/inquiry",
+    "/internal/notifications/events",
+    "/internal/users/u1/erase",
+    "/api/notifications/read",
+    "/api/notification-preferences",
   ])("rejects %s without x-internal-secret", async (path) => {
     const res = await post(path, { to: "a@b.lk", url: "https://baas.lk" });
     expect(res.status).toBe(403);

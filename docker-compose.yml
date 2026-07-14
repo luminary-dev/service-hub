@@ -115,10 +115,19 @@ services:
     environment:
       <<: *service-env
       PORT: 4005
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/notification_db
+      # Email delivery queue (BRPOPLPUSH + retries); unset → degraded
+      # one-attempt direct sends (in-app notifications unaffected).
+      REDIS_URL: redis://redis:6379
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM:-}
     ports:
       - "127.0.0.1:4005:4005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck: *node-healthcheck
 
   media-service:

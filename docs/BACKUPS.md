@@ -4,7 +4,7 @@
 
 | Data | Where it lives | Covered by |
 | --- | --- | --- |
-| identity_db, provider_db, review_db, job_db, trust_safety_db | compose `postgres` (one cluster) | `scripts/backup-dbs.sh` (logical `pg_dump -Fc` per DB) |
+| identity_db, provider_db, review_db, job_db, notification_db, trust_safety_db | compose `postgres` (one cluster) | `scripts/backup-dbs.sh` (logical `pg_dump -Fc` per DB) |
 | Uploaded images | `provider_uploads` / `review_uploads` volumes (or Cloudflare R2 when the `R2_*` vars are set) | volume tar (below); R2 is durable managed storage |
 | Redis rate-limit windows + session-revocation list | `redis` (prod `redis_data` volume) | deliberately NOT backed up — rate-limit windows are ephemeral, and the revocation list (#374) mirrors identity_db's `sessionVersion` (covered above). The volume keeps it across container recreation (#571); after a total Redis loss the gateway falls back to the identity lookup until versions are re-published on the next bump |
 
@@ -13,7 +13,7 @@
 - **Cadence**: nightly at 02:17 UTC on the prod host. `/etc/cron.d/service-hub-backup` (installed once with `sudo ./scripts/install-backup-cron.sh`, #389) runs `scripts/backup-cron.sh`: dump → offsite copy → restore-verify → heartbeat ping. The backup script targets the prod compose project (`docker-compose.prod.yml`) by default; for a local dev backup run `COMPOSE_FILE=docker-compose.yml ./scripts/backup-dbs.sh`.
 - **Retention**: newest 14 snapshots locally, newest 30 offsite (`RETENTION` / `REMOTE_RETENTION` env override); only `YYYYMMDDTHHMMSSZ` snapshot dirs are pruned, so anything else you keep in `BACKUP_DIR` or the bucket is left alone.
 - **Offsite**: `backup-dbs.sh` ships every snapshot to a **dedicated** Cloudflare R2 bucket through a dockerized rclone when the `BACKUP_R2_*` vars are set — and the scheduled path (`backup-cron.sh`) refuses to run without them, so the schedule can't silently degrade to local-only. Use a separate bucket + API token from the media uploads' `R2_*` credentials (least privilege: the token is scoped to the backups bucket only).
-- **Restore verification**: every nightly run restores the fresh snapshot into a scratch Postgres container and row-counts each service's main table (`scripts/verify-backup.sh` — fails loudly on a missing/corrupt dump or an empty `User` table). CI's `e2e` job exercises the same backup → restore-verify path on every PR. Still walk the full runbook below as a quarterly drill.
+- **Restore verification**: every nightly run restores the fresh snapshot into a scratch Postgres container and row-counts each service's main table (`scripts/verify-backup.sh` — fails loudly on a missing/corrupt dump or an empty `User` table; `notification_db`'s `Notification` count may legitimately be zero, so only identity's zero-rows case is fatal). CI's `e2e` job exercises the same backup → restore-verify path on every PR. Still walk the full runbook below as a quarterly drill.
 - **Alerting**: a dead-man's-switch. `backup-cron.sh` pings `BACKUP_HEARTBEAT_URL` only after backup + offsite + verification all succeed (`<url>/fail` on failure — healthchecks.io semantics). Point it at a heartbeat monitor with a ~26 h grace period so a missed or failed nightly raises an alert instead of being discovered mid-disaster.
 
 ## Nightly automation setup (one-time per host)

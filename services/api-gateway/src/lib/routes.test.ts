@@ -125,6 +125,28 @@ describe("resolveRoute (routing table)", () => {
     });
   });
 
+  it("routes the notification center + preferences to notification-service (#394)", () => {
+    expect(resolveRoute("/api/notifications")).toEqual({
+      service: "notification",
+      path: "/api/notifications",
+    });
+    expect(resolveRoute("/api/notifications/unread-count")).toEqual({
+      service: "notification",
+      path: "/api/notifications/unread-count",
+    });
+    expect(resolveRoute("/api/notifications/read")).toEqual({
+      service: "notification",
+      path: "/api/notifications/read",
+    });
+    expect(resolveRoute("/api/notification-preferences")).toEqual({
+      service: "notification",
+      path: "/api/notification-preferences",
+    });
+    // The ADMIN badge counts stay carved out to provider-service above; a
+    // lookalike prefix without the exact base path is not forwarded.
+    expect(resolveRoute("/api/notification-preferencesX")).toBeNull();
+  });
+
   it("routes the admin audit logs to their owning services (#227)", () => {
     expect(resolveRoute("/api/admin/audit-log")).toEqual({
       service: "provider",
