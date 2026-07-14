@@ -39,7 +39,15 @@ npm run setup      # scripts/setup.sh — install all packages, create .env file
 npm run dev:all    # scripts/dev-all.sh — run the gateway + all nine backend services + the web app (Ctrl-C stops everything)
 ```
 
-Open http://localhost:3000.
+Open http://localhost:3000. In a separate terminal, once the stack is up,
+rebuild the search index from the providers `setup.sh` just seeded — it's a
+derived index (migrated, not seeded), so it starts empty and the provider
+browse/search page has nothing to show until this runs once:
+
+```bash
+curl -sS -X POST -H "x-internal-secret: ${INTERNAL_API_SECRET:-dev-internal-secret}" \
+  http://localhost:4008/internal/search/reindex
+```
 
 Or run the entire stack (Postgres, Redis, all services, web) in containers:
 
@@ -53,6 +61,12 @@ docker compose up -d --build
 for s in identity-service provider-service review-service job-service notification-service trust-safety-service; do
   docker compose exec -e SEED_DEMO_DATA=true "$s" npm run db:seed
 done
+
+# search_db is a derived index — migrated, not seeded — so it starts empty.
+# Rebuild it from the providers you just seeded, or the web app's provider
+# browse/search page will show nothing:
+curl -sS -X POST -H "x-internal-secret: ${INTERNAL_API_SECRET:-dev-internal-secret}" \
+  http://localhost:4008/internal/search/reindex
 ```
 
 Two lines you'll see during that seed are expected, not errors: each service

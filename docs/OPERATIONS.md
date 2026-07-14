@@ -318,6 +318,16 @@ exports a shared `AUTH_SECRET` (so web and identity agree) and picks
 `ANTHROPIC_API_KEY` from the shell or root `.env` (empty → the chat assistant
 just returns 503).
 
+Neither script populates `search_db` — it's derived, not seeded, and
+search-service isn't running yet when `setup.sh` seeds the other six. Once
+`dev:all` is up, rebuild it once from the seeded providers (in another
+terminal) or the provider browse/search page has nothing to show:
+
+```bash
+curl -sS -X POST -H "x-internal-secret: ${INTERNAL_API_SECRET:-dev-internal-secret}" \
+  http://localhost:4008/internal/search/reindex
+```
+
 To run everything in containers instead (closest to prod):
 
 ```bash
@@ -327,6 +337,14 @@ docker compose up -d --build      # dev compose: builds locally, all services + 
 for s in identity-service provider-service review-service job-service notification-service trust-safety-service; do
   docker compose exec -e SEED_DEMO_DATA=true "$s" npm run db:seed
 done
+
+# search_db is a derived index (see "Search index maintenance" below) — it's
+# migrated, not seeded, so it starts empty until rebuilt from the providers
+# you just seeded. Skipping this leaves the web app's provider browse/search
+# page empty even though provider-service has data:
+curl -sS -X POST -H "x-internal-secret: ${INTERNAL_API_SECRET:-dev-internal-secret}" \
+  http://localhost:4008/internal/search/reindex
+
 npm run e2e                       # scripts/e2e-smoke.sh against the running stack
 ```
 
