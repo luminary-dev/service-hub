@@ -87,7 +87,7 @@ export default async function AdminVerificationsPage({
           <>
             {/* Active caution rail: this queue is awaiting review. */}
             <div className="hazard mb-6 h-1.5 w-full rounded-full" />
-            <VerificationQueue items={pending} />
+            <VerificationQueue items={pending} role={session.role} />
           </>
         )}
 

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { hasFullAdminAccess } from "@/lib/roles";
 import { useT } from "../I18nProvider";
 import { useToast } from "../ToastProvider";
 
@@ -12,8 +13,10 @@ const ACTION_MESSAGES = {
 
 export default function VerificationActions({
   providerId,
+  role,
 }: {
   providerId: string;
+  role: string;
 }) {
   const [pending, setPending] = useState(false);
   const [showReason, setShowReason] = useState(false);
@@ -21,8 +24,13 @@ export default function VerificationActions({
   const t = useT();
   const toast = useToast();
   const router = useRouter();
+  // Approve/reject are ADMIN-only in provider-service (isFullAdmin); SUPPORT
+  // reads the queue but gets disabled controls, like the rest of the admin
+  // surface (#629). See docs/AUTHZ.md.
+  const allowed = hasFullAdminAccess(role);
 
   async function act(action: "approve" | "reject") {
+    if (!allowed) return;
     setPending(true);
     const res = await fetch(`/api/admin/verifications/${providerId}`, {
       method: "PATCH",
@@ -47,14 +55,16 @@ export default function VerificationActions({
       <div className="flex gap-2">
         <button
           onClick={() => act("approve")}
-          disabled={pending}
+          disabled={pending || !allowed}
+          title={allowed ? undefined : t.admin.insufficientPermissions}
           className="btn-primary !px-4 !py-2"
         >
           {t.admin.approve}
         </button>
         <button
           onClick={() => (showReason ? act("reject") : setShowReason(true))}
-          disabled={pending}
+          disabled={pending || !allowed}
+          title={allowed ? undefined : t.admin.insufficientPermissions}
           className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-md border border-red-300 bg-surface px-4 py-2 font-display text-sm font-semibold text-red-600 transition-[border-color,background-color,transform] duration-200 ease-snap hover:border-red-400 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {showReason ? t.admin.confirmReject : t.admin.reject}
