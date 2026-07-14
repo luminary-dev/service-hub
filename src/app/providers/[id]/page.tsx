@@ -446,6 +446,7 @@ export default async function ProviderProfilePage({
                         longitude={provider.longitude}
                         alt={t.location.mapImageAlt(provider.user.name)}
                         linkLabel={t.location.viewOnOsm}
+                        contributorsLabel={t.location.osmContributors}
                       />
                     </div>
                   </div>

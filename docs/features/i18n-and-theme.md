@@ -38,6 +38,30 @@ structural parity is guarded by `src/lib/legal.test.ts` the same way
   scans the sources and fails on any literal root-path navigation outside
   `/admin`, so regressions can't land.
 
+### Guarding against hardcoded strings
+
+A static lint keeps untranslated copy out of the UI (#672, guarding the
+#566-class regressions as more locales land). `eslint.config.mjs` wires
+`eslint-plugin-i18next`'s `no-literal-string` rule at **error** over
+`src/app/**/*.tsx` and `src/components/**/*.tsx`, so any visible JSX text that
+isn't routed through the dictionary fails `npm run lint` (and CI). It runs in
+the plugin's default `jsx-text-only` mode — it flags plain text **between** JSX
+tags, not `className`/prop/technical literals — which catches visible copy
+without drowning the run in false positives. Attribute copy
+(`alt`/`placeholder`/`aria-label`) is deliberately out of scope for now to
+avoid noise from custom-component props; a follow-up can ratchet to `jsx-only`.
+
+When the rule fires, the fix is almost always to move the string into
+`src/lib/i18n.ts` (EN **and** SI — the `si` dict is typed as `typeof en`, and
+`i18n.test.ts` guards parity) and render it via `dict[locale]`. The config's
+`words.exclude` list carves out the few genuinely non-translatable literals —
+the `Baas.lk`/`WhatsApp`/`OpenStreetMap` brand tokens and the decorative
+"technical dossier" spec codes (`AUTH-01`, `REG-P / PRO`, …) that read the same
+in every locale. The top-level crash boundary (`global-error.tsx`, which
+renders before the i18n providers exist) and the generated OG images
+(`opengraph-image.tsx`, canonical English social cards) are excluded by path.
+Do **not** silence a real violation with a blanket disable — translate it.
+
 ### Theme
 
 Light/dark theme (`src/lib/theme.ts`, `ThemeToggle`), default light. The choice

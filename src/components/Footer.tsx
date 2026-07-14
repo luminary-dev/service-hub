@@ -104,7 +104,8 @@ export default async function Footer() {
 
         <div className="mt-10 flex flex-wrap items-center gap-1.5 border-t border-dashed border-ink-300 pt-6 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-500">
           <span className="tabular-nums">© {new Date().getFullYear()}</span>
-          <span>Baas.lk · {t.footer.made1}</span>
+          <span>Baas.lk</span>
+          <span>· {t.footer.made1}</span>
           <FaHeart className="h-3 w-3 text-brand-500" />
           {t.footer.made2}
           <span className="ml-auto flex items-center gap-4">
