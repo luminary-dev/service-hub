@@ -197,15 +197,18 @@ sh` install (a moving upstream branch).
   **Gates on CRITICAL** (#386): a critical production-dependency advisory fails
   the build. `npm audit` still prints the full report, so HIGH/moderate/low
   advisories stay visible in the log without blocking.
-- **gitleaks** (#669) — secret scanning over the git history (full history on
-  push, the PR commit range on `pull_request`). Trivy/`npm audit` cover
-  dependency + OS CVEs but never scan the tree for **committed secrets**, and
-  the repo is public, so a leaked `AUTH_SECRET` / `INTERNAL_API_SECRET` / DB
-  password would be game-over. **Gating**: the `gitleaks/gitleaks-action` (SHA-
-  pinned; free for public repos — `GITLEAKS_LICENSE` is only needed to scan
-  private org repos) exits non-zero on a finding and fails the build. Rules
-  come from gitleaks' default set plus a small repo allowlist in
-  [`.gitleaks.toml`](../.gitleaks.toml) for the intentional dummy fixtures
+- **gitleaks** (#669) — secret scanning over the **full git history**.
+  Trivy/`npm audit` cover dependency + OS CVEs but never scan the tree for
+  **committed secrets**, and the repo is public, so a leaked `AUTH_SECRET` /
+  `INTERNAL_API_SECRET` / DB password would be game-over. **Gating**: `gitleaks
+  git … --exit-code=1` fails the build on any finding. We invoke the **OSS
+  `gitleaks` binary directly** via its official image
+  (`docker://ghcr.io/gitleaks/gitleaks`, pinned by digest like actionlint's
+  `docker://` image) — **not** `gitleaks/gitleaks-action`, which gates
+  org-owned repos behind a paid `GITLEAKS_LICENSE` (free only for personal
+  accounts); the binary itself is MIT with no such gate, so no license secret
+  is needed. Rules come from gitleaks' default set plus a small repo allowlist
+  in [`.gitleaks.toml`](../.gitleaks.toml) for the intentional dummy fixtures
   (`.env*.example`, the dev `docker-compose*.yml`, and placeholders like
   `dev-only-secret` / `password123`).
 
