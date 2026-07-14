@@ -8,7 +8,7 @@ This file is the contract for anyone doing engineering work here — especially 
 
 `service-hub` (Baas.lk) is a bilingual (English/Sinhala) services marketplace for Sri Lanka. It's a monorepo:
 
-- **8 backend services** (Hono + Prisma 7, one Postgres DB each where stateful): `api-gateway` (:4000, the only public entry), `identity` (:4001), `provider` (:4002), `review` (:4003), `job` (:4004), `notification` (:4005), `media` (:4006), `chat` (:4007).
+- **10 backend services** (Hono + Prisma 7, one Postgres DB each where stateful): `api-gateway` (:4000, the only public entry), `identity` (:4001), `provider` (:4002), `review` (:4003), `job` (:4004), `notification` (:4005), `media` (:4006), `chat` (:4007), `search` (:4008, PostGIS-backed discovery index), `trust-safety` (:4009, unified reports/moderation — dark-launched, not yet routed).
 - **Next.js 16 web app** (:3000, App Router, Turbopack) — proxies `/api/*` to the gateway at request time.
 - **Postgres** (host 5433) + **Redis**. Deployed as pre-built GHCR images behind **Caddy** via Docker Compose.
 
@@ -16,7 +16,7 @@ Start with `docs/README.md` (the docs index) and `docs/ARCHITECTURE.md`.
 
 ## Repo layout & commands
 
-The web app lives at the **repo root** (`src/`, root `package.json`); each backend service is its **own npm package** with its own `package.json` and `node_modules` under `services/<dir>`. Directory names carry a `-service` suffix except the gateway: `services/api-gateway`, `services/identity-service`, `services/provider-service`, `services/review-service`, `services/job-service`, `services/notification-service`, `services/media-service`, `services/chat-service`.
+The web app lives at the **repo root** (`src/`, root `package.json`); each backend service is its **own npm package** with its own `package.json` and `node_modules` under `services/<dir>`. Directory names carry a `-service` suffix except the gateway: `services/api-gateway`, `services/identity-service`, `services/provider-service`, `services/review-service`, `services/job-service`, `services/notification-service`, `services/media-service`, `services/chat-service`, `services/search-service`, `services/trust-safety-service`.
 
 Run commands **from the package you're touching** (repo root for web, `services/<dir>` for a service):
 
@@ -27,7 +27,7 @@ npm run test:watch                               # watch mode
 ```
 
 - Tests are **colocated** `*.test.ts(x)` files next to the source they cover (no `__tests__/` tree). Web tests use jsdom via `vitest.config.web.mts` at the root; services use their own `vitest.config.ts`. See `docs/TESTING.md` for what belongs at which layer.
-- The **5 stateful services** — identity, provider, review, job, notification — each have a `prisma/` dir (schema + hand-written migrations + seed). Media, chat and the gateway have no DB. Prisma-service extras: `npm run db:migrate:dev`, `npm run db:seed`.
+- The **6 stateful services** — identity, provider, review, job, notification, trust-safety — each have a `prisma/` dir (schema + hand-written migrations + seed). search-service also has a `prisma/` dir, but `search_db` is a derived, rebuildable index (excluded from backups; repopulate via its reindex endpoint). Media, chat and the gateway have no DB. Prisma-service extras: `npm run db:migrate:dev`, `npm run db:seed`.
 - Web app anatomy: `src/proxy.ts` is Next 16's rename of middleware — it does the runtime `/api/*` → gateway rewrite and the `/si` Sinhala locale prefix (it *owns* the trusted `x-locale` header). Server components skip the proxy and call the gateway directly via `src/lib/api.ts`. Shared helpers in `src/lib/` (i18n, roles, links, locale), UI primitives in `src/components/ui/`.
 - Gateway anatomy: `services/api-gateway/src/lib/routes.ts` is the routing table (the source for `docs/API.md`), plus `session.ts` (JWT), `rate-limit.ts` (Redis sliding window), `csrf.ts`, `proxy.ts` (forwarding + identity headers).
 
@@ -132,10 +132,10 @@ npm run test:watch                               # watch mode
 ./scripts/setup.sh            # one-time
 ./scripts/dev-all.sh          # run all services + web on the host, OR:
 docker compose up -d --build  # run the full stack in Docker
-# ...then seed the 5 data services (container images run NODE_ENV=production,
+# ...then seed the 6 data services (container images run NODE_ENV=production,
 # so the demo seed must be opted into explicitly — `scripts/setup.sh` seeds for
 # you on the host path, but the container path does not):
-for s in identity-service provider-service review-service job-service notification-service; do
+for s in identity-service provider-service review-service job-service notification-service trust-safety-service; do
   docker compose exec -e SEED_DEMO_DATA=true "$s" npm run db:seed
 done
 ```
