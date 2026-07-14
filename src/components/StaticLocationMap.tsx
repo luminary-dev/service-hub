@@ -20,6 +20,7 @@ export default function StaticLocationMap({
   longitude,
   alt,
   linkLabel,
+  contributorsLabel,
 }: {
   latitude: number;
   longitude: number;
@@ -27,6 +28,8 @@ export default function StaticLocationMap({
   alt: string;
   // Localized "View on OpenStreetMap" label.
   linkLabel: string;
+  // Localized trailing word of the "© OpenStreetMap contributors" credit.
+  contributorsLabel: string;
 }) {
   const { tiles, pinX, pinY } = staticMapTiles(latitude, longitude, MINI_MAP_ZOOM);
 
@@ -102,7 +105,7 @@ export default function StaticLocationMap({
         >
           OpenStreetMap
         </a>{" "}
-        contributors
+        {contributorsLabel}
       </figcaption>
     </figure>
   );
