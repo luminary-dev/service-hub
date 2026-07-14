@@ -347,6 +347,26 @@ describe("GET /api/providers — browse card money serialization (#371)", () => 
   });
 });
 
+describe("GET /api/providers — browse card map pin (#48)", () => {
+  it("includes the pin on pinned cards and omits the keys on unpinned ones", async () => {
+    dbMock.provider.findMany.mockResolvedValue([
+      providerRow({ id: "pinned", latitude: 6.9271, longitude: 79.8612 }),
+      providerRow({ id: "unpinned" }),
+    ]);
+    const res = await req("/api/providers");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const pinned = body.providers.find((p: { id: string }) => p.id === "pinned");
+    const unpinned = body.providers.find((p: { id: string }) => p.id === "unpinned");
+    // The same already-public pair the detail payloads carry — the map view
+    // (search RFC phase 3) places card markers from it.
+    expect(pinned.latitude).toBe(6.9271);
+    expect(pinned.longitude).toBe(79.8612);
+    expect(unpinned).not.toHaveProperty("latitude");
+    expect(unpinned).not.toHaveProperty("longitude");
+  });
+});
+
 describe("category cover map caching (#523)", () => {
   const imageSelect = { select: { slug: true, imageUrl: true } };
 

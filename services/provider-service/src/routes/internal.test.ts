@@ -665,6 +665,8 @@ describe("GET /internal/providers/cards", () => {
     createdAt: new Date("2026-01-01T00:00:00Z"),
     avatarUrl: null,
     coverPhoto: null,
+    latitude: 6.9271,
+    longitude: 79.8612,
     photos: [],
     services: [{ id: "s1", title: "Brake inspection", price: 2500, priceType: "VISIT" }],
   };
@@ -683,6 +685,9 @@ describe("GET /internal/providers/cards", () => {
       // search-service overlays its own aggregates over these defaults.
       rating: null,
       reviewCount: 0,
+      // The map pin rides on the card (#48) so the web map can place markers.
+      latitude: 6.9271,
+      longitude: 79.8612,
     });
     // Suspended rows are excluded at the query (defense in depth).
     expect(dbMock.provider.findMany).toHaveBeenCalledWith(

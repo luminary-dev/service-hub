@@ -29,6 +29,7 @@ import {
 } from "@/lib/notifications";
 import EmailVerifyBanner from "./EmailVerifyBanner";
 import ProviderCard, { type ProviderCardDTO } from "./ProviderCard";
+import ProvidersView from "./ProvidersView";
 import FilterBar from "./FilterBar";
 import SearchBar from "./SearchBar";
 import InquiryForm from "./InquiryForm";
@@ -72,6 +73,15 @@ vi.mock("@/lib/locale", () => ({
 // LocationPicker.test.tsx covers the wiring.
 vi.mock("@/components/LocationPickerMap", () => ({
   default: () => <div data-testid="location-picker-map" />,
+}));
+
+// Same for the providers map view's leaflet half (#48, search RFC phase 3) —
+// the toggle, controls, live status and result list stay real and are
+// axe-checked below; ProviderMap.test.tsx covers the marker a11y contract.
+vi.mock("@/components/ProviderMap", () => ({
+  default: ({ mapLabel }: { mapLabel: string }) => (
+    <div role="application" aria-label={mapLabel} data-testid="provider-map" />
+  ),
 }));
 
 const t = dict.en;
@@ -218,6 +228,63 @@ describe("axe: browse & search", () => {
 
   it("SearchBar has no violations", async () => {
     const { container } = render(<SearchBar />);
+    await expectNoAxeViolations(container);
+  }, AXE_TIMEOUT);
+
+  it("providers list/map toggle and map view have no violations (#48)", async () => {
+    // The map view fetches /api/search/providers/nearby once it has a center
+    // (the Colombo district filter here).
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        providers: [
+          { ...cardFixture, latitude: 6.93, longitude: 79.87, distanceKm: 1.2 },
+        ],
+        total: 1,
+      }),
+    });
+    const { container } = render(
+      <I18nProvider locale="en">
+        <ProvidersView
+          filters={{
+            q: "",
+            category: "",
+            district: "Colombo",
+            priceMin: "",
+            priceMax: "",
+            ratingMin: "",
+            availableOnly: false,
+          }}
+        >
+          <div>
+            <ProviderCard p={cardFixture} locale="en" />
+          </div>
+        </ProvidersView>
+      </I18nProvider>
+    );
+    // List view (the default) with the toggle group.
+    expect(
+      screen.getByRole("group", { name: t.browse.viewLabel })
+    ).toBeDefined();
+    await expectNoAxeViolations(container);
+
+    // Toggle to the map: controls + live status + skip link + result list
+    // (the primary accessible representation) render around the map region.
+    fireEvent.click(screen.getByRole("button", { name: t.browse.viewMap }));
+    await screen.findByTestId("provider-map");
+    // The result card (and its distance) has rendered once the fetch lands…
+    await screen.findByText(t.card.kmAway(1.2));
+    expect(screen.getByRole("link", { name: t.browse.skipMap })).toBeDefined();
+    expect(screen.getByRole("status").textContent).toBe(
+      t.browse.mapCount(1, 25)
+    );
+    expect(screen.getByLabelText(t.browse.centerDistrict)).toBeDefined();
+    expect(screen.getByLabelText(t.browse.radiusLabel)).toBeDefined();
+    await expectNoAxeViolations(container);
+
+    // Back to the list: the map unmounts, the server-rendered list returns.
+    fireEvent.click(screen.getByRole("button", { name: t.browse.viewList }));
+    expect(screen.queryByTestId("provider-map")).toBeNull();
     await expectNoAxeViolations(container);
   }, AXE_TIMEOUT);
 });

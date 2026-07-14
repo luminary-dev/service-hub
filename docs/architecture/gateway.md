@@ -68,9 +68,10 @@ Public entry. Responsibilities:
    - `/api/messages/:id/report` → provider (inquiry-message abuse reports,
      #376)
    - `/api/auth/*`, `/api/favorites*` → identity
-   - `/api/search/*` → search (provider search + geo discovery; `/api/providers`
-     browse deliberately stays on provider-service until the web migrates —
-     this table is the single cut-over point, search RFC §5.2)
+   - `/api/search/*` → search (provider search + geo discovery; the web
+     listing queries it since RFC phase 3, while `/api/providers` browse
+     deliberately stays at parity on provider-service until the cut-over has
+     soaked — this table is the single cut-over point, search RFC §5.2)
    - `/api/providers*`, `/api/provider/*`, `/api/inquiries/*`,
      `/api/categories`, `/api/stats` → provider
    - `/api/jobs*` → job

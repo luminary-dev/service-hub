@@ -130,6 +130,13 @@ export function toCardDTO(
     fromPriceType: p.services[0]?.priceType ?? null,
     rating: r?.rating ?? null,
     reviewCount: r?.count ?? 0,
+    // Map pin (#48), included only when set — the same already-public
+    // coordinates the profile payloads carry, so the map view (search RFC
+    // phase 3) can place card markers without another fetch. Real pins only;
+    // district centroids are never substituted.
+    ...(p.latitude !== null && p.longitude !== null
+      ? { latitude: p.latitude, longitude: p.longitude }
+      : {}),
   };
 }
 

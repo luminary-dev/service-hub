@@ -233,6 +233,32 @@ const en = {
     saveSearchSave: "Save",
     saveSearchSaving: "Saving…",
     saveSearchHint: "We'll email you when a new professional matches.",
+    // Map view (#48, search RFC phase 3). The list stays the primary, fully
+    // accessible representation; the map is progressive enhancement.
+    viewLabel: "Results view",
+    viewList: "List",
+    viewMap: "Map",
+    skipMap: "Skip the map to the result list",
+    mapRegionLabel: "Map of nearby professionals",
+    mapListLabel: "Nearby professionals",
+    nearMe: "Near me",
+    locating: "Finding your location…",
+    geoDenied:
+      "We couldn't access your location — choose a district to center the map instead.",
+    centerDistrict: "Center map on district",
+    radiusLabel: "Search radius",
+    radiusOption: (n: number) => `${n} km`,
+    mapPrompt:
+      "See professionals near you: use your location, or pick a district to center the map.",
+    mapCount: (n: number, km: number) =>
+      `${n} pinned professional${n === 1 ? "" : "s"} within ${km} km`,
+    mapEmptyTitle: "No pinned professionals here yet",
+    mapEmptyBody:
+      "Try a wider radius or another district. Professionals without a map pin still appear in the list view.",
+    mapError: "Couldn't load nearby professionals.",
+    mapRetry: "Try again",
+    markerLabel: (name: string, category: string, km: number) =>
+      `${name}, ${category}, ${km} km`,
   },
   card: {
     available: "Available",
@@ -242,6 +268,7 @@ const en = {
     save: "Save",
     saved: "Saved",
     verified: "Verified",
+    kmAway: (km: number) => `${km} km away`,
   },
   account: {
     title: "My account",
@@ -1554,6 +1581,31 @@ const si: Dict = {
     saveSearchSave: "සුරකින්න",
     saveSearchSaving: "සුරකිමින්…",
     saveSearchHint: "නව වෘත්තිකයෙක් ගැලපෙන විට අපි ඔබට විද්‍යුත් තැපෑලෙන් දන්වන්නෙමු.",
+    // Map view (#48)
+    viewLabel: "ප්‍රතිඵල දසුන",
+    viewList: "ලැයිස්තුව",
+    viewMap: "සිතියම",
+    skipMap: "සිතියම මඟහැර ප්‍රතිඵල ලැයිස්තුවට යන්න",
+    mapRegionLabel: "අවට වෘත්තිකයන්ගේ සිතියම",
+    mapListLabel: "අවට වෘත්තිකයන්",
+    nearMe: "මා අසල",
+    locating: "ඔබේ ස්ථානය සොයමින්…",
+    geoDenied:
+      "ඔබේ ස්ථානය ලබාගත නොහැකි විය — ඒ වෙනුවට සිතියම මැදට ගැනීමට දිස්ත්‍රික්කයක් තෝරන්න.",
+    centerDistrict: "සිතියම මැද කරන දිස්ත්‍රික්කය",
+    radiusLabel: "සෙවුම් අරය",
+    radiusOption: (n: number) => `කි.මී. ${n}`,
+    mapPrompt:
+      "ඔබ අසල වෘත්තිකයන් බලන්න: ඔබේ ස්ථානය භාවිතා කරන්න, නැතිනම් දිස්ත්‍රික්කයක් තෝරන්න.",
+    mapCount: (n: number, km: number) =>
+      `කි.මී. ${km}ක් ඇතුළත පින් කළ වෘත්තිකයන් ${n}ක්`,
+    mapEmptyTitle: "මෙතැන පින් කළ වෘත්තිකයන් තවම නැහැ",
+    mapEmptyBody:
+      "වඩා පුළුල් අරයක් හෝ වෙනත් දිස්ත්‍රික්කයක් උත්සාහ කරන්න. සිතියම් පින් නොමැති වෘත්තිකයන් ලැයිස්තු දසුනේ දිගටම පෙනේ.",
+    mapError: "අවට වෘත්තිකයන් පූරණය කළ නොහැකි විය.",
+    mapRetry: "නැවත උත්සාහ කරන්න",
+    markerLabel: (name: string, category: string, km: number) =>
+      `${name}, ${category}, කි.මී. ${km}`,
   },
   card: {
     available: "සූදානම්",
@@ -1563,6 +1615,7 @@ const si: Dict = {
     save: "සුරකින්න",
     saved: "සුරකා ඇත",
     verified: "සත්‍යාපිතයි",
+    kmAway: (km: number) => `කි.මී. ${km}ක් දුරින්`,
   },
   account: {
     title: "මගේ ගිණුම",

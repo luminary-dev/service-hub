@@ -18,7 +18,8 @@ The user-facing flows are split into focused pages:
   self-service portal (profile, email, avatar), role switching, the provider
   dashboard (profile / services / photos / cover), and verification.
 - **[Discovery](features/discovery.md)** — the providers listing, search,
-  filters and the provider cards/profiles.
+  filters, the map view / "near me" geo discovery (#48), and the provider
+  cards/profiles.
 - **[Inquiries & messaging](features/inquiries.md)** — the inquiry form and the
   customer ⇄ provider threads.
 - **[Jobs (reverse-marketplace)](features/jobs.md)** — posting jobs, provider

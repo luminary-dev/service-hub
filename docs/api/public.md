@@ -79,7 +79,7 @@ time (EN↔SI re-renders the whole feed) — and a relative `link`.
 | Method + path | Auth | Summary |
 |---|---|---|
 | `GET /api/categories` | public | Active categories, sorted → `{ categories }`. |
-| `GET /api/providers` | public | Directory search. See params below. Returns `{ providers, total, page, pageSize }`. |
+| `GET /api/providers` | public | Directory search. See params below. Returns `{ providers, total, page, pageSize }`. Each card includes the `latitude`/`longitude` map pin (#48) only when the provider set one (the same already-public pair the detail payloads carry). The web listing itself now queries `/api/search/providers` (RFC phase 3) and falls back here if search-service is down. |
 | `GET /api/providers/ids` | public | Every non-suspended provider `{ id, updatedAt }` (sitemap) → `{ providers }`. |
 | `GET /api/stats` | public | `{ providerCount, reviewCount }` (review count via S2S). |
 | `GET /api/providers/:id` | public | Legacy detail: provider + services + photos, contact as `user` (name/email only). The `latitude`/`longitude` map pin (#48) is included only when the provider set one. Phone numbers are omitted (#64) — the payload carries `hasPhone`/`hasWhatsapp`/`hasPhone2` booleans instead; fetch the digits via `POST /:id/contact`. Admin moderation fields (`rejectionReason`) are never included (#506). Suspended → 404 unless caller is ADMIN. |

@@ -4,10 +4,15 @@
 ### Provider directory
 
 **`/providers`** (`src/app/providers/page.tsx`, `PAGE_SIZE = 12`) lists
-providers from `GET /api/providers`. Signed-in users also fetch
+providers from **`GET /api/search/providers`** — the
+[search & discovery RFC](../rfcs/search-discovery-service.md)'s phase 3
+cut-over; same params, envelope and card DTO the old browse served. If
+search-service is down the page degrades to the provider-service
+`GET /api/providers` browse, which keeps serving the identical envelope
+during the transition (RFC §5.2). Signed-in users also fetch
 `GET /api/favorites` so saved cards are marked.
 
-**Filters** (`FilterBar`, all pass through to provider-service):
+**Filters** (`FilterBar`, all pass through to search-service):
 
 - Free-text search `q` (matches name, category EN/SI labels, and the English
   **and** optional Sinhala headline/bio (#515) so a Sinhala query finds a
@@ -26,9 +31,9 @@ Text, category, district, rating and price commit together on submit (the
 Search button); the availability toggle applies on change; sort commits on
 blur. Selects deliberately don't navigate on every `change` — a closed native
 select fires `change` on each arrow keypress, which would make them
-keyboard-hostile (WCAG 3.2.2). Results paginate with prev/next. Ranking over the
-matched set is bounded server-side (up to 1000 candidates) and backed by pg_trgm
-indexes.
+keyboard-hostile (WCAG 3.2.2). Results paginate with prev/next. Ranking,
+rating filters and pagination all run DB-side in search-service's PostGIS
+index (no candidate cap), with pg_trgm + tsvector text matching.
 
 Signed-in customers with at least one primary filter (`q`/`category`/
 `district`) active also get a **"Save this search"** affordance under the
@@ -40,7 +45,39 @@ availability chip ("Available" or
 "Away until…"), verified tick, location, headline, rating, "from" price, and an
 optional favorite button. The headline (and, on the profile page, the bio)
 render the provider's Sinhala variant under the `si` locale when present,
-falling back to the English original (#515).
+falling back to the English original (#515). On geo results the card also
+shows the distance from the searched point (`distanceKm`, 1-decimal km).
+
+### Map view & "near me" (#48)
+
+The listing has a **List / Map toggle** (`ProvidersView`, an `aria-pressed`
+button group — deliberately not in the URL, so filter and pagination links
+behave exactly as before). The list is the default and stays the **primary,
+fully accessible representation**; the map is progressive enhancement per the
+RFC's a11y contract.
+
+The map view (`ProviderMapView`) queries **`GET
+/api/search/providers/nearby`** client-side with the same active filters plus
+a center and radius:
+
+- **Center:** the **"Near me"** button uses browser geolocation; denial (or
+  no geolocation API) is announced via a live region and falls back to a
+  **district select** that centers on the district's static centroid
+  (`DISTRICT_CENTROIDS`). When a district filter is already active the map
+  auto-centers on it, so it works without granting location access.
+- **Radius:** a labelled select (5/10/25/50/100 km, default 25 — the
+  service's default; 100 is its cap).
+- **Map** (`ProviderMap`): the same client-only Leaflet setup as the location
+  picker (dynamic import, `ssr: false`, OSM tiles + attribution, one shared
+  tile URL in `src/lib/geo.ts`), drawing the search circle and a pin per
+  **pinned** provider in range. Markers are keyboard-focusable (Enter
+  activates) with accessible "{name}, {category}, {distance} km" names;
+  activating one moves focus to the matching card in the list below. A skip
+  link jumps past the map, and every map result also renders as a normal
+  provider card (with distance) in that list — providers without a pin never
+  appear on the map but remain in the list view. Result counts, geolocation
+  progress and errors are announced (`role="status"` / `role="alert"`, with
+  retry).
 
 ### Provider profile
 
@@ -66,7 +103,7 @@ pre-centered on the district centroid, with manual coordinate inputs as the
 keyboard path); coordinates are validated to a Sri Lanka bounding box and are
 only ever real pins — district centroids are never substituted.
 
-### search-service (RFC phase 2 — API live, web still on browse)
+### search-service (RFC phases 2–3 — API live, web cut over)
 
 The RFC's **search-service** (:4008) is deployed: a derived PostGIS index over
 public provider card data serving `GET /api/search/providers` (a superset of
@@ -76,9 +113,12 @@ and `GET /api/search/providers/nearby` (ST_DWithin radius + nearest-first over
 pinned providers, `distanceKm` on every card). provider-service pushes index
 documents S2S on every indexed write, review-service pushes rating aggregates,
 and a daily reindex sweep self-heals drift; `scripts/e2e-smoke.sh`
-shadow-compares search against browse for parity. **The web still queries
-`/api/providers`** — the browse cut-over plus the map view / "near me" UI is
-phase 3 of the [RFC](../rfcs/search-discovery-service.md).
+shadow-compares search against browse for parity. **The web now queries
+`/api/search/providers`** (phase 3); the provider-service `GET /api/providers`
+browse route deliberately stays at parity until the cut-over has soaked — the
+homepage "newest" strip and the listing's outage fallback still call it, and
+the e2e parity check compares against it. Slimming it to the `ids=` favorites
+path is the RFC's post-soak cleanup (§5.2).
 
 ### Open Graph images
 
