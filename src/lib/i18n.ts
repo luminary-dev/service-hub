@@ -1064,6 +1064,10 @@ const en = {
     bannerSending: "Sending…",
     bannerSent: "Verification email sent.",
     bannerError: "Could not send. Try again.",
+    // Action-gated verify prompts (#115): shown inline on the inquiry / review
+    // forms when a signed-in user hasn't confirmed their email yet.
+    inquiryPrompt: "Verify your email address to contact a provider.",
+    reviewPrompt: "Verify your email address to leave a review.",
     // Change-email confirmation (#396)
     changeVerifying: "Confirming your new email…",
     changeSuccessTitle: "Email changed",
@@ -2410,6 +2414,9 @@ const si: Dict = {
     bannerSending: "යවමින්…",
     bannerSent: "තහවුරු කිරීමේ විද්‍යුත් තැපෑල එවන ලදී.",
     bannerError: "එවීමට නොහැකි විය. නැවත උත්සාහ කරන්න.",
+    // Action-gated verify prompts (#115)
+    inquiryPrompt: "වෘත්තිකයෙකු අමතන්නට ඔබේ විද්‍යුත් තැපැල් ලිපිනය තහවුරු කරන්න.",
+    reviewPrompt: "සමාලෝචනයක් තැබීමට ඔබේ විද්‍යුත් තැපැල් ලිපිනය තහවුරු කරන්න.",
     // Change-email confirmation (#396)
     changeVerifying: "ඔබේ නව විද්‍යුත් තැපෑල තහවුරු කරමින්…",
     changeSuccessTitle: "විද්‍යුත් තැපෑල වෙනස් විය",

@@ -108,6 +108,26 @@ export async function fetchReviewCount(): Promise<number> {
   }
 }
 
+// Verified-email write gate (#115): mirrors job-service's isEmailVerified —
+// a signed-in caller with an unconfirmed address must not be able to contact a
+// provider (the inquiry create path). This is a WRITE gate, so unlike the
+// read-path fetchEmailVerified below it fails LOUDLY: a genuine upstream
+// failure throws so the caller returns 502 rather than silently allowing (or
+// silently blocking) the action. The single idempotent-GET retry lives in s2s.
+export async function isEmailVerified(userId: string): Promise<boolean> {
+  const res = await s2s(
+    IDENTITY_URL,
+    `/internal/users?ids=${encodeURIComponent(userId)}`
+  );
+  if (!res.ok) {
+    throw new Error(`user lookup failed: ${res.status}`);
+  }
+  const data = (await res.json()) as {
+    users: { id: string; emailVerified: string | null }[];
+  };
+  return Boolean(data.users.find((u) => u.id === userId)?.emailVerified);
+}
+
 // identity-service GET /internal/users?ids= → emailVerified for the dashboard
 // banner. Degrades to null (banner shows; harmless).
 export async function fetchEmailVerified(userId: string): Promise<string | null> {

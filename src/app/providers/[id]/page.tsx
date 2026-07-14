@@ -248,6 +248,20 @@ export default async function ProviderProfilePage({
     favorited = favorites?.providerIds.includes(provider.id) ?? false;
   }
 
+  // Verified-email action gate (#115): a signed-in customer must confirm their
+  // email before contacting a provider or leaving a review (the backend gates
+  // both). Fetch the flag only for a signed-in non-owner — the owner can do
+  // neither on their own profile — and degrade to "verified" on a lookup miss
+  // so a transient identity blip never hard-blocks the forms; the service gate
+  // stays authoritative either way.
+  let emailUnverified = false;
+  if (session && !isOwner) {
+    const me = await apiJson<{ user: { emailVerified: string | null } | null }>(
+      "/api/auth/me"
+    );
+    emailUnverified = me?.user ? me.user.emailVerified == null : false;
+  }
+
   // Rating breakdown/distribution over all reviews (#528) — read directly from
   // review-service, independent of the profile's first review page.
   const reviewData = await fetchReviewSummary(provider.id, session);
@@ -532,6 +546,7 @@ export default async function ProviderProfilePage({
               canReview={!!session && !isOwner}
               canRespond={isOwner}
               signedIn={!!session}
+              emailUnverified={emailUnverified}
               summary={reviewSummary}
               myReview={
                 myReview
@@ -554,6 +569,7 @@ export default async function ProviderProfilePage({
                 providerId={provider.id}
                 providerName={provider.user.name}
                 defaultName={session?.name ?? ""}
+                emailUnverified={emailUnverified}
               />
             </div>
           </div>

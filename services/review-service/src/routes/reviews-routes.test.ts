@@ -126,7 +126,11 @@ function wireS2s(opts: {
     }
     if (path.includes("/internal/inquiries/exists")) return json({ exists: interaction });
     if (path.includes("/internal/providers?ids=")) return json({ providers });
-    if (path.includes("/internal/users?ids=")) return json({ users: [] });
+    // The reviewer resolves as email-verified so the create gate (#115) passes;
+    // note there's deliberately no `email` field, so the review-response route's
+    // author-email hydration still degrades to in-app only (asserted below).
+    if (path.includes("/internal/users?ids="))
+      return json({ users: [{ id: REVIEWER_ID, emailVerified: "2026-01-01T00:00:00Z" }] });
     throw new Error(`unexpected s2s path: ${path}`);
   });
 }

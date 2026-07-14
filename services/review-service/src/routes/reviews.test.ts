@@ -83,13 +83,28 @@ function inquiryExistsResponse(exists: boolean) {
 }
 
 // Route s2s calls by path: the provider summary vs. the inquiry-exists check.
+function usersResponse(emailVerified: string | null) {
+  return new Response(
+    JSON.stringify({ users: [{ id: REVIEWER_ID, emailVerified }] }),
+    { status: 200, headers: { "content-type": "application/json" } }
+  );
+}
+
 function wireS2s({
   interaction,
+  email = "verified",
 }: {
   interaction: "exists" | "none" | "fail-status" | "fail-throw";
+  email?: "verified" | "unverified" | "fail-status" | "fail-throw";
 }) {
   s2sMock.mockImplementation(async (_baseUrl: string, path: string) => {
     if (path.includes("/summary")) return providerSummaryResponse();
+    if (path.includes("/internal/users")) {
+      if (email === "verified") return usersResponse("2026-01-01T00:00:00Z");
+      if (email === "unverified") return usersResponse(null);
+      if (email === "fail-status") return new Response("boom", { status: 503 });
+      throw new Error("identity down");
+    }
     if (path.includes("/internal/inquiries/exists")) {
       if (interaction === "exists") return inquiryExistsResponse(true);
       if (interaction === "none") return inquiryExistsResponse(false);
@@ -204,6 +219,43 @@ describe("POST /api/providers/:id/reviews — interaction gate (#25)", () => {
     expect(res.status).toBe(200);
     expect(upsert).toHaveBeenCalledTimes(1);
     expect(emitNotification).not.toHaveBeenCalled();
+  });
+});
+
+// Verified-email gate (#115): a reviewer must have confirmed their email — the
+// gate runs before the interaction check and before any write.
+describe("POST /api/providers/:id/reviews — verified-email gate (#115)", () => {
+  it("rejects with 403 when the reviewer's email is not verified", async () => {
+    wireS2s({ interaction: "exists", email: "unverified" });
+    const res = await postReview();
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toMatch(/verify your email/i);
+    // Nothing is written, and the interaction check never runs (gate is first).
+    expect(upsert).not.toHaveBeenCalled();
+    expect(emitNotification).not.toHaveBeenCalled();
+  });
+
+  it("fails loudly with 502 when the email lookup returns a server error", async () => {
+    wireS2s({ interaction: "exists", email: "fail-status" });
+    const res = await postReview();
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Upstream service unavailable" });
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it("fails loudly with 502 when the email lookup request throws", async () => {
+    wireS2s({ interaction: "exists", email: "fail-throw" });
+    const res = await postReview();
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Upstream service unavailable" });
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it("allows the review when the email is verified and there is an interaction", async () => {
+    wireS2s({ interaction: "exists", email: "verified" });
+    const res = await postReview();
+    expect(res.status).toBe(200);
+    expect(upsert).toHaveBeenCalledTimes(1);
   });
 });
 

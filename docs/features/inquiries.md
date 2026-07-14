@@ -10,6 +10,17 @@ a message (10–2000 chars) and submits
 endpoint) linking to the new thread. Inquiries are rate-limited (see
 [RATE_LIMITING.md](../RATE_LIMITING.md)).
 
+A **signed-in** sender must have a **verified email** (#115): provider-service
+checks identity-service over S2S and returns **403** (`Verify your email address
+to contact a provider`) otherwise — an unverified inquiry also permanently
+satisfies the review interaction gate, so it must be closed off. **Anonymous**
+inquiries (no session) are deliberately still allowed and are not gated, mirroring
+how job posting gates only authenticated callers. On the web the `InquiryForm`
+surfaces this proactively for a signed-in-but-unverified viewer: it shows the
+`EmailVerifyBanner` (with a resend action) and disables submit rather than
+letting the request bounce off the backend 403. A genuine identity outage fails
+loudly as **502**.
+
 Inquiry text and every thread message also pass the write-time
 [content filter](../admin/moderation.md#content-filter-write-time-auto-reports)
 (#375): a denylist hit never blocks delivery — it auto-files a `SYSTEM`-sourced

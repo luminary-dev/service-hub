@@ -60,6 +60,14 @@ describe("ReviewSection", () => {
     expect(screen.getByRole("link", { name: t.signIn })).toBeTruthy();
   });
 
+  // Verified-email gate (#115): a signed-in but unconfirmed reviewer sees the
+  // verify prompt instead of the write button.
+  it("shows the verify-email prompt and hides the write button when emailUnverified", () => {
+    renderSection({ emailUnverified: true });
+    expect(screen.getByText(dict.en.verify.reviewPrompt)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: t.write })).toBeNull();
+  });
+
   it("posts the review as multipart form data and confirms with a toast", async () => {
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
     const { container } = renderSection();

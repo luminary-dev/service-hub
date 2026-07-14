@@ -11,6 +11,7 @@ import {
   fetchProviderReviews,
   fetchRatings,
   fetchReviewCount,
+  isEmailVerified,
   type RatingEntry,
 } from "../lib/clients";
 import { emitNotification } from "../lib/notify";
@@ -585,6 +586,31 @@ providersRoutes.post("/api/providers/:id/inquiries", async (c) => {
   }
 
   const auth = getAuth(c);
+
+  // Verified-email gate (#115): a signed-in customer must confirm their email
+  // before contacting a provider — the inquiry both notifies the provider and
+  // permanently satisfies review-service's interaction gate, so a throwaway
+  // unconfirmed account must not reach it. Anonymous inquiries (no session) are
+  // deliberately still allowed, matching how job-post gates only signed-in
+  // callers; the gate applies only when there IS an authenticated user. Fails
+  // loudly on an identity outage (502) — never silently allow or block a gated
+  // write, mirroring job-service's isEmailVerified check.
+  if (auth) {
+    let verified: boolean;
+    try {
+      verified = await isEmailVerified(auth.userId);
+    } catch (e) {
+      log.error("email-verification gate failed", { context: "inquiry", err: e });
+      return c.json({ error: "Upstream service unavailable" }, 502);
+    }
+    if (!verified) {
+      return c.json(
+        { error: "Verify your email address to contact a provider" },
+        403
+      );
+    }
+  }
+
   const inquiry = await db.inquiry.create({
     data: {
       providerId: id,
