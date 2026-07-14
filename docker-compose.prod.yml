@@ -115,10 +115,17 @@ services:
       - ./deploy/postgres-init.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
     networks: [backend]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      # Probe over TCP (-h 127.0.0.1), NOT the default local socket: the postgres
+      # image runs its multi-DB init against a temporary socket-only server
+      # (listen_addresses='') before restarting the real TCP listener. A socket
+      # probe reports healthy during that window, so dependents get released early
+      # and their `prisma migrate deploy` hits P1001 over TCP (#686). A TCP probe
+      # only passes once the real server accepts connections the way services do.
+      test: ["CMD-SHELL", "pg_isready -U postgres -h 127.0.0.1"]
       interval: 10s
       timeout: 3s
       retries: 10
+      start_period: 15s
 
   redis:
     # dependabot: redis:7-alpine

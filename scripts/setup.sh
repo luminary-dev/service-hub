@@ -23,7 +23,11 @@ done
 
 echo "==> Starting Postgres"
 docker compose up -d postgres
-until docker compose exec -T postgres pg_isready -U postgres >/dev/null 2>&1; do
+# Probe over TCP (-h 127.0.0.1), not the local socket: the postgres image's
+# multi-DB init runs on a temporary socket-only server, so a socket probe can
+# report ready before the real TCP listener is up — and the db:migrate below
+# connects over TCP, so it would then fail with P1001 (#686).
+until docker compose exec -T postgres pg_isready -U postgres -h 127.0.0.1 >/dev/null 2>&1; do
   sleep 1
 done
 
