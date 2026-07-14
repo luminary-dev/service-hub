@@ -126,8 +126,9 @@ App secrets (set with `gh secret set <NAME>`):
 
 - **Required**: `AUTH_SECRET`, `INTERNAL_API_SECRET`, `POSTGRES_PASSWORD`,
   `IDENTITY_DB_PASSWORD`, `PROVIDER_DB_PASSWORD`, `REVIEW_DB_PASSWORD`,
-  `JOB_DB_PASSWORD`, `SEARCH_DB_PASSWORD`, `REDIS_PASSWORD` (#387 — per-service
-  DB roles + Redis AUTH; **URL-interpolated**, so generate them with
+  `JOB_DB_PASSWORD`, `NOTIFICATION_DB_PASSWORD`, `SEARCH_DB_PASSWORD`,
+  `TRUST_SAFETY_DB_PASSWORD`, `REDIS_PASSWORD` (#387 — per-service DB roles +
+  Redis AUTH; **URL-interpolated**, so generate them with
   `openssl rand -hex 32`, not base64), `WEB_ORIGIN`, `DOMAIN`.
   `docker-compose.prod.yml` guards each with `${VAR:?}`, so the stack refuses
   to start if any is missing. `SEARCH_DB_PASSWORD` also needs the one-off
@@ -169,7 +170,7 @@ runtime variables and how each degrades when unset.
    ```
    Generate the secrets: `openssl rand -base64 32` for `AUTH_SECRET` and
    `INTERNAL_API_SECRET`; `openssl rand -hex 32` for `POSTGRES_PASSWORD`, the
-   four per-service `*_DB_PASSWORD`s and `REDIS_PASSWORD` (these are
+   five per-service `*_DB_PASSWORD`s and `REDIS_PASSWORD` (these are
    interpolated into connection URLs, so they must stay URL-safe — hex is).
 4. Log in to GHCR so the host can pull the images:
    ```bash
@@ -260,11 +261,17 @@ longer means the whole stack:
     database + object ownership, and applies the grants. It is idempotent,
     and the superuser keeps access throughout, so the safe rollout order is:
     set the new GitHub secrets → run the script against the **running old
-    stack** (exporting the four `*_DB_PASSWORD`s in the shell) → merge/deploy
-    the compose change. Running it after a failed boot works too — the DB
-    services just crash-loop until the roles exist. (`search_db` has its own
-    one-off script — `deploy/add-search-db.sh`, below — because it also needs
-    the superuser-created PostGIS extension.)
+    stack** (exporting the seven `*_DB_PASSWORD`s in the shell) → merge/deploy
+    the compose change. The same script is the live-prod pre-step for the
+    stateful notification-service, the (dark-launch) trust-safety-service and
+    the search-service releases: it also creates `notification_db` /
+    `search_db` / `trust_safety_db` (idempotently) on a cluster that predates
+    them — plus `search_db`'s superuser-created PostGIS extension, which
+    requires the postgis compose image to already be running (see the PostGIS
+    rollout below) — so set the `NOTIFICATION_DB_PASSWORD` /
+    `SEARCH_DB_PASSWORD` / `TRUST_SAFETY_DB_PASSWORD` secrets and run it once
+    **before** deploying those releases. Running it after a failed boot works
+    too — the DB services just crash-loop until the roles exist.
 - **Redis AUTH** — `requirepass` from `REDIS_PASSWORD`; the gateway and
   identity carry it in `REDIS_URL` (`redis://default:<password>@redis:6379` —
   `default` is the ACL user `requirepass` sets the password for).
@@ -294,17 +301,18 @@ of `postgres:16-alpine`. What that means operationally:
   trusted extension, and the `search` role merely owns its database — so the
   extension is created by the superuser: `deploy/postgres-init.sh` does it on
   a **fresh** volume; for the **existing** prod volume (initdb never re-runs)
-  run **`deploy/add-search-db.sh` once** — idempotent, in the
-  migrate-db-roles.sh mold: creates the `search` LOGIN role, `search_db`
-  (owned by it, CONNECT revoked from PUBLIC) and the extension.
+  run **`deploy/migrate-db-roles.sh` once** — idempotent; it creates the
+  `search` LOGIN role, `search_db` (owned by it, CONNECT revoked from PUBLIC)
+  and the extension, alongside the other services' roles/databases.
   search-service's first migration repeats `CREATE EXTENSION IF NOT EXISTS
   postgis` as a no-op (and creates `pg_trgm` itself — that one is trusted).
 - **Rollout order for the existing prod volume:**
   1. Set the `SEARCH_DB_PASSWORD` GitHub secret (`openssl rand -hex 32`).
   2. Deploy (or manually apply) the compose change so the postgres container
      runs the postgis image — the running stack is unaffected.
-  3. `SEARCH_DB_PASSWORD=… ./deploy/add-search-db.sh` against the running
-     stack (role + database + extension; safe to re-run).
+  3. `SEARCH_DB_PASSWORD=… ./deploy/migrate-db-roles.sh` against the running
+     stack (role + database + extension; safe to re-run — the other roles'
+     passwords are read from the postgres container's environment).
   4. Deploy the stack that starts search-service; its `start:migrate` applies
      the index schema and the daily reindex sweep populates it
      ([OPERATIONS.md](OPERATIONS.md)).

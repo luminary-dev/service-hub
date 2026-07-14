@@ -7,7 +7,7 @@
 -- PostGIS is NOT a trusted extension: creating it needs superuser. In dev the
 -- service connects as the postgres superuser so this line works standalone; in
 -- prod the extension is bootstrapped by deploy/postgres-init.sh (fresh volume)
--- or deploy/add-search-db.sh (existing volume) and this is a no-op NOTICE —
+-- or deploy/migrate-db-roles.sh (existing volume) and this is a no-op NOTICE —
 -- IF NOT EXISTS short-circuits before any privilege check.
 CREATE EXTENSION IF NOT EXISTS postgis;
 -- pg_trgm IS trusted (PG13+), so the owning role can create it itself.

@@ -58,6 +58,22 @@ alert email, at most one per search per 24 h — see
 | `POST /api/saved-searches` | CUSTOMER | `{ name (≤60), query? (≤100), category?, district? }` — at least one filter required; category validated against the S2S category cache, district against the fixed list. → `201 { savedSearch }`. Duplicate filters return the existing row (`200`, no slot burned); over the 20-per-user cap → 429. |
 | `DELETE /api/saved-searches/:id` | CUSTOMER | Delete an own saved search (idempotent) → `{ deleted: true }`. |
 
+### Notifications — notification-service
+
+The in-app notification center (#394, RFC stateful-notification-service).
+Recipient-only access, any role: every query is scoped to the caller's own
+rows; foreign/unknown ids in mark-read are silently ignored. Rows carry
+`type` + a small denormalized `payload` — the web renders the sentence at read
+time (EN↔SI re-renders the whole feed) — and a relative `link`.
+
+| Method + path | Auth | Summary |
+|---|---|---|
+| `GET /api/notifications` | authenticated | Own feed, newest first, cursor-paginated (`?take` default 20, max 50; `?cursor`) → `{ notifications: [{ id, type, payload, link, readAt, createdAt }], nextCursor }`. |
+| `GET /api/notifications/unread-count` | authenticated | `{ count }` — the bell badge (cheap indexed count). |
+| `POST /api/notifications/read` | authenticated | `{ ids?: string[] (1–100), all?: true }` — mark-read, own rows only, idempotent → `{ ok: true, updated }`. Rate-limited (`message` budget). |
+| `GET /api/notification-preferences` | authenticated | Full type × channel matrix — defaults (both channels on) merged over the caller's stored sparse overrides → `{ preferences: [{ type, emailEnabled, inAppEnabled }] }` (one entry per catalog type). |
+| `POST /api/notification-preferences` | authenticated | Upsert one override `{ type, emailEnabled?, inAppEnabled? }` (at least one flag) → `{ preference }`. Rate-limited (`review` budget). The transactional auth emails are not preference-gated and can never be muted. |
+
 ### Providers & search — provider-service
 
 | Method + path | Auth | Summary |

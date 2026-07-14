@@ -57,7 +57,7 @@ every request except `/healthz` carries `x-internal-secret`.
 
 The 0_init migration needs the **postgis** extension (not trusted → created by
 the superuser bootstrap in prod: `deploy/postgres-init.sh` fresh volume /
-`deploy/add-search-db.sh` existing volume; dev connects as the superuser and
+`deploy/migrate-db-roles.sh` existing volume; dev connects as the superuser and
 creates it itself) and **pg_trgm** (trusted).
 
 ## Environment

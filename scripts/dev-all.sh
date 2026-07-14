@@ -21,7 +21,7 @@ if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -f .env ]; then
 fi
 export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
 
-SERVICES=(identity-service provider-service review-service job-service notification-service media-service chat-service search-service api-gateway)
+SERVICES=(identity-service provider-service review-service job-service notification-service media-service chat-service search-service trust-safety-service api-gateway)
 
 pids=()
 cleanup() {

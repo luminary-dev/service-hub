@@ -20,10 +20,13 @@ Public entry. Responsibilities:
    and `POST /api/providers/:id/reviews` → review;
    `POST /api/providers/:id/report`, `POST /api/photos/:id/report`,
    `POST /api/reviews/:id/report`, `POST /api/jobs/:id/report` and
-   `POST /api/messages/:id/report` (#376) → report; `GET /api/search/*` →
-   search (the first rate-limited READ — the search endpoints are a query
-   engine a scraper could walk, so they carry their own per-IP budget). 429
-   body/headers identical to the monolith (`Retry-After`).
+   `POST /api/messages/:id/report` (#376) → report;
+   `POST /api/notifications/read` → message (`notification-read` bucket, #394)
+   and `POST /api/notification-preferences` → review (`notification-prefs`
+   bucket); `GET /api/search/*` → search (the first rate-limited READ — the
+   search endpoints are a query engine a scraper could walk, so they carry
+   their own per-IP budget). 429 body/headers identical to the monolith
+   (`Retry-After`).
 3. **Session / identity headers** (`lib/proxy.ts#buildUpstreamHeaders`): strip
    any client-sent trusted headers first (`GATEWAY_HEADERS`: `x-user-id`,
    `x-user-role`, `x-user-name`, `x-impersonated-by`, `x-internal-secret`,
@@ -58,6 +61,9 @@ Public entry. Responsibilities:
    - all other `/api/admin/*` (providers, verifications, reports, photos,
      messages, categories, stats, `notifications/counts`, `audit-log`) →
      provider
+   - `/api/notifications*`, `/api/notification-preferences` → notification
+     (#394; placed after the `/api/admin/` fallback so the admin badge counts
+     keep resolving to provider)
    - `/api/photos/:id/report` → provider (work-photo abuse reports)
    - `/api/messages/:id/report` → provider (inquiry-message abuse reports,
      #376)
@@ -105,7 +111,12 @@ by service:
   payments) is intentionally deferred to v0.2** — v0.1 is free to use, so there
   is no transaction ledger and no price/commission field on a job (a JobRequest
   carries only an optional customer-stated `budget`).
-- **notification-service (:4005)** — internal-only en/si email templates
+- **notification-service (:4005)** — the notification center
+  (`/api/notifications*` — feed, unread count, mark-read) and channel
+  preferences (`/api/notification-preferences`), backed by `notification_db`
+  (RFC stateful-notification-service); the generic S2S event ingestion
+  (`/internal/notifications/events`, 202-ack fan-out to in-app rows + a
+  Redis-backed email queue) and the en/si email templates
   (`/internal/email/*`); Resend when `RESEND_API_KEY` is set, else console log.
 - **media-service (:4006)** — serves uploads at `GET /files/:namespace/*` (public
   through the gateway as `/api/files/<namespace>/*`) and the internal

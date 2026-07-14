@@ -168,6 +168,21 @@ describe("LIMITED_ROUTES", () => {
     expect(route?.rule).toBe(RATE_LIMITS.review);
   });
 
+  // #394: notification-center writes. Mark-read fires at conversational
+  // frequency (each bell open marks a page read) → the message budget; the
+  // preference upsert is a settings form → the review budget.
+  it("rate-limits notification mark-read on the message budget", () => {
+    const route = match("/api/notifications/read");
+    expect(route?.name).toBe("notification-read");
+    expect(route?.rule).toBe(RATE_LIMITS.message);
+  });
+
+  it("rate-limits notification-preference upserts on the review budget", () => {
+    const route = match("/api/notification-preferences");
+    expect(route?.name).toBe("notification-prefs");
+    expect(route?.rule).toBe(RATE_LIMITS.review);
+  });
+
   // Near-miss paths must not be swept into the upload/email buckets.
   it("does not match unrelated or sibling paths", () => {
     expect(match("/api/account/email/confirm")?.name).not.toBe(
@@ -175,6 +190,10 @@ describe("LIMITED_ROUTES", () => {
     );
     expect(match("/api/provider/photos/order")).toBeUndefined();
     expect(match("/api/account/profile")).toBeUndefined();
+    // The notification GET endpoints (feed, unread-count) are POST-only misses
+    // by path too — the read routes never appear in the table.
+    expect(match("/api/notifications")).toBeUndefined();
+    expect(match("/api/notifications/unread-count")).toBeUndefined();
   });
 });
 

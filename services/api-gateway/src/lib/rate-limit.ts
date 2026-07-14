@@ -360,6 +360,12 @@ export const LIMITED_ROUTES: { pattern: RegExp; name: string; rule: RateRule }[]
   { pattern: /^\/api\/reviews\/[^/]+\/report$/, name: "report", rule: RATE_LIMITS.review },
   { pattern: /^\/api\/jobs\/[^/]+\/report$/, name: "report", rule: RATE_LIMITS.review },
   { pattern: /^\/api\/messages\/[^/]+\/report$/, name: "report", rule: RATE_LIMITS.review },
+  // Notification center (#394): mark-read fires at conversational frequency
+  // (each bell-dropdown open marks a page read) → the message budget; the
+  // preference upsert is a settings form → the review budget. The GETs (feed,
+  // unread-count poll) stay unthrottled like every other read.
+  { pattern: /^\/api\/notifications\/read$/, name: "notification-read", rule: RATE_LIMITS.message },
+  { pattern: /^\/api\/notification-preferences$/, name: "notification-prefs", rule: RATE_LIMITS.review },
   // Image uploads (#520): each runs a CPU-expensive sharp re-encode, so they
   // share one per-IP "upload" bucket across the four upload POST endpoints.
   { pattern: /^\/api\/account\/avatar$/, name: "upload", rule: RATE_LIMITS.upload },

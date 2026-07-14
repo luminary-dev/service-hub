@@ -302,7 +302,7 @@ One-time setup, then run the whole stack on the host:
 
 ```bash
 npm run setup       # scripts/setup.sh — installs all packages, writes .env files
-                    # from the examples, starts Postgres, migrates + seeds the 4 DBs
+                    # from the examples, starts Postgres, migrates + seeds the 5 DBs
 npm run dev:all     # scripts/dev-all.sh — Postgres (docker) + all 8 services + web
 ```
 
@@ -316,9 +316,9 @@ To run everything in containers instead (closest to prod):
 
 ```bash
 docker compose up -d --build      # dev compose: builds locally, all services + web
-# the container images run NODE_ENV=production, so seed the 4 data services
+# the container images run NODE_ENV=production, so seed the 5 data services
 # explicitly (setup.sh seeds for you on the host path; the container path does not):
-for s in identity-service provider-service review-service job-service; do
+for s in identity-service provider-service review-service job-service notification-service; do
   docker compose exec -e SEED_DEMO_DATA=true "$s" npm run db:seed
 done
 npm run e2e                       # scripts/e2e-smoke.sh against the running stack
@@ -332,7 +332,7 @@ board is intentionally empty — jobs are customer-created) are both expected.
 the seeds are dummy data only. When a run's state gets in the way, reset to a
 clean, seeded stack with `scripts/dev-reset.sh`, which tears everything down
 **including volumes** (`docker compose down -v`), rebuilds (`up -d --build`), and
-reseeds the four databases:
+reseeds the five databases:
 
 ```bash
 ./scripts/dev-reset.sh            # down -v → up -d --build → reseed

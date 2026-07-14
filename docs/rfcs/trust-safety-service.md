@@ -151,10 +151,18 @@ backfill is a straight copy plus the derived `ownerService` / `service` tag.
 
 ### 4.2 One-time row migration
 
-- **Script:** `scripts/migrate-trust-safety-backfill.sh`, following the
-  `deploy/migrate-db-roles.sh` conventions from #612 — idempotent, runs as the
-  Postgres **superuser** (which #612 deliberately kept for cluster admin), and
-  is safe to re-run. Per source DB (`provider_db`, `review_db`, `job_db`):
+- **Script:** `scripts/migrate-trust-safety-backfill.sh` (shipped with
+  phase 1), following the `deploy/migrate-db-roles.sh` conventions from #612 —
+  idempotent, runs as the Postgres **superuser** (which #612 deliberately kept
+  for cluster admin), and is safe to re-run:
+
+  ```sh
+  ./scripts/migrate-trust-safety-backfill.sh           # backfill + parity report
+  ./scripts/migrate-trust-safety-backfill.sh --check   # parity check only (no writes)
+  # dev/local drive: COMPOSE_FILE=docker-compose.yml ./scripts/migrate-trust-safety-backfill.sh
+  ```
+
+  Per source DB (`provider_db`, `review_db`, `job_db`):
   `psql \copy` the `Report` / `AdminAuditLog` tables out, load into a temp
   table in `trust_safety_db`, then upsert:
   - `Report`: `INSERT … ON CONFLICT (id) DO UPDATE SET status, details,

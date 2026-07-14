@@ -76,9 +76,20 @@ endpoints). Suspended/erased providers are **deleted** from the index.
 
 ### notification-service
 
-Single-recipient sends return `{ ok, delivered }` (`delivered:false` when
-`RESEND_API_KEY` is unset — console fallback). Bodies carry
-`{ to, url, locale, ... }`.
+Generic marketplace-event ingestion (RFC stateful-notification-service):
+
+| Method + path | Purpose |
+|---|---|
+| `POST /internal/notifications/events` | One endpoint for all catalog events: `{ type, recipients: [{ userId, email?, name?, locale? }] (≤200, deduped by userId), payload, link }`. `type` ∈ `NEW_INQUIRY \| THREAD_REPLY \| NEW_REVIEW \| REVIEW_RESPONSE \| VERIFICATION_APPROVED \| VERIFICATION_REJECTED \| NEW_JOB_MATCH \| JOB_RESPONSE \| SAVED_SEARCH_MATCH \| REPORT_RESOLVED`; `payload` is zod-validated per type (e.g. `NEW_JOB_MATCH` → `{ jobTitle, district }`, `NEW_REVIEW` → `{ reviewerName, rating }`); `link` is a **relative** path (email links are rebuilt absolute from `x-origin`). Validate → load `NotificationPreference` overrides → write in-app rows **inline** (durable even if Redis/Resend is down) → enqueue one email job per email-enabled recipient with an `email` → ack `202 { ok, accepted }` before any send (#557 contract). Recipients without an email get in-app only; `REPORT_RESOLVED` is in-app only (no email template in v1). Delivery: Redis queue (`notify:email`, BRPOPLPUSH worker, processing-list reclaim, 3 attempts at 30s×2^n) falling back to one-attempt direct sends when Redis is unavailable. |
+| `POST /internal/users/:id/erase` | Account-deletion fan-out: delete the user's notifications + preference overrides. Idempotent. (identity starts calling it when the emitters migrate.) |
+
+Email routes. Single-recipient sends return `{ ok, delivered }`
+(`delivered:false` when `RESEND_API_KEY` is unset — console fallback). Bodies
+carry `{ to, url, locale, ... }`. The five auth routes are permanent (they are
+not notifications and take no preferences); the four marketplace routes
+(`/inquiry`, `/job-response`, `/new-job`, `/new-provider-match`) remain only
+until their callers migrate to `/internal/notifications/events`, then get
+deleted.
 
 | Method + path | Purpose |
 |---|---|
@@ -105,6 +116,21 @@ Single-recipient sends return `{ ok, delivered }` (`delivered:false` when
 | Method + path | Purpose |
 |---|---|
 | `POST /internal/chat/:persona/stream` | Streaming Claude tool loop (SSE). Persona `marketplace` today; tools `search_providers` + `create_inquiry` (call the gateway). 503 without `ANTHROPIC_API_KEY`, 404 for an unknown persona, 413 over 256 KB, 400 on empty history. Reached via the web `/agent/chat` proxy. |
+
+### trust-safety-service (dark launch)
+
+> **Dark launch** ([RFC](../rfcs/trust-safety-service.md) §8 phase 1): the
+> service is deployed and functional, but the owning services still write
+> their local Report/audit tables — nothing calls these endpoints until the
+> cutover PR switches provider/review/job's `auto-report`/`logAudit` helpers
+> to S2S. The owner-side `/internal/moderation/*` endpoints trust-safety
+> itself calls (target validation/hydration, takedown/restore) also land in
+> the cutover PR.
+
+| Method + path | Purpose |
+|---|---|
+| `POST /internal/reports/auto` | Content-filter ingestion (#375): `{ targetType, targetId, fields }` — runs the canonical bilingual filter and files/refreshes the one OPEN SYSTEM report per target → `{ ok, flagged }`. Callers stay best-effort (never fail the user's write). |
+| `POST /internal/audit` | Audit ingestion for owner-native admin actions that stay in place: `{ adminId, action, targetType, targetId, reason?, service: "provider"\|"review"\|"job" }` → one unified `AdminAuditLog` row. |
 
 ---
 

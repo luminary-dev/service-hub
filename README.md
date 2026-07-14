@@ -6,7 +6,7 @@ The customer-facing UI is bilingual — an EN/සිං toggle in the navbar swi
 
 ## Architecture
 
-The marketplace is built as **nine Hono services — an API gateway fronting eight backend microservices — with a Next.js 16 web app as a pure frontend**, all backed by Postgres and Redis. The web app never touches a database — it rewrites `/api/*` to the gateway, which verifies the JWT session cookie, enforces CSRF + rate limits, and fans requests out to the backend services over internal HTTP secured by a shared secret. The five data-owning services (identity, provider, review, job, search) each own their own Postgres database, and Redis backs the gateway's distributed rate limiter. Full details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Narrative team documentation (onboarding, workflow, operations) lives on GitBook in [luminary-dev/service-hub-docs](https://github.com/luminary-dev/service-hub-docs).
+The marketplace is built as **ten Hono services — an API gateway fronting nine backend microservices — with a Next.js 16 web app as a pure frontend**, all backed by Postgres and Redis. The web app never touches a database — it rewrites `/api/*` to the gateway, which verifies the JWT session cookie, enforces CSRF + rate limits, and fans requests out to the backend services over internal HTTP secured by a shared secret. The seven data-owning services (identity, provider, review, job, notification, search, trust-safety) each own their own Postgres database, and Redis backs the gateway's distributed rate limiter and the notification email queue. Full details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Narrative team documentation (onboarding, workflow, operations) lives on GitBook in [luminary-dev/service-hub-docs](https://github.com/luminary-dev/service-hub-docs).
 
 ```
 browser ── same-origin /api/* ──> Next.js web (:3000)
@@ -19,11 +19,12 @@ browser ── same-origin /api/* ──> Next.js web (:3000)
                                    ├── notification-service (:4005)  email (Resend)
                                    ├── media-service        (:4006)  image processing + file storage
                                    ├── chat-service         (:4007)  Claude assistant (holds the LLM key)
-                                   └── search-service       (:4008)  provider search + geo discovery index
+                                   ├── search-service       (:4008)  provider search + geo discovery index
+                                   └── trust-safety-service (:4009)  unified reports + audit store (dark launch)
                                    gateway ── rate limits ──> Redis (:6379)
 ```
 
-- The five data-owning services (identity, provider, review, job, search) each own a Postgres database; notification, media and chat are stateless. search_db is a derived, rebuildable index (PostGIS) over provider data. Cross-service data flows over internal HTTP with a shared secret.
+- The seven data-owning services (identity, provider, review, job, notification, search, trust-safety) each own a Postgres database; media and chat are stateless. search_db is a derived, rebuildable index (PostGIS) over provider data. Cross-service data flows over internal HTTP with a shared secret.
 - The gateway verifies the JWT session cookie, enforces CSRF + distributed (Redis-backed) rate limits, and forwards identity headers.
 - This repo is the **canonical monorepo**. Every service under `services/` is also mirrored to its own repo in the `luminary-dev` org (`npm run sync:repos`), where it builds, tests and deploys standalone.
 
@@ -35,7 +36,7 @@ Prereqs: Node 22+, Docker.
 
 ```bash
 npm run setup      # scripts/setup.sh — install all packages, create .env files, start Postgres, push schemas, seed
-npm run dev:all    # scripts/dev-all.sh — run the gateway + all eight backend services + the web app (Ctrl-C stops everything)
+npm run dev:all    # scripts/dev-all.sh — run the gateway + all nine backend services + the web app (Ctrl-C stops everything)
 ```
 
 Open http://localhost:3000.
@@ -47,8 +48,8 @@ docker compose up -d --build
 
 # The container images run as NODE_ENV=production, so the demo seed is an
 # explicit opt-in (unlike `npm run setup` above, which seeds for you). Seed the
-# four data services once the stack is up:
-for s in identity-service provider-service review-service job-service; do
+# five data services once the stack is up:
+for s in identity-service provider-service review-service job-service notification-service; do
   docker compose exec -e SEED_DEMO_DATA=true "$s" npm run db:seed
 done
 ```
@@ -58,7 +59,7 @@ prints `.env not found. Continuing without it.` (containers read their config
 from Compose, not a `.env` file), and `job-service` prints `no seed data` — the
 job board starts empty by design (jobs are customer-created at runtime).
 
-Ports: web `:3000`, gateway `:4000`, backend services `:4001`–`:4008`. Postgres
+Ports: web `:3000`, gateway `:4000`, backend services `:4001`–`:4009`. Postgres
 listens on host port **5433** (5432 is often taken by a local install); Redis is
 internal to the compose network. Verify everything with the end-to-end smoke
 suite while the stack is running:
@@ -123,10 +124,11 @@ services/
   provider-service/      providers, services, photos, inquiries    (provider_db)
   review-service/        reviews, review photos                    (review_db)
   job-service/           job requests + responses                  (job_db)
-  notification-service/  email templates + Resend delivery         (stateless)
+  notification-service/  email templates + Resend delivery         (notification_db)
   media-service/         image processing (sharp) + file storage   (R2 / local disk)
   chat-service/          Claude marketplace assistant (holds LLM key) (stateless)
   search-service/        provider search + geo discovery (PostGIS)  (search_db)
+  trust-safety-service/  unified reports + moderation audit (dark)  (trust_safety_db)
 scripts/                 setup, dev-all, e2e-smoke, sync-service-repos
 docs/ARCHITECTURE.md     service contracts, conventions, env vars
 docker-compose.yml       Postgres + all services + web

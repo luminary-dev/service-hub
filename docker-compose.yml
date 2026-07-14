@@ -10,6 +10,7 @@ x-service-env: &service-env
   MEDIA_SERVICE_URL: http://media-service:4006
   CHAT_SERVICE_URL: http://chat-service:4007
   SEARCH_SERVICE_URL: http://search-service:4008
+  TRUST_SAFETY_SERVICE_URL: http://trust-safety-service:4009
 
 services:
   postgres:
@@ -23,7 +24,7 @@ services:
       POSTGRES_PASSWORD: postgres
     ports:
       # 5433 on the host: many dev machines already run a local Postgres on 5432.
-      # Loopback-bound (#387) — like every service port below (4000-4008), so on
+      # Loopback-bound (#387) — like every service port below (4000-4009), so on
       # shared wifi nobody else can reach Postgres (well-known dev password) or
       # hit a service directly with the dev internal secret and forged x-user-*
       # headers. Only web (:3000) stays LAN-reachable, for phone testing.
@@ -119,10 +120,19 @@ services:
     environment:
       <<: *service-env
       PORT: 4005
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/notification_db
+      # Email delivery queue (BRPOPLPUSH + retries); unset → degraded
+      # one-attempt direct sends (in-app notifications unaffected).
+      REDIS_URL: redis://redis:6379
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM:-}
     ports:
       - "127.0.0.1:4005:4005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck: *node-healthcheck
 
   media-service:
@@ -170,6 +180,23 @@ services:
         condition: service_healthy
     healthcheck: *node-healthcheck
 
+  # Trust & safety extraction, phase 1 (docs/rfcs/trust-safety-service.md):
+  # unified reports + moderation audit store. DARK LAUNCH — the gateway does
+  # not route to it yet; deployed so the cutover release is a routing flip.
+  # :4008 is reserved for search-service (Stage-2 Track 1), so this takes :4009.
+  trust-safety-service:
+    build: ./services/trust-safety-service
+    environment:
+      <<: *service-env
+      PORT: 4009
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/trust_safety_db
+    ports:
+      - "127.0.0.1:4009:4009"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck: *node-healthcheck
+
   redis:
     image: redis:7-alpine
     healthcheck:
@@ -206,6 +233,8 @@ services:
       notification-service:
         condition: service_healthy
       search-service:
+        condition: service_healthy
+      trust-safety-service:
         condition: service_healthy
     healthcheck: *node-healthcheck
 

@@ -58,12 +58,12 @@
   backend can later hook `onError` + these handlers without touching call
   sites.
 - **Error shape**: `{ "error": string }`. Success shapes match the monolith.
-- **Health**: `GET /healthz`. The **four DB services** (identity, provider,
-  review, job) run it as a **readiness probe** — `SELECT 1` raced against a 2s
-  timeout, returning `503 { ok: false, service, db: "down" }` if Postgres is
-  unreachable so the orchestrator can depool the instance; success is
-  `200 { ok: true, service }`. gateway, chat, notification and media return the
-  static `200 { ok: true, service }`. Used by compose healthchecks and the E2E
+- **Health**: `GET /healthz`. The **five DB services** (identity, provider,
+  review, job, notification) run it as a **readiness probe** — `SELECT 1` raced
+  against a 2s timeout, returning `503 { ok: false, service, db: "down" }` if
+  Postgres is unreachable so the orchestrator can depool the instance; success
+  is `200 { ok: true, service }`. gateway, chat and media return the static
+  `200 { ok: true, service }`. Used by compose healthchecks and the E2E
   script.
 - **Internal auth**: every request from the gateway or another service carries
   `x-internal-secret: $INTERNAL_API_SECRET`. A middleware

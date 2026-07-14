@@ -1,10 +1,15 @@
+// "trust-safety" is wired (URL + union) but DARK: resolveRoute never returns
+// it yet — the trust & safety extraction's cutover PR flips the report/queue
+// paths to it (docs/rfcs/trust-safety-service.md §5.4).
 export type ServiceName =
   | "identity"
   | "provider"
   | "review"
   | "job"
+  | "notification"
   | "media"
-  | "search";
+  | "search"
+  | "trust-safety";
 
 export type ResolvedRoute = { service: ServiceName; path: string };
 
@@ -142,6 +147,20 @@ export function resolveRoute(pathname: string): ResolvedRoute | null {
     return { service: "provider", path: pathname };
   }
 
+  // Notification center + channel preferences (#394, RFC
+  // stateful-notification-service) — notification-service's public surface.
+  // Placed AFTER the /api/admin/ fallback above so the admin badge counts at
+  // /api/admin/notifications/counts keep resolving to provider-service.
+  if (
+    pathname === "/api/notifications" ||
+    pathname.startsWith("/api/notifications/")
+  ) {
+    return { service: "notification", path: pathname };
+  }
+  if (pathname === "/api/notification-preferences") {
+    return { service: "notification", path: pathname };
+  }
+
   // Work-photo abuse reports (#50) — photos are provider-service data.
   if (/^\/api\/photos\/[^/]+\/report$/.test(pathname)) {
     return { service: "provider", path: pathname };
@@ -224,9 +243,13 @@ export function serviceUrl(service: ServiceName): string {
       return process.env.REVIEW_SERVICE_URL ?? "http://localhost:4003";
     case "job":
       return process.env.JOB_SERVICE_URL ?? "http://localhost:4004";
+    case "notification":
+      return process.env.NOTIFICATION_SERVICE_URL ?? "http://localhost:4005";
     case "media":
       return process.env.MEDIA_SERVICE_URL ?? "http://localhost:4006";
     case "search":
       return process.env.SEARCH_SERVICE_URL ?? "http://localhost:4008";
+    case "trust-safety":
+      return process.env.TRUST_SAFETY_SERVICE_URL ?? "http://localhost:4009";
   }
 }

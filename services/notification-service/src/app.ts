@@ -1,16 +1,40 @@
 import { Hono } from "hono";
+import { db } from "./db";
 import { requireInternalSecret } from "./lib/http";
 import { log } from "./lib/log";
 import { getRequestId, requestLogger } from "./lib/logging";
 import { emailRoutes } from "./routes/email";
+import { eventRoutes, internalUsers } from "./routes/events";
+import { notifications } from "./routes/notifications";
 
 export const app = new Hono();
 
 app.use(requestLogger(log));
-app.get("/healthz", (c) => c.json({ ok: true, service: "notification-service" }));
+// Readiness probe: confirm Postgres is reachable so the orchestrator can
+// restart / depool an instance whose DB connection has died. A static { ok }
+// would keep traffic flowing to a service that can't serve any real request.
+app.get("/healthz", async (c) => {
+  try {
+    await Promise.race([
+      db.$queryRaw`SELECT 1`,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("db healthcheck timeout")), 2000)
+      ),
+    ]);
+    return c.json({ ok: true, service: "notification-service" });
+  } catch {
+    return c.json({ ok: false, service: "notification-service", db: "down" }, 503);
+  }
+});
 app.use("*", requireInternalSecret);
 
+// Transactional auth mails keep their dedicated routes permanently; the four
+// marketplace email routes stay only until their callers migrate to
+// /internal/notifications/events (RFC rollout phase 3), then get deleted.
 app.route("/internal/email", emailRoutes);
+app.route("/internal/notifications", eventRoutes);
+app.route("/internal/users", internalUsers);
+app.route("/", notifications);
 
 // Fallbacks mirror the monolith's Next.js behavior.
 app.notFound((c) => c.json({ error: "Not found" }, 404));

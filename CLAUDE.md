@@ -27,7 +27,7 @@ npm run test:watch                               # watch mode
 ```
 
 - Tests are **colocated** `*.test.ts(x)` files next to the source they cover (no `__tests__/` tree). Web tests use jsdom via `vitest.config.web.mts` at the root; services use their own `vitest.config.ts`. See `docs/TESTING.md` for what belongs at which layer.
-- The **4 stateful services** — identity, provider, review, job — each have a `prisma/` dir (schema + hand-written migrations + seed). Notification, media, chat and the gateway have no DB. Prisma-service extras: `npm run db:migrate:dev`, `npm run db:seed`.
+- The **5 stateful services** — identity, provider, review, job, notification — each have a `prisma/` dir (schema + hand-written migrations + seed). Media, chat and the gateway have no DB. Prisma-service extras: `npm run db:migrate:dev`, `npm run db:seed`.
 - Web app anatomy: `src/proxy.ts` is Next 16's rename of middleware — it does the runtime `/api/*` → gateway rewrite and the `/si` Sinhala locale prefix (it *owns* the trusted `x-locale` header). Server components skip the proxy and call the gateway directly via `src/lib/api.ts`. Shared helpers in `src/lib/` (i18n, roles, links, locale), UI primitives in `src/components/ui/`.
 - Gateway anatomy: `services/api-gateway/src/lib/routes.ts` is the routing table (the source for `docs/API.md`), plus `session.ts` (JWT), `rate-limit.ts` (Redis sliding window), `csrf.ts`, `proxy.ts` (forwarding + identity headers).
 
@@ -132,10 +132,10 @@ npm run test:watch                               # watch mode
 ./scripts/setup.sh            # one-time
 ./scripts/dev-all.sh          # run all services + web on the host, OR:
 docker compose up -d --build  # run the full stack in Docker
-# ...then seed the 4 data services (container images run NODE_ENV=production,
+# ...then seed the 5 data services (container images run NODE_ENV=production,
 # so the demo seed must be opted into explicitly — `scripts/setup.sh` seeds for
 # you on the host path, but the container path does not):
-for s in identity-service provider-service review-service job-service; do
+for s in identity-service provider-service review-service job-service notification-service; do
   docker compose exec -e SEED_DEMO_DATA=true "$s" npm run db:seed
 done
 ```
