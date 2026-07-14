@@ -994,6 +994,7 @@ const en = {
     errGeneric: "Social sign-in failed. Please try again.",
     errEmail: "Your social account didn’t share a verified email address.",
     errUnavailable: "Social sign-in isn’t available right now.",
+    errLocked: "This account is temporarily locked. Try again later or reset your password.",
     dataUse: "We only use your name and email to set up your account — nothing is posted on your behalf.",
   },
   welcome: {
@@ -2322,6 +2323,7 @@ const si: Dict = {
     errGeneric: "සමාජ ජාල පිවිසීම අසාර්ථකයි. නැවත උත්සාහ කරන්න.",
     errEmail: "ඔබේ සමාජ ජාල ගිණුම තහවුරු කළ විද්‍යුත් තැපෑලක් බෙදා නොගත්තේය.",
     errUnavailable: "සමාජ ජාල පිවිසීම දැන් ලබා ගත නොහැක.",
+    errLocked: "මෙම ගිණුම තාවකාලිකව අගුළු දමා ඇත. පසුව නැවත උත්සාහ කරන්න හෝ මුරපදය යළි සකසන්න.",
     dataUse: "ඔබේ ගිණුම සෑදීමට අපි භාවිතා කරන්නේ ඔබේ නම සහ විද්‍යුත් තැපෑල පමණි — ඔබ වෙනුවෙන් කිසිවක් පළ නොකෙරේ.",
   },
   welcome: {

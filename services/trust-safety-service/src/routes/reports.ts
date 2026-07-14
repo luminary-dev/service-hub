@@ -17,6 +17,7 @@
 // this validation read → 503 (write-path gates fail loudly). NOTE: the owners
 // grow that endpoint in the cutover PR — until then the check itself fails
 // and this route answers 503 (tests stub s2s).
+import { Prisma } from "@prisma/client";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
@@ -98,16 +99,26 @@ async function fileReport(c: Context, targetType: TargetType, targetId: string) 
     }
   }
 
-  await db.report.create({
-    data: {
-      targetType,
-      targetId,
-      ownerService: OWNER_BY_TARGET_TYPE[targetType],
-      reporterId: auth?.userId ?? null,
-      reason,
-      details,
-    },
-  });
+  try {
+    await db.report.create({
+      data: {
+        targetType,
+        targetId,
+        ownerService: OWNER_BY_TARGET_TYPE[targetType],
+        reporterId: auth?.userId ?? null,
+        reason,
+        details,
+      },
+    });
+  } catch (e) {
+    // Lost the race with a concurrent report from the same user for the same
+    // target: the partial unique index `Report_open_reporter_key` (#651) fired.
+    // The other request already filed the OPEN report, so this is idempotent
+    // success, not a 500.
+    if (!(e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002")) {
+      throw e;
+    }
+  }
   return c.json({ ok: true });
 }
 

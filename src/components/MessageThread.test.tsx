@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { dict } from "@/lib/i18n";
 import { ToastProvider } from "./ToastProvider";
 import MessageThread from "./MessageThread";
@@ -182,6 +188,19 @@ describe("MessageThread", () => {
       name: t.send,
     }) as HTMLButtonElement;
     expect(button.disabled).toBe(false);
+  });
+
+  it("refetches when the window regains focus (#661)", async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => threadFixture });
+    renderThread();
+    await screen.findByRole("heading", { name: t.threadWith("Sunil Perera") });
+    const before = fetchMock.mock.calls.length;
+
+    window.dispatchEvent(new Event("focus"));
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.length).toBeGreaterThan(before)
+    );
   });
 
   it("shows a send-failure alert when the POST fails", async () => {

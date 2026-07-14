@@ -3,12 +3,22 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { FaMagnifyingGlass } from "@/components/icons";
-import { CATEGORIES } from "@/lib/constants";
-import { categoryLabelLoc } from "@/lib/i18n";
+import {
+  categoryOptionLabel,
+  STATIC_CATEGORY_OPTIONS,
+  type CategoryOption,
+} from "@/lib/categories";
 import { localizedHref } from "@/lib/links";
 import { useLocale, useT } from "./I18nProvider";
 
-export default function SearchBar() {
+// `categories` defaults to the static list for backward-compat; the homepage
+// passes admin-managed options from fetchCategoryOptions() (#659), mirroring
+// how FilterBar/JobPostForm already consume the managed category list.
+export default function SearchBar({
+  categories = STATIC_CATEGORY_OPTIONS,
+}: {
+  categories?: CategoryOption[];
+}) {
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("");
   const router = useRouter();
@@ -43,9 +53,9 @@ export default function SearchBar() {
         className="cursor-pointer rounded-xl bg-ink-100 px-3 py-2.5 text-sm text-ink-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
       >
         <option value="">{t.search.allCategories}</option>
-        {CATEGORIES.map((c) => (
+        {categories.map((c) => (
           <option key={c.slug} value={c.slug}>
-            {categoryLabelLoc(c.slug, locale)}
+            {categoryOptionLabel(c, locale)}
           </option>
         ))}
       </select>

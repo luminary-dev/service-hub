@@ -83,8 +83,12 @@ const HOME_JSON_LD = [
 ];
 
 export default async function HomePage() {
-  const [locale, listing, stats, categories] = await Promise.all([
+  // None of these depend on one another, so run them together rather than
+  // tacking session/favorites on as a serial tail (#660). Only `favorites`
+  // depends on `session`, so it awaits afterwards.
+  const [locale, session, listing, stats, categories] = await Promise.all([
     getLocale(),
+    getSession(),
     apiJson<{ providers: ProviderCardDTO[] }>(
       "/api/providers?sort=newest&pageSize=6",
       { revalidate: 300 }
@@ -98,7 +102,6 @@ export default async function HomePage() {
   const t = dict[locale];
   const providerCount = stats?.providerCount ?? 0;
   const reviewCount = stats?.reviewCount ?? 0;
-  const session = await getSession();
   const favorites = session
     ? await apiJson<{ providerIds: string[] }>("/api/favorites")
     : null;
@@ -156,7 +159,7 @@ export default async function HomePage() {
             {/* Query console */}
             <div className="tech-corners mt-8 max-w-xl border border-ink-300 bg-surface p-4">
               <div className="eyebrow mb-3 !text-ink-500">{t.home.catHeading}</div>
-              <SearchBar />
+              <SearchBar categories={categories} />
               <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
                 <span className="font-mono uppercase tracking-wider text-ink-400">
                   {t.home.popular}

@@ -22,6 +22,13 @@ export const RATE_LIMITS = {
   // filling out a photo gallery in one sitting, tight enough to blunt an
   // attacker hammering the re-encode path.
   upload: { limit: 20, windowMs: 15 * 60_000 },
+  // Profile edits (#656): a provider profile save re-runs bio moderation and
+  // pushes a fresh doc to the search index (S2S reindex fanout), and the
+  // account profile save is an identity write — both were previously
+  // unthrottled because the middleware ignored PUT. Generous enough for a
+  // provider iterating on their bio / service area / map pin in one sitting,
+  // tight enough to blunt an attacker hammering the moderation+reindex path.
+  profile: { limit: 20, windowMs: 15 * 60_000 },
   // Search queries (/api/search/*): generous enough for a human paging and
   // refining filters (each results page is one GET), tight enough to blunt a
   // scraper walking the whole index. The only GET budget — searches are the
@@ -323,7 +330,9 @@ export async function rateLimit(
   );
 }
 
-// The contract's rate-limit table. Rule names match the monolith's
+// The contract's rate-limit table for UNSAFE methods (POST/PUT/PATCH/DELETE) —
+// the middleware matches on path only (not method), so a rule here guards every
+// mutating verb on the path. Rule names match the monolith's
 // rateLimit(req, name, rule) calls exactly so keys stay identical.
 export const LIMITED_ROUTES: { pattern: RegExp; name: string; rule: RateRule }[] = [
   { pattern: /^\/api\/auth\/login$/, name: "auth-login", rule: RATE_LIMITS.authStrict },
@@ -372,6 +381,16 @@ export const LIMITED_ROUTES: { pattern: RegExp; name: string; rule: RateRule }[]
   { pattern: /^\/api\/provider\/photos$/, name: "upload", rule: RATE_LIMITS.upload },
   { pattern: /^\/api\/provider\/verification$/, name: "upload", rule: RATE_LIMITS.upload },
   { pattern: /^\/api\/admin\/categories\/image$/, name: "upload", rule: RATE_LIMITS.upload },
+  // Profile edits (#656) are PUT/PATCH mutations that used to slip through
+  // because the middleware only ran for POST/GET. The provider profile save
+  // (PUT) fans out a search reindex + re-runs moderation; the account profile
+  // save (PUT) is an identity write; the inquiry-status update (PATCH) can fire
+  // a notification email to the customer. Each carries its own per-IP bucket.
+  { pattern: /^\/api\/provider\/profile$/, name: "provider-profile", rule: RATE_LIMITS.profile },
+  { pattern: /^\/api\/account\/profile$/, name: "account-profile", rule: RATE_LIMITS.profile },
+  // Inquiry-status update sits on the conversational message budget: a provider
+  // triaging their inbox legitimately updates many inquiries in one sitting.
+  { pattern: /^\/api\/provider\/inquiries\/[^/]+$/, name: "inquiry-update", rule: RATE_LIMITS.message },
 ];
 
 // Rate-limited GET routes. Reads were historically unthrottled (the write
@@ -382,11 +401,22 @@ export const LIMITED_GET_ROUTES: { pattern: RegExp; name: string; rule: RateRule
   { pattern: /^\/api\/search\//, name: "search", rule: RATE_LIMITS.search },
 ];
 
+// The unsafe (mutating) methods. All of them run against LIMITED_ROUTES: a
+// limiter rule must be able to protect a non-POST mutation too (#656 — the old
+// `method === "POST"` gate silently exempted every PUT/PATCH/DELETE). GET is
+// the one safe method with a budget, and it walks its own LIMITED_GET_ROUTES
+// table so no read can ever consume a write bucket, and vice versa.
+const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
 export async function rateLimitMiddleware(c: Context, next: Next) {
   const method = c.req.method;
-  if (method === "POST" || method === "GET") {
+  const table = UNSAFE_METHODS.has(method)
+    ? LIMITED_ROUTES
+    : method === "GET"
+      ? LIMITED_GET_ROUTES
+      : null;
+  if (table) {
     const pathname = new URL(c.req.url).pathname;
-    const table = method === "POST" ? LIMITED_ROUTES : LIMITED_GET_ROUTES;
     for (const route of table) {
       if (route.pattern.test(pathname)) {
         const limited = await rateLimit(c, route.name, route.rule);

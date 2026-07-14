@@ -38,6 +38,9 @@ vi.mock("../lib/search-index", async (importOriginal) => ({
   syncProviderIndex: vi.fn(() => Promise.resolve()),
   syncProviderIndexByUser: vi.fn(() => Promise.resolve()),
   deleteProviderIndex: vi.fn(() => Promise.resolve()),
+  // Erase path awaits the bounded-retry variant (#640) — stub it so the test
+  // never touches the network.
+  deleteProviderIndexWithRetry: vi.fn(() => Promise.resolve()),
 }));
 vi.mock("../lib/storage", () => storageMock);
 // Saved-search alert fan-out (#516) — fired (not awaited) from the create path.

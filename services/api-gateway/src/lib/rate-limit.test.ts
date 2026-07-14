@@ -1,6 +1,8 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
+import { Hono } from "hono";
 import {
   checkRateLimit,
+  rateLimitMiddleware,
   resolveClientIp,
   trustedProxyHops,
   LIMITED_GET_ROUTES,
@@ -183,13 +185,33 @@ describe("LIMITED_ROUTES", () => {
     expect(route?.rule).toBe(RATE_LIMITS.review);
   });
 
+  // #656: profile-edit mutations (PUT) and the inquiry-status update (PATCH)
+  // are matched by path here — the middleware now walks this table for every
+  // unsafe method, not just POST.
+  it("rate-limits the provider profile save on the profile budget", () => {
+    const route = match("/api/provider/profile");
+    expect(route?.name).toBe("provider-profile");
+    expect(route?.rule).toBe(RATE_LIMITS.profile);
+  });
+
+  it("rate-limits the account profile save on the profile budget", () => {
+    const route = match("/api/account/profile");
+    expect(route?.name).toBe("account-profile");
+    expect(route?.rule).toBe(RATE_LIMITS.profile);
+  });
+
+  it("rate-limits the inquiry-status update on the message budget", () => {
+    const route = match("/api/provider/inquiries/inq_1");
+    expect(route?.name).toBe("inquiry-update");
+    expect(route?.rule).toBe(RATE_LIMITS.message);
+  });
+
   // Near-miss paths must not be swept into the upload/email buckets.
   it("does not match unrelated or sibling paths", () => {
     expect(match("/api/account/email/confirm")?.name).not.toBe(
       "account-email-change"
     );
     expect(match("/api/provider/photos/order")).toBeUndefined();
-    expect(match("/api/account/profile")).toBeUndefined();
     // The notification GET endpoints (feed, unread-count) are POST-only misses
     // by path too — the read routes never appear in the table.
     expect(match("/api/notifications")).toBeUndefined();
@@ -219,6 +241,38 @@ describe("LIMITED_GET_ROUTES", () => {
   it("does not throttle other reads", () => {
     expect(match("/api/providers")).toBeUndefined();
     expect(match("/api/categories")).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Middleware method coverage (#656): the limiter must run for every UNSAFE
+// method (POST/PUT/PATCH/DELETE), not just POST — otherwise a rule can never
+// protect a non-POST mutation. GET keeps its own read table; other safe
+// methods (HEAD/OPTIONS) are never limited.
+// ---------------------------------------------------------------------------
+describe("rateLimitMiddleware method coverage", () => {
+  const buildApp = () => {
+    const app = new Hono();
+    app.use("*", rateLimitMiddleware);
+    app.all("*", (c) => c.text("ok"));
+    return app;
+  };
+
+  it("throttles a PUT on a limited path (previously exempt — only POST/GET ran)", async () => {
+    const app = buildApp();
+    // Unique path per key: profile budget is 20 / 15 min, keyed on the
+    // (test-time "unknown") client IP.
+    const put = () => app.request("/api/provider/profile", { method: "PUT" });
+    for (let i = 0; i < RATE_LIMITS.profile.limit; i++) {
+      expect((await put()).status).not.toBe(429);
+    }
+    expect((await put()).status).toBe(429);
+  });
+
+  it("does not limit mutations on unlisted paths", async () => {
+    const app = buildApp();
+    expect((await app.request("/api/whatever", { method: "DELETE" })).status).toBe(200);
+    expect((await app.request("/api/whatever", { method: "PATCH" })).status).toBe(200);
   });
 });
 

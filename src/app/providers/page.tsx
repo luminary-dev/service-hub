@@ -97,13 +97,17 @@ export default async function ProvidersPage({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const params = await searchParams;
-  const locale = await getLocale();
+  // These three are independent of one another and of the listing, so run them
+  // together instead of in a serial chain (#660). `categories` gates the
+  // listing's cacheable check below; `favorites` (session-scoped) is fetched
+  // alongside the listing further down.
+  const [locale, session, categories] = await Promise.all([
+    getLocale(),
+    getSession(),
+    // Admin-managed categories (#561) — falls back to the static list inside.
+    fetchCategoryOptions({ revalidate: 300 }),
+  ]);
   const t = dict[locale];
-  const session = await getSession();
-  const favorites = session
-    ? await apiJson<{ providerIds: string[] }>("/api/favorites")
-    : null;
-  const favoriteIds = new Set(favorites?.providerIds ?? []);
   const q = typeof params.q === "string" ? params.q.trim() : "";
   const category = typeof params.category === "string" ? params.category : "";
   const district = typeof params.district === "string" ? params.district : "";
@@ -137,7 +141,6 @@ export default async function ProvidersPage({
   // page) are cached — free-text q, arbitrary numeric filters or made-up slugs
   // would let anyone mint unlimited cache entries on disk (#377). Unbounded
   // permutations still render fine, just without the shared cache.
-  const categories = await fetchCategoryOptions({ revalidate: 300 });
   const cacheable =
     !q &&
     !priceMin &&
@@ -154,6 +157,11 @@ export default async function ProvidersPage({
     pageSize: number;
   };
   const cacheOpts = cacheable ? { revalidate: 60 } : undefined;
+  // Favorites (session-scoped) and the listing don't depend on each other —
+  // kick favorites off first, then await the listing, so the two overlap (#660).
+  const favoritesPromise = session
+    ? apiJson<{ providerIds: string[] }>("/api/favorites")
+    : Promise.resolve(null);
   let listing = await apiJson<Listing>(
     `/api/search/providers?${query.toString()}`,
     cacheOpts
@@ -167,6 +175,8 @@ export default async function ProvidersPage({
       cacheOpts
     );
   }
+  const favorites = await favoritesPromise;
+  const favoriteIds = new Set(favorites?.providerIds ?? []);
 
   const results = listing?.providers ?? [];
   const total = listing?.total ?? 0;
@@ -253,6 +263,7 @@ export default async function ProvidersPage({
           priceMax={priceMax}
           ratingMin={ratingMin}
           availableOnly={availableOnly}
+          page={page}
           categories={categories}
         />
 
