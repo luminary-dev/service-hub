@@ -1100,6 +1100,12 @@ const en = {
     offering: "Offering services instead?",
     joinPro: "Join as a professional",
   },
+  // Bot-protection widget on the signup forms (#633). Only shown when a
+  // Turnstile site key is configured; otherwise the forms submit as before.
+  turnstile: {
+    label: "Verify you're human",
+    required: "Please complete the verification to continue.",
+  },
   footer: {
     tagline:
       "Connecting Sri Lankan homes and businesses with trusted local professionals.",
@@ -1370,6 +1376,9 @@ const en = {
     profileLocation: "Location",
     mapImageAlt: (name: string) => `Map showing the approximate location of ${name}`,
     viewOnOsm: "View on OpenStreetMap",
+    // Required OpenStreetMap credit line. "© OpenStreetMap" stays verbatim (a
+    // brand/legal attribution); only the trailing word is translated.
+    osmContributors: "contributors",
   },
 };
 
@@ -2438,6 +2447,10 @@ const si: Dict = {
     offering: "සේවා සපයන්නෙක්ද?",
     joinPro: "වෘත්තිකයෙක් ලෙස එක්වන්න",
   },
+  turnstile: {
+    label: "ඔබ මිනිසෙක් බව තහවුරු කරන්න",
+    required: "ඉදිරියට යාමට කරුණාකර තහවුරු කිරීම සම්පූර්ණ කරන්න.",
+  },
   footer: {
     tagline:
       "ලංකාවේ නිවෙස් සහ ව්‍යාපාර විශ්වාසවන්ත ප්‍රාදේශීය වෘත්තිකයන් සමඟ සම්බන්ධ කරයි.",
@@ -2693,6 +2706,7 @@ const si: Dict = {
     profileLocation: "ස්ථානය",
     mapImageAlt: (name: string) => `${name}ගේ ආසන්න ස්ථානය පෙන්වන සිතියම`,
     viewOnOsm: "OpenStreetMap හි බලන්න",
+    osmContributors: "දායකයෝ",
   },
 };
 

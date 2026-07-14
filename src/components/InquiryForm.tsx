@@ -143,6 +143,9 @@ export default function InquiryForm({
         aria-hidden="true"
         className="pointer-events-none absolute -left-[9999px] h-0 w-0 overflow-hidden"
       >
+        {/* Honeypot bait for bots — visually hidden (aria-hidden container) and
+            never read by real users, so it is intentionally left untranslated. */}
+        {/* eslint-disable-next-line i18next/no-literal-string */}
         <label htmlFor="inquiry-company">Company (leave this field blank)</label>
         <input
           id="inquiry-company"

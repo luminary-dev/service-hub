@@ -17,11 +17,17 @@ vi.mock("../lib/http", async (importActual) => {
   return { ...actual, s2s: vi.fn() };
 });
 
-// Keep the storage module real for InvalidImageError/validate/store, but make
-// the best-effort file removal a no-op we can assert on.
+// Keep the storage module real for InvalidImageError + validateImage (a cheap
+// type/size check), but stub the two side-effecting helpers: storeImage (real
+// one runs a sharp re-encode) returns a deterministic url, and removeStoredFile
+// is a no-op we can assert on (the photo-cap backstop cleans up stored files).
 vi.mock("../lib/storage", async (importActual) => {
   const actual = await importActual<typeof import("../lib/storage")>();
-  return { ...actual, removeStoredFile: vi.fn().mockResolvedValue(undefined) };
+  return {
+    ...actual,
+    storeImage: vi.fn(async () => "/files/reviews/stored.jpg"),
+    removeStoredFile: vi.fn().mockResolvedValue(undefined),
+  };
 });
 
 const { dbMock } = vi.hoisted(() => ({
@@ -31,10 +37,12 @@ const { dbMock } = vi.hoisted(() => ({
       findMany: vi.fn(),
       updateMany: vi.fn(),
       groupBy: vi.fn(),
+      upsert: vi.fn(),
     },
     reviewPhoto: {
       findUnique: vi.fn(),
       delete: vi.fn(),
+      createMany: vi.fn(),
     },
     reviewResponse: {
       findUnique: vi.fn(),
@@ -52,6 +60,11 @@ const { dbMock } = vi.hoisted(() => ({
     },
     adminAuditLog: { create: vi.fn(), findMany: vi.fn() },
     $queryRaw: vi.fn(),
+    // The review write runs in an interactive transaction that takes a
+    // per-(provider,user) advisory lock ($executeRaw) then re-checks the photo
+    // cap (#647 L5). tx === dbMock so the route's tx.* calls hit these mocks.
+    $executeRaw: vi.fn(async () => 0),
+    $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(dbMock)),
   },
 }));
 // Search-index rating pushes (search RFC) are fired (not awaited) from the
@@ -297,6 +310,48 @@ describe("POST /api/providers/:id/reviews (summary + photo branches)", () => {
     const res = await postReview({}, 4);
     expect(res.status).toBe(400);
     expect((await res.json()).error).toMatch(/at most 3 photos/i);
+  });
+
+  // #647 L5: the pre-upload cap check is a fast path, but a concurrent
+  // double-submit could pass it and race the write. The in-transaction re-check
+  // (under a per-(provider,user) advisory lock) is the authoritative backstop:
+  // if a peer filled the remaining slots first, the write rolls back, the
+  // just-stored files are cleaned up, and the same 400 is returned.
+  it("rejects (and cleans up) when the in-transaction re-check finds the cap raced", async () => {
+    dbMock.review.findUnique
+      // pre-upload check: 1 existing photo, so remaining = 2, a 2-photo batch fits
+      .mockResolvedValueOnce({ _count: { photos: 1 } })
+      // first-publish notification check (existing review row)
+      .mockResolvedValueOnce({ id: "rev_1" })
+      // in-transaction re-check: a concurrent submit landed 2 photos, so
+      // remaining is now 0 and the 2-photo batch no longer fits
+      .mockResolvedValueOnce({ _count: { photos: 3 } });
+    const res = await postReview({}, 2);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/at most 3 photos/i);
+    // No review/photo rows written, and both stored files are removed.
+    expect(dbMock.review.upsert).not.toHaveBeenCalled();
+    expect(dbMock.reviewPhoto.createMany).not.toHaveBeenCalled();
+    expect(removeStoredFile).toHaveBeenCalledTimes(2);
+  });
+
+  it("stores the photos when the batch fits, taking the advisory lock first", async () => {
+    dbMock.review.findUnique
+      .mockResolvedValueOnce({ _count: { photos: 0 } }) // pre-upload check
+      .mockResolvedValueOnce(null) // first-publish notification check
+      .mockResolvedValueOnce({ _count: { photos: 0 } }); // in-transaction re-check
+    dbMock.review.upsert.mockResolvedValue({ id: "rev_1" });
+    dbMock.reviewPhoto.createMany.mockResolvedValue({ count: 2 });
+    const res = await postReview({}, 2);
+    expect(res.status).toBe(200);
+    expect(dbMock.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(dbMock.reviewPhoto.createMany).toHaveBeenCalledWith({
+      data: [
+        { reviewId: "rev_1", url: "/files/reviews/stored.jpg" },
+        { reviewId: "rev_1", url: "/files/reviews/stored.jpg" },
+      ],
+    });
+    expect(removeStoredFile).not.toHaveBeenCalled();
   });
 });
 

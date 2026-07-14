@@ -17,6 +17,8 @@
 | `RESEND_API_KEY`, `EMAIL_FROM` | notification (console fallback when `RESEND_API_KEY` unset) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | identity (Google social login, #398; both unset → "Continue with Google" disabled, password auth unaffected) |
 | `FACEBOOK_CLIENT_ID`, `FACEBOOK_CLIENT_SECRET` | identity (Facebook social login, #398; both unset → "Continue with Facebook" disabled, password auth unaffected) |
+| `TURNSTILE_SECRET_KEY` | identity (registration bot protection, #633; server-side Cloudflare siteverify — unset → verification skipped, registration behaves as before) |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | web (public Turnstile site key for the signup widget, #633; read at request time and passed to the client forms — unset → no widget rendered). Pair with `TURNSTILE_SECRET_KEY` to enforce |
 | `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | media (uploads → Cloudflare R2; all four unset → local disk under `$MEDIA_DIR`) |
 | `MEDIA_DIR` | media (local upload root, default `./data`; per-namespace subdirs; compose sets `/app/data`) |
 | `ANTHROPIC_API_KEY` | **chat-service** (LLM assistant; unset → chat-service returns 503 and the widget degrades). NOT on the web app — the key is isolated from the web runtime. |

@@ -15,17 +15,27 @@ import type { NextConfig } from "next";
 //   by R2 or local disk) plus data:/blob: for client-side upload previews, and
 //   the OpenStreetMap tile host for the provider location maps (#48 — the
 //   browser fetches tiles directly; see src/lib/geo.ts OSM_TILE_HOST).
+// - Cloudflare Turnstile (#633): when NEXT_PUBLIC_TURNSTILE_SITE_KEY is set the
+//   signup forms load Cloudflare's challenge script and render its widget in an
+//   iframe, so script-src and frame-src must allow challenges.cloudflare.com.
+//   Gated on the key so an unconfigured deploy keeps the byte-identical
+//   tighter CSP (graceful degradation).
 // No Report-Only copy is kept: we never had report-uri/report-to collection
 // infrastructure, so a shadow header would report to nowhere.
 const isDev = process.env.NODE_ENV !== "production";
+const turnstile = Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY);
+const TURNSTILE_ORIGIN = "https://challenges.cloudflare.com";
 
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}${
+    turnstile ? ` ${TURNSTILE_ORIGIN}` : ""
+  }`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https://tile.openstreetmap.org",
   "font-src 'self'",
   "connect-src 'self'",
+  ...(turnstile ? [`frame-src ${TURNSTILE_ORIGIN}`] : []),
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",

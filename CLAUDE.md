@@ -35,6 +35,7 @@ npm run test:watch                               # watch mode
 
 - **NO pricing, payments, transactions, commission, or billing until v0.2.** We are attracting an audience first; monetization is deliberately out of scope. Do not add payment/commission code, a payments service, price-agreement flows, or transaction records. If you find leftover billing code, it should be removed, not extended.
 - Keep the surface small and the flows free-to-use for now.
+- **Duplicate-account prevention / phone OTP is deferred to v0.2 (decided #397).** No SMS/OTP dependency in v0.1 — it would pull in a paid provider and cut against "keep the surface small / free-to-use." For v0.1 the anti-duplicate control is **email verification** (unique email + the verified-email gates, #115), not verified phone. Phone is collected but not verified. Don't add OTP/SMS code until v0.2.
 
 ## Golden rules
 
@@ -116,6 +117,7 @@ npm run test:watch                               # watch mode
 - **Gateway is the only public entry.** It verifies the session JWT and forwards identity headers (`x-user-id` / `x-user-role` / `x-user-name`) + the internal secret to services. Services trust those headers *only* because of the internal secret — never expose a service port publicly.
 - **Service-to-service (S2S):** call peers via their `*_SERVICE_URL` env with the shared `s2s()` helper (adds the internal secret, one bounded retry on idempotent GETs). Read paths degrade gracefully; write-path gates fail loudly.
 - **Auth & roles:** roles are `CUSTOMER`, `PROVIDER`, `ADMIN`, `SUPPORT`. `ADMIN` = full admin access; `SUPPORT` = read every admin view + resolve/dismiss reports, nothing destructive. Gate the web with `src/lib/roles.ts` (`isAdminRole` / `hasSupportAccess` / `hasFullAdminAccess`) and the backend with `isFullAdmin` / `isSupportOrAdmin` from each service's `lib/http.ts`. Keep web and backend gates consistent. See `docs/AUTHZ.md`.
+- **Role model = single-role, with customer-action overlays (decided #404).** A user holds exactly one `role` at a time; becoming a provider *flips* `CUSTOMER`→`PROVIDER` (and bumps `sessionVersion`), and leaving flips it back (the provider profile is hidden, not deleted, so re-upgrade restores it). We deliberately did **not** move to dual-capability (a user being customer *and* provider simultaneously). Customer-facing actions (inquiries, favorites, posting jobs) are **session-gated, not role-gated**, so a signed-in `PROVIDER` can still act as a customer — that overlay is the intended substitute for dual-role. Don't add an `isProvider`/capabilities model or an RBAC table without revisiting #404.
 - **Storage:** all uploads go through `media-service` → Cloudflare R2 (private bucket, streamed via `/api/files/*`) or local disk. No Vercel Blob. Images are re-encoded with sharp, EXIF-stripped, 5MB, jpeg/png/webp.
 - **Secrets:** the repo is public; nothing sensitive in the tree. Runtime config lives in GitHub Actions repo secrets; the deploy renders the server `.env` from them. Gitignored local `.env` files only for dev.
 

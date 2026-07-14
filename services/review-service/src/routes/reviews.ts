@@ -3,6 +3,7 @@ import { db } from "../db";
 import { logAudit } from "../lib/audit";
 import { moderateContent } from "../lib/auto-report";
 import { getAuth, getLocale, getOrigin, s2s } from "../lib/http";
+import { advisoryXactLock } from "../lib/locks";
 import { emitNotification } from "../lib/notify";
 import {
   listProviderReviews,
@@ -93,6 +94,11 @@ async function isEmailVerified(userId: string): Promise<boolean> {
   };
   return Boolean(data.users?.find((u) => u.id === userId)?.emailVerified);
 }
+
+// Thrown inside the review write transaction when the photo batch would push
+// the review past MAX_REVIEW_PHOTOS. Rolls the transaction back (so no photo
+// rows land) and is mapped to the same 400 as the pre-upload cap check.
+class ReviewPhotoCapError extends Error {}
 
 export const reviews = new Hono();
 
@@ -274,24 +280,53 @@ reviews.post("/api/providers/:id/reviews", async (c) => {
     select: { id: true },
   });
 
-  const reviewId = await db.$transaction(async (tx) => {
-    const review = await tx.review.upsert({
-      where: { providerId_userId: { providerId: id, userId: auth.userId } },
-      // Reaching here means the interaction gate passed, so every review we
-      // write is a verified customer's. deletedAt is deliberately untouched —
-      // editing a moderated review must not resurrect it (the admin's removal
-      // stands until restored).
-      create: { providerId: id, userId: auth.userId, verified: true, ...parsed.data },
-      update: { ...parsed.data, verified: true },
-      select: { id: true },
-    });
-    if (photoUrls.length > 0) {
-      await tx.reviewPhoto.createMany({
-        data: photoUrls.map((url) => ({ reviewId: review.id, url })),
+  let reviewId: string;
+  try {
+    reviewId = await db.$transaction(async (tx) => {
+      // Serialize concurrent submits for this (provider, user) review so the
+      // photo-cap re-check below can't be raced past MAX_REVIEW_PHOTOS by a
+      // double-submit (#647 L5). A plain transaction wouldn't serialize the two
+      // (see lib/locks); the pre-upload check above is the fast path, this is
+      // the authoritative backstop now that we hold the lock.
+      await advisoryXactLock(tx, "review-photos", `${id}:${auth.userId}`);
+      if (photoUrls.length > 0) {
+        const current = await tx.review.findUnique({
+          where: { providerId_userId: { providerId: id, userId: auth.userId } },
+          select: { _count: { select: { photos: true } } },
+        });
+        if (photoUrls.length > MAX_REVIEW_PHOTOS - (current?._count.photos ?? 0)) {
+          throw new ReviewPhotoCapError();
+        }
+      }
+      const review = await tx.review.upsert({
+        where: { providerId_userId: { providerId: id, userId: auth.userId } },
+        // Reaching here means the interaction gate passed, so every review we
+        // write is a verified customer's. deletedAt is deliberately untouched —
+        // editing a moderated review must not resurrect it (the admin's removal
+        // stands until restored).
+        create: { providerId: id, userId: auth.userId, verified: true, ...parsed.data },
+        update: { ...parsed.data, verified: true },
+        select: { id: true },
       });
+      if (photoUrls.length > 0) {
+        await tx.reviewPhoto.createMany({
+          data: photoUrls.map((url) => ({ reviewId: review.id, url })),
+        });
+      }
+      return review.id;
+    });
+  } catch (e) {
+    if (e instanceof ReviewPhotoCapError) {
+      // The rolled-back transaction left no photo rows; clean up the files we
+      // already stored so a rejected batch doesn't orphan media.
+      await Promise.all(photoUrls.map((url) => removeStoredFile(url)));
+      return c.json(
+        { error: `A review can have at most ${MAX_REVIEW_PHOTOS} photos.` },
+        400
+      );
     }
-    return review.id;
-  });
+    throw e;
+  }
 
   // Content filter (#375): AFTER the write on purpose — the review stays
   // visible and a filter hit only queues a SYSTEM report for admin triage.

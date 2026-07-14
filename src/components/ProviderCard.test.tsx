@@ -12,7 +12,6 @@ afterEach(cleanup);
 
 const base: ProviderCardDTO = {
   id: "prov_1",
-  userId: "user_1",
   name: "Sunil Perera",
   category: "electrician",
   categoryImageUrl: null,

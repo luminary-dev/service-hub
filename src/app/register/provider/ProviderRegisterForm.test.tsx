@@ -20,6 +20,7 @@ vi.mock("@/components/LocationPickerMap", () => ({
 }));
 
 const t = dict.en.providerReg;
+const tt = dict.en.turnstile;
 const fetchMock = vi.fn();
 
 const categories = [
@@ -131,6 +132,59 @@ describe("ProviderRegisterForm (authed mode, #552)", () => {
       "Colombo",
       "Gampaha",
     ]);
+  });
+
+  // Turnstile bot protection (#633): the widget appears on the final step of
+  // guest registration when a site key is set, and blocks the create submit
+  // until it is solved (the token never arrives under jsdom).
+  it("shows the Turnstile widget on the final step in guest mode and blocks submit", () => {
+    render(
+      <ProviderRegisterForm categories={categories} turnstileSiteKey="test-key" />
+    );
+    // Step 0 — account (phone lives here in guest mode).
+    fireEvent.change(screen.getByLabelText(t.fullName), {
+      target: { value: "Nuwan Perera" },
+    });
+    fireEvent.change(screen.getByLabelText(t.email), {
+      target: { value: "nuwan@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText(t.phone), {
+      target: { value: "0771234567" },
+    });
+    fireEvent.change(screen.getByLabelText(t.password), {
+      target: { value: "correct-horse-battery" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: t.continue }));
+    // Step 1 — profile (phone already collected on step 0).
+    fillProfileStep();
+    fireEvent.click(screen.getByRole("button", { name: t.continue }));
+    // Step 2 — contact & socials (optional).
+    fireEvent.click(screen.getByRole("button", { name: t.continue }));
+    // Step 3 — services, consent, and the challenge.
+    expect(screen.getByText(tt.label)).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText(t.serviceTitlePh), {
+      target: { value: "Full house wiring" },
+    });
+    fireEvent.change(screen.getByPlaceholderText(t.pricePh), {
+      target: { value: "5000" },
+    });
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: t.create }));
+    // No token → submit is held and the localized prompt is shown; no POST.
+    expect(screen.getAllByText(tt.required).length).toBeGreaterThan(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("never renders the Turnstile widget in authed mode", () => {
+    render(
+      <ProviderRegisterForm categories={categories} authed turnstileSiteKey="test-key" />
+    );
+    // Walk to the final step; the widget must never appear (complete-provider
+    // creates no account, so it isn't the enumeration oracle #633 guards).
+    fillProfileStep({ phone: "0771234567" });
+    fireEvent.click(screen.getByRole("button", { name: t.continue }));
+    fireEvent.click(screen.getByRole("button", { name: t.continue }));
+    expect(screen.queryByText(tt.label)).toBeNull();
   });
 
   it("keeps the phone on the account step only in guest mode", () => {

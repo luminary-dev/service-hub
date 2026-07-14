@@ -21,6 +21,7 @@ import {
 } from "../lib/verification";
 import { eraseUserData } from "../lib/erase";
 import { removeStoredFile } from "../lib/storage";
+import { verifyTurnstile } from "../lib/turnstile";
 import {
   createProviderProfile,
   deactivateProviderProfile,
@@ -80,6 +81,10 @@ vi.mock("../lib/providers", () => ({
   syncContactToProvider: vi.fn(),
 }));
 vi.mock("../lib/audit", () => ({ logAudit: vi.fn() }));
+// Turnstile bot check (#633): mocked so register tests don't hit Cloudflare.
+// Default (below) resolves ok — i.e. verification disabled/passed — so the
+// existing register paths behave as before; the bot-protection suite overrides it.
+vi.mock("../lib/turnstile", () => ({ verifyTurnstile: vi.fn() }));
 
 // Mount the auth routes on a bare app — no gateway/internal-secret middleware,
 // so we drive the handlers directly. Auth is simulated with the x-user-* headers
@@ -146,6 +151,8 @@ beforeEach(() => {
   // it takes the create branch. Re-upgrade tests set an id; the fail-loud test
   // rejects it.
   vi.mocked(resolveProviderIdByUser).mockResolvedValue(null);
+  // Default: Turnstile passes (disabled or valid). The #633 suite overrides.
+  vi.mocked(verifyTurnstile).mockResolvedValue({ ok: true });
 });
 
 // ---------------------------------------------------------------------------
@@ -750,6 +757,86 @@ describe("POST /api/auth/register (anti-enumeration #373)", () => {
       "en"
     );
     expect(sendAccountExistsEmail).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/register — Turnstile bot protection (#633)
+// ---------------------------------------------------------------------------
+// When TURNSTILE_SECRET_KEY is configured, register requires a valid widget
+// token (verified via verifyTurnstile) BEFORE any account work. When unset the
+// helper resolves ok and registration proceeds exactly as before.
+describe("POST /api/auth/register (Turnstile #633)", () => {
+  const customerBody = {
+    role: "CUSTOMER",
+    name: "New User",
+    email: "fresh@b.lk",
+    password: STRONG_PASSWORD,
+    phone: "0771234567",
+  };
+
+  it("proceeds normally when verification passes (disabled or valid token)", async () => {
+    // Default mock resolves ok — the graceful-degradation / valid-token path.
+    db.user.findUnique.mockResolvedValue(null);
+    db.user.create.mockResolvedValue({
+      id: "u-new",
+      email: "fresh@b.lk",
+      name: "New User",
+      role: "CUSTOMER",
+      sessionVersion: 0,
+      avatarUrl: null,
+    });
+
+    const res = await post("/api/auth/register", {
+      ...customerBody,
+      turnstileToken: "tok",
+    });
+    expect(res.status).toBe(200);
+    expect(db.user.create).toHaveBeenCalled();
+    // The body token is forwarded to the verifier.
+    expect(verifyTurnstile).toHaveBeenCalledWith("tok");
+  });
+
+  it("rejects with 400 and creates nothing when the token is missing", async () => {
+    vi.mocked(verifyTurnstile).mockResolvedValue({
+      ok: false,
+      reason: "missing",
+    });
+
+    const res = await post("/api/auth/register", customerBody);
+    expect(res.status).toBe(400);
+    // No account work, no auto-login cookie — the bot never reaches the oracle.
+    expect(db.user.findUnique).not.toHaveBeenCalled();
+    expect(db.user.create).not.toHaveBeenCalled();
+    expect(res.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("rejects with 400 when the token is invalid", async () => {
+    vi.mocked(verifyTurnstile).mockResolvedValue({
+      ok: false,
+      reason: "invalid",
+    });
+
+    const res = await post("/api/auth/register", {
+      ...customerBody,
+      turnstileToken: "bad",
+    });
+    expect(res.status).toBe(400);
+    expect(db.user.create).not.toHaveBeenCalled();
+  });
+
+  it("returns a retryable 503 when siteverify is unavailable", async () => {
+    vi.mocked(verifyTurnstile).mockResolvedValue({
+      ok: false,
+      reason: "unavailable",
+    });
+
+    const res = await post("/api/auth/register", {
+      ...customerBody,
+      turnstileToken: "tok",
+    });
+    expect(res.status).toBe(503);
+    expect(db.user.create).not.toHaveBeenCalled();
   });
 });
 

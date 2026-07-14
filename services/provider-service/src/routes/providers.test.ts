@@ -40,14 +40,14 @@ type Role = "ADMIN" | "SUPPORT" | "CUSTOMER" | "PROVIDER" | null;
 
 function req(
   path: string,
-  opts: { method?: string; body?: unknown; role?: Role } = {}
+  opts: { method?: string; body?: unknown; role?: Role; userId?: string } = {}
 ) {
   const headers: Record<string, string> = {
     "content-type": "application/json",
     "x-internal-secret": SECRET,
   };
   if (opts.role) {
-    headers["x-user-id"] = "u1";
+    headers["x-user-id"] = opts.userId ?? "u1";
     headers["x-user-role"] = opts.role;
     headers["x-user-name"] = "Someone";
   }
@@ -105,18 +105,38 @@ describe("GET /api/providers/:id — suspended visibility gate", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.provider.id).toBe("p1");
-    // Contact exposed as `user` — WITHOUT the phone (#64): the public payload
-    // never carries raw phone digits, only the name/email + has* booleans.
-    expect(body.provider.user).toEqual({
-      name: "Nimal Perera",
-      email: "n@baas.lk",
-    });
+    // Contact exposed as `user` — WITHOUT the phone (#64) OR the email (#655):
+    // the public payload never carries raw phone digits or the address, only
+    // the display name + has* booleans.
+    expect(body.provider.user).toEqual({ name: "Nimal Perera" });
     expect(body.provider.user).not.toHaveProperty("phone");
+    expect(body.provider.user).not.toHaveProperty("email");
     expect(body.provider).not.toHaveProperty("contactPhone");
     expect(body.provider).not.toHaveProperty("whatsapp");
     expect(body.provider).not.toHaveProperty("phone2");
-    // The provider HAS a phone, so the UI shows a reveal affordance.
+    // The email address is PII too (#655): stripped from every public payload.
+    expect(body.provider).not.toHaveProperty("contactEmail");
+    // The owner's userId is withheld from anonymous/third-party callers (#655).
+    expect(body.provider).not.toHaveProperty("userId");
+    // The provider HAS a phone + email, so the UI shows a reveal affordance.
     expect(body.provider.hasPhone).toBe(true);
+    expect(body.provider.hasEmail).toBe(true);
+  });
+
+  it("re-adds userId only for the owner and admins (#655)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(providerRow());
+    // The owner (x-user-id matches the profile's userId) gets their own id back
+    // — it powers the profile page's owner check — so this is no leak.
+    const owner = await req("/api/providers/p1", { role: "PROVIDER", userId: "owner-1" });
+    expect((await owner.json()).provider.userId).toBe("owner-1");
+    // A different signed-in user does not.
+    dbMock.provider.findUnique.mockResolvedValue(providerRow());
+    const other = await req("/api/providers/p1", { role: "CUSTOMER", userId: "someone-else" });
+    expect((await other.json()).provider).not.toHaveProperty("userId");
+    // Admins moderating a profile still see it.
+    dbMock.provider.findUnique.mockResolvedValue(providerRow());
+    const admin = await req("/api/providers/p1", { role: "ADMIN", userId: "admin-1" });
+    expect((await admin.json()).provider.userId).toBe("owner-1");
   });
 
   it("never leaks admin rejectionReason to the public payload (#506)", async () => {
@@ -219,12 +239,27 @@ describe("GET /api/providers/:id/full — suspended gate mirrors detail", () => 
     expect(body.provider.id).toBe("p1");
     expect(body.provider).toHaveProperty("reviews");
     expect(body.provider).toHaveProperty("avgResponseMs");
-    // Phone digits are withheld from the public profile payload (#64).
+    // Phone digits + email are withheld from the public profile payload
+    // (#64/#655); userId stays off anonymous payloads too.
     expect(body.provider).not.toHaveProperty("contactPhone");
     expect(body.provider).not.toHaveProperty("whatsapp");
     expect(body.provider).not.toHaveProperty("phone2");
+    expect(body.provider).not.toHaveProperty("contactEmail");
+    expect(body.provider).not.toHaveProperty("userId");
+    expect(body.provider.user).toEqual({ name: "Nimal Perera" });
     expect(body.provider.user).not.toHaveProperty("phone");
+    expect(body.provider.user).not.toHaveProperty("email");
     expect(body.provider.hasPhone).toBe(true);
+    expect(body.provider.hasEmail).toBe(true);
+  });
+
+  it("re-adds userId to /full only for the owner (powers the owner check) (#655)", async () => {
+    dbMock.provider.findUnique.mockResolvedValue(providerRow({ _count: { photos: 0 } }));
+    const owner = await req("/api/providers/p1/full", { role: "PROVIDER", userId: "owner-1" });
+    expect((await owner.json()).provider.userId).toBe("owner-1");
+    dbMock.provider.findUnique.mockResolvedValue(providerRow({ _count: { photos: 0 } }));
+    const other = await req("/api/providers/p1/full", { role: "CUSTOMER", userId: "nope" });
+    expect((await other.json()).provider).not.toHaveProperty("userId");
   });
 
   it("bounds the avgResponseMs sample to the most recent answered inquiries (#372)", async () => {
@@ -270,12 +305,13 @@ describe("GET /api/providers/:id/full — suspended gate mirrors detail", () => 
   });
 });
 
-describe("POST /api/providers/:id/contact — phone reveal (#64)", () => {
-  it("returns the raw numbers on the explicit reveal action", async () => {
+describe("POST /api/providers/:id/contact — contact reveal (#64/#655)", () => {
+  it("returns the raw numbers AND the email on the explicit reveal action", async () => {
     dbMock.provider.findUnique.mockResolvedValue({
       contactPhone: "0770000000",
       whatsapp: "0771111111",
       phone2: null,
+      contactEmail: "n@baas.lk",
       suspended: false,
     });
     const res = await req("/api/providers/p1/contact", { method: "POST" });
@@ -284,6 +320,7 @@ describe("POST /api/providers/:id/contact — phone reveal (#64)", () => {
       phone: "0770000000",
       whatsapp: "0771111111",
       phone2: null,
+      email: "n@baas.lk",
     });
   });
 

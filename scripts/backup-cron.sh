@@ -38,6 +38,11 @@ if [ -z "${BACKUP_R2_ENDPOINT:-}" ] || [ -z "${BACKUP_R2_BUCKET:-}" ] ||
 fi
 
 echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) nightly backup starting ==="
+# Guarantee upload coverage on the scheduled path too (#663): fail the run (→
+# heartbeat /fail alert) if media ends up with neither R2 nor a volume tar,
+# mirroring the offsite-copy refusal above. backup-dbs.sh reads the real media
+# storage mode from the running media-service container.
+export REQUIRE_MEDIA_COVERAGE=1
 ./scripts/backup-dbs.sh
 ./scripts/verify-backup.sh
 ping_heartbeat

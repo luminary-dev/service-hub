@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { dict } from "@/lib/i18n";
-import CustomerRegisterPage from "./page";
+import CustomerRegisterForm from "./CustomerRegisterForm";
 
 const push = vi.fn();
 vi.mock("next/navigation", () => ({
@@ -10,6 +10,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 const t = dict.en.custReg;
+const tt = dict.en.turnstile;
 const fetchMock = vi.fn();
 
 function fillAndSubmit(container: HTMLElement) {
@@ -42,10 +43,10 @@ afterEach(() => {
   push.mockReset();
 });
 
-describe("CustomerRegisterPage", () => {
+describe("CustomerRegisterForm", () => {
   it("creates the account and routes to browse on success", async () => {
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
-    const { container } = render(<CustomerRegisterPage />);
+    const { container } = render(<CustomerRegisterForm />);
     fillAndSubmit(container);
 
     await vi.waitFor(() => expect(push).toHaveBeenCalledWith("/providers"));
@@ -56,7 +57,7 @@ describe("CustomerRegisterPage", () => {
   // A dropped connection must not wedge the form (#363).
   it("recovers from a rejected fetch with an error and a re-enabled button", async () => {
     fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
-    const { container } = render(<CustomerRegisterPage />);
+    const { container } = render(<CustomerRegisterForm />);
     fillAndSubmit(container);
 
     const alert = await screen.findByRole("alert");
@@ -66,5 +67,27 @@ describe("CustomerRegisterPage", () => {
     }) as HTMLButtonElement;
     expect(button.disabled).toBe(false);
     expect(push).not.toHaveBeenCalled();
+  });
+
+  // Turnstile bot protection (#633) — the widget only appears when a site key
+  // is configured; otherwise the form is unchanged.
+  it("renders the Turnstile widget only when a site key is set", () => {
+    const { unmount } = render(<CustomerRegisterForm />);
+    expect(screen.queryByText(tt.label)).toBeNull();
+    unmount();
+
+    render(<CustomerRegisterForm turnstileSiteKey="test-site-key" />);
+    expect(screen.getByText(tt.label)).toBeTruthy();
+  });
+
+  it("blocks submit until the challenge is solved when a site key is set", () => {
+    const { container } = render(
+      <CustomerRegisterForm turnstileSiteKey="test-site-key" />
+    );
+    fillAndSubmit(container);
+    // The token never arrives under jsdom (the widget can't run), so validation
+    // holds the submit and surfaces the localized prompt instead of POSTing.
+    expect(screen.getByText(tt.required)).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
