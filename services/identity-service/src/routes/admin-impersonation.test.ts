@@ -105,3 +105,27 @@ describe("POST /api/admin/impersonate/:userId email normalization", () => {
     expect(createImpersonationSession).not.toHaveBeenCalled();
   });
 });
+
+describe("POST /api/admin/impersonate/:userId admin-tier guard (#654)", () => {
+  it("refuses to impersonate an ADMIN target", async () => {
+    db.user.findUnique.mockResolvedValue({ ...TARGET, role: "ADMIN" });
+
+    const res = await impersonate(TARGET.id);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: "Cannot impersonate an admin account",
+    });
+    expect(createImpersonationSession).not.toHaveBeenCalled();
+  });
+
+  it("refuses to impersonate a SUPPORT target (still admin-tier)", async () => {
+    db.user.findUnique.mockResolvedValue({ ...TARGET, role: "SUPPORT" });
+
+    const res = await impersonate(TARGET.id);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: "Cannot impersonate an admin account",
+    });
+    expect(createImpersonationSession).not.toHaveBeenCalled();
+  });
+});

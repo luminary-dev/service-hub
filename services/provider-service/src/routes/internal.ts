@@ -17,7 +17,7 @@ import { getOrigin } from "../lib/http";
 import { notifySavedSearchMatches } from "../lib/saved-search-alerts";
 import {
   buildIndexDocument,
-  deleteProviderIndex,
+  deleteProviderIndexWithRetry,
   INDEX_SERVICE_SELECT,
   syncProviderIndex,
   syncProviderIndexByUser,
@@ -268,7 +268,9 @@ internalRoutes.post("/internal/providers/by-user/:userId/reactivate", async (c) 
   return c.json({ ok: true, reactivated: true });
 });
 
-// Login / job-board gate: the provider owned by a user, if any.
+// Login / job-board gate: the provider owned by a user, if any. `suspended` is
+// selected so the job board / response gate can reject a suspended provider
+// (#642) — a hidden profile keeps its role but must lose board access.
 internalRoutes.get("/internal/providers/by-user/:userId", async (c) => {
   const userId = c.req.param("userId");
   const provider = await db.provider.findUnique({
@@ -280,6 +282,7 @@ internalRoutes.get("/internal/providers/by-user/:userId", async (c) => {
       district: true,
       serviceDistricts: true,
       contactName: true,
+      suspended: true,
     },
   });
   return c.json({ provider: provider ?? null });
@@ -500,8 +503,10 @@ internalRoutes.post("/internal/users/:id/erase", async (c) => {
   if (provider) {
     await db.provider.delete({ where: { id: provider.id } });
     // The row is gone, so the read-back sync can't run — delete the index
-    // document directly (best-effort; the sweep also prunes erased rows).
-    void deleteProviderIndex(provider.id);
+    // document directly. Erasure is a compliance op, so this is AWAITED with a
+    // bounded retry (#640) rather than fire-and-forget; the daily reindex sweep
+    // is still the final backstop for a survivor.
+    await deleteProviderIndexWithRetry(provider.id);
     for (const f of [
       ...provider.photos.map((p) => p.url),
       ...provider.verificationDocs.map((d) => d.url),
@@ -519,40 +524,96 @@ internalRoutes.post("/internal/users/:id/erase", async (c) => {
   return c.json({ ok: true });
 });
 
+// Page size for the orphan-sweep table walks (#639).
+const SWEEP_PAGE_SIZE = 500;
+
+// Walk a table in cursor-ordered pages, folding each row's stored-file URL into
+// `sink`. Bounds per-query size so no single findMany loads a whole media table
+// at once (#639); the referenced Set is still the sweep's full keep-list (that
+// is unavoidable — sweepMedia deletes any stored object absent from it), but the
+// DB round-trips now stream page by page. Rows carry an opaque `cursor` (the
+// table's PK) used to page past the last row seen.
+async function collectReferencedUrls(
+  sink: Set<string>,
+  fetchPage: (
+    cursor: string | undefined
+  ) => Promise<{ cursor: string; url: string | null }[]>
+): Promise<void> {
+  let cursor: string | undefined;
+  for (;;) {
+    const rows = await fetchPage(cursor);
+    for (const r of rows) if (r.url) sink.add(r.url);
+    if (rows.length < SWEEP_PAGE_SIZE) break;
+    cursor = rows[rows.length - 1]!.cursor;
+  }
+}
+
 // Periodic maintenance (#36): remove stored upload files no database row
 // references any more. Grace window protects in-flight uploads; run it from
 // ops tooling (cron/curl with the internal secret).
 internalRoutes.post("/internal/maintenance/sweep-orphans", async (c) => {
-  const [photos, docs, avatars, covers, categories] = await Promise.all([
-    db.workPhoto.findMany({ select: { url: true } }),
-    db.verificationDocument.findMany({ select: { url: true } }),
-    db.provider.findMany({
-      where: { avatarUrl: { not: null } },
-      select: { avatarUrl: true },
-    }),
-    db.provider.findMany({
-      where: { coverPhoto: { not: null } },
-      select: { coverPhoto: true },
-    }),
-    db.category.findMany({
-      where: { imageUrl: { not: null } },
-      select: { imageUrl: true },
-    }),
-  ]);
-  const referenced = new Set<string>([
-    ...photos.map((p) => p.url),
-    ...docs.map((d) => d.url),
-    ...avatars.map((a) => a.avatarUrl as string),
-    ...covers.map((c) => c.coverPhoto as string),
-  ]);
+  // Provider-namespace keep-list, streamed in id-ordered pages (#639).
+  const referenced = new Set<string>();
+  await collectReferencedUrls(referenced, (cursor) =>
+    db.workPhoto
+      .findMany({
+        select: { id: true, url: true },
+        orderBy: { id: "asc" },
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        take: SWEEP_PAGE_SIZE,
+      })
+      .then((rows) => rows.map((r) => ({ cursor: r.id, url: r.url })))
+  );
+  await collectReferencedUrls(referenced, (cursor) =>
+    db.verificationDocument
+      .findMany({
+        select: { id: true, url: true },
+        orderBy: { id: "asc" },
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        take: SWEEP_PAGE_SIZE,
+      })
+      .then((rows) => rows.map((r) => ({ cursor: r.id, url: r.url })))
+  );
+  await collectReferencedUrls(referenced, (cursor) =>
+    db.provider
+      .findMany({
+        where: { avatarUrl: { not: null } },
+        select: { id: true, avatarUrl: true },
+        orderBy: { id: "asc" },
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        take: SWEEP_PAGE_SIZE,
+      })
+      .then((rows) => rows.map((r) => ({ cursor: r.id, url: r.avatarUrl })))
+  );
+  await collectReferencedUrls(referenced, (cursor) =>
+    db.provider
+      .findMany({
+        where: { coverPhoto: { not: null } },
+        select: { id: true, coverPhoto: true },
+        orderBy: { id: "asc" },
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        take: SWEEP_PAGE_SIZE,
+      })
+      .then((rows) => rows.map((r) => ({ cursor: r.id, url: r.coverPhoto })))
+  );
   const provider = await sweepMedia("provider", [...referenced]);
+
   // Category cover images (#436) live in their own namespace; sweep it against
   // the saved imageUrls so an abandoned or replaced admin upload doesn't
-  // orphan the object forever (#555).
-  const category = await sweepMedia(
-    "category",
-    categories.map((cat) => cat.imageUrl as string)
+  // orphan the object forever (#555). Paginated by `slug` (the Category PK).
+  const categoryReferenced = new Set<string>();
+  await collectReferencedUrls(categoryReferenced, (cursor) =>
+    db.category
+      .findMany({
+        where: { imageUrl: { not: null } },
+        select: { slug: true, imageUrl: true },
+        orderBy: { slug: "asc" },
+        ...(cursor ? { cursor: { slug: cursor }, skip: 1 } : {}),
+        take: SWEEP_PAGE_SIZE,
+      })
+      .then((rows) => rows.map((r) => ({ cursor: r.slug, url: r.imageUrl })))
   );
+  const category = await sweepMedia("category", [...categoryReferenced]);
   return c.json({
     scanned: provider.scanned + category.scanned,
     removed: provider.removed + category.removed,

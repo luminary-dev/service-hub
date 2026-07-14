@@ -8,9 +8,14 @@ implementation is `services/api-gateway/src/lib/rate-limit.ts`.
 
 ## Limits
 
-The named rules live in `RATE_LIMITS`; `LIMITED_ROUTES` maps `POST` request
-paths to them and `LIMITED_GET_ROUTES` maps the rate-limited reads (today just
-`/api/search/*` — every other GET stays unthrottled).
+The named rules live in `RATE_LIMITS`; `LIMITED_ROUTES` maps **unsafe-method**
+(`POST` / `PUT` / `PATCH` / `DELETE`) request paths to them and
+`LIMITED_GET_ROUTES` maps the rate-limited reads (today just `/api/search/*` —
+every other GET stays unthrottled). The middleware matches `LIMITED_ROUTES` on
+**path only, not method** (#656): a rule guards *every* mutating verb on the
+path, so a limiter rule can protect a `PUT`/`PATCH`/`DELETE` mutation and not
+just a `POST`. GET keeps its own separate table, so no read can ever consume a
+write bucket and vice versa.
 
 | Route | Rule | Limit |
 | --- | --- | --- |
@@ -33,6 +38,9 @@ paths to them and `LIMITED_GET_ROUTES` maps the rate-limited reads (today just
 | `POST /api/notification-preferences` | `review` | 10 / hour (own `notification-prefs` bucket) |
 | `POST /api/providers/[id]/report`, `POST /api/photos/[id]/report`, `POST /api/reviews/[id]/report`, `POST /api/jobs/[id]/report`, `POST /api/messages/[id]/report` | `review` | 10 / hour (shared `report` bucket) |
 | `POST /api/account/avatar`, `POST /api/provider/photos`, `POST /api/provider/verification`, `POST /api/admin/categories/image` | `upload` | 20 / 15 min (shared `upload` bucket) |
+| `PUT /api/provider/profile` | `profile` | 20 / 15 min (`provider-profile` bucket) |
+| `PUT /api/account/profile` | `profile` | 20 / 15 min (`account-profile` bucket) |
+| `PATCH /api/provider/inquiries/:id` | `message` | 30 / 10 min (`inquiry-update` bucket) |
 | `GET /api/search/*` | `search` | 60 / min (the only GET budget) |
 
 `change-password` and `delete-account` sit on the strict login budget because
@@ -59,6 +67,18 @@ The `/api/search/*` reads (search & discovery RFC §5) are the one exception to
 could walk the whole directory through, so they carry their own per-IP
 `search` budget — generous enough for a human paging and refining filters
 (each results page is one GET), tight enough to blunt a crawler.
+The profile-edit and inquiry-status mutations (#656) were previously
+**unthrottled** because the middleware only ran for `POST`/`GET` — every
+`PUT`/`PATCH`/`DELETE` slipped past the limiter. They now share the
+unsafe-method table: a provider profile save (`PUT`) fans out a search reindex
+and re-runs bio moderation, and the account profile save (`PUT`) is an identity
+write, so both sit on a `profile` budget (20 / 15 min) wide enough for a
+provider iterating on their bio / service area / map pin in one sitting yet
+tight enough to blunt an attacker hammering the moderation+reindex path — each
+in its own per-IP bucket. The inquiry-status update (`PATCH`) can fire a
+notification email to the customer on a status change, so it sits on the
+conversational `message` budget (30 / 10 min): a provider triaging their inbox
+legitimately updates many inquiries in one sitting.
 Job posting is additionally capped **per account** inside job-service (#556):
 each post fans out to up to 200 provider inboxes, and the per-IP rule alone is
 rotatable — so job-service requires a verified email (403 otherwise) and allows
@@ -198,8 +218,9 @@ bot filter — deliberately **not** a third-party CAPTCHA (see below).
 ## Adding or changing a limit
 
 - Add or tune a named rule in `RATE_LIMITS`.
-- Map a route to it by adding an entry to `LIMITED_ROUTES` (POSTs) or
-  `LIMITED_GET_ROUTES` (reads) — a `pattern` RegExp, a `name`, and a `rule`.
+- Map a route to it by adding an entry to `LIMITED_ROUTES` (any unsafe method —
+  `POST`/`PUT`/`PATCH`/`DELETE`, matched on path) or `LIMITED_GET_ROUTES`
+  (reads) — a `pattern` RegExp, a `name`, and a `rule`.
 - Keep rule names stable — they form part of the Redis/in-memory key, so
   renaming one resets the corresponding window.
 

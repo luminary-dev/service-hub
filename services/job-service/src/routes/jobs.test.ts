@@ -52,6 +52,7 @@ const PROVIDER: {
   category: string;
   district: string;
   serviceDistricts?: string[];
+  suspended?: boolean;
 } = {
   id: "prov_1",
   category: "plumbing",
@@ -74,7 +75,12 @@ function json(body: unknown, status = 200) {
 function wireS2s(opts: {
   providerByUser?: typeof PROVIDER | null | "fail";
   users?: { id: string; name: string; email: string }[];
-  providers?: { id: string; contactName: string | null; contactPhone: string | null }[];
+  providers?: {
+    id: string;
+    contactName: string | null;
+    contactPhone: string | null;
+    suspended?: boolean;
+  }[];
   // #501 forward fan-out: matching providers returned to the create path, and
   // whether the matching lookup / notification-event ingestion blows up.
   matching?:
@@ -372,6 +378,16 @@ describe("GET /api/jobs/board", () => {
     expect((await res.json()).error).toMatch(/registered professionals/i);
   });
 
+  // #642: a suspended provider keeps the PROVIDER role but must not see the
+  // board — never even runs the board query.
+  it("403s a suspended provider without querying the board", async () => {
+    wireS2s({ providerByUser: { ...PROVIDER, suspended: true } });
+    const res = await req("/api/jobs/board", {}, { "x-user-id": PROVIDER_USER_ID });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toMatch(/suspended/i);
+    expect(dbMock.jobRequest.findMany).not.toHaveBeenCalled();
+  });
+
   it("scopes to the provider's category + served districts (#502), excludes own jobs, flags responded", async () => {
     dbMock.jobRequest.findMany.mockResolvedValue([
       {
@@ -485,6 +501,48 @@ describe("GET /api/jobs/mine", () => {
       expect.objectContaining({ where: { customerId: CUSTOMER_ID } })
     );
   });
+
+  // #642: a suspended provider's contact details are withheld from the
+  // customer's my-jobs hydration — the response row stays, but name/phone are
+  // dropped (falls back to "Unknown" / no phone), matching the public listings
+  // a suspended profile is already removed from.
+  it("withholds a suspended provider's contact details", async () => {
+    dbMock.jobRequest.findMany.mockResolvedValue([
+      {
+        id: "job_1",
+        title: "t",
+        description: "d",
+        category: "plumbing",
+        district: "Colombo",
+        budget: null,
+        status: "OPEN",
+        createdAt: new Date(),
+        customerId: CUSTOMER_ID,
+        responses: [
+          { id: "resp_1", message: "I can help", createdAt: new Date(), providerId: "prov_1" },
+        ],
+      },
+    ]);
+    dbMock.jobRequest.count.mockResolvedValue(1);
+    wireS2s({
+      providers: [
+        {
+          id: "prov_1",
+          contactName: "Jane Plumb",
+          contactPhone: "0771234567",
+          suspended: true,
+        },
+      ],
+    });
+    const res = await req("/api/jobs/mine", {}, { "x-user-id": CUSTOMER_ID });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.jobs[0].responses[0].provider).toEqual({
+      id: "prov_1",
+      name: "Unknown",
+      phone: null,
+    });
+  });
 });
 
 describe("PATCH /api/jobs/:id (owner toggles status)", () => {
@@ -570,6 +628,21 @@ describe("POST /api/jobs/:id/responses (provider responds)", () => {
       { "x-user-id": PROVIDER_USER_ID }
     );
     expect(res.status).toBe(403);
+  });
+
+  // #642: a suspended provider can't respond either — gated before the job is
+  // even loaded.
+  it("403s a suspended provider without touching the job", async () => {
+    wireS2s({ providerByUser: { ...PROVIDER, suspended: true } });
+    const res = await req(
+      "/api/jobs/job_1/responses",
+      { method: "POST", body: JSON.stringify(message) },
+      { "x-user-id": PROVIDER_USER_ID }
+    );
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toMatch(/suspended/i);
+    expect(dbMock.jobRequest.findUnique).not.toHaveBeenCalled();
+    expect(dbMock.jobResponse.create).not.toHaveBeenCalled();
   });
 
   it("404s when the job does not exist", async () => {

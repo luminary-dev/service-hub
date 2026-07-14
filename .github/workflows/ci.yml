@@ -233,7 +233,7 @@ jobs:
         # The prod images run with NODE_ENV=production, where the seed script
         # refuses to create demo data unless explicitly overridden. Opt in here.
         run: |
-          for s in identity-service provider-service review-service job-service notification-service; do
+          for s in identity-service provider-service review-service job-service notification-service trust-safety-service; do
             docker compose exec -T -e SEED_DEMO_DATA=true "$s" npm run db:seed
           done
       - name: Run e2e smoke
@@ -242,7 +242,8 @@ jobs:
         run: ./scripts/e2e-smoke.sh
       - name: Back up and restore-verify
         # Exercises the backup → restore-verification path (#389) against the
-        # seeded stack: dump all 5 DBs, restore them into a scratch container,
+        # seeded stack: dump all 6 service DBs (search_db excluded — a derived,
+        # rebuildable index), restore them into a scratch container,
         # row-count the main tables — so a broken dump/restore script fails CI
         # instead of a real disaster recovery. (No BACKUP_R2_* here, so the
         # offsite leg is skipped with a warning.)

@@ -25,6 +25,7 @@ import {
   getProviderIdByUser,
   ProviderAdminSuspendedError,
   reactivateProviderProfile,
+  resolveProviderIdByUser,
   resolveProviderIdForErase,
   syncContactToProvider,
 } from "../lib/providers";
@@ -288,8 +289,18 @@ authRoutes.post("/complete-provider", async (c) => {
   }
 
   // Idempotency guard against a double-submit creating two profiles: if a
-  // profile already exists for this user (best-effort lookup), reuse it.
-  let providerId = await getProviderIdByUser(user.id);
+  // profile already exists for this user, reuse it. Resolve with the FAIL-LOUD
+  // resolver (#643), NOT getProviderIdByUser (which degrades to null on a
+  // transient blip): a false null here would wrongly take the create branch,
+  // flip the role to PROVIDER, and orphan the existing profile hidden. On any
+  // lookup failure, abort with 502 and no role flip — a retry can finish.
+  let providerId: string | null;
+  try {
+    providerId = await resolveProviderIdByUser(user.id);
+  } catch (e) {
+    log.error("provider lookup failed", { context: "complete-provider", err: e });
+    return c.json({ error: "Upstream service unavailable" }, 502);
+  }
   if (!providerId) {
     try {
       providerId = await createProviderProfile({
@@ -516,14 +527,22 @@ authRoutes.post("/logout-all", async (c) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  const user = await db.user
-    .update({
+  let user;
+  try {
+    user = await db.user.update({
       where: { id: auth.userId },
       data: { sessionVersion: { increment: 1 } },
-    })
-    .catch(() => null);
-  if (!user) {
-    return c.json({ error: "Unauthorized" }, 401);
+    });
+  } catch (e) {
+    // A missing row (P2025) means the authenticated user was deleted out from
+    // under this session — that is genuinely a 401. But a DB outage must NOT be
+    // masked as a 401 (#647 L8): swallowing every error into 401 would both
+    // sign users out on a transient blip and hide the incident. Surface it 500.
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    log.error("logout-all failed", { context: "logout-all", err: e });
+    return c.json({ error: "Something went wrong" }, 500);
   }
 
   // Mirror the bump into the shared revocation list (#374) so the gateway
@@ -728,8 +747,11 @@ authRoutes.post("/verify-email", async (c) => {
     where: { tokenHash: hashToken(parsed.data.token) },
   });
   if (!record || record.expiresAt < new Date()) {
+    // deleteMany, not delete: a double-submit (two clicks of the same link)
+    // would race to delete the same row, and delete() throws P2025 on the
+    // second — a spurious 500. deleteMany is idempotent (count 0, no throw).
     if (record) {
-      await db.emailVerificationToken.delete({ where: { id: record.id } });
+      await db.emailVerificationToken.deleteMany({ where: { id: record.id } });
     }
     return c.json({ error: "expired" }, 400);
   }
@@ -826,8 +848,10 @@ authRoutes.post("/reset-password", async (c) => {
     where: { tokenHash: hashToken(parsed.data.token) },
   });
   if (!record || record.expiresAt < new Date()) {
+    // deleteMany, not delete: a double-submit races to delete the same row and
+    // delete() throws P2025 on the loser (a spurious 500). deleteMany no-ops.
     if (record) {
-      await db.passwordResetToken.delete({ where: { id: record.id } });
+      await db.passwordResetToken.deleteMany({ where: { id: record.id } });
     }
     return c.json({ error: "This reset link is invalid or has expired." }, 400);
   }

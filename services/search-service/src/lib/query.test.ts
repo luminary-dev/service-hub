@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_RADIUS_KM,
+  MAX_PAGE,
   MAX_RADIUS_KM,
   normalizeSearchQuery,
   parsePoint,
@@ -29,6 +30,17 @@ describe("normalizeSearchQuery", () => {
   it("caps pageSize at 24 and honors the take alias", () => {
     expect(normalizeSearchQuery({ pageSize: "100" }).pageSize).toBe(24);
     expect(normalizeSearchQuery({ take: "6" }).pageSize).toBe(6);
+  });
+
+  // #657: an unbounded page feeds the SQL OFFSET, so clamp it to MAX_PAGE to
+  // block deep-pagination DoS. Normal pages pass through unchanged.
+  it("clamps page at MAX_PAGE to bound the OFFSET", () => {
+    expect(normalizeSearchQuery({ page: "5" }).page).toBe(5);
+    expect(normalizeSearchQuery({ page: "999999" }).page).toBe(MAX_PAGE);
+    expect(normalizeSearchQuery({ page: String(MAX_PAGE + 1) }).page).toBe(MAX_PAGE);
+    // Junk / below 1 still falls back to page 1.
+    expect(normalizeSearchQuery({ page: "0" }).page).toBe(1);
+    expect(normalizeSearchQuery({ page: "junk" }).page).toBe(1);
   });
 
   it("swaps a reversed price range", () => {

@@ -35,9 +35,10 @@ async function loadThread(c: Context, id: string) {
   return { inquiry, party };
 }
 
-// Thread fetch. Marks the caller's side as read (their lastReadAt = now).
-// ?after=<ISO> returns only newer messages so polling stays cheap; the full
-// payload includes the thread header the UI needs (names, status, the
+// Thread fetch. Marks the caller's side as read up to the newest message this
+// page actually returned (#638) — not now(), and only when the page was
+// non-empty. ?after=<ISO> returns only newer messages so polling stays cheap;
+// the full payload includes the thread header the UI needs (names, status, the
 // original inquiry message shown as the first bubble).
 messagesRoutes.get("/api/inquiries/:id/messages", async (c) => {
   const thread = await loadThread(c, c.req.param("id"));
@@ -63,10 +64,19 @@ messagesRoutes.get("/api/inquiries/:id/messages", async (c) => {
     take: 200,
   });
 
-  await db.inquiry.update({
-    where: { id: inquiry.id },
-    data: { [lastReadField(party)]: new Date() },
-  });
+  // #638: only advance the read marker when this page returned messages, and
+  // anchor it to the newest returned message's createdAt — never now(). The
+  // old unconditional `now()` stamp wrote on every poll (amplification) and
+  // opened a lost-unread race: a message landing between the SELECT above and
+  // this update was marked read despite never being returned. Messages are
+  // ordered ascending by createdAt, so the last element is the newest; a later
+  // arrival keeps a strictly greater createdAt and stays correctly unread.
+  if (messages.length > 0) {
+    await db.inquiry.update({
+      where: { id: inquiry.id },
+      data: { [lastReadField(party)]: messages[messages.length - 1]!.createdAt },
+    });
+  }
 
   return c.json({
     party,
