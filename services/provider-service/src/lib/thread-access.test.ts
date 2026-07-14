@@ -29,6 +29,15 @@ describe("resolveThreadParty", () => {
     expect(resolveThreadParty(inquiry(null, "u2"), auth("u2"))).toBe("PROVIDER");
     expect(resolveThreadParty(inquiry(null, "u2"), auth("u1"))).toBeNull();
   });
+
+  it("keeps the customer's access after the provider is erased (#650)", () => {
+    // provider === null once the provider account is erased (Inquiry.providerId
+    // → null). The customer still owns the detached thread; nobody can
+    // authenticate as the gone provider.
+    const detached = { userId: "u1", provider: null };
+    expect(resolveThreadParty(detached, auth("u1"))).toBe("CUSTOMER");
+    expect(resolveThreadParty(detached, auth("u2"))).toBeNull();
+  });
 });
 
 describe("helpers", () => {

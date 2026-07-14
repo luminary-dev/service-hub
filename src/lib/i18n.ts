@@ -468,6 +468,9 @@ const en = {
     loadFailed: "Could not load the conversation. Please try again.",
     sendFailed: "Message not sent. Please try again.",
     you: "You",
+    // Shown when the provider has erased their account (#650): their inquiries
+    // detach but the customer keeps the thread and history.
+    deletedProvider: "Deleted provider",
   },
   assistant: {
     title: "Baas.lk Assistant",
@@ -649,6 +652,9 @@ const en = {
     reportSystem: "System (auto-flagged)",
     reportTargetGone: "This content no longer exists.",
     reportContentRemoved: "Removed",
+    // The reported inquiry/message survives but its provider erased their
+    // account (#650), so there is no profile left to link to.
+    deletedProvider: "Deleted provider",
     viewProvider: "View provider",
     auditLogLink: "Audit log",
     auditLogDesc: "See who did what — every verify, suspend, delete and resolve.",
@@ -1819,6 +1825,7 @@ const si: Dict = {
     loadFailed: "සංවාදය පූරණය කළ නොහැකි විය. නැවත උත්සාහ කරන්න.",
     sendFailed: "පණිවිඩය යවා නැත. නැවත උත්සාහ කරන්න.",
     you: "ඔබ",
+    deletedProvider: "මකා දැමූ සේවා සපයන්නා",
   },
   assistant: {
     title: "Baas.lk සහායක",
@@ -1996,6 +2003,7 @@ const si: Dict = {
     reportSystem: "පද්ධතිය (ස්වයංක්‍රීය)",
     reportTargetGone: "මෙම අන්තර්ගතය තවදුරටත් නොපවතී.",
     reportContentRemoved: "ඉවත් කර ඇත",
+    deletedProvider: "මකා දැමූ සේවා සපයන්නා",
     viewProvider: "වෘත්තිකයා බලන්න",
     auditLogLink: "විගණන සටහන",
     auditLogDesc: "කවුරුන් කුමක් කළේද යන්න බලන්න — සියලු සත්‍යාපන, අත්හිටුවීම්, මකාදැමීම් සහ විසඳුම්.",

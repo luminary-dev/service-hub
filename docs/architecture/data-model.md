@@ -31,8 +31,11 @@
   listing search — hand-written because Prisma's DSL can't express them.
 - **provider-service** (`provider_db`): `Provider`, `Service`, `WorkPhoto`
   (`sortOrder` manual order + `deletedAt` moderation soft-delete),
-  `VerificationDocument`, `Inquiry` (+ `source`, per-party `customerLastReadAt`/
-  `providerLastReadAt`, `respondedAt`), `InquiryMessage` (#13 threads, +
+  `VerificationDocument`, `Inquiry` (nullable `providerId` with an `ON DELETE
+  SET NULL` FK #650 — erasing a provider detaches, never deletes, the inquiries
+  it *received*; + `source`, per-party `customerLastReadAt`/
+  `providerLastReadAt`, `respondedAt`), `InquiryMessage` (#13 threads, cascades
+  from `Inquiry` so a detached thread survives, +
   `deletedAt` moderation soft-delete #376),
   `Report` (abuse reports on providers, work photos and thread messages),
   `Category` (managed
@@ -196,4 +199,28 @@ Cross-service uniqueness/cascades that FKs used to give us are preserved by
 same-service constraints (`@@unique([providerId, userId])` etc.) and S2S
 existence checks at write time. There are no cross-service delete cascades;
 account deletion fans out over S2S erase endpoints (see job-service section).
+
+**Erasure — what is deleted vs. what survives (#650, PDPA).** Account deletion
+must erase the departing user's own data without destroying the *other* party's
+data. Concretely:
+
+- **Erasing a CUSTOMER** deletes the inquiries (and their threads) that customer
+  *sent*, their reviews and job posts, and their identity/notification rows.
+  Provider profiles they contacted are untouched.
+- **Erasing a PROVIDER** hard-deletes the `Provider` row and its owned children
+  (`Service`, `WorkPhoto`, `VerificationDocument`), stored files and the search
+  index doc — so the provider's identifying PII (`contactName`/`contactEmail`/
+  `contactPhone`, headline/bio, photos, docs) is gone. The inquiries that
+  provider *received* are the **customers'** data (their name/phone/email/
+  message plus the thread), so they must **not** be cascade-deleted. The
+  `Inquiry → Provider` FK is therefore `ON DELETE SET NULL` (not `CASCADE`):
+  deleting the provider detaches those inquiries (`providerId → null`) and
+  leaves the `InquiryMessage` thread intact (it cascades from `Inquiry`, which
+  survives). The account/thread/admin views render a **"Deleted provider"**
+  placeholder (i18n'd, no profile link) for a detached inquiry.
+
+This matches the Privacy Policy (`src/lib/legal.ts`): a user's *own* data is
+erased on deletion, while content shared with others survives stripped of the
+departed party's identity. The earlier `ON DELETE CASCADE` over-deleted —
+losing an unrelated customer's history the moment a provider left.
 

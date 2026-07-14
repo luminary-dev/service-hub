@@ -7,14 +7,18 @@ import type { AuthUser } from "./http";
 export type ThreadParty = "CUSTOMER" | "PROVIDER";
 
 export function resolveThreadParty(
-  inquiry: { userId: string | null; provider: { userId: string } },
+  // `provider` is nullable (#650): once a provider is erased its inquiries
+  // detach (providerId → null), so a surviving thread has no provider side. The
+  // customer can still open their own history; no one can authenticate as the
+  // erased provider.
+  inquiry: { userId: string | null; provider: { userId: string } | null },
   auth: AuthUser | null
 ): ThreadParty | null {
   if (!auth) return null;
   if (inquiry.userId !== null && inquiry.userId === auth.userId) {
     return "CUSTOMER";
   }
-  if (inquiry.provider.userId === auth.userId) {
+  if (inquiry.provider && inquiry.provider.userId === auth.userId) {
     return "PROVIDER";
   }
   return null;

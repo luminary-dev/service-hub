@@ -47,12 +47,17 @@ accountRoutes.get("/api/account/inquiries", async (c) => {
       createdAt: i.createdAt,
       respondedAt: i.respondedAt,
       unreadCount: unread[i.id] ?? 0,
-      provider: {
-        id: i.provider.id,
-        name: i.provider.contactName,
-        category: i.provider.category,
-        suspended: i.provider.suspended,
-      },
+      // Null once the provider is erased (#650): the inquiry detaches
+      // (providerId → null) but the customer's history survives, so the account
+      // page renders a "Deleted provider" row with no profile link.
+      provider: i.provider
+        ? {
+            id: i.provider.id,
+            name: i.provider.contactName,
+            category: i.provider.category,
+            suspended: i.provider.suspended,
+          }
+        : null,
     })),
   });
 });

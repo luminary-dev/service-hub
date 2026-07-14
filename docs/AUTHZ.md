@@ -55,6 +55,14 @@ social login just as on password login (#641), bounced back to
   session is it). Accounts that **do** have a password must re-authenticate for
   every sensitive change — delete-account, change-password, and change-email
   (#504) — before it takes effect.
+- **What delete-account erases (#650, PDPA):** identity orchestrates an S2S
+  erase fan-out that deletes the user's *own* data (profile, photos, reviews,
+  the inquiries/jobs they sent, notifications) but preserves the *other*
+  party's data. Erasing a PROVIDER hard-deletes their profile + PII yet leaves
+  the inquiries customers *sent* them intact but detached (`Inquiry.providerId`
+  is `ON DELETE SET NULL`), shown as a "Deleted provider" thread. See
+  `docs/architecture/data-model.md` (Erasure) for the full delete-vs-survive
+  matrix.
 - A first-time social signup starts as `CUSTOMER`; the `/welcome` chooser lets
   them convert to `PROVIDER` via `POST /api/auth/complete-provider` (which flips
   the role and bumps `sessionVersion`).

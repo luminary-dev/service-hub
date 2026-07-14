@@ -86,7 +86,11 @@ messagesRoutes.get("/api/inquiries/:id/messages", async (c) => {
       message: inquiry.message,
       createdAt: inquiry.createdAt,
       customerName: inquiry.name,
-      provider: { id: inquiry.provider.id, name: inquiry.provider.contactName },
+      // Null once the provider is erased (#650) — the thread survives detached
+      // and the client renders a "Deleted provider" counterpart.
+      provider: inquiry.provider
+        ? { id: inquiry.provider.id, name: inquiry.provider.contactName }
+        : null,
     },
     messages: messages.map((m) => ({
       id: m.id,
@@ -144,19 +148,29 @@ messagesRoutes.post("/api/inquiries/:id/messages", async (c) => {
   // inquiries carry no customer account (userId null), so a provider reply to
   // one notifies nobody; the inquiry's optional email is the customer's
   // address, the provider's is the denormalized contactEmail.
+  // When the provider is erased (#650) `inquiry.provider` is null; only the
+  // CUSTOMER party can reach this path then (no one authenticates as the gone
+  // provider), and there is no provider account left to notify → null.
   const recipient =
     party === "PROVIDER"
       ? inquiry.userId
         ? { userId: inquiry.userId, email: inquiry.email ?? undefined }
         : null
-      : { userId: inquiry.provider.userId, email: inquiry.provider.contactEmail };
+      : inquiry.provider
+        ? {
+            userId: inquiry.provider.userId,
+            email: inquiry.provider.contactEmail,
+          }
+        : null;
   if (recipient) {
     await emitNotification({
       type: "THREAD_REPLY",
       recipients: [{ ...recipient, locale: getLocale(c) }],
       payload: {
         senderName:
-          party === "PROVIDER" ? inquiry.provider.contactName : inquiry.name,
+          party === "PROVIDER"
+            ? (inquiry.provider?.contactName ?? inquiry.name)
+            : inquiry.name,
       },
       link:
         party === "PROVIDER"

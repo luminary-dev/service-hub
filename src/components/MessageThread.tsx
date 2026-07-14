@@ -21,7 +21,9 @@ type ThreadPayload = {
     message: string;
     createdAt: string;
     customerName: string;
-    provider: { id: string; name: string };
+    // Null once the provider is erased (#650): the thread survives detached and
+    // the customer sees a "Deleted provider" counterpart.
+    provider: { id: string; name: string } | null;
   };
   messages: Message[];
 };
@@ -166,7 +168,7 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
 
   const counterpart =
     thread.party === "CUSTOMER"
-      ? thread.inquiry.provider.name
+      ? (thread.inquiry.provider?.name ?? t.messages.deletedProvider)
       : thread.inquiry.customerName;
 
   return (

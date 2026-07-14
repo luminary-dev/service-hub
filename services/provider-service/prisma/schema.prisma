@@ -216,8 +216,17 @@ model Report {
 // anonymous inquiries are allowed).
 model Inquiry {
   id         String   @id @default(cuid())
-  providerId String
-  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  // Nullable + ON DELETE SET NULL (#650, PDPA erasure): erasing a PROVIDER
+  // account hard-deletes the Provider row, but the inquiries it *received* are
+  // the CUSTOMER's own data (their name/phone/email/message + the message
+  // thread) and must survive. SET NULL detaches the inquiry from the erased
+  // provider instead of cascade-deleting it, so the customer keeps their
+  // history while the departed provider's identifying PII is gone. New
+  // inquiries always set providerId; null means "provider since erased" and the
+  // account/thread/admin views render a "Deleted provider" placeholder. The FK
+  // rule lives in migration 20260714150000 (Prisma emits it from `onDelete`).
+  providerId String?
+  provider   Provider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
   userId     String?
   name       String
   phone      String

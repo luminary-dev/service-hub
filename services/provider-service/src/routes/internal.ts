@@ -487,8 +487,16 @@ internalRoutes.get("/internal/inquiries/exists", async (c) => {
 
 // POST /internal/users/:id/erase — account-deletion fan-out from
 // identity-service. Deletes the user's Provider (Service/WorkPhoto/
-// VerificationDocument/Inquiry rows cascade) plus its stored upload files
+// VerificationDocument rows cascade) plus its stored upload files
 // (best-effort), and the Inquiry rows this user sent to other providers.
+//
+// Erasing a PROVIDER no longer destroys the inquiries it *received* (#650,
+// PDPA): those carry the CUSTOMER's name/phone/email/message + thread — their
+// own data — so the Inquiry→Provider FK is ON DELETE SET NULL (not CASCADE).
+// Deleting the Provider row detaches its received inquiries (providerId → null)
+// instead of deleting them; the customer keeps their history while the
+// departed provider's identifying PII goes with the row. Inquiries this user
+// *sent* as a customer are still deleted below (their own data).
 // Idempotent: erasing an unknown user is a no-op 200.
 internalRoutes.post("/internal/users/:id/erase", async (c) => {
   const userId = c.req.param("id");
