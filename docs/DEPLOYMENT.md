@@ -126,8 +126,8 @@ App secrets (set with `gh secret set <NAME>`):
 
 - **Required**: `AUTH_SECRET`, `INTERNAL_API_SECRET`, `POSTGRES_PASSWORD`,
   `IDENTITY_DB_PASSWORD`, `PROVIDER_DB_PASSWORD`, `REVIEW_DB_PASSWORD`,
-  `JOB_DB_PASSWORD`, `NOTIFICATION_DB_PASSWORD`, `REDIS_PASSWORD` (#387 —
-  per-service DB roles + Redis
+  `JOB_DB_PASSWORD`, `NOTIFICATION_DB_PASSWORD`, `TRUST_SAFETY_DB_PASSWORD`,
+  `REDIS_PASSWORD` (#387 — per-service DB roles + Redis
   AUTH; **URL-interpolated**, so generate them with `openssl rand -hex 32`,
   not base64), `WEB_ORIGIN`, `DOMAIN`. `docker-compose.prod.yml` guards each
   with `${VAR:?}`, so the stack refuses to start if any is missing.
@@ -259,10 +259,12 @@ longer means the whole stack:
     set the new GitHub secrets → run the script against the **running old
     stack** (exporting the five `*_DB_PASSWORD`s in the shell) → merge/deploy
     the compose change. The same script is the live-prod pre-step for the
-    stateful notification-service release: it also creates `notification_db`
-    (idempotently) on a cluster that predates it, so set the
-    `NOTIFICATION_DB_PASSWORD` secret and run it once **before** deploying
-    that release. Running it after a failed boot works too — the DB
+    stateful notification-service and (dark-launch) trust-safety-service
+    releases: it also creates `notification_db` / `trust_safety_db`
+    (idempotently) on a cluster that predates them, so set the
+    `NOTIFICATION_DB_PASSWORD` / `TRUST_SAFETY_DB_PASSWORD` secrets and run it
+    once **before** deploying those releases. Running it after a failed boot
+    works too — the DB
     services just crash-loop until the roles exist.
 - **Redis AUTH** — `requirepass` from `REDIS_PASSWORD`; the gateway and
   identity carry it in `REDIS_URL` (`redis://default:<password>@redis:6379` —

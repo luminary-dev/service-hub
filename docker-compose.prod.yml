@@ -22,6 +22,7 @@ x-service-env: &service-env
   NOTIFICATION_SERVICE_URL: http://notification-service:4005
   MEDIA_SERVICE_URL: http://media-service:4006
   CHAT_SERVICE_URL: http://chat-service:4007
+  TRUST_SAFETY_SERVICE_URL: http://trust-safety-service:4009
 
 # Probe failures during start_period don't count against the retry budget
 # (#568) — without it a boot longer than ~100s marked the container unhealthy
@@ -95,6 +96,7 @@ services:
       REVIEW_DB_PASSWORD: ${REVIEW_DB_PASSWORD:?REVIEW_DB_PASSWORD is required}
       JOB_DB_PASSWORD: ${JOB_DB_PASSWORD:?JOB_DB_PASSWORD is required}
       NOTIFICATION_DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD:?NOTIFICATION_DB_PASSWORD is required}
+      TRUST_SAFETY_DB_PASSWORD: ${TRUST_SAFETY_DB_PASSWORD:?TRUST_SAFETY_DB_PASSWORD is required}
     volumes:
       - pgdata:/var/lib/postgresql/data
       # Least-privilege bootstrap (#387): unlike the dev scripts/init-db.sql
@@ -225,6 +227,26 @@ services:
         condition: service_healthy
     healthcheck: *db-healthcheck
 
+  # Trust & safety extraction, phase 1 (docs/rfcs/trust-safety-service.md):
+  # unified reports + moderation audit store. DARK LAUNCH — the gateway does
+  # not route to it yet; deployed dark so the cutover release is a routing
+  # flip. :4008 is reserved for search-service, so this takes :4009.
+  trust-safety-service:
+    image: ghcr.io/luminary-dev/service-hub-trust-safety-service:${IMAGE_TAG:-prod}
+    mem_limit: 384m
+    <<: [*restart, *logging, *hardening]
+    # TODO read_only: verify writable paths (runs `prisma migrate deploy` on
+    # boot — same unverified migration-engine temp behaviour as identity).
+    environment:
+      <<: *service-env
+      PORT: 4009
+      DATABASE_URL: postgresql://trust_safety:${TRUST_SAFETY_DB_PASSWORD:?}@postgres:5432/trust_safety_db
+    networks: [backend]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck: *db-healthcheck
+
   notification-service:
     image: ghcr.io/luminary-dev/service-hub-notification-service:${IMAGE_TAG:-prod}
     mem_limit: 384m
@@ -338,6 +360,8 @@ services:
       job-service:
         condition: service_healthy
       notification-service:
+        condition: service_healthy
+      trust-safety-service:
         condition: service_healthy
     healthcheck: *node-healthcheck
 

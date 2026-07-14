@@ -1,7 +1,7 @@
 # Service Hub — Microservice Architecture
 
-Service Hub (Baas.lk) is split into **seven backend services** plus an API
-gateway (eight Hono services in all), with the Next.js 16 app as a pure frontend. This repo is the
+Service Hub (Baas.lk) is split into **eight backend services** plus an API
+gateway (nine Hono services in all), with the Next.js 16 app as a pure frontend. This repo is the
 **canonical monorepo**; each service under `services/` is also mirrored to its
 own repository in the `luminary-dev` org via `git subtree` (see
 `scripts/sync-service-repos.sh`).
@@ -20,20 +20,26 @@ browser ── same-origin /api/* ──> Next.js web (:3000)
      ├── job-service          (:4004)  job_db           jobs/responses/job-reports/admin
      ├── notification-service (:4005)  notification_db  in-app notifications/preferences + email delivery (Redis queue)
      ├── media-service        (:4006)  (no db)           upload bytes + sharp; serves /files/*
-     └── chat-service         (:4007)  (no db)           streaming Claude assistant
+     ├── chat-service         (:4007)  (no db)           streaming Claude assistant
+     └── trust-safety-service (:4009)  trust_safety_db  unified reports/audit (DARK — no routes yet)
 ```
 
+(:4008 is reserved for search-service, the Stage-2 Track 1 extraction.)
+
 Infra: one **Postgres 16** cluster (host port 5433 → container 5432) holding
-five databases (`identity_db`, `provider_db`, `review_db`, `job_db`,
-`notification_db`), and **Redis 7** (gateway rate-limit window +
-notification-service's email delivery queue). Each service owns its database —
-no service touches another's tables; cross-service data access goes through
-internal HTTP endpoints. media/chat are stateless (no DB).
+six databases (`identity_db`, `provider_db`, `review_db`, `job_db`,
+`notification_db`, `trust_safety_db`), and **Redis 7** (gateway rate-limit
+window + notification-service's email delivery queue). Each service owns its
+database — no service touches another's tables; cross-service data access goes
+through internal HTTP endpoints. media/chat are stateless (no DB).
 
 The gateway never routes to chat-service (the web app proxies `/agent/chat`
 straight to it — the gateway buffers, and a direct stream does not). Its
 `ServiceName` union is `identity | provider | review | job | notification |
-media`.
+media | trust-safety` — **trust-safety is wired but dark**: `resolveRoute`
+never returns it until the trust & safety cutover PR flips the
+report/moderation paths to it ([RFC](rfcs/trust-safety-service.md), phase 1 of
+the phased rollout).
 
 ## In detail
 

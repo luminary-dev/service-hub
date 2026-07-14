@@ -1,10 +1,14 @@
+// "trust-safety" is wired (URL + union) but DARK: resolveRoute never returns
+// it yet — the trust & safety extraction's cutover PR flips the report/queue
+// paths to it (docs/rfcs/trust-safety-service.md §5.4).
 export type ServiceName =
   | "identity"
   | "provider"
   | "review"
   | "job"
   | "notification"
-  | "media";
+  | "media"
+  | "trust-safety";
 
 export type ResolvedRoute = { service: ServiceName; path: string };
 
@@ -234,5 +238,7 @@ export function serviceUrl(service: ServiceName): string {
       return process.env.NOTIFICATION_SERVICE_URL ?? "http://localhost:4005";
     case "media":
       return process.env.MEDIA_SERVICE_URL ?? "http://localhost:4006";
+    case "trust-safety":
+      return process.env.TRUST_SAFETY_SERVICE_URL ?? "http://localhost:4009";
   }
 }
