@@ -58,7 +58,9 @@ independent **Email** and **In-app** checkboxes. The API merges defaults
 (both channels on) over the user's stored sparse overrides, so the UI never
 has to know the catalog; each toggle upserts a single override via
 `POST /api/notification-preferences` (optimistic, reverted with a toast on
-failure — the `SavedSearches` pattern).
+failure — the `SavedSearches` pattern). One caveat: `REPORT_RESOLVED` is
+delivered in-app only (it has no email template), so its Email toggle has no
+effect.
 
 The transactional auth/security emails (verify, password reset, change-email,
 …) are **not** catalog types: they never appear here and cannot be muted.
@@ -79,8 +81,15 @@ localized labels and sentences:
 | `NEW_JOB_MATCH` | matched providers | "New job matching your trade in Matara: “…”." |
 | `JOB_RESPONSE` | job's customer | "Sunil responded to your job “…”." |
 | `SAVED_SEARCH_MATCH` | saved-search owner | "New match for a saved search: Sunil in Colombo." |
-| `REPORT_RESOLVED` | reporter | "Your report was reviewed and resolved." |
+| `REPORT_RESOLVED` | reporter | "Your report was reviewed and resolved." (or "…and dismissed.", per the payload's `status`) |
 
-Which backend call sites emit each event (and the email half of the fan-out)
-is documented in the RFC's event-catalog table; the emitters land in the
-follow-up backend PR (#393).
+Which backend call sites emit each event is documented in the RFC's
+event-catalog table; the emitters have shipped (#393) — each stateful service
+posts its catalog events S2S to `POST /internal/notifications/events`, which
+**acks 202**, writes the in-app feed rows inline and queues the emails (one
+job per email-enabled recipient) so producers never wait on sends.
+
+Housekeeping: after each insert, an opportunistic sweep deletes **read** rows
+that are both older than 90 days and beyond the user's newest 200 (unread
+rows are never swept), and account deletion erases the user's notifications
+and preference overrides via the internal erase fan-out.

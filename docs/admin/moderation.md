@@ -28,7 +28,10 @@ team.
   page indicator. The PENDING header stat and the hub badge baseline track the
   full `total`, not the current page.
 
-Any admin-tier user can act on this queue.
+Any admin-tier user can **read** this queue, but approve/reject (single and
+bulk) are **full-ADMIN** writes (`isFullAdmin` — a SUPPORT click is rejected
+with 403; the page doesn't currently disable the buttons for SUPPORT, so the
+rejection surfaces as an error on click).
 
 ### Reports queue
 
@@ -60,7 +63,9 @@ first**: `GET /api/admin/reports` (provider-service — `PROVIDER`,
   `PATCH /api/admin/review-reports` and/or `PATCH /api/admin/job-reports`
   with `{ ids, status }`.
 - **Audit stamp.** A closed report shows *who* closed it and *when*
-  (`resolvedBy` / `resolvedAt`).
+  (`resolvedBy` / `resolvedAt`). Closing a report also sends the reporter a
+  best-effort `REPORT_RESOLVED` in-app notification (skipped for anonymous
+  and `SYSTEM`-sourced reports).
 - Each row shows the target (review preview, provider/photo with suspended /
   content-removed chips, inquiry-thread context, job title + text with a
   taken-down chip, or the reported thread message body) with a **Moderate**
@@ -79,6 +84,13 @@ details, max 500 chars). Reports on public content can be filed anonymously
 (thread messages are private, so only the two thread parties can report one);
 the gateway rate-limits the report endpoints (see
 [RATE_LIMITING.md](../RATE_LIMITING.md)).
+
+> **Note:** everything above is served by the per-service report stores
+> (provider / review / job). The unified
+> [trust & safety service](../rfcs/trust-safety-service.md) is **dark-launched
+> only** — its store is populated by an offline backfill script and nothing
+> reads from or dual-writes to it yet; these queues don't change until the
+> cutover PR.
 
 #### Auto-flagging ("Run flagging")
 

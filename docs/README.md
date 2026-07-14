@@ -35,6 +35,7 @@ the security posture. Per-service API detail lives in each
 | [RATE_LIMITING.md](RATE_LIMITING.md) | The gateway's Redis-backed sliding-window limiter: the per-route budget table, the in-memory fallback and the client-IP (XFF) caveat (#201). |
 | [EMAIL_SETUP.md](EMAIL_SETUP.md) | Transactional email via notification-service + Resend: the API key, the verified sending domain and the console fallback when unset. |
 | [DESIGN.md](DESIGN.md) | The web design system (UI 2.0): the blueprint visual language, `globals.css` OKLCH tokens, light/dark theming and the shared `src/components/ui/*` primitives. |
+| [rfcs/](rfcs/search-discovery-service.md) | Stage-2 service RFCs — search & discovery, stateful notifications, trust & safety — each carrying a Status line tracking what has shipped. |
 
 Some of these docs are authored and maintained in parallel; links point at their
 canonical paths whether or not the file is present in your checkout yet.
