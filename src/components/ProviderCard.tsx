@@ -140,8 +140,8 @@ export default function ProviderCard({
         {/* -- Body -- */}
         <div className="p-4">
           <div className="flex items-start gap-3">
-            <div className="relative z-10 -mt-10 rounded-full border-4 border-surface shadow-[0_4px_12px_rgba(34,29,24,0.12)]">
-              <Avatar name={p.name} url={p.avatarUrl} size={56} />
+            <div className="relative z-10 -mt-12 rounded-full border-4 border-surface shadow-[0_4px_12px_rgba(34,29,24,0.12)]">
+              <Avatar name={p.name} url={p.avatarUrl} size={72} />
             </div>
             <div className="min-w-0 flex-1 pt-1.5">
               <h3 className="flex items-center gap-1.5 truncate font-display text-base font-semibold text-ink-900 transition-colors duration-200 group-hover:text-brand-700">

@@ -54,3 +54,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local image-generation output (source for public/images/categories/*)
+/generated/
