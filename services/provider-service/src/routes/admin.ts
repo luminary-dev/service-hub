@@ -32,6 +32,43 @@ export const adminRoutes = new Hono();
 // hit, we log and rank the newest slice.
 const MOST_REVIEWS_CANDIDATES = 1000;
 
+// Open USER-source report counts for a page of provider ids, in ONE grouped
+// query — the report-penalty input to the per-row quality score (#229). Only
+// OPEN USER reports penalize, matching the detail route and the flagging run;
+// an empty id list skips the query entirely.
+async function fetchOpenProviderReportCounts(
+  ids: string[]
+): Promise<Record<string, number>> {
+  if (ids.length === 0) return {};
+  const rows = await db.report.groupBy({
+    by: ["targetId"],
+    where: {
+      targetType: "PROVIDER",
+      targetId: { in: ids },
+      status: "OPEN",
+      source: "USER",
+    },
+    _count: { _all: true },
+  });
+  return Object.fromEntries(rows.map((r) => [r.targetId, r._count._all]));
+}
+
+// Per-row quality signal for the moderation list — same object shape the
+// detail route (GET /api/admin/providers/:id) returns, so the frontend's
+// quality chip + breakdown render identically for a list row and a detail.
+function providerQuality(
+  rating: number,
+  reviewCount: number,
+  openReportCount: number
+) {
+  return {
+    ...computeQualityScore({ rating, reviewCount, openReportCount }),
+    rating,
+    reviewCount,
+    openReportCount,
+  };
+}
+
 // Moderation audit trail (#227): fire-and-record after every write below.
 // Best-effort — a logging failure must never roll back or block the
 // moderation action itself, so errors are swallowed.
@@ -105,13 +142,22 @@ adminRoutes.get("/api/admin/providers", async (c) => {
         b.createdAt.getTime() - a.createdAt.getTime()
     );
     total = ranked.length;
-    providers = ranked
-      .slice((page - 1) * pageSize, page * pageSize)
-      .map(({ _count, ...p }) => ({
-        ...p,
-        user: { name: p.contactName, email: p.contactEmail },
-        _count: { reviews: ratings[p.id]?.count ?? 0, photos: _count.photos },
-      }));
+    // Slice the page first so the open-report counts (the quality-score
+    // penalty) are fetched for just this page's ids, not the whole ranked set.
+    const pageRows = ranked.slice((page - 1) * pageSize, page * pageSize);
+    const reportCounts = await fetchOpenProviderReportCounts(
+      pageRows.map((p) => p.id)
+    );
+    providers = pageRows.map(({ _count, ...p }) => ({
+      ...p,
+      user: { name: p.contactName, email: p.contactEmail },
+      _count: { reviews: ratings[p.id]?.count ?? 0, photos: _count.photos },
+      quality: providerQuality(
+        ratings[p.id]?.rating ?? 0,
+        ratings[p.id]?.count ?? 0,
+        reportCounts[p.id] ?? 0
+      ),
+    }));
   } else {
     const [count, rows] = await Promise.all([
       db.provider.count({ where }),
@@ -123,12 +169,20 @@ adminRoutes.get("/api/admin/providers", async (c) => {
         include: { _count: { select: { photos: true } } },
       }),
     ]);
-    const ratings = await fetchRatings(rows.map((p) => p.id));
+    const [ratings, reportCounts] = await Promise.all([
+      fetchRatings(rows.map((p) => p.id)),
+      fetchOpenProviderReportCounts(rows.map((p) => p.id)),
+    ]);
     total = count;
     providers = rows.map(({ _count, ...p }) => ({
       ...p,
       user: { name: p.contactName, email: p.contactEmail },
       _count: { reviews: ratings[p.id]?.count ?? 0, photos: _count.photos },
+      quality: providerQuality(
+        ratings[p.id]?.rating ?? 0,
+        ratings[p.id]?.count ?? 0,
+        reportCounts[p.id] ?? 0
+      ),
     }));
   }
 

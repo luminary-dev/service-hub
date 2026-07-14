@@ -31,7 +31,9 @@ type AdminProviderDetail = {
   verificationStatus: string;
   suspended: boolean;
   user: { name: string; email: string };
-  quality: {
+  // Optional as a defensive contract (see the #229 list-route regression): the
+  // moderation page must render even if the payload ever omits the score.
+  quality?: {
     qualityScore: number;
     rating: number;
     reviewCount: number;
@@ -114,21 +116,23 @@ export default async function AdminProviderModeratePage({
         }
       >
         <div className="flex flex-col items-start gap-4 sm:items-end">
-          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-            <span
-              className={`chip ${qualityChipClasses(provider.quality.qualityScore)}`}
-              title={t.qualityScoreHint}
-            >
-              {t.qualityScoreLabel} {provider.quality.qualityScore}
-            </span>
-            <span className="font-mono text-[11px] text-ink-500">
-              {t.qualityScoreBreakdown(
-                provider.quality.rating,
-                provider.quality.reviewCount,
-                provider.quality.openReportCount
-              )}
-            </span>
-          </div>
+          {provider.quality && (
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              <span
+                className={`chip ${qualityChipClasses(provider.quality.qualityScore)}`}
+                title={t.qualityScoreHint}
+              >
+                {t.qualityScoreLabel} {provider.quality.qualityScore}
+              </span>
+              <span className="font-mono text-[11px] text-ink-500">
+                {t.qualityScoreBreakdown(
+                  provider.quality.rating,
+                  provider.quality.reviewCount,
+                  provider.quality.openReportCount
+                )}
+              </span>
+            </div>
+          )}
           <StatReadout
             stats={[
               { label: t.reviewsHeading, value: provider.reviews.length },

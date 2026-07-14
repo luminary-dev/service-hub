@@ -21,7 +21,10 @@ export type AdminProviderRow = {
   suspended: boolean;
   user: { name: string; email: string };
   _count: { reviews: number; photos: number };
-  quality: {
+  // Optional as a defensive contract: if the list route ever omits it again
+  // (see the #229 regression), the row still renders — the quality chip is
+  // simply skipped rather than crashing the page.
+  quality?: {
     qualityScore: number;
     rating: number;
     reviewCount: number;
@@ -178,16 +181,18 @@ export default function AdminProvidersList({
                       {t.suspendedTag}
                     </span>
                   )}
-                  <span
-                    className={`chip ${qualityChipClasses(p.quality.qualityScore)}`}
-                    title={t.qualityScoreBreakdown(
-                      p.quality.rating,
-                      p.quality.reviewCount,
-                      p.quality.openReportCount
-                    )}
-                  >
-                    {t.qualityScoreLabel} {p.quality.qualityScore}
-                  </span>
+                  {p.quality && (
+                    <span
+                      className={`chip ${qualityChipClasses(p.quality.qualityScore)}`}
+                      title={t.qualityScoreBreakdown(
+                        p.quality.rating,
+                        p.quality.reviewCount,
+                        p.quality.openReportCount
+                      )}
+                    >
+                      {t.qualityScoreLabel} {p.quality.qualityScore}
+                    </span>
+                  )}
                 </div>
                 <p className="text-sm text-ink-500">
                   {categoryLabelLoc(p.category, locale)} · {p.city} ·{" "}
