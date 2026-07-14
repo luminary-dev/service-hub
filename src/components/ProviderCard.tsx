@@ -79,12 +79,14 @@ export default function ProviderCard({
   // Away mode (#49): a future awayUntil replaces the "Available" chip with a
   // localized "Away until {date}" chip; a past one is inert.
   const away = p.awayUntil !== null && new Date(p.awayUntil) > new Date();
-  // Cover precedence: the provider's own photo → the admin-managed category
-  // cover (#436) → the flat placeholder (the `else` branch below).
+  // Cover precedence: the admin-managed per-trade category cover (#436) wins on
+  // the listing card for a uniform, branded look → the provider's own photo is
+  // the fallback when their trade has no category cover → the flat placeholder
+  // (the `else` branch below). The provider's own photos still lead on their
+  // detail page; this precedence is card-only.
   const cover =
-    p.coverPhoto && !isSvg(p.coverPhoto)
-      ? p.coverPhoto
-      : p.categoryImageUrl ?? null;
+    p.categoryImageUrl ??
+    (p.coverPhoto && !isSvg(p.coverPhoto) ? p.coverPhoto : null);
   return (
     <div className="relative">
       {showFavorite && (
