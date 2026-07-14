@@ -126,7 +126,7 @@ App secrets (set with `gh secret set <NAME>`):
 
 - **Required**: `AUTH_SECRET`, `INTERNAL_API_SECRET`, `POSTGRES_PASSWORD`,
   `IDENTITY_DB_PASSWORD`, `PROVIDER_DB_PASSWORD`, `REVIEW_DB_PASSWORD`,
-  `JOB_DB_PASSWORD`, `REDIS_PASSWORD` (#387 — per-service DB roles + Redis
+  `JOB_DB_PASSWORD`, `TRUST_SAFETY_DB_PASSWORD`, `REDIS_PASSWORD` (#387 — per-service DB roles + Redis
   AUTH; **URL-interpolated**, so generate them with `openssl rand -hex 32`,
   not base64), `WEB_ORIGIN`, `DOMAIN`. `docker-compose.prod.yml` guards each
   with `${VAR:?}`, so the stack refuses to start if any is missing.
@@ -167,7 +167,7 @@ runtime variables and how each degrades when unset.
    ```
    Generate the secrets: `openssl rand -base64 32` for `AUTH_SECRET` and
    `INTERNAL_API_SECRET`; `openssl rand -hex 32` for `POSTGRES_PASSWORD`, the
-   four per-service `*_DB_PASSWORD`s and `REDIS_PASSWORD` (these are
+   five per-service `*_DB_PASSWORD`s and `REDIS_PASSWORD` (these are
    interpolated into connection URLs, so they must stay URL-safe — hex is).
 4. Log in to GHCR so the host can pull the images:
    ```bash
@@ -256,7 +256,7 @@ longer means the whole stack:
     database + object ownership, and applies the grants. It is idempotent,
     and the superuser keeps access throughout, so the safe rollout order is:
     set the new GitHub secrets → run the script against the **running old
-    stack** (exporting the four `*_DB_PASSWORD`s in the shell) → merge/deploy
+    stack** (exporting the five `*_DB_PASSWORD`s in the shell) → merge/deploy
     the compose change. Running it after a failed boot works too — the DB
     services just crash-loop until the roles exist.
 - **Redis AUTH** — `requirepass` from `REDIS_PASSWORD`; the gateway and

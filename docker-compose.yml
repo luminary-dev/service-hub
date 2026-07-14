@@ -9,6 +9,7 @@ x-service-env: &service-env
   NOTIFICATION_SERVICE_URL: http://notification-service:4005
   MEDIA_SERVICE_URL: http://media-service:4006
   CHAT_SERVICE_URL: http://chat-service:4007
+  TRUST_SAFETY_SERVICE_URL: http://trust-safety-service:4009
 
 services:
   postgres:
@@ -152,6 +153,23 @@ services:
       - "127.0.0.1:4007:4007"
     healthcheck: *node-healthcheck
 
+  # Trust & safety extraction, phase 1 (docs/rfcs/trust-safety-service.md):
+  # unified reports + moderation audit store. DARK LAUNCH — the gateway does
+  # not route to it yet; deployed so the cutover release is a routing flip.
+  # :4008 is reserved for search-service (Stage-2 Track 1), so this takes :4009.
+  trust-safety-service:
+    build: ./services/trust-safety-service
+    environment:
+      <<: *service-env
+      PORT: 4009
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/trust_safety_db
+    ports:
+      - "127.0.0.1:4009:4009"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck: *node-healthcheck
+
   redis:
     image: redis:7-alpine
     healthcheck:
@@ -186,6 +204,8 @@ services:
       job-service:
         condition: service_healthy
       notification-service:
+        condition: service_healthy
+      trust-safety-service:
         condition: service_healthy
     healthcheck: *node-healthcheck
 

@@ -4,7 +4,7 @@
 
 | Data | Where it lives | Covered by |
 | --- | --- | --- |
-| identity_db, provider_db, review_db, job_db | compose `postgres` (one cluster) | `scripts/backup-dbs.sh` (logical `pg_dump -Fc` per DB) |
+| identity_db, provider_db, review_db, job_db, trust_safety_db | compose `postgres` (one cluster) | `scripts/backup-dbs.sh` (logical `pg_dump -Fc` per DB) |
 | Uploaded images | `provider_uploads` / `review_uploads` volumes (or Cloudflare R2 when the `R2_*` vars are set) | volume tar (below); R2 is durable managed storage |
 | Redis rate-limit windows + session-revocation list | `redis` (prod `redis_data` volume) | deliberately NOT backed up — rate-limit windows are ephemeral, and the revocation list (#374) mirrors identity_db's `sessionVersion` (covered above). The volume keeps it across container recreation (#571); after a total Redis loss the gateway falls back to the identity lookup until versions are re-published on the next bump |
 
@@ -43,7 +43,7 @@ Each nightly run appends a few KB to `backups/backup.log`; truncate it whenever 
 3. Restart the owning service so Prisma reconnects cleanly:
    `docker compose -f docker-compose.prod.yml restart provider-service`
    (on prod the stack runs under `docker-compose.prod.yml` — a bare `docker compose` resolves the default dev file and finds nothing; for a local dev restore use `docker compose restart provider-service`).
-4. Cross-service consistency: databases are dumped at (nearly) the same instant, but references are plain string IDs — after a partial restore, rows referencing entities created after the snapshot degrade gracefully (that is the S2S design: hydration falls back, existence is checked at write time). Prefer restoring **all four** databases from the **same** snapshot unless you're recovering a single-database fault.
+4. Cross-service consistency: databases are dumped at (nearly) the same instant, but references are plain string IDs — after a partial restore, rows referencing entities created after the snapshot degrade gracefully (that is the S2S design: hydration falls back, existence is checked at write time). Prefer restoring **all five** databases from the **same** snapshot unless you're recovering a single-database fault.
 5. Verify: `npm run e2e` against the stack, and spot-check `/providers` + a profile page.
 
 ## Upload volumes

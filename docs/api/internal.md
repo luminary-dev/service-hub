@@ -88,5 +88,20 @@ Single-recipient sends return `{ ok, delivered }` (`delivered:false` when
 |---|---|
 | `POST /internal/chat/:persona/stream` | Streaming Claude tool loop (SSE). Persona `marketplace` today; tools `search_providers` + `create_inquiry` (call the gateway). 503 without `ANTHROPIC_API_KEY`, 404 for an unknown persona, 413 over 256 KB, 400 on empty history. Reached via the web `/agent/chat` proxy. |
 
+### trust-safety-service (dark launch)
+
+> **Dark launch** ([RFC](../rfcs/trust-safety-service.md) §8 phase 1): the
+> service is deployed and functional, but the owning services still write
+> their local Report/audit tables — nothing calls these endpoints until the
+> cutover PR switches provider/review/job's `auto-report`/`logAudit` helpers
+> to S2S. The owner-side `/internal/moderation/*` endpoints trust-safety
+> itself calls (target validation/hydration, takedown/restore) also land in
+> the cutover PR.
+
+| Method + path | Purpose |
+|---|---|
+| `POST /internal/reports/auto` | Content-filter ingestion (#375): `{ targetType, targetId, fields }` — runs the canonical bilingual filter and files/refreshes the one OPEN SYSTEM report per target → `{ ok, flagged }`. Callers stay best-effort (never fail the user's write). |
+| `POST /internal/audit` | Audit ingestion for owner-native admin actions that stay in place: `{ adminId, action, targetType, targetId, reason?, service: "provider"\|"review"\|"job" }` → one unified `AdminAuditLog` row. |
+
 ---
 

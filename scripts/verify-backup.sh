@@ -44,7 +44,7 @@ if [ "$ready" -lt 3 ]; then
 fi
 
 # db → its main table (Prisma model names; no @@map, so quoted PascalCase).
-for pair in identity_db:User provider_db:Provider review_db:Review job_db:JobRequest; do
+for pair in identity_db:User provider_db:Provider review_db:Review job_db:JobRequest trust_safety_db:Report; do
   db="${pair%%:*}"
   table="${pair#*:}"
   dump="$SNAPSHOT/$db.dump"
