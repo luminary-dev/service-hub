@@ -360,9 +360,13 @@ providersRoutes.get("/api/providers/:id", async (c) => {
     ...pub
   } = provider;
   const ownerOrAdmin = auth?.userId === userId || auth?.role === "ADMIN";
+  // Admin-managed per-trade cover (#436/#701): the detail page banner uses the
+  // category cover first, mirroring toCardDTO's `categoryImageUrl`.
+  const catImages = await categoryImageMap();
   return c.json({
     provider: {
       ...pub,
+      categoryImageUrl: catImages.get(provider.category) ?? null,
       ...(ownerOrAdmin ? { userId } : {}),
       ...(latitude !== null && longitude !== null ? { latitude, longitude } : {}),
       // price is DECIMAL in the DB (#371) — a Decimal JSON-serializes as a
@@ -420,7 +424,7 @@ providersRoutes.get("/api/providers/:id/full", async (c) => {
     Number.isFinite(rawTake) && rawTake >= 1
       ? Math.min(rawTake, 100)
       : FULL_REVIEWS_TAKE;
-  const [{ reviews, nextCursor }, answered] = await Promise.all([
+  const [{ reviews, nextCursor }, answered, catImages] = await Promise.all([
     fetchProviderReviews(id, {
       take: reviewsTake,
       cursor: c.req.query("reviewsCursor") || undefined,
@@ -431,6 +435,9 @@ providersRoutes.get("/api/providers/:id/full", async (c) => {
       orderBy: { respondedAt: "desc" },
       take: RESPONSE_TIME_SAMPLE,
     }),
+    // Admin-managed per-trade cover (#436/#701): the detail page banner uses the
+    // category cover first, mirroring toCardDTO's `categoryImageUrl`.
+    categoryImageMap(),
   ]);
   // Drop _count (internal), the raw phone columns (#64) and the contact email
   // (#655) — the profile page reveals the digits/address on demand via
@@ -455,6 +462,7 @@ providersRoutes.get("/api/providers/:id/full", async (c) => {
   return c.json({
     provider: {
       ...providerFields,
+      categoryImageUrl: catImages.get(provider.category) ?? null,
       ...(ownerOrAdmin ? { userId } : {}),
       ...(latitude !== null && longitude !== null ? { latitude, longitude } : {}),
       // price is DECIMAL in the DB (#371) — a Decimal JSON-serializes as a

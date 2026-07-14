@@ -826,6 +826,8 @@ const en = {
     noServices: "No services listed yet.",
     photos: "Work Photos",
     noPhotos: "No work photos uploaded yet.",
+    // Alt text for the profile-hero cover banner (#701).
+    coverAlt: (name: string) => `Cover image for ${name}`,
     altPhone: "Alt:",
     // Phone-number reveal (#64): numbers are hidden until the visitor taps.
     showNumber: "Show number",
@@ -2178,6 +2180,8 @@ const si: Dict = {
     noServices: "තවම සේවා ලැයිස්තුගත කර නැත.",
     photos: "වැඩ ඡායාරූප",
     noPhotos: "තවම වැඩ ඡායාරූප නැත.",
+    // Alt text for the profile-hero cover banner (#701).
+    coverAlt: (name: string) => `${name} සඳහා කවර පින්තූරය`,
     altPhone: "වෙනත්:",
     // Phone-number reveal (#64): අංකය සඟවා ඇත, ටැප් කරන තෙක්.
     showNumber: "අංකය පෙන්වන්න",

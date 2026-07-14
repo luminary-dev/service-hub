@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import { FaLocationDot } from "@/components/icons";
 import { apiJson } from "@/lib/api";
+import { isSvg } from "@/lib/image";
 import { getSession, type SessionPayload } from "@/lib/auth";
 import { formatDate, formatLKR } from "@/lib/format";
 import {
@@ -79,6 +81,12 @@ type FullProvider = {
   // so the owner check below is false for everyone but the owner.
   userId?: string;
   category: string;
+  // Admin-managed per-trade cover (#436/#701): leads on the profile-hero cover
+  // banner, matching the listing card. Null when the trade has no cover set.
+  categoryImageUrl: string | null;
+  // The provider's own cover photo — the banner's fallback when their trade has
+  // no category cover (mirrors ProviderCard's precedence).
+  coverPhoto: string | null;
   headline: string;
   bio: string;
   // Optional Sinhala variants (#515); rendered under the `si` locale with an
@@ -279,6 +287,16 @@ export default async function ProviderProfilePage({
   const away =
     !!provider.awayUntil && new Date(provider.awayUntil) > new Date();
 
+  // Cover precedence (#701) — same order as the listing card: the admin-managed
+  // per-trade category cover leads for a uniform, branded hero → the provider's
+  // own cover photo is the fallback (skip SVG placeholders the optimizer would
+  // reject) → the flat placeholder (the `else` branch of the banner below).
+  const cover =
+    provider.categoryImageUrl ??
+    (provider.coverPhoto && !isSvg(provider.coverPhoto)
+      ? provider.coverPhoto
+      : null);
+
   // Instrument-style readout mirroring the registry header on the listing.
   // Captions are localized (#380); the localized experience/review copy
   // still reads in the meta line below.
@@ -312,6 +330,38 @@ export default async function ProviderProfilePage({
           urlLocale,
         )}
       />
+      {/* -- Cover banner (#701) ---------------------------------------- */}
+      {/* Full-width hero cover mirroring the listing card: the category cover
+          leads, the provider's own cover is the fallback, then a flat
+          placeholder. Reuses the card's scrim, inset ring frame and kicker. */}
+      <section className="relative h-56 overflow-hidden bg-ink-100 sm:h-64">
+        {cover ? (
+          <Image
+            src={cover}
+            alt={t.profile.coverAlt(provider.user.name)}
+            fill
+            sizes="100vw"
+            priority
+            unoptimized={isSvg(cover)}
+            className="object-cover"
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center bg-[repeating-linear-gradient(45deg,var(--color-ink-100),var(--color-ink-100)_11px,var(--color-ink-200)_11px,var(--color-ink-200)_22px)]">
+            <CategoryIcon
+              slug={provider.category}
+              className="h-12 w-12 text-ink-400"
+            />
+          </div>
+        )}
+        {/* legibility scrim + printed frame */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 via-black/0 to-black/15" />
+        <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-black/10" />
+        {/* category tag, overprinted like a magazine kicker */}
+        <span className="absolute left-4 top-4 rounded-sm bg-black/45 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-white backdrop-blur-sm">
+          {categoryLabelLoc(provider.category, locale)}
+        </span>
+      </section>
+
       {/* -- Blueprint hero band ---------------------------------------- */}
       <section className="blueprint-grid border-b border-ink-300 bg-ink-50">
         <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
