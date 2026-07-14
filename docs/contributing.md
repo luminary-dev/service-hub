@@ -18,7 +18,7 @@ dev ───────────PR──▶ prod     (CI gates again; merge
 
 Both `dev` and `prod` are protected (`protect-dev` / `protect-prod` rulesets). Every change lands via pull request with:
 
-- **All CI checks green** — typecheck/lint/test/build for the web app, typecheck/test/build for each of the eight services. No path filtering: every PR runs everything.
+- **All CI checks green** — typecheck/lint/test/build for the web app, typecheck/test/build for each of the ten services. No path filtering: every PR runs everything.
 - **1 approving review from a code owner** — CODEOWNERS is `@luminary-dev/team-luminary`, so any team member's approval counts. You can't approve your own PR, so every PR needs a second person.
 - **Review conversations resolved** before merge.
 - No direct pushes to `dev`/`prod`, no force pushes, no branch deletion.

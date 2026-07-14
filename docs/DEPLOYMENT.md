@@ -40,7 +40,7 @@ security scans (`security-scan.yml`) run on pushes and PRs to both `dev` and
 
 Triggered on **push to `prod`** (and `workflow_dispatch`). Three jobs:
 
-1. **`build-and-push`** — a matrix over web + all eight services. Each is built
+1. **`build-and-push`** — a matrix over web + all ten services. Each is built
    with Buildx (web from the repo root, each service from `services/<name>`) and
    pushed to `ghcr.io/luminary-dev/service-hub-<image>` tagged `:<commit-sha>`,
    using a per-image GitHub Actions layer cache. This job runs unconditionally,
@@ -236,18 +236,20 @@ longer means the whole stack:
 - **Network split** —
   - `edge`: Caddy ↔ web only. The public entry has no route to the gateway,
     the services, or the datastores.
-  - `backend` (`internal: true`): all nine services + postgres + redis. web
+  - `backend` (`internal: true`): all ten services + postgres + redis. web
     straddles `edge` + `backend` (Caddy reaches it; it reaches the gateway /
     chat / identity). Containers on **only** `backend` (gateway,
-    provider/review/job, postgres, redis) have **no route to the internet**.
+    provider/review/job/search/trust-safety, postgres, redis) have **no route
+    to the internet**.
   - `egress`: a plain bridge granting outbound internet to the four services
     that call external APIs — identity (OAuth token exchange), notification
     (Resend), media (R2), chat (Anthropic). It publishes no ports.
     search-service is deliberately backend-only: it calls no external APIs
     (map tiles/geocoding are fetched by the browser, per the search RFC).
 - **Per-service DB roles** — each DB service connects as its own LOGIN role
-  (`identity` / `provider` / `review` / `job` / `search`) that **owns only its
-  own database**; `CONNECT` is revoked from `PUBLIC` on all five, so no service
+  (`identity` / `provider` / `review` / `job` / `notification` / `search` /
+  `trust_safety`) that **owns only its
+  own database**; `CONNECT` is revoked from `PUBLIC` on all seven, so no service
   role can even open a connection to a peer's database. As the database owner
   each role still runs `prisma migrate deploy` (DDL in `public`, which
   Postgres 15+ hands to `pg_database_owner`) — including the migrations that

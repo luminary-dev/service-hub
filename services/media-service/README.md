@@ -18,6 +18,7 @@ browsers) must carry `x-internal-secret`, else `403 { "error": "Forbidden" }`.
 | `GET` | `/files/:namespace/*` | Serve a stored file (public through the gateway as `/api/files/<namespace>/*`); only `jpg`/`jpeg`/`png`/`webp` served, `cache-control: public, max-age=31536000, immutable`. Optional `?variant=thumb\|medium` serves the resized derivative, falling back to the original when absent/unknown. |
 | `POST` | `/internal/media/store` | Multipart `namespace` / `prefix` / `file` → `{ url }`. Runs the sharp pipeline; `413` over 5 MB, `400` for non-images / bad namespace. |
 | `POST` | `/internal/media/delete` | `{ url }` → best-effort removal, always `{ ok: true }`. |
+| `GET` | `/internal/media/raw?url=` | Stream a stored file S2S (used by provider-service's admin-gated verification-document serve, #500). |
 | `POST` | `/internal/media/sweep` | `{ namespace, referenced[], graceMs? }` → `{ scanned, removed }` orphan sweep. |
 
 ## Sharp pipeline (`lib/media.ts` → `processImage`)
@@ -45,7 +46,8 @@ Precedence: **Cloudflare R2** (S3-compatible, private bucket) when all four
 bytes are streamed back from the private bucket through `/files`; on local disk
 they are read via a traversal-guarded resolver. Either way the persisted URL
 stays same-origin `/api/files/<namespace>/...`, so there is no public bucket or
-public base-URL env var. Namespaces are allow-listed (`provider`, `review`);
+public base-URL env var. Namespaces are allow-listed (`provider`, `review`,
+`category` (#436), `user` (#434));
 prefixes must match `^[a-zA-Z0-9_-]+$`. The orphan sweep lists the store and
 removes files older than the grace window (default 24h) that are absent from the
 caller-supplied `referenced` set — the grace window protects in-flight uploads

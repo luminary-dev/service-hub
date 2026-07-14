@@ -20,11 +20,12 @@
   - [Admin API](api/admin.md)
   - [Internal S2S API](api/internal.md)
 - [Authorization & RBAC](AUTHZ.md)
-- [RFC: Trust & safety service extraction](rfcs/trust-safety-service.md)
 
 ## RFCs
 
 - [Search & discovery service](rfcs/search-discovery-service.md)
+- [Stateful notification service](rfcs/stateful-notification-service.md)
+- [Trust & safety service extraction](rfcs/trust-safety-service.md)
 
 ## Product
 
@@ -64,7 +65,3 @@
 - [Dependency maintenance](DEPENDENCIES.md)
 - [Email setup](EMAIL_SETUP.md)
 - [Security policy](https://github.com/luminary-dev/service-hub/blob/dev/SECURITY.md)
-
-## RFCs
-
-- [Stateful notification service](rfcs/stateful-notification-service.md)

@@ -18,8 +18,10 @@ their URLs. Reached only through the api-gateway; every request except
 ### Public / reviews (via gateway)
 
 - `GET /api/providers/:id/reviews` — paginated reviews for a profile (cursor; suspended provider → 404).
-- `POST /api/providers/:id/reviews` — create/update the signed-in user's review (multipart: `rating`, `comment`, up to 3 `photos`); blocks self-review; sets `verified` from the prior-interaction check.
+- `POST /api/providers/:id/reviews` — create/update the signed-in user's review (multipart: `rating`, `comment`, optional per-dimension sub-ratings `quality`/`punctuality`/`value`/`communication` (#528), up to 3 `photos`); blocks self-review; sets `verified` from the prior-interaction check.
 - `DELETE /api/reviews/photos/:id` — delete a single photo (review author or admin).
+- `POST /api/reviews/:id/response` — the reviewed provider's one public reply per review (upsert, 3–1000 chars; ownership verified S2S fail-loud; suspended providers 403; first response fires `REVIEW_RESPONSE`) (#395).
+- `DELETE /api/reviews/:id/response` — remove the reply.
 - `POST /api/reviews/:id/report` — file an abuse report (optional auth; `spam`\|`scam`\|`offensive`\|`fake`\|`other`; duplicate open reports are refreshed) (#50).
 - `GET /api/account/reviews` — the signed-in user's own reviews with provider names hydrated (#46).
 
@@ -46,8 +48,9 @@ their URLs. Reached only through the api-gateway; every request except
 
 ## Data ownership (`prisma/schema.prisma`)
 
-- **Review** — a user's review of a provider (`rating`, `comment`, `verified`, `deletedAt`); unique per `(providerId, userId)`.
+- **Review** — a user's review of a provider (`rating`, `comment`, nullable per-dimension sub-ratings (#528), `verified`, `deletedAt`); unique per `(providerId, userId)`.
 - **ReviewPhoto** — a photo URL attached to a review (FK cascade).
+- **ReviewResponse** — the provider's single public reply to a review (FK cascade) (#395).
 - **Report** — abuse report against a review (`targetType`/`targetId`, nullable `reporterId`, reason, status, resolver audit fields).
 - **AdminAuditLog** — one row per admin moderation action (delete/restore/resolve/dismiss) (#227).
 
@@ -62,6 +65,7 @@ their URLs. Reached only through the api-gateway; every request except
 | `PROVIDER_SERVICE_URL` | `http://localhost:4002` | provider existence + prior-interaction check |
 | `MEDIA_SERVICE_URL` | `http://localhost:4006` | photo storage / serving / sweep |
 | `NOTIFICATION_SERVICE_URL` | `http://localhost:4005` | notification events (NEW_REVIEW / REVIEW_RESPONSE / report resolution) |
+| `SEARCH_SERVICE_URL` | `http://localhost:4008` | best-effort rating-aggregate pushes to the search index (#48) |
 | `WEB_ORIGIN` | `http://localhost:3000` | origin fallback |
 
 ## Gateway / S2S model

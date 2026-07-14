@@ -68,8 +68,9 @@ provider-service fans out, after responding and entirely best-effort:
 
 Known limits (v0.1, by design): alerts fire only on new-profile publish (not
 on profile edits, reactivation, or un-suspension); the free-text match
-inspects the profile as registered (Sinhala headline/bio variants added later
-are still matched — the check runs against the committed row); a failure
-anywhere is logged and dropped rather than retried.
+inspects the profile as registered — the check runs against the row committed
+at publish, so Sinhala headline/bio variants (or anything else) added later
+via a profile edit are never re-matched; a failure anywhere is logged and
+dropped rather than retried.
 
 ---

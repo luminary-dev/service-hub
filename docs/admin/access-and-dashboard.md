@@ -29,8 +29,11 @@ Gating helpers: `isAdminRole()` (enter `/admin`), `hasSupportAccess()`
 app and the backend services — see [AUTHZ.md](../AUTHZ.md). Each service's
 `src/lib/http.ts` exposes `isSupportOrAdmin` (reads + report resolve/dismiss) and
 `isFullAdmin` (destructive writes), mirroring the web predicates. On the
-**dashboard, verifications, reports, providers, and categories** pages SUPPORT
-sees read-only/disabled controls while ADMIN can act. The **users, jobs,
+**dashboard, reports, providers, and categories** pages SUPPORT sees
+read-only/disabled controls while ADMIN can act. The **verifications** page is
+reachable by SUPPORT but its approve/reject controls are not role-disabled in
+the UI — the backend (`isFullAdmin`) rejects a SUPPORT click with 403. The
+**users, jobs,
 audit-log, and impersonate** pages redirect any non-`ADMIN` session at the page
 level, so they are ADMIN-only surfaces; a pure SUPPORT account works the
 moderation set above.

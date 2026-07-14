@@ -9,8 +9,8 @@ the deliberate, non-routine calls so they aren't re-litigated from memory.
 ## `@hono/node-server` 1.x → 2.x migration plan
 
 **Status: planned, not urgent.** We pin `@hono/node-server@^1.19.13`
-(resolves 1.19.14) as a direct dependency in all 8 services **and** via an
-`overrides` block in all 9 manifests (root + 8 services) so transitive copies
+(resolves 1.19.14) as a direct dependency in all 10 services **and** via an
+`overrides` block in all 11 manifests (root + 10 services) so transitive copies
 can't drift. The 2.x line is current upstream — `2.0.0` shipped 2026-04-21 and
 the latest is `2.0.8` (2026-07-02).
 

@@ -1,6 +1,6 @@
 # RFC: Trust & safety service extraction
 
-- **Status:** Proposed
+- **Status:** Dark-launched (#619) — the service and its unified store are deployed and populated by the offline backfill script; nothing reads from it yet and the owning services still write locally. Cutover pending.
 - **Refs:** #375 (content moderation), #376 (job/message reporting + takedown), #612 (per-service DB roles pattern)
 - **Stage:** Stage-2 Track 2 (service decomposition)
 

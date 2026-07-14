@@ -41,32 +41,35 @@
   the Sinhala version must mirror its structure (`src/lib/legal.test.ts`).
   Both pages are linked from the footer and listed in the sitemap.
 - **Consent.** Both email registration forms require an "I agree to the Terms
-  of Service and Privacy Policy" checkbox (`ConsentCheckbox` — native
-  `required` on the customer form, wizard validation on the provider form's
-  final step), and the social sign-in buttons on `/login` and `/register`
-  carry a "by continuing, you agree" notice (`ConsentNotice`).
+  of Service and Privacy Policy" checkbox (`ConsentCheckbox` — enforced by the
+  forms' own JS validation: the customer form is `noValidate`, the provider
+  wizard checks it on the final step), and the social sign-in buttons on
+  `/login` and `/register` carry a "by continuing, you agree" notice
+  (`ConsentNotice`).
 
 ### Social login (#398)
 
-Both `/login` and `/register` show a **Continue with Google** button
-(`GoogleSignInButton`) above the email/password form, when Google is configured
-(`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` set — otherwise the button is hidden
+Both `/login` and `/register` show **Continue with Google** and **Continue
+with Facebook** buttons (`GoogleSignInButton` / `FacebookSignInButton`, #405)
+above the email/password form, each shown only when that provider is
+configured (`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`,
+`FACEBOOK_CLIENT_ID`/`FACEBOOK_CLIENT_SECRET` — otherwise the button is hidden
 and password auth is unaffected). The flow, handled by identity-service via
-`arctic`:
+`arctic`, is the same for both providers:
 
-- `GET /api/auth/oauth/google/start` → redirect to Google (PKCE, state cookie).
-- `GET /api/auth/oauth/google/callback` → verifies, resolves the identity, mints
-  the same `sh_session` JWT as password login, and redirects into the app.
+- `GET /api/auth/oauth/:provider/start` → redirect to the provider (state
+  cookie; PKCE for Google — Facebook doesn't use it).
+- `GET /api/auth/oauth/:provider/callback` → verifies, resolves the identity,
+  mints the same `sh_session` JWT as password login, and redirects into the app.
 
-A first-time Google signup is created as a `CUSTOMER` (then convertible to a
+A first-time social signup is created as a `CUSTOMER` (then convertible to a
 provider via the role-switch flow). An existing account is **auto-linked** only
-when the Google email is verified and matches. Failures come back to the form as
-`?error=oauth_email` (Google didn't share a verified email),
-`?error=oauth_unavailable` (Google not configured / upstream error), or
+when the provider-supplied email is verified and matches. Failures come back to
+the form as `?error=oauth_email` (the provider didn't share a verified email),
+`?error=oauth_unavailable` (provider not configured / upstream error), or
 `?error=oauth` (generic). Authorization semantics — roles, `sessionVersion`
 revocation, S2S trust — are identical to password sessions. See
-[AUTHZ.md](../AUTHZ.md#sign-in-methods-398). Facebook is a planned fast-follow
-(#405) and is **not** shipped yet.
+[AUTHZ.md](../AUTHZ.md#sign-in-methods-398).
 
 ### Post-login return-to (#560)
 
