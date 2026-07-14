@@ -123,6 +123,40 @@ describe("GET /api/auth/oauth/:provider/callback", () => {
     expect(db.user.create).not.toHaveBeenCalled();
   });
 
+  it("refuses to sign in a locked account (no session), matching password login (#641)", async () => {
+    db.account.findUnique.mockResolvedValue({
+      user: {
+        id: "u1",
+        role: "CUSTOMER",
+        name: "Ann",
+        sessionVersion: 3,
+        // Locked well into the future (an admin lock or an active failed-login
+        // window) — the OAuth path must honor it just like /login does.
+        lockedUntil: new Date(Date.now() + 60_000),
+      },
+    });
+    const res = await get(cbUrl, goodCookie);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(`${ORIGIN}/login?error=oauth_locked`);
+    // Crucially, no session cookie was minted for the locked account.
+    expect(res.headers.get("set-cookie") ?? "").not.toContain("sh_session=");
+  });
+
+  it("signs in when lockedUntil is in the past (window expired)", async () => {
+    db.account.findUnique.mockResolvedValue({
+      user: {
+        id: "u1",
+        role: "CUSTOMER",
+        name: "Ann",
+        sessionVersion: 3,
+        lockedUntil: new Date(Date.now() - 60_000),
+      },
+    });
+    const res = await get(cbUrl, goodCookie);
+    expect(res.headers.get("location")).toBe(`${ORIGIN}/`);
+    expect(res.headers.get("set-cookie")).toContain("sh_session=");
+  });
+
   it("auto-links a verified email to an existing account", async () => {
     db.account.findUnique.mockResolvedValue(null);
     db.user.findUnique.mockResolvedValue({

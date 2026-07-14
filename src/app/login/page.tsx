@@ -35,9 +35,11 @@ export default function LoginPage() {
       ? t.oauth.errEmail
       : oauthError === "oauth_unavailable"
         ? t.oauth.errUnavailable
-        : oauthError === "oauth"
-          ? t.oauth.errGeneric
-          : "";
+        : oauthError === "oauth_locked"
+          ? t.oauth.errLocked
+          : oauthError === "oauth"
+            ? t.oauth.errGeneric
+            : "";
   const [error, setError] = useState(initialError);
   const { fieldErrors, show, errorProps } = useFieldErrors();
   const router = useRouter();
