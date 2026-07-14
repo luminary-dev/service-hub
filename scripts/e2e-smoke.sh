@@ -48,11 +48,12 @@ check "providers page renders" "$(curl -sS "$WEB/providers")" "Baas"
 
 echo "== Public API through web rewrite =="
 LIST=$(req anon GET "/api/providers?sort=rating")
-check "providers list total=6" "$(echo "$LIST" | jq -r .total)" "6"
+check "providers list total=48" "$(echo "$LIST" | jq -r .total)" "48"
 check "providers have ratings" "$(echo "$LIST" | jq -r '.providers[0].rating != null')" "true"
 PROV_ID=$(echo "$LIST" | jq -r '.providers[0].id')
 check "provider detail page" "$(curl -sS "$WEB/providers/$PROV_ID")" "Baas"
-check "stats endpoint" "$(req anon GET "/api/stats" | jq -r '.providerCount')" "6"
+# 50 seeded providers, 2 of them suspended (excluded from this non-suspended count).
+check "stats endpoint" "$(req anon GET "/api/stats" | jq -r '.providerCount')" "48"
 
 echo "== Search service (index + browse parity) =="
 # The index is derived and starts empty — populate it from the seeded source
@@ -180,7 +181,7 @@ check "provider register returns providerId" "$(test -n "$NEW_PROV_ID" && test "
 check "new provider searchable" "$(req anon GET "/api/providers?q=$RUN_TAG" | jq -r '.total')" "1"
 
 echo "== Admin =="
-check "admin providers list" "$(req admin GET "/api/admin/providers" | jq -r '.providers | length >= 7')" "true"
+check "admin providers list" "$(req admin GET "/api/admin/providers" | jq -r '.total >= 51')" "true"
 check "admin suspend" "$(req admin PATCH "/api/admin/providers/$NEW_PROV_ID" -H 'content-type: application/json' \
   -d '{"action":"suspend"}' | jq -r '.ok')" "true"
 check "suspended hidden from search" "$(req anon GET "/api/providers?q=$RUN_TAG" | jq -r '.total')" "0"
