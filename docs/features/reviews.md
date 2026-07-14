@@ -15,6 +15,14 @@ review-service.
   if the interaction check is unavailable the request returns **502** rather
   than silently allowing an unverified review. Every review that passes the
   gate is therefore stamped **Verified**.
+- **Verified-email-gated (#115).** In addition to the interaction gate, a
+  signed-in reviewer must have a **verified email** — review-service checks
+  identity-service over S2S and returns **403** ("Verify your email address to
+  leave a review") otherwise, matching the job-post and inquiry gates. The check
+  runs before the interaction check and before any photo upload; an identity
+  outage fails loudly as **502**. On the web `ReviewSection` surfaces this to a
+  signed-in-but-unverified viewer with the `EmailVerifyBanner` (resend action)
+  in place of the write button.
 - **One review per (provider, customer)** — re-submitting replaces the rating
   and comment (1–5 stars, comment 3–1000 chars) and appends photos. The
   provider owner gets a best-effort `NEW_REVIEW` notification (#393 — in-app +

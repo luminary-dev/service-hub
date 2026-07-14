@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { FaCircleCheck, FaRegPaperPlane } from "@/components/icons";
+import EmailVerifyBanner from "./EmailVerifyBanner";
 import FormSuccess from "./FormSuccess";
 import { Field } from "./ui/Field";
 import {
@@ -16,10 +17,15 @@ export default function InquiryForm({
   providerId,
   providerName,
   defaultName,
+  emailUnverified = false,
 }: {
   providerId: string;
   providerName: string;
   defaultName: string;
+  // Verified-email gate (#115): true only for a signed-in user who hasn't
+  // confirmed their email. Anonymous visitors may still inquire, so this stays
+  // false for them and the form behaves exactly as before.
+  emailUnverified?: boolean;
 }) {
   const [name, setName] = useState(defaultName);
   const [phone, setPhone] = useState("");
@@ -116,6 +122,15 @@ export default function InquiryForm({
       </h3>
       <p className="mt-1 text-xs text-ink-500">{t.inquiry.sub}</p>
 
+      {/* Verified-email gate (#115): a clear prompt + resend affordance for a
+          signed-in but unconfirmed user, instead of letting them submit into a
+          backend 403. The submit button below is disabled while it shows. */}
+      {emailUnverified && (
+        <div className="mt-4">
+          <EmailVerifyBanner message={t.verify.inquiryPrompt} />
+        </div>
+      )}
+
       {/*
         Honeypot decoy (#65). Hidden and inert for real users — moved off-screen
         (not display:none, which some bots skip), aria-hidden so screen readers
@@ -208,7 +223,11 @@ export default function InquiryForm({
 
       <FormError className="mt-3">{error}</FormError>
 
-      <button type="submit" disabled={loading} className="btn-primary mt-4 w-full">
+      <button
+        type="submit"
+        disabled={loading || emailUnverified}
+        className="btn-primary mt-4 w-full"
+      >
         <FaRegPaperPlane className="h-3.5 w-3.5" />
         {loading ? t.inquiry.sending : t.inquiry.send}
       </button>

@@ -22,6 +22,9 @@ vi.mock("../lib/clients", () => ({
   fetchRatings: vi.fn().mockResolvedValue({}),
   fetchProviderReviews: vi.fn().mockResolvedValue({ reviews: [], nextCursor: null }),
   fetchReviewCount: vi.fn().mockResolvedValue(0),
+  // Verified-email inquiry gate (#115) — verified by default; the gate tests
+  // below flip it to unverified / throwing.
+  isEmailVerified: vi.fn().mockResolvedValue(true),
 }));
 vi.mock("../lib/notify", () => ({
   emitNotification: vi.fn().mockResolvedValue(undefined),
@@ -30,6 +33,7 @@ vi.mock("../lib/notify", () => ({
 import { app } from "../app";
 import { __resetCategoryImageCache } from "./providers";
 import { emitNotification } from "../lib/notify";
+import { isEmailVerified } from "../lib/clients";
 
 const SECRET = "dev-internal-secret";
 type Role = "ADMIN" | "SUPPORT" | "CUSTOMER" | "PROVIDER" | null;
@@ -90,6 +94,8 @@ beforeEach(() => {
   dbMock.provider.findMany.mockResolvedValue([]);
   dbMock.provider.count.mockResolvedValue(0);
   dbMock.inquiry.findMany.mockResolvedValue([]);
+  // clearAllMocks wipes the resolved value set at mock-definition time (#115).
+  vi.mocked(isEmailVerified).mockResolvedValue(true);
 });
 
 describe("GET /api/providers/:id — suspended visibility gate", () => {
@@ -424,6 +430,44 @@ describe("POST /api/providers/:id/inquiries", () => {
       role: "CUSTOMER",
     });
     expect(dbMock.inquiry.create.mock.calls[0][0].data.userId).toBe("u1");
+  });
+
+  // Verified-email gate (#115): a signed-in caller must confirm their email
+  // before contacting a provider; anonymous visitors are still allowed.
+  it("403 for a signed-in user whose email is not verified — no inquiry created", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({ id: "p1", contactEmail: "n@baas.lk" });
+    vi.mocked(isEmailVerified).mockResolvedValue(false);
+    const res = await req("/api/providers/p1/inquiries", {
+      method: "POST",
+      body: valid,
+      role: "CUSTOMER",
+    });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toMatch(/verify your email/i);
+    expect(dbMock.inquiry.create).not.toHaveBeenCalled();
+    expect(emitNotification).not.toHaveBeenCalled();
+  });
+
+  it("does NOT gate an anonymous visitor's inquiry on email verification", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({ id: "p1", contactEmail: "n@baas.lk" });
+    dbMock.inquiry.create.mockResolvedValue({ id: "inq1" });
+    const res = await req("/api/providers/p1/inquiries", { method: "POST", body: valid });
+    expect(res.status).toBe(200);
+    // The gate lookup is never made for an unauthenticated caller.
+    expect(isEmailVerified).not.toHaveBeenCalled();
+    expect(dbMock.inquiry.create).toHaveBeenCalled();
+  });
+
+  it("502 when the email-verification lookup fails — inquiry not created", async () => {
+    dbMock.provider.findUnique.mockResolvedValue({ id: "p1", contactEmail: "n@baas.lk" });
+    vi.mocked(isEmailVerified).mockRejectedValue(new Error("identity down"));
+    const res = await req("/api/providers/p1/inquiries", {
+      method: "POST",
+      body: valid,
+      role: "CUSTOMER",
+    });
+    expect(res.status).toBe(502);
+    expect(dbMock.inquiry.create).not.toHaveBeenCalled();
   });
 
   it("404 when the target provider does not exist", async () => {

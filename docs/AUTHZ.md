@@ -118,6 +118,21 @@ and the "customer" actions are gated on *being signed in*, not on the role:
   review; inquiries are additionally allowed anonymously. The role only governs
   provider-owned surfaces (dashboard, profile, job responses) and the admin
   tiers.
+- **Verified-email gate (#115 / #556):** three of those actions additionally
+  require the signed-in caller's **email to be verified**. Each owning service
+  checks identity-service over S2S (`GET /internal/users?ids=`) on the write
+  path and returns **403** when unverified, or **502** on an identity outage
+  (fail-loud, never silently allow):
+  - **post a job** — job-service (#556), `Verify your email address to post a job`;
+  - **send an inquiry** — provider-service (#115), `Verify your email address to
+    contact a provider` (only for a signed-in caller — **anonymous** inquiries
+    stay ungated);
+  - **leave a review** — review-service (#115), `Verify your email address to
+    leave a review`.
+
+  The web mirrors each gate: the job-post form surfaces the 403, and the inquiry
+  / review forms proactively show the `EmailVerifyBanner` (with a resend action)
+  and disable submit for a signed-in-but-unverified viewer.
 
 ## Session revocation (#374)
 

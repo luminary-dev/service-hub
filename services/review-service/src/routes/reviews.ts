@@ -68,6 +68,32 @@ async function hasPriorInteraction(
   return data.exists === true;
 }
 
+// Verified-email gate (#115): a review is a public, provider-visible signal, so
+// a signed-in reviewer must have confirmed their email first — same rule
+// job-service applies to posting a job and provider-service to sending an
+// inquiry. Reuses the identity /internal/users lookup. Like the interaction
+// gate above this decides whether a write is allowed, so an upstream failure
+// fails LOUDLY (throws → the caller returns 502) rather than silently allowing
+// or blocking. The single idempotent-GET retry lives in s2s.
+async function isEmailVerified(userId: string): Promise<boolean> {
+  let res: Response;
+  try {
+    res = await s2s(
+      IDENTITY_SERVICE_URL,
+      `/internal/users?ids=${encodeURIComponent(userId)}`
+    );
+  } catch (e) {
+    throw new InteractionCheckError(`user lookup request failed: ${String(e)}`);
+  }
+  if (!res.ok) {
+    throw new InteractionCheckError(`user lookup returned ${res.status}`);
+  }
+  const data = (await res.json()) as {
+    users?: { id: string; emailVerified: string | null }[];
+  };
+  return Boolean(data.users?.find((u) => u.id === userId)?.emailVerified);
+}
+
 export const reviews = new Hono();
 
 // Public paginated reviews for a profile page's lazy-loading (the gateway's
@@ -142,6 +168,22 @@ reviews.post("/api/providers/:id/reviews", async (c) => {
   }
   if (provider.userId === auth.userId) {
     return c.json({ error: "You cannot review your own profile" }, 400);
+  }
+
+  // Verified-email gate (#115): checked before any form parsing / photo upload
+  // so a blocked review never stores files. Fails loudly (502) on an identity
+  // outage — never publish a review from a caller we couldn't verify.
+  let verified: boolean;
+  try {
+    verified = await isEmailVerified(auth.userId);
+  } catch {
+    return c.json({ error: "Upstream service unavailable" }, 502);
+  }
+  if (!verified) {
+    return c.json(
+      { error: "Verify your email address to leave a review" },
+      403
+    );
   }
 
   // Gate on a real interaction (#25): a review is only creatable by someone who
