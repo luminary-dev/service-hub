@@ -456,11 +456,11 @@ services:
     depends_on:
       loki:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:12345/-/ready > /dev/null || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 10
+    # No healthcheck: the alloy image has no reliable in-container HTTP client
+    # for a `/-/ready` probe (wget/curl absent), so a CMD-SHELL check is always
+    # "unhealthy" and stalls `docker compose up --wait`. Alloy is a fire-and-forget
+    # log tailer — nothing depends on it being healthy — so `--wait` treating it
+    # as ready once running is correct.
 
   # Feature flags (#675) — self-hosted Unleash + its OWN Postgres (never the app
   # cluster). Behind the `flags` profile so a plain `docker compose up` (and the

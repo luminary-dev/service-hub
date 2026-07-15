@@ -643,12 +643,10 @@ services:
     depends_on:
       loki:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:12345/-/ready > /dev/null || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 10
-      start_period: 20s
+    # No healthcheck: the alloy image has no reliable in-container HTTP client for
+    # a `/-/ready` probe, so a CMD-SHELL check is always "unhealthy" and stalls the
+    # deploy's `up -d --wait` gate. Alloy is a fire-and-forget log tailer (nothing
+    # depends on it being healthy), so "ready when running" is correct here.
 
   # Feature flags (#675) — self-hosted Unleash + its OWN Postgres (never the app
   # cluster: separate container, separate volume, separate role). Like Grafana,
