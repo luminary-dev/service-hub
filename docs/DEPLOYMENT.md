@@ -129,7 +129,10 @@ App secrets (set with `gh secret set <NAME>`):
   `JOB_DB_PASSWORD`, `NOTIFICATION_DB_PASSWORD`, `SEARCH_DB_PASSWORD`,
   `TRUST_SAFETY_DB_PASSWORD`, `REDIS_PASSWORD` (#387 — per-service DB roles +
   Redis AUTH; **URL-interpolated**, so generate them with
-  `openssl rand -hex 32`, not base64), `WEB_ORIGIN`, `DOMAIN`.
+  `openssl rand -hex 32`, not base64), `WEB_ORIGIN`, `DOMAIN`,
+  `GRAFANA_ADMIN_PASSWORD`, `UNLEASH_DB_PASSWORD`, `GLITCHTIP_SECRET_KEY`,
+  `GLITCHTIP_DB_PASSWORD`, and `CROWDSEC_BOUNCER_API_KEY` (#670 — the Caddy
+  CrowdSec bouncer key; `openssl rand -hex 32`).
   `docker-compose.prod.yml` guards each with `${VAR:?}`, so the stack refuses
   to start if any is missing. `SEARCH_DB_PASSWORD` also needs the one-off
   `search_db` bootstrap on an existing volume — see the PostGIS rollout below.
@@ -225,6 +228,7 @@ writable path is known and backed by a tmpfs or volume:
 | identity/provider/review/job-service | no | run `prisma migrate deploy` on boot; the migration engine's temp behaviour under a read-only rootfs is unverified against a live DB (see the `# TODO read_only` notes) |
 | media-service | no | local-disk fallback writes the `category`/`user` namespaces under `/app/data` on the rootfs (only `provider`/`review` have volumes) |
 | postgres, redis, caddy | no | write their own data/cert state |
+| crowdsec (#670) | no | writes its SQLite DB + hub items under `/var/lib/crowdsec/data` (runs as root to read `docker.sock:ro`, like Alloy; `cap_drop: ALL` still applies) |
 
 The read-only choices were validated by booting the pinned base images with
 `cap_drop: ALL` + `read_only` + the tmpfs mounts; the `# TODO read_only` blocks
@@ -250,6 +254,11 @@ longer means the whole stack:
     (Resend), media (R2), chat (Anthropic). It publishes no ports.
     search-service is deliberately backend-only: it calls no external APIs
     (map tiles/geocoding are fetched by the browser, per the search RFC).
+  - `crowdsec` (`internal: true`, #670): the private LAPI link between the Caddy
+    bouncer and the CrowdSec container, and nothing else — no internet through
+    it (CrowdSec uses `egress` for the hub/CAPI; Caddy uses `edge` for ACME).
+    Keeping the LAPI here rather than on `edge` preserves "edge = Caddy ↔ web
+    only" — the web app can't reach it.
 - **Per-service DB roles** — each DB service connects as its own LOGIN role
   (`identity` / `provider` / `review` / `job` / `notification` / `search` /
   `trust_safety`) that **owns only its
@@ -335,6 +344,54 @@ default; sending them to stdout lands them in the container's `json-file` log
 driver, which is already size-capped and rotated (`max-size: 10m`, `max-file: 3`)
 in `docker-compose.prod.yml`. Tail them with
 `docker compose -f docker-compose.prod.yml logs -f caddy`.
+
+## Edge intrusion prevention — CrowdSec (#670)
+
+CrowdSec adds a behavioural **ban** layer at the edge, above the gateway's Redis
+rate-limiter (which only *throttles*). The `crowdsec` container reads Caddy's
+#527 JSON access logs off the Docker socket, scores them with the `caddy` +
+`base-http-scenarios` collections, and hands ban decisions to a **CrowdSec
+bouncer plugin compiled into Caddy**. It is **prod-only** — Caddy (the edge)
+exists only in `docker-compose.prod.yml`; the dev stack has no edge and is
+untouched. See [OPERATIONS.md](OPERATIONS.md) → Edge intrusion prevention for
+day-to-day operation (`cscli`, unbanning, tuning).
+
+- **Custom Caddy image.** Stock `caddy:2-alpine` has no bouncer, so the `caddy`
+  service is `build:`-t from [`deploy/caddy/Dockerfile`](../deploy/caddy/Dockerfile)
+  — `xcaddy` builds Caddy `v2.11.3` with the pinned
+  `github.com/hslatman/caddy-crowdsec-bouncer` plugin on the pinned
+  `caddy:2.11.3-alpine` runtime (both bases digest-pinned, #238). It is built
+  **on the server** at deploy time; the deploy's `up -d --build` rebuilds it
+  from the git-versioned Dockerfile (restored on rollback with the rest of
+  `deploy/`), so the only public entry gains no extra registry dependency. The
+  Dockerfile asserts the plugin linked (`caddy list-modules | grep crowdsec`),
+  and CI builds this same image to `caddy validate` the Caddyfile (below), so a
+  broken build fails a PR long before it can reach prod.
+- **Fail-open (non-negotiable).** The bouncer is configured allow-on-error: the
+  `crowdsec` global block in [`deploy/Caddyfile`](../deploy/Caddyfile)
+  deliberately **omits `enable_hard_fails`**, so an unreachable/slow/erroring
+  LAPI (or a CrowdSec container that is down or still starting) lets traffic
+  through instead of blocking it. Caddy also does **not** `depend_on` crowdsec,
+  so a CrowdSec problem never blocks the site from coming up. A CrowdSec outage
+  must never take down the only public entrypoint.
+- **Registering the bouncer key.** `CROWDSEC_BOUNCER_API_KEY` (required secret,
+  `openssl rand -hex 32`) is used on both sides: the Caddy bouncer presents it,
+  and the crowdsec container **pre-registers it on boot** via
+  `BOUNCER_KEY_caddy` (idempotent across restarts — no manual step needed). To
+  register/rotate it by hand instead:
+  ```bash
+  docker compose -f docker-compose.prod.yml exec crowdsec \
+    cscli bouncers add caddy -k "$CROWDSEC_BOUNCER_API_KEY"
+  ```
+- **Isolation.** The LAPI is reachable only over a dedicated internal `crowdsec`
+  docker network shared with Caddy (not `edge`, so the web app can't reach it);
+  its `8080` host port is published **loopback-only** for `cscli`. CrowdSec
+  reaches the hub + the free community blocklist (CAPI) over `egress`.
+- **Deploy-validated, not local.** Behaviour (real bans on real abuse) can only
+  be validated on the live edge with real traffic — there is no edge in dev/CI.
+  What CI *does* prove is config validity: the custom Caddy image builds and
+  `caddy validate` accepts the bouncer directive, and
+  `docker compose -f docker-compose.prod.yml config -q` parses the stack.
 
 ## Releasing
 

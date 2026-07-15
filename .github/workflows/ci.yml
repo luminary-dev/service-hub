@@ -142,19 +142,28 @@ jobs:
           GLITCHTIP_SECRET_KEY: ci-dummy-secret
           WEB_ORIGIN: https://ci.example.test
           DOMAIN: ci.example.test
+          # CrowdSec bouncer key (#670) — dummy, only satisfies interpolation.
+          CROWDSEC_BOUNCER_API_KEY: ci-dummy-key
         run: docker compose -f docker-compose.prod.yml config -q
-      - name: Validate deploy/Caddyfile
+      - name: Build custom Caddy + validate deploy/Caddyfile
         # `caddy validate` catches a Caddyfile that would crash-loop the only
-        # public entrypoint at deploy time (#387). ACME_EMAIL mirrors the
-        # compose default used when the secret is unset (an EMPTY value is the
-        # known failure mode this guards against — the compose default makes it
-        # unreachable, and this proves the defaulted config actually loads).
-        # Same digest-pinned image as docker-compose.prod.yml.
+        # public entrypoint at deploy time (#387). The Caddyfile now uses the
+        # CrowdSec bouncer directive (#670), which stock caddy:2-alpine cannot
+        # parse — so build the SAME custom image the prod stack builds
+        # (deploy/caddy/Dockerfile: xcaddy + the pinned bouncer plugin) and
+        # validate WITH IT, so the crowdsec directive is actually exercised. The
+        # build itself asserts the plugin linked in (`caddy list-modules | grep
+        # crowdsec` in the Dockerfile). ACME_EMAIL mirrors the compose default
+        # used when the secret is unset (an EMPTY value is the known failure mode
+        # this guards against); CROWDSEC_BOUNCER_API_KEY is a dummy for
+        # interpolation only.
         run: |
+          docker build -t service-hub-caddy:ci deploy/caddy
           docker run --rm \
             -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" \
             -e DOMAIN=ci.example.test -e ACME_EMAIL=admin@ci.example.test \
-            caddy:2-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648 \
+            -e CROWDSEC_BOUNCER_API_KEY=ci-dummy-key \
+            service-hub-caddy:ci \
             caddy validate --config /etc/caddy/Caddyfile
 
   # Coverage (#262): collect per-package coverage for visibility + a ratchet.

@@ -1,0 +1,20 @@
+# CrowdSec acquisition (#670): feed Caddy's per-request access logs (#527) into
+# CrowdSec so its scenarios can score behaviour (credential stuffing on
+# /api/auth, form spam, scraping) and hand bans to the Caddy bouncer.
+#
+# The #527 logs go to Caddy's stdout (JSON) → the container's json-file driver.
+# The `docker` source reads exactly those lines straight off the Docker daemon
+# via the read-only socket mounted into this container — the SAME pattern the
+# observability stack already uses (Grafana Alloy tails every container's stdout
+# over docker.sock:ro). No second copy, no shared log file, no change to how
+# Caddy logs.
+source: docker
+# Match the Caddy container regardless of the compose project prefix
+# (<project>-caddy-<n>); this stack's is service-hub-prod-caddy-1.
+container_name_regexp:
+  - "caddy"
+# Parse with the caddy collection's parser (installed via COLLECTIONS in
+# docker-compose.prod.yml). `crowdsecurity/caddy` expects Caddy's JSON access
+# log, which is what the {$DOMAIN} site block emits.
+labels:
+  type: caddy

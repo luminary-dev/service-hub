@@ -928,8 +928,17 @@ services:
   # The only public surface: terminates TLS (auto Let's Encrypt) and proxies to
   # the web app, which in turn proxies /api/* to the gateway internally.
   caddy:
-    # dependabot: caddy:2-alpine
-    image: caddy:2-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
+    # Custom image (#670): stock caddy:2-alpine has no CrowdSec bouncer, so the
+    # edge is built from deploy/caddy/Dockerfile (xcaddy + the pinned bouncer
+    # plugin on the pinned caddy:2.11.3-alpine runtime, both digest-pinned #238).
+    # Built ON THE SERVER at deploy time: the deploy's `up -d --build`
+    # (deploy.yml) rebuilds it from the git-versioned Dockerfile that ships with
+    # the rest of deploy/ and is restored on rollback with it. Chosen over a
+    # GHCR-published image so the ONLY public entry gains no extra registry
+    # dependency; the build is de-risked by CI, where the `compose-config` job
+    # builds this exact Dockerfile and `caddy validate`s the Caddyfile with it.
+    build:
+      context: ./deploy/caddy
     mem_limit: 128m
     <<: [*restart, *logging, *hardening]
     # Caddy binds the privileged ports 80/443; its binary ships with the
@@ -947,13 +956,18 @@ services:
       # crash-looping the only public entrypoint. Default to a deliverable
       # address on the site's own domain when the secret is unset.
       ACME_EMAIL: ${ACME_EMAIL:-admin@${DOMAIN:?}}
+      # CrowdSec bouncer API key (#670): the Caddyfile's `crowdsec` app presents
+      # this to the LAPI. Same value the crowdsec container pre-registers via
+      # BOUNCER_KEY_caddy. Required prod secret.
+      CROWDSEC_BOUNCER_API_KEY: ${CROWDSEC_BOUNCER_API_KEY:?CROWDSEC_BOUNCER_API_KEY is required}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
-    # Edge only (#387): the public entry can reach the web app and nothing
-    # else — no direct route to the gateway, the services, or the datastores.
-    networks: [edge]
+    # `edge` (#387): reach the web app and nothing else — no route to the
+    # gateway, services or datastores. `crowdsec` (#670): the private link to
+    # the CrowdSec LAPI for the bouncer (see the crowdsec service below).
+    networks: [edge, crowdsec]
     # Probes Caddy's always-on admin API (localhost:2019) so the health-gate
     # also covers the public edge (#385): it fails until the Caddyfile has
     # loaded, and unlike a probe of :80/:443 it doesn't depend on the domain's
@@ -966,6 +980,59 @@ services:
     depends_on:
       web:
         condition: service_healthy
+    # NOTE: caddy deliberately does NOT depend_on crowdsec. Gating the only
+    # public entry on CrowdSec being healthy would defeat the fail-open design —
+    # a CrowdSec outage or slow start would block the site from coming up. The
+    # bouncer fails open at runtime (allow-on-error), so Caddy starts regardless
+    # and simply lets traffic through until the LAPI answers.
+
+  # CrowdSec LAPI (#670) — behavioural edge intrusion prevention, a layer ABOVE
+  # the gateway's Redis rate-limiter (which only throttles; this BANS abusive
+  # IPs: credential stuffing on /api/auth, form spam, scraping). Reads Caddy's
+  # #527 JSON access logs off the Docker socket (deploy/crowdsec/acquis.yaml),
+  # scores them with the caddy + base-http scenarios, and serves ban decisions
+  # to the Caddy bouncer over the private `crowdsec` network. PROD-ONLY (dev has
+  # no edge). Its LAPI/DB is internal-only; behavioural bans are validated on
+  # deploy, not locally (no live edge + no real traffic here).
+  crowdsec:
+    # dependabot: crowdsecurity/crowdsec:v1.7.8
+    image: crowdsecurity/crowdsec:v1.7.8@sha256:2f527c9bb8b367120eb08b82890aa912ce96bfa1ada93dda0721700e4b4e0dde
+    mem_limit: 256m
+    <<: [*restart, *logging, *hardening]
+    environment:
+      # Parsers/scenarios for Caddy logs + generic HTTP attacks, auto-installed
+      # from the CrowdSec hub on boot (over egress). base-http-scenarios also
+      # feeds the free community blocklist.
+      COLLECTIONS: "crowdsecurity/caddy crowdsecurity/base-http-scenarios"
+      # Pre-register the Caddy bouncer with the shared key (idempotent across
+      # restarts), so no manual `cscli bouncers add` is needed on first boot —
+      # same secret the Caddyfile's bouncer presents. Required prod secret.
+      BOUNCER_KEY_caddy: ${CROWDSEC_BOUNCER_API_KEY:?CROWDSEC_BOUNCER_API_KEY is required}
+    volumes:
+      # Persist the SQLite DB (registered bouncers + live ban decisions) across
+      # container recreation — otherwise every deploy wipes the bans and the key.
+      - crowdsec_data:/var/lib/crowdsec/data
+      # Docker-log acquisition reads container stdout off the daemon socket,
+      # mounted READ-ONLY so CrowdSec can read logs but not mutate containers —
+      # the same posture the observability Alloy shipper already uses.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Acquisition datasource: follow the Caddy container's JSON access logs.
+      - ./deploy/crowdsec/acquis.yaml:/etc/crowdsec/acquis.d/caddy.yaml:ro
+    ports:
+      # Loopback only (#387): the bouncer reaches the LAPI over the internal
+      # `crowdsec` network — this host publish is purely for an operator running
+      # `cscli` from the host (e.g. over an SSH tunnel). Never public.
+      - "127.0.0.1:8080:8080"
+    # `crowdsec`: the internal LAPI link to the Caddy bouncer. `egress`: pull
+    # collections from the hub + the free community blocklist (CAPI). NOT on
+    # `backend` — it touches none of the app datastores.
+    networks: [crowdsec, egress]
+    healthcheck:
+      test: ["CMD", "cscli", "lapi", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
 # Network split (#387) — replaces the flat default network:
 #   edge    — Caddy ↔ web only: a compromised edge can reach nothing internal.
@@ -981,6 +1048,13 @@ networks:
   backend:
     internal: true
   egress:
+  # crowdsec (#670) — the private link between the Caddy bouncer and the
+  # CrowdSec LAPI, and nothing else. `internal: true`: no internet through it
+  # (CrowdSec reaches the hub/CAPI via egress, Caddy reaches ACME via edge), and
+  # keeping the LAPI off `edge` means the web app can't reach it — preserving
+  # #387's "edge = Caddy ↔ web only".
+  crowdsec:
+    internal: true
 
 volumes:
   pgdata:
@@ -996,3 +1070,4 @@ volumes:
   tempo_data:
   unleash_db_data:
   glitchtip_db_data:
+  crowdsec_data:
