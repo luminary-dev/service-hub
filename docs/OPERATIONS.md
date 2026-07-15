@@ -37,7 +37,7 @@ Every image runs as the **non-root `node` user** (`USER node`).
 `# dependabot: <tag>` comment plus the readable tag before the `@sha256:` digest,
 so a build is reproducible and Dependabot can bump the tag comment and digest
 together. Compose base images (`postgis/postgis:16-3.5-alpine`, `redis:7-alpine`,
-`caddy:2-alpine` in `docker-compose.prod.yml`) are pinned the *same way* by hand,
+`edoburu/pgbouncer` (#674), `caddy:2-alpine` in `docker-compose.prod.yml`) are pinned the *same way* by hand,
 but **Dependabot can't bump them** — its `docker` ecosystem only parses `FROM`
 in Dockerfiles, never `image:` refs in compose files. A scheduled
 [`compose-image-digests`](../.github/workflows/compose-image-digests.yml)
@@ -61,8 +61,10 @@ surfaces as work instead of persisting silently.
 - **docker** — bumps the pinned base-image digests **in the Dockerfiles** (the
   root web image at `/` and every `services/*` image) so base-layer CVEs surface
   as PRs instead of silently persisting. It does **not** see the `image:` refs in
-  the compose files — the postgis/redis/caddy digests in `docker-compose.prod.yml`
-  are watched by the separate `compose-image-digests` workflow instead (#664).
+  the compose files — the postgis/redis/pgbouncer/caddy digests in
+  `docker-compose.prod.yml` are watched by the separate `compose-image-digests`
+  workflow instead (#664; it auto-discovers every `image: …@sha256:` ref, so a
+  newly pinned compose image is covered without editing the workflow).
 
 ## Runtime behavior
 
@@ -103,11 +105,46 @@ These endpoints back the layered gates:
   `prisma migrate deploy` first) during which failed probes don't count against
   the retry budget — so a slow migration no longer trips the deploy gate into
   rollback (#568). A passing probe ends the grace period early.
-- **`depends_on: condition: service_healthy`** — services wait for Postgres /
-  media-service, and the gateway waits for all upstreams, so boot order is
-  correct.
+- **`depends_on: condition: service_healthy`** — the DB services wait for both
+  Postgres *and* PgBouncer, and the gateway waits for all upstreams, so boot
+  order is correct. PgBouncer itself waits for Postgres and is probed with
+  `pg_isready -h 127.0.0.1 -p 6432`.
 - **Deploy health-gate** — `up -d --wait` (see DEPLOYMENT.md) turns these
   healthchecks into the deploy's pass/fail signal.
+
+### Connection pooling (PgBouncer)
+
+A **PgBouncer** transaction pooler (#674, `edoburu/pgbouncer`, port **6432**)
+sits between the DB-owning services and Postgres in both compose files. Each
+service runs its own Prisma connection pool and is replicated, so
+`pool_size × replicas × services` scales past Postgres's `max_connections`
+(default 100) and exhausts it; PgBouncer multiplexes those clients onto a small
+shared set of server connections (`pool_mode = transaction`,
+`default_pool_size = 10` — see `deploy/pgbouncer/pgbouncer.ini`).
+
+The Prisma split is the load-bearing detail:
+
+- **Runtime queries** go through the pooler. Each service's `DATABASE_URL`
+  points at `pgbouncer:6432/<db>?pgbouncer=true`; the runtime driver adapter
+  (`src/db.ts`, `PrismaPg`) reads it directly. `?pgbouncer=true` is a no-op for
+  the pg driver adapter (which already uses only unnamed prepared statements,
+  safe under transaction pooling) but is kept for intent/forward-compat.
+- **Migrations** must NOT go through a transaction pooler — `prisma migrate
+  deploy` (run by `start:migrate` on boot) needs session-scoped state (advisory
+  locks, prepared statements). So each service also gets a `DIRECT_URL` pointing
+  straight at `postgres:5432/<db>`, and `prisma.config.ts` — the only URL the
+  Prisma **CLI** reads — is set to `process.env.DIRECT_URL ?? process.env.DATABASE_URL`.
+  (Prisma 7 removed the datasource `directUrl` field from `schema.prisma`; the
+  CLI URL now lives in `prisma.config.ts`, which is exactly where we branch it.)
+  With no pooler present — host `dev:all` / CI — `DIRECT_URL` is unset and both
+  paths fall back to `DATABASE_URL`, so nothing changes there.
+
+PgBouncer authenticates clients from a `userlist.txt` the image entrypoint
+generates from the `DATABASE_URL(S)` env, with `auth_type = scram-sha-256`. In
+prod that lists all seven per-service roles, and the `[databases]` wildcard
+carries no forced `user=`, so a service can still only ever connect as its own
+least-privilege role to its own database — the #387 isolation is preserved
+through the pooler.
 
 ### Resource limits & log rotation (prod)
 
@@ -115,7 +152,7 @@ These endpoints back the layered gates:
 exhaust the single VPS:
 
 - **`mem_limit`** per service — e.g. postgres `1g`, web `640m`, media/chat
-  `512m`, most services `384m`, redis `256m`, caddy `128m`.
+  `512m`, most services `384m`, redis `256m`, pgbouncer/caddy `128m`.
 - **Log rotation** (#240) — a shared `json-file` logging config with
   `max-size: 10m` and `max-file: 3` is merged into every service, so a chatty or
   crash-looping container can't fill the disk.

@@ -46,12 +46,47 @@ services:
       retries: 20
       start_period: 15s
 
+  # PgBouncer transaction pooler (#674): every DB service keeps its own Prisma
+  # connection pool, so pool x replicas would blow past Postgres's
+  # max_connections. The pooler collapses those onto a small set of shared
+  # server connections. Services send RUNTIME queries here (DATABASE_URL, port
+  # 6432, ?pgbouncer=true); migrations still hit Postgres directly (DIRECT_URL)
+  # because a transaction pooler can't carry migrate's advisory locks/prepared
+  # statements. Config is the mounted deploy/pgbouncer/pgbouncer.ini; the image
+  # entrypoint generates userlist.txt from the DATABASE_URL below.
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.25.2-p0
+    environment:
+      # Seeds userlist.txt with the dev superuser (single role for every db here;
+      # prod passes all seven per-service roles via DATABASE_URLS). scram-sha-256
+      # makes the entrypoint store the plaintext password, which lets PgBouncer
+      # both authenticate the client and SCRAM-auth onward to Postgres.
+      AUTH_TYPE: scram-sha-256
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/identity_db
+    volumes:
+      - ./deploy/pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+    ports:
+      # Loopback-bound like every other dev port, for psql/debugging into the pooler.
+      - "127.0.0.1:6432:6432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
   identity-service:
     build: ./services/identity-service
     environment:
       <<: *service-env
       PORT: 4001
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/identity_db
+      # Runtime queries go through the PgBouncer transaction pooler (#674).
+      DATABASE_URL: postgresql://postgres:postgres@pgbouncer:6432/identity_db?pgbouncer=true
+      # Migrations (start:migrate → prisma migrate deploy) go DIRECT to Postgres.
+      DIRECT_URL: postgresql://postgres:postgres@postgres:5432/identity_db
       AUTH_SECRET: ${AUTH_SECRET:-dev-only-secret}
       # Shared session-revocation list (#374): identity publishes each
       # sessionVersion bump here so the gateway can enforce revocations without
@@ -73,6 +108,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck: &node-healthcheck
@@ -86,12 +123,17 @@ services:
     environment:
       <<: *service-env
       PORT: 4002
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/provider_db
+      # Runtime queries go through the PgBouncer transaction pooler (#674).
+      DATABASE_URL: postgresql://postgres:postgres@pgbouncer:6432/provider_db?pgbouncer=true
+      # Migrations (start:migrate → prisma migrate deploy) go DIRECT to Postgres.
+      DIRECT_URL: postgresql://postgres:postgres@postgres:5432/provider_db
       # Uploads now go through media-service; no local upload volume here.
     ports:
       - "127.0.0.1:4002:4002"
     depends_on:
       postgres:
+        condition: service_healthy
+      pgbouncer:
         condition: service_healthy
       media-service:
         condition: service_healthy
@@ -102,12 +144,17 @@ services:
     environment:
       <<: *service-env
       PORT: 4003
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/review_db
+      # Runtime queries go through the PgBouncer transaction pooler (#674).
+      DATABASE_URL: postgresql://postgres:postgres@pgbouncer:6432/review_db?pgbouncer=true
+      # Migrations (start:migrate → prisma migrate deploy) go DIRECT to Postgres.
+      DIRECT_URL: postgresql://postgres:postgres@postgres:5432/review_db
       # Uploads now go through media-service; no local upload volume here.
     ports:
       - "127.0.0.1:4003:4003"
     depends_on:
       postgres:
+        condition: service_healthy
+      pgbouncer:
         condition: service_healthy
       media-service:
         condition: service_healthy
@@ -118,11 +165,16 @@ services:
     environment:
       <<: *service-env
       PORT: 4004
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/job_db
+      # Runtime queries go through the PgBouncer transaction pooler (#674).
+      DATABASE_URL: postgresql://postgres:postgres@pgbouncer:6432/job_db?pgbouncer=true
+      # Migrations (start:migrate → prisma migrate deploy) go DIRECT to Postgres.
+      DIRECT_URL: postgresql://postgres:postgres@postgres:5432/job_db
     ports:
       - "127.0.0.1:4004:4004"
     depends_on:
       postgres:
+        condition: service_healthy
+      pgbouncer:
         condition: service_healthy
     healthcheck: *node-healthcheck
 
@@ -131,7 +183,10 @@ services:
     environment:
       <<: *service-env
       PORT: 4005
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/notification_db
+      # Runtime queries go through the PgBouncer transaction pooler (#674).
+      DATABASE_URL: postgresql://postgres:postgres@pgbouncer:6432/notification_db?pgbouncer=true
+      # Migrations (start:migrate → prisma migrate deploy) go DIRECT to Postgres.
+      DIRECT_URL: postgresql://postgres:postgres@postgres:5432/notification_db
       # Email delivery queue (BRPOPLPUSH + retries); unset → degraded
       # one-attempt direct sends (in-app notifications unaffected).
       REDIS_URL: redis://redis:6379
@@ -141,6 +196,8 @@ services:
       - "127.0.0.1:4005:4005"
     depends_on:
       postgres:
+        condition: service_healthy
+      pgbouncer:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -183,11 +240,16 @@ services:
     environment:
       <<: *service-env
       PORT: 4008
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/search_db
+      # Runtime queries go through the PgBouncer transaction pooler (#674).
+      DATABASE_URL: postgresql://postgres:postgres@pgbouncer:6432/search_db?pgbouncer=true
+      # Migrations (start:migrate → prisma migrate deploy) go DIRECT to Postgres.
+      DIRECT_URL: postgresql://postgres:postgres@postgres:5432/search_db
     ports:
       - "127.0.0.1:4008:4008"
     depends_on:
       postgres:
+        condition: service_healthy
+      pgbouncer:
         condition: service_healthy
     healthcheck: *node-healthcheck
 
@@ -200,11 +262,16 @@ services:
     environment:
       <<: *service-env
       PORT: 4009
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/trust_safety_db
+      # Runtime queries go through the PgBouncer transaction pooler (#674).
+      DATABASE_URL: postgresql://postgres:postgres@pgbouncer:6432/trust_safety_db?pgbouncer=true
+      # Migrations (start:migrate → prisma migrate deploy) go DIRECT to Postgres.
+      DIRECT_URL: postgresql://postgres:postgres@postgres:5432/trust_safety_db
     ports:
       - "127.0.0.1:4009:4009"
     depends_on:
       postgres:
+        condition: service_healthy
+      pgbouncer:
         condition: service_healthy
     healthcheck: *node-healthcheck
 

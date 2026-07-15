@@ -4,7 +4,8 @@
 | var | used by |
 |---|---|
 | `PORT` | every service (defaults: identity 4001, provider 4002, review 4003, job 4004, notification 4005, media 4006, chat 4007, search 4008, trust-safety 4009, gateway 4000) |
-| `DATABASE_URL` | identity, provider, review, job, notification, search, trust-safety |
+| `DATABASE_URL` | identity, provider, review, job, notification, search, trust-safety — the **runtime** connection (read by the `PrismaPg` adapter in `src/db.ts`). In Docker this points at the **PgBouncer** transaction pooler (`pgbouncer:6432/<db>?pgbouncer=true`, #674); host `dev:all`/CI point it straight at Postgres |
+| `DIRECT_URL` | same seven DB services (#674) — a **direct**-to-Postgres connection (`postgres:5432/<db>`) used only by the Prisma **CLI** (`prisma migrate deploy`, via `prisma.config.ts` → `DIRECT_URL ?? DATABASE_URL`), because a transaction pooler can't carry migrate's advisory locks/prepared statements. Set in Docker; unset (falls back to `DATABASE_URL`) with no pooler |
 | `AUTH_SECRET` | identity (sign), gateway + web (verify) |
 | `INTERNAL_API_SECRET` | all services + gateway + web (web calls chat-service and identity directly) |
 | `REDIS_URL` | gateway (distributed rate-limit window; unset → per-instance in-memory fallback — see [RATE_LIMITING.md](../RATE_LIMITING.md)) + identity (session-revocation publish, #374) + notification (email delivery queue; unset → degraded one-attempt direct sends). In prod the URL carries the Redis password (`redis://default:${REDIS_PASSWORD}@redis:6379`, #387) |
