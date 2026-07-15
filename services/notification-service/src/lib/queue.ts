@@ -8,14 +8,21 @@
 //   - reclaim: a periodic sweep returns notify:processing entries older than
 //              2 min to the queue, so a crash mid-send retries instead of
 //              losing the job
-//   - retry:   on send failure re-enqueue with attempt+1 after 30s × 2^attempt;
-//              after MAX_ATTEMPTS drop and log.error — email stays
-//              best-effort/fail-soft, the contract every caller assumes
+//   - retry:   on send failure the entry is moved (attempt+1) into a durable
+//              Redis ZSET (notify:retry) scored by its retry-at (now + 30s ×
+//              2^attempt) — durably BEFORE it is LREM'd off processing, so a
+//              crash between the two leaves it recoverable, never dropped. A
+//              worker poll returns due entries to notify:email; after
+//              MAX_ATTEMPTS the entry is dropped with a log.error — email stays
+//              best-effort/fail-soft, the contract every caller assumes. (#751:
+//              the retry state is Redis-backed, not an in-memory unref'd
+//              setTimeout that a restart/crash silently drops.)
 //   - degraded: Redis unavailable → fall back to the in-memory one-attempt
 //              background fan-out (mirrors the gateway's Redis-down rate-limit
 //              fallback). In-app rows are unaffected either way — they are
 //              written inline before the ingestion ack.
 import { Redis } from "ioredis";
+import { Gauge } from "prom-client";
 import { sendMail, type Locale } from "./email";
 import { renderEventEmail } from "./event-email";
 import type { NotificationType } from "./events";
@@ -23,11 +30,18 @@ import { log } from "./log";
 
 export const QUEUE_KEY = "notify:email";
 export const PROCESSING_KEY = "notify:processing";
+// Redis-backed delayed-retry set (#751): member = the JSON job, score = the
+// absolute retry-at (ms). Polled by the worker; survives restarts/crashes.
+export const RETRY_KEY = "notify:retry";
 
 export const MAX_ATTEMPTS = 3;
 export const RETRY_BASE_MS = 30_000; // 30s × 2^attempt
 export const RECLAIM_AFTER_MS = 2 * 60_000; // processing entries older than 2 min
 export const RECLAIM_INTERVAL_MS = 60_000;
+// How often the worker sweeps notify:retry for entries whose retry-at has
+// passed and returns them to notify:email. Well under RETRY_BASE_MS so the
+// effective delay stays close to the intended backoff.
+export const RETRY_POLL_INTERVAL_MS = 5_000;
 const WORKER_BLOCK_SECONDS = 5;
 // Redis-down pause between worker iterations, so a dead backend doesn't spin.
 const WORKER_ERROR_PAUSE_MS = 5_000;
@@ -50,6 +64,11 @@ export type QueueRedis = {
   brpoplpush(source: string, destination: string, timeoutSec: number): Promise<string | null>;
   lrem(key: string, count: number, value: string): Promise<number>;
   lrange(key: string, start: number, stop: number): Promise<string[]>;
+  llen(key: string): Promise<number>;
+  zadd(key: string, score: number | string, member: string): Promise<unknown>;
+  zrangebyscore(key: string, min: number | string, max: number | string): Promise<string[]>;
+  zrem(key: string, member: string): Promise<number>;
+  zcard(key: string): Promise<number>;
 };
 
 // ---------------------------------------------------------------------------
@@ -185,18 +204,18 @@ export async function enqueueEmailJobs(
 // Worker
 // ---------------------------------------------------------------------------
 
-// Retry timers are tracked so shutdown can clear them; each is unref'd so a
-// pending retry never keeps the process alive on its own.
-const retryTimers = new Set<ReturnType<typeof setTimeout>>();
-
 export function retryDelayMs(attempt: number): number {
   return RETRY_BASE_MS * 2 ** attempt;
 }
 
 // Process one raw queue entry (already moved onto the processing list):
-// send, then LREM on success; on failure schedule a backed-off re-enqueue or
-// drop after MAX_ATTEMPTS. Exported for unit tests.
-export async function processEntry(redis: QueueRedis, entry: string): Promise<void> {
+// send, then LREM on success; on failure move a backed-off copy into the
+// durable retry ZSET or drop after MAX_ATTEMPTS. Exported for unit tests.
+export async function processEntry(
+  redis: QueueRedis,
+  entry: string,
+  now: number = Date.now()
+): Promise<void> {
   let job: EmailJob;
   try {
     job = JSON.parse(entry) as EmailJob;
@@ -207,8 +226,10 @@ export async function processEntry(redis: QueueRedis, entry: string): Promise<vo
   }
 
   const ok = await sendJob(job);
-  await redis.lrem(PROCESSING_KEY, 1, entry);
-  if (ok) return;
+  if (ok) {
+    await redis.lrem(PROCESSING_KEY, 1, entry);
+    return;
+  }
 
   const attempt = Number.isInteger(job.attempt) ? job.attempt : 0;
   if (attempt + 1 >= MAX_ATTEMPTS) {
@@ -216,18 +237,101 @@ export async function processEntry(redis: QueueRedis, entry: string): Promise<vo
       type: job.type,
       attempts: attempt + 1,
     });
+    await redis.lrem(PROCESSING_KEY, 1, entry);
     return;
   }
+
+  // #751 crash-safety: durably persist the retry BEFORE removing the entry
+  // from the processing list. If we crash between the ZADD and the LREM, the
+  // original is still on notify:processing for reclaimStale to recover — the
+  // worst case is one duplicate send, never a dropped email. (The old code
+  // LREM'd first and held the retry only in an in-memory unref'd setTimeout,
+  // so a restart in the backoff window lost it outright.)
   const next = JSON.stringify({ ...job, attempt: attempt + 1 });
-  const timer = setTimeout(() => {
-    retryTimers.delete(timer);
-    redis.lpush(QUEUE_KEY, next).catch((err) => {
-      log.error("failed to re-enqueue email retry — dropping", { type: job.type, err });
-    });
-  }, retryDelayMs(attempt));
-  timer.unref();
-  retryTimers.add(timer);
+  await redis.zadd(RETRY_KEY, now + retryDelayMs(attempt), next);
+  await redis.lrem(PROCESSING_KEY, 1, entry);
 }
+
+// Return retry-ZSET entries whose retry-at has passed to notify:email. ZREM
+// before LPUSH so a second poller (or a shutdown flush) can't move the same
+// entry twice. Exported for unit tests.
+export async function pollRetries(redis: QueueRedis, now: number = Date.now()): Promise<number> {
+  const due = await redis.zrangebyscore(RETRY_KEY, "-inf", now);
+  let moved = 0;
+  for (const member of due) {
+    if ((await redis.zrem(RETRY_KEY, member)) > 0) {
+      await redis.lpush(QUEUE_KEY, member);
+      moved++;
+    }
+  }
+  return moved;
+}
+
+// Move every pending retry (due or not) back onto notify:email. Called on
+// graceful shutdown (#751) so pending retries are flushed to the durable queue
+// instead of being cleared/abandoned; they persist in the ZSET across a crash
+// regardless, but flushing lets a restarting instance pick them straight up.
+export async function flushRetries(redis: QueueRedis): Promise<number> {
+  const pending = await redis.zrangebyscore(RETRY_KEY, "-inf", "+inf");
+  let flushed = 0;
+  for (const member of pending) {
+    if ((await redis.zrem(RETRY_KEY, member)) > 0) {
+      await redis.lpush(QUEUE_KEY, member);
+      flushed++;
+    }
+  }
+  if (flushed > 0) {
+    log.info("flushed pending email retries back to the queue on shutdown", { flushed });
+  }
+  return flushed;
+}
+
+// Flush pending retries on shutdown using the shared client (no-op when Redis
+// is unconfigured/down). Awaited from index.ts before the connections close.
+export async function flushPendingRetries(): Promise<void> {
+  const redis = getQueueRedis();
+  if (!redis) return;
+  try {
+    await flushRetries(redis);
+  } catch (err) {
+    log.warn("failed to flush pending email retries on shutdown", { err });
+  }
+}
+
+// Current email-queue depth by state, for the Prometheus gauge (#746) and
+// tests. Exported so the gauge's scrape-time collect stays a thin wrapper.
+export async function queueDepth(
+  redis: QueueRedis
+): Promise<{ pending: number; processing: number; retry: number }> {
+  const [pending, processing, retry] = await Promise.all([
+    redis.llen(QUEUE_KEY),
+    redis.llen(PROCESSING_KEY),
+    redis.zcard(RETRY_KEY),
+  ]);
+  return { pending, processing, retry };
+}
+
+// #746: email-queue depth gauge, sampled at scrape time. Registered on
+// prom-client's default registry (the one metricsHandler serializes), so it
+// rides the existing /metrics endpoint without touching the canonical
+// metrics.ts. No-op labels when Redis is unconfigured/down — last values hold.
+new Gauge({
+  name: "notification_email_queue_depth",
+  help: "Email delivery queue depth by state: pending (notify:email), processing (notify:processing), retry (notify:retry ZSET).",
+  labelNames: ["state"],
+  async collect() {
+    const redis = getQueueRedis();
+    if (!redis) return;
+    try {
+      const depth = await queueDepth(redis);
+      this.set({ state: "pending" }, depth.pending);
+      this.set({ state: "processing" }, depth.processing);
+      this.set({ state: "retry" }, depth.retry);
+    } catch {
+      // Redis down — leave the last sampled values in place.
+    }
+  },
+});
 
 // Reclaim processing-list entries that have sat there past RECLAIM_AFTER_MS —
 // a worker crashed mid-send and never LREM'd them. BRPOPLPUSH copies the entry
@@ -274,6 +378,7 @@ export function resetReclaimState(): void {
 
 let running = false;
 let reclaimInterval: ReturnType<typeof setInterval> | undefined;
+let retryPollInterval: ReturnType<typeof setInterval> | undefined;
 
 // One in-process worker loop per instance + the periodic reclaim sweep.
 // No-op (with a log line) when REDIS_URL is unset — enqueue then always takes
@@ -307,14 +412,24 @@ export function startEmailWorker(): void {
     });
   }, RECLAIM_INTERVAL_MS);
   reclaimInterval.unref();
+
+  // Return due retries from notify:retry to notify:email (#751). Errors are
+  // swallowed like the reclaim sweep — the next poll retries.
+  retryPollInterval = setInterval(() => {
+    pollRetries(shared).catch(() => {});
+  }, RETRY_POLL_INTERVAL_MS);
+  retryPollInterval.unref();
 }
 
-// Stop the loop + timers (graceful shutdown; connections closed separately by
-// closeQueueRedis so an in-flight iteration can still LREM).
+// Stop the loop + sweeps (graceful shutdown; connections closed separately by
+// closeQueueRedis so an in-flight iteration can still LREM, and pending retries
+// are flushed by flushPendingRetries before the connections close). Pending
+// retries live in the durable notify:retry ZSET, so there are no in-memory
+// timers to clear — a restart/crash no longer drops them.
 export function stopEmailWorker(): void {
   running = false;
   if (reclaimInterval) clearInterval(reclaimInterval);
   reclaimInterval = undefined;
-  for (const timer of retryTimers) clearTimeout(timer);
-  retryTimers.clear();
+  if (retryPollInterval) clearInterval(retryPollInterval);
+  retryPollInterval = undefined;
 }
