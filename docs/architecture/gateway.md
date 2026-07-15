@@ -7,26 +7,17 @@ Public entry. Responsibilities:
    `sec-fetch-site` ∈ {`same-origin`,`none`}; else compare `origin` host to
    `x-forwarded-host` ?? `host`. Reject → `403 { error: "Cross-site request
    blocked." }`.
-2. **Rate limiting** (sliding window keyed by client IP from
-   `x-forwarded-for`; the window lives in Redis when `REDIS_URL` is set — shared
-   across instances, falling back to the per-instance in-memory store on Redis
-   failure — otherwise in-memory):
-   `POST /api/auth/login|forgot-password|reset-password|change-password|delete-account`
-   → authStrict; `POST /api/auth/register` → authSignup;
-   `POST /api/auth/resend-verification` → resend; `POST /api/jobs` and
-   `POST /api/providers/:id/inquiries` → inquiry;
-   `POST /api/providers/:id/contact` → contactReveal (phone-number reveal, #64);
-   `POST /api/jobs/:id/responses`
-   and `POST /api/providers/:id/reviews` → review;
-   `POST /api/providers/:id/report`, `POST /api/photos/:id/report`,
-   `POST /api/reviews/:id/report`, `POST /api/jobs/:id/report` and
-   `POST /api/messages/:id/report` (#376) → report;
-   `POST /api/notifications/read` → message (`notification-read` bucket, #394)
-   and `POST /api/notification-preferences` → review (`notification-prefs`
-   bucket); `GET /api/search/*` → search (the first rate-limited READ — the
-   search endpoints are a query engine a scraper could walk, so they carry
-   their own per-IP budget). 429 body/headers identical to the monolith
-   (`Retry-After`).
+2. **Rate limiting** (per-IP sliding window; the window lives in Redis when
+   `REDIS_URL` is set — shared across instances, falling back to the
+   per-instance in-memory store on Redis failure — otherwise in-memory). The
+   limiter matches unsafe methods (`POST`/`PUT`/`PATCH`/`DELETE`) on path via
+   `LIMITED_ROUTES`, plus the one rate-limited read `GET /api/search/*` via
+   `LIMITED_GET_ROUTES`; it covers the auth, signup, resend/email-change,
+   inquiry/job-post, contact-reveal, review/report, message, profile, upload and
+   search buckets. Over budget → `429` with `Retry-After`.
+   **See [RATE_LIMITING.md](../RATE_LIMITING.md) for the exhaustive route → rule
+   → limit table** (kept in sync with `lib/rate-limit.ts`); don't duplicate it
+   here.
 3. **Session / identity headers** (`lib/proxy.ts#buildUpstreamHeaders`): strip
    any client-sent trusted headers first (`GATEWAY_HEADERS`: `x-user-id`,
    `x-user-role`, `x-user-name`, `x-impersonated-by`, `x-internal-secret`,
