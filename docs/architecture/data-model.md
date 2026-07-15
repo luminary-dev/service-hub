@@ -22,8 +22,10 @@
   read-plus-report-resolve tier. See "Admin surface" below for how the tiers are
   enforced end-to-end.
   `User` also carries `sessionVersion` (revocation), `failedLogins`/`lockedUntil`
-  (per-account lockout), `emailVerified`, `avatarUrl` (profile photo #434), and
-  a **nullable** `passwordHash` (OAuth-only accounts have no password #398).
+  (per-account lockout), `emailVerified`, `avatarUrl` (profile photo #434), a
+  **nullable** `passwordHash` (OAuth-only accounts have no password #398), and
+  `updatedAt` (`@updatedAt`, migration `20260716120000` — the most-mutated table
+  finally gets an update timestamp the #370 pass missed, #769).
   Admin hot paths are indexed (#509, migration `20260713120000`): a btree on
   `createdAt` (newest-first users list + dashboard signups range scan) and
   pg_trgm GIN indexes on `email`/`name` for the case-insensitive admin search

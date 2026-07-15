@@ -569,6 +569,17 @@ Prometheus metrics at `GET /metrics` on its own port via an identical
 - **Node/process defaults** (`collectDefaultMetrics`): event-loop lag, heap, GC,
   fds, cpu. Every series carries a `service="<name>"` label stamped by
   `initMetrics()` (called once in each `src/index.ts`).
+- **`login_failures_total`** (identity-service, #759) — a counter of rejected
+  `POST /api/auth/login` attempts, labelled `reason`
+  (`unknown_user` / `no_password` / `locked_out` / `bad_password`) so a
+  credential-stuffing run is countable in Grafana. No per-user/email/IP labels
+  (that would explode cardinality and re-introduce PII). Registered on the same
+  default registry as the RED metrics, so it needs no extra wiring; it lives in
+  `src/lib/auth-metrics.ts` rather than the byte-identical shared `metrics.ts`.
+  The matching structured log lines — `login failed` (`{ userId, failedLogins }`),
+  `account locked` (`{ userId, lockedUntil }`) and `login attempt on locked
+  account` — carry no email/password, keeping the existing PII discipline (the
+  gateway attaches the client IP to its own request-log line).
 
 `/metrics` is deliberately **not** behind the internal secret — Prometheus
 scrapes it directly — and that is safe because the service ports are never
