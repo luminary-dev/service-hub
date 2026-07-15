@@ -46,7 +46,24 @@ const IDENTICAL: Record<string, string[]> = {
     svc("notification-service", "logging.ts"),
     svc("media-service", "logging.ts"),
     svc("chat-service", "logging.ts"),
+    svc("search-service", "logging.ts"),
+    svc("trust-safety-service", "logging.ts"),
     svc("api-gateway", "logging.ts"),
+  ],
+  // Error capture (#34): every service — gateway included — inits the same
+  // Sentry-compatible client (GlitchTip) and exposes captureException, wired
+  // into onError + installProcessErrorHandlers. No-op until SENTRY_DSN is set.
+  "errors.ts": [
+    svc("identity-service", "errors.ts"),
+    svc("provider-service", "errors.ts"),
+    svc("review-service", "errors.ts"),
+    svc("job-service", "errors.ts"),
+    svc("notification-service", "errors.ts"),
+    svc("media-service", "errors.ts"),
+    svc("chat-service", "errors.ts"),
+    svc("search-service", "errors.ts"),
+    svc("trust-safety-service", "errors.ts"),
+    svc("api-gateway", "errors.ts"),
   ],
   "storage.ts (media client)": [
     svc("provider-service", "storage.ts"),

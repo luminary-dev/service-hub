@@ -24,6 +24,32 @@ x-service-env: &service-env
   CHAT_SERVICE_URL: http://chat-service:4007
   SEARCH_SERVICE_URL: http://search-service:4008
   TRUST_SAFETY_SERVICE_URL: http://trust-safety-service:4009
+  # Error capture (#34): the Sentry-compatible DSN each service reports crashes
+  # to (self-hosted GlitchTip, below). OPTIONAL and the activation switch —
+  # unset (the default) → src/lib/errors.ts is a pure no-op (no SDK init, no
+  # network) and behavior is unchanged, exactly like UNLEASH_FRONTEND_TOKEN. Set
+  # it only AFTER creating a project in the GlitchTip UI (SSH tunnel to :8000);
+  # its value is the DSN that project issues (points at glitchtip-web on the
+  # internal backend network). See docs/OPERATIONS.md → Error capture.
+  SENTRY_DSN: ${SENTRY_DSN:-}
+
+# GlitchTip (#34) shared env for its web + worker + migrate containers. Points
+# at GlitchTip's OWN Postgres + Redis (a separate container/volume, never the
+# app cluster). Both secrets are REQUIRED — the stack refuses to start without
+# them (mirrors GRAFANA_ADMIN_PASSWORD / UNLEASH_DB_PASSWORD).
+x-glitchtip-env: &glitchtip-env
+  DATABASE_URL: postgres://glitchtip:${GLITCHTIP_DB_PASSWORD:?GLITCHTIP_DB_PASSWORD is required}@glitchtip-postgres:5432/glitchtip
+  SECRET_KEY: ${GLITCHTIP_SECRET_KEY:?GLITCHTIP_SECRET_KEY is required}
+  REDIS_URL: redis://glitchtip-redis:6379/0
+  PORT: "8000"
+  # Loopback-only UI reached over an SSH tunnel, so the external domain is
+  # localhost:8000 (drives allowed-hosts / link generation).
+  GLITCHTIP_DOMAIN: http://localhost:8000
+  # No SMTP wired — alert emails log to the container console. Add an EMAIL_URL
+  # later if you want GlitchTip to email alerts.
+  EMAIL_URL: consolemail://
+  DEFAULT_FROM_EMAIL: glitchtip@localhost
+  CELERY_WORKER_AUTOSCALE: "1,3"
 
 # Probe failures during start_period don't count against the retry budget
 # (#568) — without it a boot longer than ~100s marked the container unhealthy
@@ -531,8 +557,8 @@ services:
   # publishes its host port to LOOPBACK (#387), so an operator reaches Grafana
   # via an SSH tunnel (ssh -L 3001:127.0.0.1:3001 …, then http://localhost:3001
   # — admin / ${GRAFANA_ADMIN_PASSWORD}). There is no Caddy route to any of it.
-  # Distributed tracing (OTel/Tempo) and error capture (Sentry/GlitchTip, #34)
-  # are the remaining #668 follow-ups.
+  # Error capture (self-hosted GlitchTip, #34) ships below (same internal-only
+  # posture); distributed tracing (OTel/Tempo) is the remaining #668 follow-up.
   prometheus:
     # dependabot: prom/prometheus:v3.1.0
     image: prom/prometheus:v3.1.0@sha256:6559acbd5d770b15bb3c954629ce190ac3cbbdb2b7f1c30f0385c4e05104e218
@@ -719,6 +745,124 @@ services:
       retries: 10
       start_period: 30s
 
+  # Error capture (#34) — self-hosted GlitchTip (Sentry-compatible ingest,
+  # chosen for data residency / PDPA). Like Grafana + Unleash it is INTERNAL
+  # ONLY: `backend` network, NO Caddy route, host port published to LOOPBACK
+  # (#387) so an operator reaches the UI via an SSH tunnel (ssh -L
+  # 8000:127.0.0.1:8000 <server>, then http://localhost:8000). Its OWN Postgres
+  # + Redis (separate containers/volume, never the app cluster). Services report
+  # to it via SENTRY_DSN, which DEGRADES GRACEFULLY: unset (the default) → no SDK
+  # init, no network, behavior unchanged. See docs/OPERATIONS.md → Error capture.
+  glitchtip-postgres:
+    # dependabot: postgres:16-alpine
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    mem_limit: 256m
+    <<: [*restart, *logging, *hardening]
+    # The postgres entrypoint starts as root to chown the data dir, then drops
+    # to the `postgres` user — so under cap_drop: ALL it needs these back (same
+    # as the app postgres + unleash-db blocks above).
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    environment:
+      POSTGRES_USER: glitchtip
+      # Required secret: no dev fallback (mirrors UNLEASH_DB_PASSWORD).
+      # URL-interpolated into DATABASE_URL above → generate hex.
+      POSTGRES_PASSWORD: ${GLITCHTIP_DB_PASSWORD:?GLITCHTIP_DB_PASSWORD is required}
+      POSTGRES_DB: glitchtip
+    volumes:
+      - glitchtip_db_data:/var/lib/postgresql/data
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U glitchtip -h 127.0.0.1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+
+  glitchtip-redis:
+    # dependabot: redis:7-alpine
+    image: redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
+    mem_limit: 256m
+    <<: [*restart, *logging, *hardening]
+    # GlitchTip's OWN broker/cache — holds only ephemeral celery tasks, reachable
+    # only by glitchtip-web/-worker on the internal backend network, so (unlike
+    # the app Redis, which holds the session-revocation list, #387) it needs no
+    # requirepass and adds no secret.
+    networks: [backend]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  # One-shot schema migrate — web/worker wait for it to finish (the GlitchTip
+  # image doesn't auto-migrate). Exits 0; `restart: "no"` so it doesn't loop.
+  glitchtip-migrate:
+    # dependabot: glitchtip/glitchtip:6.2.0
+    image: glitchtip/glitchtip:6.2.0@sha256:a1208e3c696b9d96d20f44026f73b8a15af863a9aa149a603ff3bda8600d259c
+    mem_limit: 512m
+    <<: [*logging, *hardening]
+    restart: "no"
+    command: ["./manage.py", "migrate"]
+    environment:
+      <<: *glitchtip-env
+    networks: [backend]
+    depends_on:
+      glitchtip-postgres:
+        condition: service_healthy
+      glitchtip-redis:
+        condition: service_healthy
+
+  glitchtip-web:
+    # dependabot: glitchtip/glitchtip:6.2.0
+    image: glitchtip/glitchtip:6.2.0@sha256:a1208e3c696b9d96d20f44026f73b8a15af863a9aa149a603ff3bda8600d259c
+    mem_limit: 768m
+    <<: [*restart, *logging, *hardening]
+    environment:
+      <<: *glitchtip-env
+    ports:
+      # Loopback only (SSH tunnel to reach the ingest API + UI); no Caddy route.
+      - "127.0.0.1:8000:8000"
+    networks: [backend]
+    depends_on:
+      glitchtip-postgres:
+        condition: service_healthy
+      glitchtip-redis:
+        condition: service_healthy
+      glitchtip-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      # The image ships /code/healthcheck.py (GET /_health/); no curl/wget in it.
+      test: ["CMD", "python", "healthcheck.py"]
+      interval: 10s
+      timeout: 6s
+      retries: 10
+      start_period: 60s
+
+  glitchtip-worker:
+    # dependabot: glitchtip/glitchtip:6.2.0
+    image: glitchtip/glitchtip:6.2.0@sha256:a1208e3c696b9d96d20f44026f73b8a15af863a9aa149a603ff3bda8600d259c
+    mem_limit: 512m
+    <<: [*restart, *logging, *hardening]
+    command: ["./bin/run-celery-with-beat.sh"]
+    environment:
+      <<: *glitchtip-env
+    networks: [backend]
+    depends_on:
+      glitchtip-postgres:
+        condition: service_healthy
+      glitchtip-redis:
+        condition: service_healthy
+      glitchtip-migrate:
+        condition: service_completed_successfully
+    # No healthcheck: a celery worker has no HTTP port, and a `celery inspect
+    # ping` probe is flaky enough to stall `up -d --wait` — same rationale as
+    # alloy. Nothing depends on the worker being healthy.
+
   # The only public surface: terminates TLS (auto Let's Encrypt) and proxies to
   # the web app, which in turn proxies /api/* to the gateway internally.
   caddy:
@@ -788,3 +932,4 @@ volumes:
   loki_data:
   alloy_data:
   unleash_db_data:
+  glitchtip_db_data:

@@ -373,7 +373,9 @@ monorepo's `prod` branch so the mirrors reflect production.
 ## Still required before a public launch
 
 - **#147 / #72** — verified email domain + `RESEND_API_KEY`.
-- **#113 / #34** — uptime + error monitoring. **#61 / #389** — DB backups: the
+- **#113** — uptime monitoring. (**#34** error monitoring now ships: self-hosted
+  GlitchTip — set `SENTRY_DSN` to activate; see `docs/OPERATIONS.md` → Error
+  capture.) **#61 / #389** — DB backups: the
   tooling + nightly automation ship in the repo; run
   `sudo ./scripts/install-backup-cron.sh` on the host once and fill in
   `.backup.env` (`docs/BACKUPS.md`).

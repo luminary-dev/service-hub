@@ -12,6 +12,7 @@
 // the lines are pure noise.
 import { randomUUID } from "node:crypto";
 import type { Context, MiddlewareHandler } from "hono";
+import { captureException } from "./errors";
 
 export type LogFields = Record<string, unknown>;
 export type LogWriter = (line: string) => void;
@@ -109,8 +110,9 @@ export function getRequestId(c: Context): string | undefined {
 // change *what gets written*, not whether we die. The exit is delayed a beat
 // because process.exit() can truncate pending stdout writes when stdout is a
 // pipe — under Docker it always is, and the whole point is getting the line
-// out. An error-monitoring backend (Sentry/GlitchTip/…) can later hook in here
-// and in each app's onError without touching call sites.
+// out. The error-monitoring backend (self-hosted GlitchTip, #34) hooks in here
+// and in each app's onError via captureException (src/lib/errors.ts) — a no-op
+// until SENTRY_DSN is set, so this stays a pure structured-logging path in dev.
 const EXIT_FLUSH_MS = 100;
 
 export type ProcessLike = {
@@ -131,6 +133,8 @@ export function installProcessErrorHandlers(
     // always carries err.name/message/stack.
     const err = reason instanceof Error ? reason : new Error(String(reason));
     log.error(msg, { err });
+    // Report to the error backend before we exit (no-op if SENTRY_DSN unset).
+    captureException(err, { fatal: msg });
     setTimeout(() => proc.exit(1), EXIT_FLUSH_MS);
   };
   proc.on("uncaughtException", fail("uncaught exception"));

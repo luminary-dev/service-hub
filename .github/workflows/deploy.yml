@@ -164,6 +164,13 @@ jobs:
           # unset → the web app degrades to coded flag defaults).
           UNLEASH_DB_PASSWORD: ${{ secrets.UNLEASH_DB_PASSWORD }}
           UNLEASH_FRONTEND_TOKEN: ${{ secrets.UNLEASH_FRONTEND_TOKEN }}
+          # Error capture (#34): GLITCHTIP_SECRET_KEY + GLITCHTIP_DB_PASSWORD are
+          # REQUIRED by the GlitchTip stack (like GRAFANA_ADMIN_PASSWORD /
+          # UNLEASH_DB_PASSWORD); SENTRY_DSN is optional — the activation switch,
+          # unset → the services degrade to a no-op.
+          GLITCHTIP_SECRET_KEY: ${{ secrets.GLITCHTIP_SECRET_KEY }}
+          GLITCHTIP_DB_PASSWORD: ${{ secrets.GLITCHTIP_DB_PASSWORD }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
           install -m 600 /dev/stdin "$HOME/deploy_key" <<< "$SSH_KEY"
           # Host-key pinning (#388): the runner's known_hosts is empty every
@@ -194,6 +201,7 @@ jobs:
                      JOB_DB_PASSWORD NOTIFICATION_DB_PASSWORD SEARCH_DB_PASSWORD \
                      TRUST_SAFETY_DB_PASSWORD REDIS_PASSWORD GRAFANA_ADMIN_PASSWORD \
                      UNLEASH_DB_PASSWORD UNLEASH_FRONTEND_TOKEN \
+                     GLITCHTIP_SECRET_KEY GLITCHTIP_DB_PASSWORD SENTRY_DSN \
                      WEB_ORIGIN \
                      DOMAIN ACME_EMAIL ANTHROPIC_API_KEY RESEND_API_KEY EMAIL_FROM \
                      R2_ENDPOINT R2_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY \
