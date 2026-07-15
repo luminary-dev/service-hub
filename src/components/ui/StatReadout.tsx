@@ -32,7 +32,7 @@ export default function StatReadout({
           <dd className="font-mono text-2xl font-bold tabular-nums text-ink-900">
             {typeof value === "number" ? String(value).padStart(pad, "0") : value}
           </dd>
-          <dt className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-400">
+          <dt className="mt-0.5 pr-3.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-400">
             {label}
           </dt>
         </div>
