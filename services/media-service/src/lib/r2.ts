@@ -11,6 +11,17 @@ import {
   DeleteObjectCommand,
   ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
+import { log } from "./log";
+
+// A GET failed because the object genuinely does not exist — the only case
+// r2Get maps to null. Everything else (endpoint unreachable, expired/rotated
+// keys, bucket misconfig, throttling) is a real fault we must NOT swallow.
+function isMissingObject(err: unknown): boolean {
+  const name = (err as { name?: string })?.name;
+  const status = (err as { $metadata?: { httpStatusCode?: number } })?.$metadata
+    ?.httpStatusCode;
+  return name === "NoSuchKey" || name === "NotFound" || status === 404;
+}
 
 // Read env at call time (not module load) so config is never stale.
 function cfg() {
@@ -64,8 +75,14 @@ export async function r2Get(
     );
     const body = await res.Body!.transformToByteArray();
     return { body, contentType: res.ContentType };
-  } catch {
-    return null;
+  } catch (err) {
+    // Only a genuinely absent object is a null (→ 404). Any other S3 error is
+    // an R2 fault: swallowing it as null would mask an outage as a 404 for
+    // every image and hide the incident from monitoring (#765). Log and
+    // rethrow so the caller can surface a 5xx.
+    if (isMissingObject(err)) return null;
+    log.error("r2 GetObject failed", { key, err });
+    throw err;
   }
 }
 

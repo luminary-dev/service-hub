@@ -95,8 +95,23 @@ export function isKnownNamespace(namespace: string): boolean {
 // misconfiguration.
 export const VERIFICATION_PREFIX = "verification";
 
+// Collapse `.`/`..` segments and strip leading slashes so a subpath resolves to
+// a single canonical form BEFORE it is used to gate PII or build an R2 key. The
+// local-disk resolver already normalises (resolveFilePath), but R2's flat
+// keystore does not, and — critically — the PII gate must not be fooled by a
+// traversal subpath whose *raw* first segment looks innocent
+// (`uploads/../verification/<uuid>.jpg`) yet resolves into the reserved
+// verification prefix (#741).
+export function normalizeSubpath(subpath: string): string {
+  return path.normalize(subpath).replace(/^([/\\])+/, "");
+}
+
 export function isVerificationSubpath(subpath: string): boolean {
-  return subpath.split("/")[0] === VERIFICATION_PREFIX;
+  // Gate on the NORMALIZED path (#741): a raw first-segment check
+  // (`split("/")[0]`) is bypassable via `uploads/../verification/...`, which
+  // path.normalize collapses back into the reserved prefix. Reject if ANY
+  // normalized segment is the verification prefix.
+  return normalizeSubpath(subpath).split(path.sep).includes(VERIFICATION_PREFIX);
 }
 
 // The extensions we serve, mapped to their content-type (processed uploads are
@@ -261,7 +276,10 @@ export async function readStoredFile(
 ): Promise<{ data: Uint8Array<ArrayBuffer>; contentType: string } | null> {
   const m = /^\/api\/files\/([a-z]+)\/(.+)$/.exec(url);
   if (!m || !NAMESPACES.has(m[1])) return null;
-  const [, namespace, subpath] = m;
+  const [, namespace] = m;
+  // Normalize before building the key/path (#741) so a traversal subpath can't
+  // address a non-canonical R2 key or escape the namespace root on disk.
+  const subpath = normalizeSubpath(m[2]);
   const contentType = contentTypeFor(subpath);
   if (!contentType) return null;
   if (r2Enabled()) {
