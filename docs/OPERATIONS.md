@@ -482,6 +482,8 @@ so `migrate deploy` stops erroring with P3005); fresh DBs never need it.
 | redis | 6379 | rate-limit windows + session-revocation list + email queue |
 | prometheus | 9090 | scrapes every service's `/metrics` (loopback-only host port) |
 | grafana | 3000 (host **3001**) | dashboards; loopback-only (3000 is the web app) |
+| loki | 3100 | log store; loopback-only host port |
+| alloy | 12345 | log shipper UI; loopback-only host port |
 
 In the **dev compose stack** every published port except web's `3000` is bound
 to **127.0.0.1** (#387): on shared wifi nobody else can reach Postgres (its dev
@@ -560,32 +562,66 @@ Prometheus metrics at `GET /metrics` on its own port via an identical
 scrapes it directly — and that is safe because the service ports are never
 public (loopback-bound in dev, `backend`-only network in prod).
 
-**The stack.** `docker-compose.yml` and `docker-compose.prod.yml` add two
+**Log aggregation (#668).** Every service already emits **one JSON line per
+event** to stdout (`{ level, time, service, msg, requestId, … }` — see each
+service's `src/lib/logging.ts`). The stack now ships those into Loki so they're
+searchable in Grafana and one request can be traced across all ten services by
+its `requestId`. No app code changed — this is purely the collect/store/query
+plumbing.
+
+**The stack.** `docker-compose.yml` and `docker-compose.prod.yml` add these
 services:
 
 - **Prometheus** — scrapes all ten services every 15s
   (`deploy/observability/prometheus.yml`). Prod pins the image by digest (#238)
   and caps TSDB retention at 15d.
-- **Grafana** — auto-provisions a Prometheus datasource and a starter **RED**
-  dashboard (request rate / error rate / p50-p95-p99 latency, templated by
-  service) from `deploy/observability/grafana/`.
+- **Loki** — the log store. Single-binary, filesystem-backed (config at
+  `deploy/observability/loki/loki-config.yaml`, TSDB + schema v13, 7d
+  retention). Prod pins the image by digest.
+- **Grafana Alloy** — the log shipper (config at
+  `deploy/observability/alloy/config.alloy`). It discovers every container via
+  the Docker daemon socket (mounted **read-only**), tails stdout, parses the
+  JSON, and pushes to Loki. `service` and `level` become stream labels;
+  `requestId` is stored as **structured metadata** (a label would explode
+  cardinality). We use Alloy rather than Promtail because Promtail reached
+  end-of-life in early 2026; Alloy is Grafana's supported successor and ships to
+  Loki with the same model. Prod pins the image by digest.
+- **Grafana** — auto-provisions **Prometheus + Loki** datasources and starter
+  dashboards from `deploy/observability/grafana/`: **RED** (request rate / error
+  rate / p50-p95-p99 latency, templated by service) and **Logs** (log volume by
+  level + a live log panel, filterable by service, level, and requestId).
+
+Loki and Alloy need **no new secret**.
 
 **Reaching Grafana.**
 
-- *Dev*: `docker compose up -d prometheus grafana`, then
-  <http://localhost:3001> (user `admin`, password `GRAFANA_ADMIN_PASSWORD`,
-  default `admin`). Prometheus is at <http://localhost:9090>. Both host ports
-  are loopback-bound (#387).
-- *Prod*: neither is a public surface — both live on the `backend` network and
+- *Dev*: `docker compose up -d prometheus grafana loki alloy` (Grafana already
+  depends on Loki), then <http://localhost:3001> (user `admin`, password
+  `GRAFANA_ADMIN_PASSWORD`, default `admin`). Prometheus is at
+  <http://localhost:9090>, Loki's API at <http://localhost:3100>, Alloy's UI at
+  <http://localhost:12345>. Every host port is loopback-bound (#387).
+- *Prod*: none of it is a public surface — all live on the `backend` network and
   publish **loopback-only** host ports (no Caddy route). Reach Grafana through
   an SSH tunnel: `ssh -L 3001:127.0.0.1:3001 <server>`, then
   <http://localhost:3001>. `GRAFANA_ADMIN_PASSWORD` is a **required** secret
   (the stack refuses to start without it); see `.env.prod.example`.
 
-**Planned follow-ups (still open on #668).** This slice is metrics only. Log
-aggregation (Loki), distributed tracing (OTel/Tempo), and an error-capture
-backend (Sentry/GlitchTip — the **#34** fold-in) are deliberately deferred to
-follow-up PRs; structured JSON logs and the `onError` /
+**Querying logs / tracing a request.** In Grafana, open **Explore** (or the
+**Logs** dashboard) and pick the **Loki** datasource. LogQL examples:
+
+- All errors across the platform: `{level="error"}`
+- One service's logs: `{service="provider-service"}`
+- **Trace one request across every service** — copy its `requestId` (the
+  gateway generates it and propagates it as `x-request-id`, so the same id
+  follows a request everywhere) and query:
+  `{service=~".+"} | requestId=` *(paste the id)*. The Logs dashboard exposes a
+  **Request ID** textbox that does exactly this. Because `requestId` is
+  structured metadata, this stays fast without inflating stream cardinality.
+
+**Planned follow-ups (still open on #668).** With metrics (Prometheus) and logs
+(Loki) in place, the remaining two legs are **distributed tracing** (OTel/Tempo)
+and an **error-capture backend** (Sentry/GlitchTip — the **#34** fold-in). Both
+are deferred to follow-up PRs; the structured JSON logs and the `onError` /
 `installProcessErrorHandlers` choke points described under
 [Monitoring & alerting](#monitoring--alerting) are the hooks those will build
 on.

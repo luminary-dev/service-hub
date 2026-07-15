@@ -79,9 +79,10 @@ The rest of the architecture reference is split into focused pages:
 - **[Web app & local development](architecture/web-and-dev.md)** — the web
   app's request-time proxy and the local dev workflow.
 
-Two internal-only operational services round out the stack, both on the
-`backend` network with loopback-only host ports and no Caddy route: the
-**metrics pair** (Prometheus + Grafana) and the **feature-flag server**
+Internal-only operational services round out the stack, all on the `backend`
+network with loopback-only host ports and no Caddy route: the **observability
+stack** (Prometheus for metrics + Loki/Grafana Alloy for logs, fronted by
+Grafana, #668) and the **feature-flag server**
 (self-hosted Unleash + its own Postgres, #675). Flags are evaluated
 **server-side** in the web app via `src/lib/flags.ts`, which degrades
 gracefully — with the flag env unset it's a no-op that returns each flag's coded

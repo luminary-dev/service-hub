@@ -1,0 +1,86 @@
+// Grafana Alloy — the log shipper for the service-hub stack (#668,
+// log-aggregation follow-up). Mounted read-only into the alloy container by
+// both docker-compose.yml and docker-compose.prod.yml.
+//
+// Why Alloy (not Promtail): Promtail reached end-of-life in early 2026 and is
+// no longer maintained; Alloy is Grafana's supported successor and ships logs
+// to Loki with the same model. It discovers every running container via the
+// Docker daemon socket (mounted read-only), tails stdout/stderr, parses the one
+// JSON line per event the services emit (see each service's src/lib/logging.ts:
+// { level, time, service, msg, requestId, ... }), and pushes to Loki.
+
+// Discover running Docker containers from the daemon socket.
+discovery.docker "containers" {
+	host = "unix:///var/run/docker.sock"
+}
+
+// Derive stable labels from Docker metadata: the container name and the compose
+// service name (docker-compose stamps com.docker.compose.service on every
+// container it starts).
+discovery.relabel "containers" {
+	targets = discovery.docker.containers.targets
+
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/?(.*)"
+		target_label  = "container"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+		target_label  = "compose_service"
+	}
+}
+
+// Tail the discovered containers' logs and forward to the JSON-parsing pipeline.
+loki.source.docker "containers" {
+	host          = "unix:///var/run/docker.sock"
+	targets       = discovery.relabel.containers.output
+	forward_to    = [loki.process.parse.receiver]
+	relabel_rules = discovery.relabel.containers.rules
+}
+
+// Parse the structured JSON log line. `service` and `level` become stream
+// labels (low cardinality, the axes you slice by); `requestId` becomes
+// structured metadata (high cardinality — a label would blow up Loki), so one
+// request can be traced across services with
+// `{compose_service=~".+"} | requestId="<uuid>"`. Non-JSON lines (a service
+// printing a raw crash before the logger is up, third-party images) fall
+// through unparsed and are still shipped with their container labels.
+loki.process "parse" {
+	forward_to = [loki.write.default.receiver]
+
+	stage.json {
+		expressions = {
+			service   = "service",
+			level     = "level",
+			requestId = "requestId",
+			timestamp = "time",
+		}
+	}
+
+	stage.labels {
+		values = {
+			service = "",
+			level   = "",
+		}
+	}
+
+	stage.structured_metadata {
+		values = {
+			requestId = "",
+		}
+	}
+
+	// Use the app's own event time when present so line ordering is accurate.
+	stage.timestamp {
+		source = "timestamp"
+		format = "RFC3339"
+	}
+}
+
+loki.write "default" {
+	endpoint {
+		url = "http://loki:3100/loki/api/v1/push"
+	}
+}
