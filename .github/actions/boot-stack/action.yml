@@ -1,0 +1,88 @@
+name: Boot the compose stack
+description: >-
+  Bake (with the shared GHA layer cache), boot and seed the full docker-compose
+  dev stack, then wait for the web app on :3000. Shared by the curl smoke
+  (`e2e`) and the browser tiers (`playwright`, `lighthouse`) so all three boot
+  the stack identically instead of drifting (#671). Read-only cache like
+  trivy-image: no `cache-to`, so a feature branch can never poison the shared
+  cache. Run `actions/checkout` in the job before this.
+
+runs:
+  using: composite
+  steps:
+    - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+    - name: Build images (warm layer cache)
+      # Pre-build the eleven compose images with bake so the boot reuses
+      # deploy.yml's per-image GHA layer cache instead of cold-building every
+      # PR (#573). `load` imports them into the daemon under the exact names
+      # compose expects (service-hub-<name>), so the boot below runs
+      # --no-build.
+      uses: docker/bake-action@d3418bd7d0e9324001bca92fa8ba175ea7e6dc9b # v7.3.0
+      with:
+        source: .
+        files: docker-compose.yml
+        load: true
+        set: |
+          web.tags=service-hub-web
+          web.cache-from=type=gha,scope=web
+          identity-service.tags=service-hub-identity-service
+          identity-service.cache-from=type=gha,scope=identity-service
+          provider-service.tags=service-hub-provider-service
+          provider-service.cache-from=type=gha,scope=provider-service
+          review-service.tags=service-hub-review-service
+          review-service.cache-from=type=gha,scope=review-service
+          job-service.tags=service-hub-job-service
+          job-service.cache-from=type=gha,scope=job-service
+          notification-service.tags=service-hub-notification-service
+          notification-service.cache-from=type=gha,scope=notification-service
+          media-service.tags=service-hub-media-service
+          media-service.cache-from=type=gha,scope=media-service
+          chat-service.tags=service-hub-chat-service
+          chat-service.cache-from=type=gha,scope=chat-service
+          search-service.tags=service-hub-search-service
+          search-service.cache-from=type=gha,scope=search-service
+          trust-safety-service.tags=service-hub-trust-safety-service
+          trust-safety-service.cache-from=type=gha,scope=trust-safety-service
+          api-gateway.tags=service-hub-api-gateway
+          api-gateway.cache-from=type=gha,scope=api-gateway
+    - name: Boot the stack
+      shell: bash
+      run: docker compose up -d --no-build --wait --wait-timeout 300
+    - name: Wait for web
+      shell: bash
+      run: |
+        for i in $(seq 1 30); do
+          if curl -fsS http://localhost:3000/ >/dev/null 2>&1; then echo "web ready"; exit 0; fi
+          sleep 2
+        done
+        echo "web did not become ready"; docker compose ps; exit 1
+    - name: Seed databases
+      # The prod images run with NODE_ENV=production, where the seed script
+      # refuses to create demo data unless explicitly overridden. Opt in here.
+      shell: bash
+      run: |
+        for s in identity-service provider-service review-service job-service notification-service trust-safety-service; do
+          docker compose exec -T -e SEED_DEMO_DATA=true "$s" npm run db:seed
+        done
+    - name: Reindex search
+      # The /providers listing is served by search-service's DERIVED
+      # ProviderIndex, which starts EMPTY — seeding the source DBs above isn't
+      # enough. Populate it from the seeded source of truth (the sweep the ops
+      # cron runs daily) so the browse listing actually has cards; without this
+      # the browser E2E specs that navigate the listing find zero providers.
+      # Mirrors scripts/e2e-smoke.sh's own reindex, so the smoke's later call
+      # becomes a harmless idempotent second one. 4008 is loopback-bound. Retry
+      # while search-service is still warming, and assert indexed > 0.
+      shell: bash
+      run: |
+        secret="${INTERNAL_API_SECRET:-dev-internal-secret}"
+        for i in $(seq 1 15); do
+          body="$(curl -fsS -X POST "http://localhost:4008/internal/search/reindex" \
+            -H "x-internal-secret: $secret" 2>/dev/null || true)"
+          indexed="$(printf '%s' "$body" | grep -oE '"indexed":[0-9]+' | grep -oE '[0-9]+' || true)"
+          if [ -n "$indexed" ] && [ "$indexed" -gt 0 ]; then
+            echo "search reindexed: $indexed provider(s)"; exit 0
+          fi
+          echo "reindex attempt $i not ready yet: '${body:0:120}'"; sleep 3
+        done
+        echo "search reindex did not report indexed>0"; docker compose ps; exit 1
