@@ -6,6 +6,13 @@
 export const DEFAULT_PAGE_SIZE = 20;
 export const MAX_PAGE_SIZE = 50;
 
+// Deep-pagination guard (#657/#753): `page` feeds the SQL OFFSET
+// (`(page - 1) * pageSize`), so an unbounded page number lets a caller force
+// Postgres to scan-and-discard an arbitrarily large prefix — and a huge value
+// (e.g. `?page=1e300`) overflows the 64-bit skip Prisma rejects with a 500.
+// Cap it in lockstep with search-service's MAX_PAGE.
+export const MAX_PAGE = 500;
+
 // Cap on the number of ids fanned out to a single S2S hydration batch, so the
 // `?ids=` query string / IN (...) clause can't grow without bound even if a
 // page somehow carries more distinct ids. Mirrors provider-service's
@@ -30,7 +37,7 @@ export function normalizeListQuery(params: {
   pageSize?: string | null;
   take?: string | null;
 }): ListQuery {
-  const page = toPositiveInt(params.page, 1);
+  const page = Math.min(MAX_PAGE, toPositiveInt(params.page, 1));
   const pageSize = Math.min(
     MAX_PAGE_SIZE,
     toPositiveInt(params.pageSize ?? params.take, DEFAULT_PAGE_SIZE)

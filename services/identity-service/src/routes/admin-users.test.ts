@@ -409,3 +409,41 @@ describe("Redis revocation-list publishing (#374)", () => {
     expect(publishRevocation).not.toHaveBeenCalled();
   });
 });
+
+// #753: `page` feeds `skip = (page - 1) * PAGE_SIZE`, so it must be clamped to
+// MAX_PAGE (500) — otherwise a huge `?page=` overflows the 64-bit skip Prisma
+// rejects with a 500 and forces a full-match-set scan.
+describe("GET /api/admin/users pagination cap (#753)", () => {
+  beforeEach(() => {
+    db.user.findMany.mockResolvedValue([]);
+    db.user.count.mockResolvedValue(0);
+  });
+
+  function listPage(page: string) {
+    return app.request(`/api/admin/users?page=${page}`, {
+      headers: {
+        "x-user-id": "admin1",
+        "x-user-role": "ADMIN",
+        "x-user-name": "Admin",
+      },
+    });
+  }
+
+  it("passes a normal page straight through", async () => {
+    const res = await listPage("3");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ page: 3 });
+    expect(db.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 2 * 20, take: 20 })
+    );
+  });
+
+  it("clamps an oversized page to 500 so skip stays int-safe", async () => {
+    const res = await listPage("1e300");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ page: 500 });
+    expect(db.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 499 * 20, take: 20 })
+    );
+  });
+});

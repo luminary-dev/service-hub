@@ -21,6 +21,12 @@ export const adminUsersRoutes = new Hono();
 
 const PAGE_SIZE = 20;
 
+// Deep-pagination guard (#657/#753): `page` feeds `skip = (page - 1) * PAGE_SIZE`,
+// so an unbounded page number lets a caller force Postgres to scan-and-discard an
+// arbitrarily large prefix — and a huge value overflows the 64-bit skip Prisma
+// rejects with a 500. Cap it in lockstep with search-service's MAX_PAGE.
+const MAX_PAGE = 500;
+
 type UserRow = {
   id: string;
   email: string;
@@ -58,7 +64,7 @@ adminUsersRoutes.get("/api/admin/users", async (c) => {
   }
 
   const q = (c.req.query("q") ?? "").trim();
-  const page = Math.max(1, Number(c.req.query("page")) || 1);
+  const page = Math.min(MAX_PAGE, Math.max(1, Number(c.req.query("page")) || 1));
 
   const where = q
     ? {
