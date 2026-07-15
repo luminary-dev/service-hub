@@ -23,6 +23,11 @@ RUN npm run build
 FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+# Distributed tracing (#668): OTel resource service.name for this service.
+# Harmless when tracing is off — src/tracing.js only reads it once the SDK
+# starts, which requires OTEL_EXPORTER_OTLP_ENDPOINT (unset in dev/CI). Baked
+# into the image so the canonical src/tracing.ts stays byte-identical.
+ENV OTEL_SERVICE_NAME=provider-service
 
 COPY package.json package-lock.json prisma.config.ts ./
 COPY prisma ./prisma

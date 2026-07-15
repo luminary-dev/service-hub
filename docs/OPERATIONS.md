@@ -672,10 +672,65 @@ this heavy stack.
 This **closes #34**. Web (Next.js) error capture is intentionally **out of
 scope** here and tracked as a follow-up.
 
-**Planned follow-up (still open on #668).** With metrics (Prometheus), logs
-(Loki), and error capture (GlitchTip) in place, the one remaining leg is
-**distributed tracing** (OTel/Tempo), deferred to a follow-up PR. Web (Next.js)
-error capture is the other open thread.
+**Distributed tracing (Grafana Tempo + OpenTelemetry, #668 — COMPLETES #668).**
+The fourth and final leg. Every backend service (gateway included) auto-exports
+OpenTelemetry spans so one request's path — gateway → services → Postgres /
+Redis / S2S fetch — is a single trace, complementing the metrics (rates) and
+logs (`requestId`) already in place.
+
+- **Per-service bootstrap.** Each service keeps an identical `src/tracing.ts`
+  (the canonical-copy convention, enforced by `src/lib/shared-copies.test.ts`)
+  that starts the OTel Node SDK with `@opentelemetry/auto-instrumentations-node`
+  — HTTP server + client, `undici`/fetch (S2S), `pg`/Prisma, and `ioredis` — and
+  an OTLP/HTTP exporter. The resource **`service.name`** comes from
+  `OTEL_SERVICE_NAME`, baked into each service's Dockerfile, so the file stays
+  byte-identical across services.
+- **Graceful degradation is mandatory.** Tracing is gated on
+  **`OTEL_EXPORTER_OTLP_ENDPOINT`**. Unset (the default — every dev machine and
+  CI) → `startTracing()` does nothing: no SDK, no exporter, no network. And it
+  is not even *loaded* on the default stack: activation is `NODE_OPTIONS=--require
+  ./dist/tracing.js`, which the base Dockerfile CMD and a plain
+  `docker compose up` (what CI's e2e/playwright boot) never set. So a plain dev
+  stack and CI are completely unaffected.
+- **The stack** (both compose files): **Grafana Tempo** (the trace store,
+  filesystem-backed, 48h retention — `deploy/observability/tempo/tempo.yaml`) +
+  an **OpenTelemetry Collector** (the span pipeline — batches and forwards to
+  Tempo — `deploy/observability/otel-collector/config.yaml`). Services export to
+  `otel-collector:4318` → `tempo:4317`; Grafana queries Tempo on `:3200`. Both
+  need **no secret**. Prod pins both images by digest (#238) and keeps them
+  **internal-only** (`backend` network, loopback host ports, no Caddy route),
+  the same posture as Prometheus/Loki. Grafana auto-provisions a **Tempo**
+  datasource with **trace → logs** correlation (a span links to that service's
+  Loki logs over its time window, mapping the OTel `service.name` onto Loki's
+  `service` stream label).
+
+**Enabling tracing.**
+
+- *Dev* — off by default. Set both in the root `.env`:
+  `OTEL_NODE_OPTIONS=--require ./dist/tracing.js` and
+  `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318`, then bring the stack
+  up **with the tracing profile** so Tempo + the collector start:
+  `docker compose --profile tracing up -d --build`. (The backend services must
+  be recreated to pick up the new `NODE_OPTIONS`.) Tempo behind the `tracing`
+  profile mirrors GlitchTip's `errors` profile — a plain `docker compose up`
+  stays light and never starts it.
+- *Prod* — **on by default**, no secret required: `NODE_OPTIONS` and
+  `OTEL_EXPORTER_OTLP_ENDPOINT` are set in `docker-compose.prod.yml`, and Tempo +
+  the collector always run. The only knob is the **sample rate**
+  (`OTEL_TRACES_SAMPLER_ARG`, default `0.1` = 10% of root traces; see
+  `.env.prod.example`). `NODE_OPTIONS` applies to every node process in the
+  container, but `tracing.ts` only stands up the SDK for the app entrypoint
+  (`node dist/index.js`), so `npm` / `prisma migrate deploy` stay untraced.
+
+**Viewing traces.** In Grafana, open **Explore** and pick the **Tempo**
+datasource — search by service, duration, or TraceQL
+(`{ resource.service.name = "identity-service" }`), open a trace to see the
+span tree across services, and use **"Logs for this span"** to jump to the
+matching Loki lines. Reach Grafana the same way as for metrics/logs above
+(loopback :3001, SSH tunnel in prod).
+
+This **completes #668** (metrics + logs + error capture + tracing). Web
+(Next.js) tracing/error capture remains intentionally out of scope.
 
 ## Feature flags (#675)
 

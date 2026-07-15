@@ -22,3 +22,38 @@ datasources:
     url: http://loki:3100
     isDefault: false
     editable: false
+
+  # Tempo distributed tracing (#668, tracing follow-up — COMPLETES #668). Spans
+  # arrive services → otel-collector → tempo; Grafana queries Tempo on :3200.
+  # In prod Tempo always runs; in dev it only runs under the `tracing` compose
+  # profile, so until that profile is up this datasource simply shows no data
+  # (it never blocks Grafana from starting). Reached by Docker-network name.
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    isDefault: false
+    editable: false
+    jsonData:
+      # Trace → logs correlation: from a span, jump to that service's logs in
+      # Loki over the span's time window. The OTel resource `service.name`
+      # (set per service via OTEL_SERVICE_NAME) maps onto Loki's `service`
+      # stream label (see deploy/observability/alloy/config.alloy), so the
+      # jump lands on the right service. Widen the window a little each side to
+      # catch clock skew. requestId lives in the logs as structured metadata
+      # and on the span as an http header attribute, so you can narrow further
+      # by hand once you land in Loki.
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: "-1h"
+        spanEndTimeShift: "1h"
+        filterByTraceID: false
+        filterBySpanID: false
+        tags:
+          - key: service.name
+            value: service
+      tracesToMetrics:
+        datasourceUid: prometheus
+      nodeGraph:
+        enabled: true

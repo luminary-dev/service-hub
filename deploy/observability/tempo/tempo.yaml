@@ -1,0 +1,47 @@
+# Grafana Tempo — the trace store for the service-hub stack (#668, distributed
+# tracing follow-up, COMPLETES #668). Single-binary, filesystem-backed on the
+# VPS disk (like Loki). Mounted read-only into the tempo container by both
+# docker-compose.yml (dev, behind the `tracing` profile) and
+# docker-compose.prod.yml (always on). The OTel Collector forwards spans here
+# over OTLP/gRPC; Grafana's Tempo datasource queries it on :3200.
+#
+# Every backend service ships spans via NODE_OPTIONS=--require ./dist/tracing.js
+# (see each service's src/tracing.ts) → otel-collector:4318 → tempo:4317.
+
+server:
+  http_listen_port: 3200
+  grpc_listen_port: 9095
+
+# Accept OTLP directly too (gRPC/HTTP) so the collector — or, in a pinch, a
+# service — can push straight to Tempo. The collector is the normal path.
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+ingester:
+  # Flush blocks promptly so recent traces are queryable on a small stack.
+  max_block_duration: 5m
+
+compactor:
+  compaction:
+    # Bounded retention so the trace store can't fill the single VPS's disk.
+    # Traces are for recent debugging; raise this if you need a longer window.
+    block_retention: 48h
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks
+
+# No phone-home — Tempo lives on the internet-less `backend` network in prod
+# (same posture as Unleash / the rest of the observability stack).
+usage_report:
+  reporting_enabled: false
