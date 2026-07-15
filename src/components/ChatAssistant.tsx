@@ -21,6 +21,29 @@ type InquiryDraft = {
 
 type ProposalStatus = "pending" | "sending" | "sent" | "error" | "cancelled";
 
+// Routes where the concierge FAB has no purpose and actively gets in the way —
+// it floats over form controls and legal copy on mobile (#707). Auth,
+// onboarding and legal pages: nobody is browsing for a provider here. Matched
+// against the locale-stripped path so the /si variants are covered too, and
+// against the "-" boundary so /verify-email also catches /verify-email-change.
+const HIDDEN_PREFIXES = [
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/reset-password",
+  "/verify-email",
+  "/welcome",
+  "/terms",
+  "/privacy",
+];
+
+function isHiddenRoute(pathname: string): boolean {
+  const path = localizedHref(pathname, "en");
+  return HIDDEN_PREFIXES.some(
+    (p) => path === p || path.startsWith(`${p}/`) || path.startsWith(`${p}-`)
+  );
+}
+
 type Msg =
   | { role: "user" | "assistant"; content: string }
   | { role: "proposal"; draft: InquiryDraft; status: ProposalStatus };
@@ -193,6 +216,10 @@ export default function ChatAssistant() {
   function cancelProposal(index: number) {
     setMessages((prev) => setProposalStatus(prev, index, "cancelled"));
   }
+
+  // Hooks above always run; only the render is gated so we don't mount the FAB
+  // over auth/onboarding/legal controls (#707).
+  if (isHiddenRoute(pathname)) return null;
 
   return (
     <>

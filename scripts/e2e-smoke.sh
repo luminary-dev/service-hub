@@ -37,6 +37,27 @@ req() { # req <jar> <method> <path> [curl args...]
   curl -sS -X "$method" "$WEB$path" -b "$jar" -c "$jar" -H "Origin: $WEB" "$@"
 }
 
+# The route error boundary (src/components/ui/RouteError.tsx, rendered by every
+# error.tsx, and the root src/app/global-error.tsx) shows this exact copy on any
+# SSR crash — its presence in a page's HTML means the segment threw and fell
+# back to the error UI instead of rendering.
+ERROR_BOUNDARY_TEXT="Something went wrong"
+
+check_renders() { # check_renders <name> <jar> <path> <expected-marker>
+  # Fetch a server-rendered page with an authenticated jar and assert it (a)
+  # served its own content (the marker) and (b) did NOT fall back to the route
+  # error boundary. Catches SSR crashes the API-only checks miss (#711/#706).
+  local name="$1" jar="$2" path="$3" marker="$4" html
+  html="$(req "$jar" GET "$path")"
+  if [[ "$html" == *"$ERROR_BOUNDARY_TEXT"* ]]; then
+    FAIL=$((FAIL + 1)); echo "FAIL - $name (hit error boundary: '$ERROR_BOUNDARY_TEXT')"
+  elif [[ "$html" != *"$marker"* ]]; then
+    FAIL=$((FAIL + 1)); echo "FAIL - $name (missing marker '$marker', got '${html:0:200}')"
+  else
+    PASS=$((PASS + 1)); echo "ok   - $name"
+  fi
+}
+
 echo "== Health =="
 # Probe every backend service 4000-4009 (gateway + the nine services, including
 # chat on 4007 and the dark-launched trust-safety on 4009 — both are booted and
@@ -208,6 +229,20 @@ check "admin unsuspend" "$(req admin PATCH "/api/admin/providers/$NEW_PROV_ID" -
 check "admin verify" "$(req admin PATCH "/api/admin/providers/$NEW_PROV_ID" -H 'content-type: application/json' \
   -d '{"action":"verify"}' | jq -r '.ok')" "true"
 check "admin page renders" "$(req admin GET "/admin/providers")" "Baas"
+
+echo "== Authenticated page renders (SSR crash guard, #711) =="
+# The API-only admin checks above (and the "renders → Baas" checks) missed a
+# full SSR crash on /admin/providers (fixed in #706): the shell still shipped
+# "Baas" from the layout while the page body fell back to the error boundary.
+# These fetch the SSR HTML for key authed pages with the already-logged-in jars
+# (admin/prov/cust) and assert each shows its own content AND did not hit the
+# route error boundary.
+check_renders "admin overview renders"       admin /admin               "Platform metrics"
+check_renders "admin providers renders"      admin /admin/providers     "Providers"
+check_renders "admin verifications renders"  admin /admin/verifications "Verification requests"
+check_renders "admin users renders"          admin /admin/users         "Users"
+check_renders "provider dashboard renders"   prov  /dashboard           "Dashboard"
+check_renders "customer account renders"     cust  /account             "My account"
 
 echo "== CSRF protection =="
 check "cross-site POST blocked" "$(curl -sS -X POST "$WEB/api/auth/logout" \

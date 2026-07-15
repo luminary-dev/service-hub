@@ -43,6 +43,38 @@ describe("ChatAssistant", () => {
     expect(screen.getByText(t.greeting)).toBeTruthy();
   });
 
+  // #707: the concierge FAB floats over form controls and legal copy on
+  // auth/onboarding/legal pages, so it is not rendered there. Gating is by the
+  // locale-stripped path, so the /si variants are covered too.
+  it.each([
+    "/login",
+    "/register",
+    "/register/customer",
+    "/forgot-password",
+    "/reset-password",
+    "/verify-email",
+    "/verify-email-change",
+    "/welcome",
+    "/terms",
+    "/privacy",
+    "/si/login",
+    "/si/register/provider",
+  ])("renders nothing on %s", (pathname) => {
+    mockPathname = pathname;
+    const { container } = render(<ChatAssistant />);
+    expect(container.firstChild).toBeNull();
+    expect(screen.queryByRole("button", { name: t.open })).toBeNull();
+  });
+
+  it.each(["/", "/providers", "/si/providers", "/jobs"])(
+    "renders the launcher on the public/customer surface (%s)",
+    (pathname) => {
+      mockPathname = pathname;
+      render(<ChatAssistant />);
+      expect(screen.getByRole("button", { name: t.open })).toBeTruthy();
+    }
+  );
+
   it("closes the panel on Escape", () => {
     render(<ChatAssistant />);
     fireEvent.click(screen.getByRole("button", { name: t.open }));
