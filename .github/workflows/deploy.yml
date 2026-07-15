@@ -129,7 +129,7 @@ jobs:
           # docker-compose.prod.yml's ${VAR:?} guards fail loudly on a missing
           # required one (AUTH_SECRET / INTERNAL_API_SECRET / POSTGRES_PASSWORD /
           # the per-service *_DB_PASSWORDs / REDIS_PASSWORD / GRAFANA_ADMIN_PASSWORD /
-          # WEB_ORIGIN / DOMAIN).
+          # UNLEASH_DB_PASSWORD / WEB_ORIGIN / DOMAIN).
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           INTERNAL_API_SECRET: ${{ secrets.INTERNAL_API_SECRET }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
@@ -159,6 +159,11 @@ jobs:
           FACEBOOK_CLIENT_SECRET: ${{ secrets.FACEBOOK_CLIENT_SECRET }}
           # Observability (#668): required by docker-compose.prod.yml's Grafana.
           GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+          # Feature flags (#675): UNLEASH_DB_PASSWORD is REQUIRED by the flag
+          # stack; UNLEASH_FRONTEND_TOKEN is optional (the activation switch —
+          # unset → the web app degrades to coded flag defaults).
+          UNLEASH_DB_PASSWORD: ${{ secrets.UNLEASH_DB_PASSWORD }}
+          UNLEASH_FRONTEND_TOKEN: ${{ secrets.UNLEASH_FRONTEND_TOKEN }}
         run: |
           install -m 600 /dev/stdin "$HOME/deploy_key" <<< "$SSH_KEY"
           # Host-key pinning (#388): the runner's known_hosts is empty every
@@ -188,6 +193,7 @@ jobs:
                      IDENTITY_DB_PASSWORD PROVIDER_DB_PASSWORD REVIEW_DB_PASSWORD \
                      JOB_DB_PASSWORD NOTIFICATION_DB_PASSWORD SEARCH_DB_PASSWORD \
                      TRUST_SAFETY_DB_PASSWORD REDIS_PASSWORD GRAFANA_ADMIN_PASSWORD \
+                     UNLEASH_DB_PASSWORD UNLEASH_FRONTEND_TOKEN \
                      WEB_ORIGIN \
                      DOMAIN ACME_EMAIL ANTHROPIC_API_KEY RESEND_API_KEY EMAIL_FROM \
                      R2_ENDPOINT R2_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY \

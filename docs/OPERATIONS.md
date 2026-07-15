@@ -589,3 +589,78 @@ follow-up PRs; structured JSON logs and the `onError` /
 `installProcessErrorHandlers` choke points described under
 [Monitoring & alerting](#monitoring--alerting) are the hooks those will build
 on.
+
+## Feature flags (#675)
+
+Dark-launches and gradual rollouts (routing to trust-safety, gating Tamil,
+tuning search ranking, …) are runtime-controlled instead of hardcoded
+conditionals. We self-host **Unleash** (Apache-2.0) with its **own** Postgres —
+a separate container/volume/role, never the app cluster.
+
+**Why Unleash (over GrowthBook).** We evaluate flags **server-side** in Next
+server components. Unleash's Frontend API does full strategy evaluation
+(on/off, gradual-rollout stickiness, constraints) *inside the Unleash server*
+and returns just the enabled toggles, so `src/lib/flags.ts` stays a thin,
+bounded `fetch` with **no SDK dependency** and no client-side bundle. GrowthBook
+leans on an in-process SDK that pulls the full flag/experiment definition set
+and evaluates locally — heavier for our SSR-only, one-flag-today need. Unleash
+also self-hosts as a single container + Postgres, which drops cleanly into the
+existing compose/loopback/digest-pin patterns.
+
+**The graceful-default contract.** `src/lib/flags.ts` exposes
+`isFlagEnabled(name, fallback, ctx?)`. It **degrades gracefully** and must never
+block or error a render:
+
+- `UNLEASH_URL` / `UNLEASH_FRONTEND_TOKEN` **unset** (dev, CI, local, and prod
+  before you provision a token) → it's a pure **no-op**: no network call, returns
+  `fallback`. The app behaves exactly as it does today.
+- Service wired but unreachable / slow / bad response → bounded single fetch
+  (1.5s timeout), returns `fallback`. Result is cached ~30s per context.
+- Service reachable → a flag is **on iff it exists AND is enabled** in the
+  environment its token targets. The Frontend API returns only *enabled*
+  toggles, so a flag you have **not created** in Unleash reads as **off**.
+- `fallback` **must equal today's behavior** for the conditional you gate, so
+  the unset/unreachable path is indistinguishable from the flag's current state.
+
+> **Provisioning order (important).** Because an un-created flag reads as off,
+> always **create + enable your flags in the Unleash admin UI first**, and only
+> then set `UNLEASH_FRONTEND_TOKEN` on the web app. The token is the activation
+> switch — until it's set, the app stays on coded defaults and nothing flips.
+
+**Defining a flag.**
+
+1. Open the admin UI (loopback — see below), log in.
+2. Create a flag (type *Release*) with the exact name your code passes to
+   `isFlagEnabled` (e.g. `chat-assistant`). Set its state per environment
+   (`development` locally, `production` in prod). For a gradual rollout, use a
+   *Gradual rollout* strategy with a stickiness field (`userId`) and pass a
+   matching `ctx` from the caller.
+3. Create a **Frontend API token** scoped to the right project/environment
+   (format `<project>:<environment>.<secret>`), and set it as
+   `UNLEASH_FRONTEND_TOKEN` on the web app.
+
+**Demo flag shipped:** `chat-assistant` gates whether the customer-facing chat
+assistant renders (`src/app/layout.tsx`), fallback **`true`** = today's behavior.
+An operator can dark-launch it off from the admin UI with no redeploy.
+
+**Reaching the admin UI.**
+
+- *Dev*: it's behind the `flags` compose profile so a plain `docker compose up`
+  (and CI e2e) skip it. Start it with
+  `docker compose --profile flags up -d unleash`, then <http://localhost:4242>
+  (default login `admin` / `unleash4all`). Both host ports are loopback-bound
+  (#387). To try a flag locally: **create a Frontend API token** in that admin
+  UI (Settings → API access), create + enable your flag, then run the web app
+  with `UNLEASH_URL=http://localhost:4242/api` and `UNLEASH_FRONTEND_TOKEN=<that
+  token>`. No token literal is committed (the repo is public, #675) — if you'd
+  rather have Unleash pre-seed the token instead of creating it in the UI, put
+  `UNLEASH_FRONTEND_TOKEN=<project>:development.<any-secret>` in the root `.env`
+  **before** `docker compose --profile flags up` (compose passes it to Unleash's
+  `INIT_FRONTEND_API_TOKENS`) and reuse the same value for the web app.
+- *Prod*: internal-only — Unleash lives on the `backend` network with **no Caddy
+  route** and a **loopback** host port. Reach it via an SSH tunnel:
+  `ssh -L 4242:127.0.0.1:4242 <server>`, then <http://localhost:4242>.
+  `UNLEASH_DB_PASSWORD` is a **required** secret (the flag stack refuses to start
+  without it, like `GRAFANA_ADMIN_PASSWORD`); `UNLEASH_FRONTEND_TOKEN` is
+  **optional** (the activation switch). Both are in `.env.prod.example` and
+  rendered by `deploy.yml`. Images are digest-pinned (#238).
