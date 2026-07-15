@@ -28,10 +28,23 @@ browser ── same-origin /api/* ──> Next.js web (:3000)
 Infra: one **Postgres 16** cluster with **PostGIS** (image
 `postgis/postgis:16-3.5-alpine`; host port 5433 → container 5432) holding
 seven databases (`identity_db`, `provider_db`, `review_db`, `job_db`,
-`notification_db`, `search_db`, `trust_safety_db`), and **Redis 7** (gateway
-rate-limit window + notification-service's email delivery queue). Each service
-owns its database — no service touches another's tables; cross-service data
-access goes through internal HTTP endpoints. media/chat are stateless (no DB).
+`notification_db`, `search_db`, `trust_safety_db`), a **PgBouncer** transaction
+pooler (#674, port 6432) in front of it, and **Redis 7** (gateway rate-limit
+window + notification-service's email delivery queue). Each service owns its
+database — no service touches another's tables; cross-service data access goes
+through internal HTTP endpoints. media/chat are stateless (no DB).
+
+Every DB-owning service runs its own Prisma pool and is replicated, so
+`pool × replicas` would exhaust Postgres's `max_connections`; PgBouncer collapses
+those onto a small shared set of server connections. The Prisma catch: a
+transaction pooler can't carry `prisma migrate deploy`'s session state (advisory
+locks, prepared statements), so **runtime** queries use the pooled `DATABASE_URL`
+(`pgbouncer:6432/<db>?pgbouncer=true`, read by the `PrismaPg` adapter) while
+**migrations** use a `DIRECT_URL` straight to `postgres:5432` — which the Prisma
+CLI picks up because each `prisma.config.ts` resolves its datasource URL as
+`DIRECT_URL ?? DATABASE_URL` (Prisma 7 moved the CLI/migrate URL out of
+`schema.prisma`, where `directUrl` is no longer allowed, into that config). See
+[OPERATIONS.md → Connection pooling](OPERATIONS.md#connection-pooling-pgbouncer).
 `search_db` is special: a **derived, rebuildable index** over provider data
 (the [search & discovery RFC](rfcs/search-discovery-service.md)) — provider-
 and review-service push documents/ratings into it S2S, a daily reindex sweep

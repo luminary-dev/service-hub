@@ -155,6 +155,44 @@ services:
       timeout: 3s
       retries: 10
 
+  # PgBouncer transaction pooler (#674). Each DB service runs its own Prisma
+  # connection pool and is replicated, so pool x replicas would exhaust
+  # Postgres's max_connections. The pooler multiplexes those onto a small shared
+  # set of server connections. Services route RUNTIME queries here (DATABASE_URL,
+  # :6432, ?pgbouncer=true) and MIGRATIONS straight to Postgres (DIRECT_URL) —
+  # a transaction pooler can't carry migrate's advisory locks/prepared
+  # statements. Config is the mounted deploy/pgbouncer/pgbouncer.ini; the
+  # entrypoint builds userlist.txt from DATABASE_URLS below.
+  pgbouncer:
+    # dependabot: edoburu/pgbouncer:v1.25.2-p0
+    image: edoburu/pgbouncer:v1.25.2-p0@sha256:7d7a27d9e90985cab5cf42256f5c13a3120baa4b055b69df37beb272b89b2340
+    mem_limit: 128m
+    <<: [*restart, *logging, *hardening]
+    # Not read_only: the entrypoint writes the generated userlist.txt into
+    # /etc/pgbouncer on the rootfs. Runs as the image's non-root `postgres` user
+    # (uid 70), binds only 6432 (>1024), needs no added capabilities.
+    environment:
+      # Preserve the per-service least-privilege roles through the pooler (#387):
+      # one userlist entry per role, so a compromised service (which only knows
+      # its own role's password) can still only authenticate — and connect — as
+      # itself. scram-sha-256 makes the entrypoint store the plaintext password,
+      # which PgBouncer uses to authenticate the client AND SCRAM-auth to
+      # Postgres. These are the same secrets the postgres container already holds.
+      AUTH_TYPE: scram-sha-256
+      DATABASE_URLS: postgresql://identity:${IDENTITY_DB_PASSWORD:?}@postgres:5432/identity_db,postgresql://provider:${PROVIDER_DB_PASSWORD:?}@postgres:5432/provider_db,postgresql://review:${REVIEW_DB_PASSWORD:?}@postgres:5432/review_db,postgresql://job:${JOB_DB_PASSWORD:?}@postgres:5432/job_db,postgresql://notification:${NOTIFICATION_DB_PASSWORD:?}@postgres:5432/notification_db,postgresql://search:${SEARCH_DB_PASSWORD:?}@postgres:5432/search_db,postgresql://trust_safety:${TRUST_SAFETY_DB_PASSWORD:?}@postgres:5432/trust_safety_db
+    volumes:
+      - ./deploy/pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+    networks: [backend]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U postgres"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+
   identity-service:
     image: ghcr.io/luminary-dev/service-hub-identity-service:${IMAGE_TAG:-prod}
     mem_limit: 384m
@@ -167,7 +205,10 @@ services:
       PORT: 4001
       # Least-privilege DB role (#387): owns identity_db and nothing else, so a
       # compromised service can no longer read or write its peers' databases.
-      DATABASE_URL: postgresql://identity:${IDENTITY_DB_PASSWORD:?}@postgres:5432/identity_db
+      # Runtime queries go through the PgBouncer transaction pooler (#674).
+      DATABASE_URL: postgresql://identity:${IDENTITY_DB_PASSWORD:?}@pgbouncer:6432/identity_db?pgbouncer=true
+      # Migrations (start:migrate → prisma migrate deploy) go DIRECT to Postgres.
+      DIRECT_URL: postgresql://identity:${IDENTITY_DB_PASSWORD:?}@postgres:5432/identity_db
       AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required}
       # Shared session-revocation list (#374): identity publishes each
       # sessionVersion bump here so the gateway enforces revocations even during
@@ -190,6 +231,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck: *db-healthcheck
@@ -203,10 +246,15 @@ services:
     environment:
       <<: *service-env
       PORT: 4002
-      DATABASE_URL: postgresql://provider:${PROVIDER_DB_PASSWORD:?}@postgres:5432/provider_db
+      # Runtime queries go through the PgBouncer transaction pooler (#674).
+      DATABASE_URL: postgresql://provider:${PROVIDER_DB_PASSWORD:?}@pgbouncer:6432/provider_db?pgbouncer=true
+      # Migrations (start:migrate → prisma migrate deploy) go DIRECT to Postgres.
+      DIRECT_URL: postgresql://provider:${PROVIDER_DB_PASSWORD:?}@postgres:5432/provider_db
     networks: [backend]
     depends_on:
       postgres:
+        condition: service_healthy
+      pgbouncer:
         condition: service_healthy
       media-service:
         condition: service_healthy
@@ -221,10 +269,15 @@ services:
     environment:
       <<: *service-env
       PORT: 4003
-      DATABASE_URL: postgresql://review:${REVIEW_DB_PASSWORD:?}@postgres:5432/review_db
+      # Runtime queries go through the PgBouncer transaction pooler (#674).
+      DATABASE_URL: postgresql://review:${REVIEW_DB_PASSWORD:?}@pgbouncer:6432/review_db?pgbouncer=true
+      # Migrations (start:migrate → prisma migrate deploy) go DIRECT to Postgres.
+      DIRECT_URL: postgresql://review:${REVIEW_DB_PASSWORD:?}@postgres:5432/review_db
     networks: [backend]
     depends_on:
       postgres:
+        condition: service_healthy
+      pgbouncer:
         condition: service_healthy
       media-service:
         condition: service_healthy
@@ -239,10 +292,15 @@ services:
     environment:
       <<: *service-env
       PORT: 4004
-      DATABASE_URL: postgresql://job:${JOB_DB_PASSWORD:?}@postgres:5432/job_db
+      # Runtime queries go through the PgBouncer transaction pooler (#674).
+      DATABASE_URL: postgresql://job:${JOB_DB_PASSWORD:?}@pgbouncer:6432/job_db?pgbouncer=true
+      # Migrations (start:migrate → prisma migrate deploy) go DIRECT to Postgres.
+      DIRECT_URL: postgresql://job:${JOB_DB_PASSWORD:?}@postgres:5432/job_db
     networks: [backend]
     depends_on:
       postgres:
+        condition: service_healthy
+      pgbouncer:
         condition: service_healthy
     healthcheck: *db-healthcheck
 
@@ -255,12 +313,17 @@ services:
     environment:
       <<: *service-env
       PORT: 4008
-      DATABASE_URL: postgresql://search:${SEARCH_DB_PASSWORD:?}@postgres:5432/search_db
+      # Runtime queries go through the PgBouncer transaction pooler (#674).
+      DATABASE_URL: postgresql://search:${SEARCH_DB_PASSWORD:?}@pgbouncer:6432/search_db?pgbouncer=true
+      # Migrations (start:migrate → prisma migrate deploy) go DIRECT to Postgres.
+      DIRECT_URL: postgresql://search:${SEARCH_DB_PASSWORD:?}@postgres:5432/search_db
     # backend only — it calls no external APIs (RFC §7: map tiles/geocoding are
     # fetched by the browser, never by this service), so no egress.
     networks: [backend]
     depends_on:
       postgres:
+        condition: service_healthy
+      pgbouncer:
         condition: service_healthy
     healthcheck: *db-healthcheck
 
@@ -277,10 +340,15 @@ services:
     environment:
       <<: *service-env
       PORT: 4009
-      DATABASE_URL: postgresql://trust_safety:${TRUST_SAFETY_DB_PASSWORD:?}@postgres:5432/trust_safety_db
+      # Runtime queries go through the PgBouncer transaction pooler (#674).
+      DATABASE_URL: postgresql://trust_safety:${TRUST_SAFETY_DB_PASSWORD:?}@pgbouncer:6432/trust_safety_db?pgbouncer=true
+      # Migrations (start:migrate → prisma migrate deploy) go DIRECT to Postgres.
+      DIRECT_URL: postgresql://trust_safety:${TRUST_SAFETY_DB_PASSWORD:?}@postgres:5432/trust_safety_db
     networks: [backend]
     depends_on:
       postgres:
+        condition: service_healthy
+      pgbouncer:
         condition: service_healthy
     healthcheck: *db-healthcheck
 
@@ -295,7 +363,10 @@ services:
     environment:
       <<: *service-env
       PORT: 4005
-      DATABASE_URL: postgresql://notification:${NOTIFICATION_DB_PASSWORD:?}@postgres:5432/notification_db
+      # Runtime queries go through the PgBouncer transaction pooler (#674).
+      DATABASE_URL: postgresql://notification:${NOTIFICATION_DB_PASSWORD:?}@pgbouncer:6432/notification_db?pgbouncer=true
+      # Migrations (start:migrate → prisma migrate deploy) go DIRECT to Postgres.
+      DIRECT_URL: postgresql://notification:${NOTIFICATION_DB_PASSWORD:?}@postgres:5432/notification_db
       # Email delivery queue (BRPOPLPUSH + retries, RFC); Redis down → degraded
       # one-attempt direct sends (in-app rows are written inline either way).
       # `default` is the ACL user requirepass sets the password for (Redis 6+);
@@ -308,6 +379,8 @@ services:
     networks: [backend, egress]
     depends_on:
       postgres:
+        condition: service_healthy
+      pgbouncer:
         condition: service_healthy
       redis:
         condition: service_healthy
