@@ -569,6 +569,14 @@ Prometheus metrics at `GET /metrics` on its own port via an identical
 - **Node/process defaults** (`collectDefaultMetrics`): event-loop lag, heap, GC,
   fds, cpu. Every series carries a `service="<name>"` label stamped by
   `initMetrics()` (called once in each `src/index.ts`).
+- **`notification_emit_failures_total`** (#750) — a counter on the shared
+  `emitNotification` helper (provider/review/job), labelled `type` (the event
+  type) and `reason` (`status` for a non-2xx ack from notification-service,
+  `transport` for a network error/timeout). Notification sends are best-effort
+  and swallowed by contract, so a sustained rise here — together with the paired
+  `notification rejected` / `notification failed` log lines — is how ops detects
+  that in-app rows and emails are being dropped (e.g. notification-service's DB
+  is down). Worth an alert on a non-zero sustained rate.
 
 `/metrics` is deliberately **not** behind the internal secret — Prometheus
 scrapes it directly — and that is safe because the service ports are never

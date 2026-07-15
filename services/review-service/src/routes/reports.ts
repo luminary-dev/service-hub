@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client";
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
+import { jsonError } from "../lib/api-error";
 import { logAudit } from "../lib/audit";
 import { getAuth, isSupportOrAdmin } from "../lib/http";
 import { emitNotification } from "../lib/notify";
@@ -29,13 +30,13 @@ reports.post("/api/reviews/:id/report", async (c) => {
     select: { id: true, deletedAt: true },
   });
   if (!review || review.deletedAt) {
-    return c.json({ error: "Review not found" }, 404);
+    return jsonError(c, 404, "REVIEW_NOT_FOUND", "Review not found");
   }
 
   const body = await c.req.json().catch(() => null);
   const parsed = reportSchema.safeParse(body);
   if (!parsed.success) {
-    return c.json({ error: "Invalid input" }, 400);
+    return jsonError(c, 400, "INVALID_INPUT", "Invalid input");
   }
   const { reason } = parsed.data;
   const details = parsed.data.details || null;
@@ -115,7 +116,7 @@ const LOCAL_TARGET_TYPE = "REVIEW";
 reports.get("/api/admin/review-reports", async (c) => {
   // Read access — open to the SUPPORT tier as well as full ADMIN (#226).
   if (!isSupportOrAdmin(c)) {
-    return c.json({ error: "Forbidden" }, 403);
+    return jsonError(c, 403, "FORBIDDEN", "Forbidden");
   }
 
   const { page, pageSize } = normalizePagination({
@@ -222,7 +223,7 @@ reports.get("/api/admin/review-reports", async (c) => {
 // frontend sums client-side into the reports badge total.
 reports.get("/api/admin/review-reports/count", async (c) => {
   if (!isSupportOrAdmin(c)) {
-    return c.json({ error: "Forbidden" }, 403);
+    return jsonError(c, 403, "FORBIDDEN", "Forbidden");
   }
   const openReports = await db.report.count({ where: { status: "OPEN" } });
   return c.json({ openReports });
@@ -234,13 +235,13 @@ reports.patch("/api/admin/review-reports/:id", async (c) => {
   // Resolve/dismiss is part of the SUPPORT tier (#226).
   const auth = getAuth(c);
   if (!isSupportOrAdmin(c)) {
-    return c.json({ error: "Forbidden" }, 403);
+    return jsonError(c, 403, "FORBIDDEN", "Forbidden");
   }
 
   const body = await c.req.json().catch(() => null);
   const parsed = reportStatusSchema.safeParse(body);
   if (!parsed.success) {
-    return c.json({ error: "Invalid input" }, 400);
+    return jsonError(c, 400, "INVALID_INPUT", "Invalid input");
   }
 
   const id = c.req.param("id");
@@ -260,7 +261,7 @@ reports.patch("/api/admin/review-reports/:id", async (c) => {
     },
   });
   if (count === 0) {
-    return c.json({ error: "Report not found" }, 404);
+    return jsonError(c, 404, "REPORT_NOT_FOUND", "Report not found");
   }
   await logAudit(
     c,
@@ -294,13 +295,13 @@ reports.patch("/api/admin/review-reports", async (c) => {
   // Bulk resolve/dismiss is part of the SUPPORT tier (#226).
   const auth = getAuth(c);
   if (!isSupportOrAdmin(c)) {
-    return c.json({ error: "Forbidden" }, 403);
+    return jsonError(c, 403, "FORBIDDEN", "Forbidden");
   }
 
   const body = await c.req.json().catch(() => null);
   const parsed = batchReportStatusSchema.safeParse(body);
   if (!parsed.success) {
-    return c.json({ error: "Invalid input" }, 400);
+    return jsonError(c, 400, "INVALID_INPUT", "Invalid input");
   }
 
   const where = { id: { in: parsed.data.ids } };
@@ -348,7 +349,7 @@ const AUDIT_LOG_TAKE = 200;
 
 reports.get("/api/admin/review-audit-log", async (c) => {
   if (!isSupportOrAdmin(c)) {
-    return c.json({ error: "Forbidden" }, 403);
+    return jsonError(c, 403, "FORBIDDEN", "Forbidden");
   }
 
   const adminId = c.req.query("adminId") || undefined;
@@ -396,7 +397,7 @@ reports.get("/api/admin/review-audit-log", async (c) => {
 
 reports.get("/api/admin/review-stats", async (c) => {
   if (!isSupportOrAdmin(c)) {
-    return c.json({ error: "Forbidden" }, 403);
+    return jsonError(c, 403, "FORBIDDEN", "Forbidden");
   }
   const openReports = await db.report.count({ where: { status: "OPEN" } });
   return c.json({ openReports });
