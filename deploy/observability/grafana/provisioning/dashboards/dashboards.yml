@@ -1,0 +1,15 @@
+# Grafana dashboard provider (#668). Loads every dashboard JSON under the mounted
+# path on startup, so the starter RED dashboard ships with the stack.
+apiVersion: 1
+
+providers:
+  - name: service-hub
+    orgId: 1
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

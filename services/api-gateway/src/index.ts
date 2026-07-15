@@ -3,6 +3,7 @@ import { serve } from "@hono/node-server";
 import { app } from "./app";
 import { log } from "./lib/log";
 import { installProcessErrorHandlers } from "./lib/logging";
+import { initMetrics } from "./lib/metrics";
 import { checkProxyConfig, closeRedis } from "./lib/rate-limit";
 
 const port = Number(process.env.PORT ?? 4000);
@@ -10,6 +11,10 @@ const port = Number(process.env.PORT ?? 4000);
 // Last-resort structured capture for errors outside a request (#34); Hono's
 // onError covers errors inside one. See lib/logging.ts.
 installProcessErrorHandlers(log);
+
+// Register Prometheus default + process metrics under this service's label;
+// per-request RED metrics + the /metrics scrape route live in the Hono app.
+initMetrics("api-gateway");
 
 // Warn (don't crash) if TRUSTED_PROXY_HOPS looks misconfigured for the deployed
 // topology (#374) — a silent 0 collapses every client into one rate-limit

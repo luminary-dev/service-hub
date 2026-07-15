@@ -4,12 +4,17 @@ import { app } from "./app";
 import { db } from "./db";
 import { log } from "./lib/log";
 import { installProcessErrorHandlers } from "./lib/logging";
+import { initMetrics } from "./lib/metrics";
 
 const port = Number(process.env.PORT ?? 4002);
 
 // Last-resort structured capture for errors outside a request (#34); Hono's
 // onError covers errors inside one. See lib/logging.ts.
 installProcessErrorHandlers(log);
+
+// Register Prometheus default + process metrics under this service's label;
+// per-request RED metrics + the /metrics scrape route live in the Hono app.
+initMetrics("provider-service");
 
 const server = serve({ fetch: app.fetch, port }, (info) => {
   log.info("listening", { port: info.port });

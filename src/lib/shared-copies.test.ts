@@ -52,6 +52,20 @@ const IDENTICAL: Record<string, string[]> = {
     svc("provider-service", "storage.ts"),
     svc("review-service", "storage.ts"),
   ],
+  // Prometheus metrics (#668): every service — gateway included — wires the
+  // same registry, RED middleware and /metrics scrape route.
+  "metrics.ts": [
+    svc("identity-service", "metrics.ts"),
+    svc("provider-service", "metrics.ts"),
+    svc("review-service", "metrics.ts"),
+    svc("job-service", "metrics.ts"),
+    svc("notification-service", "metrics.ts"),
+    svc("media-service", "metrics.ts"),
+    svc("chat-service", "metrics.ts"),
+    svc("search-service", "metrics.ts"),
+    svc("trust-safety-service", "metrics.ts"),
+    svc("api-gateway", "metrics.ts"),
+  ],
 };
 
 const NORMALIZED: Record<string, string[]> = {};
