@@ -101,6 +101,54 @@ these jobs:
   config`) and `deploy/Caddyfile` (`caddy validate`) with dummy secrets, so the
   file that actually ships fails CI instead of the live deploy (#512; see
   [OPERATIONS.md](OPERATIONS.md)).
+- **`knip`** — a dead-code / unused-dependency scan across all 11 packages
+  (#673). **Report-only** for now (`continue-on-error`) so it never fails CI on
+  day one; see [Dead-code scanning (knip)](#dead-code-scanning-knip) below.
+
+## Local pre-flight: git hooks (Lefthook + commitlint)
+
+[Lefthook](https://lefthook.dev/) runs a few **fast** checks on your own machine
+so obvious breaks and non-conventional commit messages are caught before CI
+(#673). It is a pre-flight, **not** a replacement for CI — CI still runs the full
+per-package matrix.
+
+The hooks (`lefthook.yml`) are installed automatically by the root `prepare`
+script on `npm install`; run `npx lefthook install` manually if you skipped
+lifecycle scripts.
+
+| Hook | What runs | Why it's fast |
+| --- | --- | --- |
+| `pre-commit` | `eslint` on the **staged** web source files only | Lints just what you changed |
+| `pre-push` | `npm run typecheck` (web) | Seconds; catches the obvious type break |
+| `commit-msg` | `commitlint` (`commitlint.config.mjs`, Conventional Commits) | Enforces the CLAUDE.md commit-title contract |
+
+Skipping, for emergencies:
+
+```bash
+LEFTHOOK=0 git commit ...              # skip all hooks (or: git commit --no-verify)
+LEFTHOOK_EXCLUDE=commitlint git commit # skip one hook
+npx lefthook uninstall                 # remove the hooks entirely
+```
+
+## Dead-code scanning (knip)
+
+[knip](https://knip.dev/) flags unused files, exports and dependencies across
+the workspace (#673). Run it locally with `npm run knip` (from the repo root);
+the config is `knip.json`.
+
+Because this monorepo is **not npm-hoisted** — every service is its own package
+with its own `node_modules` — the config declares `services/*` as workspaces and
+suppresses a handful of layout artifacts that aren't real findings (`tsx` /
+`prisma` binaries and the `pg` adapter dep, resolved per-service; the Next.js
+`server-only` marker; the `tailwindcss` engine). What's left is genuine signal —
+today ~100 unused exports/types, mostly the deliberately-uniform per-service
+`lib/http.ts` template helpers plus unused constants.
+
+In CI the **`knip`** job installs every package and runs the same scan, but it is
+**report-only** (`continue-on-error`) so it can't fail a PR on day one — there's
+a backlog to triage first. Once that's burned down, drop `continue-on-error` to
+promote it to a hard gate (matching the report-first bias in
+[CI_ADDITIONS.md](CI_ADDITIONS.md)).
 
 ## What belongs where
 

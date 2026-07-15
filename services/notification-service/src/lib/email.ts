@@ -9,13 +9,31 @@ const FROM = process.env.EMAIL_FROM ?? "Baas.lk <onboarding@resend.dev>";
 
 type SendArgs = { to: string; subject: string; html: string };
 
-// Sends via Resend when RESEND_API_KEY is set; otherwise logs to the server
-// console so the whole flow works in local development without any account.
+// Dev SMTP transport (Mailpit, #673). When SMTP_URL is set, mail is sent over
+// SMTP instead of Resend — so the `docker compose` dev stack captures every
+// EN/SI email in Mailpit's web UI (http://localhost:8025) with no Resend
+// account. Production leaves SMTP_URL unset and keeps using Resend. nodemailer
+// is imported dynamically so it is only loaded when SMTP is actually configured
+// (prod images never touch it).
+async function sendViaSmtp({ to, subject, html }: SendArgs, url: string) {
+  const { createTransport } = await import("nodemailer");
+  const transport = createTransport(url);
+  await transport.sendMail({ from: FROM, to, subject, html });
+  return { delivered: true as const };
+}
+
+// Delivery precedence: SMTP (dev/Mailpit) → Resend (prod) → console fallback.
+// With none configured it logs the full message to the server console so the
+// whole flow works in local development without any account.
 export async function sendMail({ to, subject, html }: SendArgs) {
+  const smtpUrl = process.env.SMTP_URL;
+  if (smtpUrl) {
+    return sendViaSmtp({ to, subject, html }, smtpUrl);
+  }
   const key = process.env.RESEND_API_KEY;
   if (!key) {
     console.log(
-      `\n[email:dev] no RESEND_API_KEY set — not sending.\n  to: ${to}\n  subject: ${subject}\n  html:\n${html}\n`
+      `\n[email:dev] no SMTP_URL or RESEND_API_KEY set — not sending.\n  to: ${to}\n  subject: ${subject}\n  html:\n${html}\n`
     );
     return { delivered: false as const };
   }

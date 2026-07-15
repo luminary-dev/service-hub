@@ -7,10 +7,12 @@
     "node": ">=24 <25"
   },
   "scripts": {
+    "prepare": "lefthook install || true",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "knip": "knip",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --dir src --config vitest.config.web.mts",
     "test:watch": "vitest --dir src --config vitest.config.web.mts",
@@ -30,6 +32,8 @@
     "recharts": "^3.9.2"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.2.1",
+    "@commitlint/config-conventional": "^21.2.0",
     "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
     "@testing-library/dom": "^10.4.1",
@@ -44,6 +48,8 @@
     "eslint-config-next": "16.2.10",
     "eslint-plugin-i18next": "^6.1.5",
     "jsdom": "^29.1.1",
+    "knip": "^6.26.0",
+    "lefthook": "^2.1.10",
     "tailwindcss": "^4",
     "typescript": "6.0.3",
     "vitest": "^4.1.9"

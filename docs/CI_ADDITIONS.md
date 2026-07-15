@@ -13,9 +13,9 @@ every PR/push to `dev`/`prod` we run:
 
 - **`ci.yml`** — per-package `typecheck` / `test` / `build` for web + the 10
   services, web-only `lint`, a `coverage` ratchet (web + 10 services), a
-  prod-compose validation (`compose-config`), and a
-  PR-only compose **e2e smoke**. Concurrency-cancel + `timeout-minutes` on
-  every job.
+  prod-compose validation (`compose-config`), a **`knip`** dead-code scan
+  (report-only, #673), and a PR-only compose **e2e smoke** / `playwright` /
+  `lighthouse`. Concurrency-cancel + `timeout-minutes` on every job.
 - **`security-scan.yml`** — Trivy filesystem (deps, report-only), Trivy image
   (OS packages, **gating** on fixable HIGH/CRITICAL), `npm audit`
   (**gating** on CRITICAL production-dependency advisories, #386), and
@@ -45,7 +45,8 @@ findings (Security tab, PR comment, or log) without blocking.
 | - | -------- | --------- | ------ | -------------- | -------- |
 | 1 | **actionlint** ✅ *(shipped)* | Lint the workflow YAML itself (bad `runs-on`, malformed `${{ }}` expressions, deprecated syntax) — we run 8 workflows and nothing linted them. | Low | Gate (fast, deterministic; path-filtered to `.github/workflows/**`) | **Quick win — done** |
 | 2 | **CodeQL query-suite upgrade** | CodeQL is already on via default setup, but with the `default` query suite; bumping default setup to the **extended** suite adds the security-extended queries. This is a repo-settings toggle (Security → Code scanning → default setup), *not* a workflow — an advanced-config workflow would conflict with default setup. | Low (settings, no code) | Report | Quick win |
-| 3 | **Commit / PR-title lint (Conventional Commits)** | CLAUDE.md already *requires* Conventional-Commit PR titles; a check enforces the contract instead of trusting review. | Low | Gate (PR title) | Quick win |
+| 3 | **Commit / PR-title lint (Conventional Commits)** ✅ *(shipped, local)* | CLAUDE.md already *requires* Conventional-Commit titles; now enforced locally by a **Lefthook `commit-msg` hook running commitlint** (`commitlint.config.mjs`, #673). Local pre-flight, not yet a CI gate — a PR-title CI check remains a candidate. | Low | Gate (local commit-msg) | **Quick win — done (local)** |
+| 3b | **Dead-code / unused-dep scan (knip)** ✅ *(shipped, report-only)* | Flags unused files/exports/deps across all 11 packages (`knip.json`, #673). Landed **report-only** (`continue-on-error`) given the day-one backlog of uniform template exports; promote to a gate once triaged. | Low | Report → gate later | **Quick win — done** |
 | 4 | **Docs link checker (lychee)** | The `docs/` tree is GitBook-synced and leans heavily on **relative** links (see `SUMMARY.md`, `README.md` index); a broken relative link silently breaks the published nav. | Low | Report first, then gate | Quick win |
 | 5 | **Service-side ESLint** | Only **web** has a `lint` script today — none of the 10 services do. Adding a shared flat-config + `lint` script closes a real gap in backend code quality. | Medium (per-service config + fixing existing violations) | Gate once clean | Later |
 | 6 | **Coverage summary PR comment** | `coverage` already produces `coverage-summary.json` per package + a step-summary; surfacing the deltas as a sticky PR comment makes the ratchet visible without opening the run. | Low | Report | Quick win |

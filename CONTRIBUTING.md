@@ -42,6 +42,18 @@ providers and customers. **Local data is disposable** — `./scripts/dev-reset.s
 wipes the volumes and reseeds for a clean stack. Never commit local data files,
 and keep seeds to dummy data only (no secrets, real users, or business logic).
 
+The dev stack also runs **Mailpit** — a local fake-SMTP inbox at
+<http://localhost:8025> that captures every email notification-service sends, so
+you can read verify/reset/notification mail without a Resend account. See
+[docs/EMAIL_SETUP.md](docs/EMAIL_SETUP.md).
+
+**Git hooks (Lefthook).** `npm install` auto-installs fast local hooks
+(`lefthook.yml`): lint staged web files on commit, typecheck on push, and
+enforce Conventional-Commit messages (commitlint). They're a pre-flight, not a
+substitute for CI. Skip in an emergency with `LEFTHOOK=0 git commit …` (or
+`git commit --no-verify`). Details in
+[docs/TESTING.md](docs/TESTING.md#local-pre-flight-git-hooks-lefthook--commitlint).
+
 ## The workflow
 
 1. **Open an issue first** for anything substantive — the project board tracks

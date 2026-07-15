@@ -25,16 +25,52 @@ endpoint and template list.
 
 ## How it behaves
 
-- **No `RESEND_API_KEY`** — notification-service does **not** send. It logs the
-  full message (recipient, subject, HTML) to its container console and returns
-  `{ ok: true, delivered: false }`. The whole flow (register → verify link,
-  forgot-password → reset link) works locally with no account; you read the link
-  from the logs.
+`sendMail` picks a transport in this order: **SMTP** (`SMTP_URL`) →
+**Resend** (`RESEND_API_KEY`) → **console fallback**.
+
+- **`SMTP_URL` set** — mail is sent over SMTP (via `nodemailer`), bypassing
+  Resend entirely. This is the local-dev path: the `docker compose` stack points
+  it at **Mailpit** by default so every email is captured in a local inbox —
+  see [Previewing emails locally with Mailpit](#previewing-emails-locally-with-mailpit).
+- **No `SMTP_URL`, no `RESEND_API_KEY`** — notification-service does **not**
+  send. It logs the full message (recipient, subject, HTML) to its container
+  console and returns `{ ok: true, delivered: false }`. The whole flow
+  (register → verify link, forgot-password → reset link) works with no account
+  or SMTP server; you read the link from the logs.
 - **`RESEND_API_KEY` set, no verified domain** — Resend only lets you send from
   `onboarding@resend.dev`, and that sandbox sender **only delivers to your own
   Resend-account email address**. Fine for a smoke test, not for customers.
 - **`RESEND_API_KEY` set + verified domain** — real delivery from your
-  `EMAIL_FROM` address. This is the production configuration.
+  `EMAIL_FROM` address. This is the production configuration (prod leaves
+  `SMTP_URL` unset).
+
+## Previewing emails locally with Mailpit
+
+The dev `docker-compose.yml` ships a **[Mailpit](https://mailpit.axllent.org/)**
+container (`#673`) — a fake SMTP server plus a web inbox — so you can read the
+real rendered EN/SI emails locally without a Resend account or delivery to a
+real address. notification-service is wired to it out of the box:
+`SMTP_URL` defaults to `smtp://mailpit:1025`.
+
+```bash
+docker compose up -d          # Mailpit starts with the stack (dev only)
+# trigger any email: register, request a password reset, send an inquiry, …
+open http://localhost:8025     # the Mailpit inbox (loopback-bound, #387)
+```
+
+Notes:
+
+- **Dev only.** Mailpit is in `docker-compose.yml`, never
+  `docker-compose.prod.yml`. Production keeps using Resend.
+- **In-memory inbox.** No volume is mounted, so each `docker compose up` starts
+  with an empty inbox — expected for disposable local data.
+- **Nothing critical depends on it.** If Mailpit is down, sends just retry via
+  the `notify:email` queue and the app still boots.
+- **Opting out.** Set `SMTP_URL=` (empty) in your repo-root `.env` to fall back
+  to the Resend/console behavior above (e.g. to smoke-test a real Resend key).
+- **Host path (`dev-all.sh`).** Run Mailpit alone with
+  `docker compose up -d mailpit` and export `SMTP_URL=smtp://localhost:1025`
+  for notification-service.
 
 ## Enabling production email
 
@@ -60,7 +96,7 @@ endpoint and template list.
 - Email links use the origin the gateway forwards as `x-origin` (falling back to
   `WEB_ORIGIN`), so links point at the right host per environment.
 - Related code: `services/notification-service/src/lib/email.ts` (templates +
-  Resend/console send), `src/routes/email.ts` (auth endpoints),
+  SMTP/Resend/console send), `src/routes/email.ts` (auth endpoints),
   `src/routes/events.ts` + `src/lib/queue.ts` (marketplace-event ingestion +
   delivery queue). Auth-mail callers: identity-service (verify /
   password-reset / change-email #396 / account-exists #498 /

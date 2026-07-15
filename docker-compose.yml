@@ -190,6 +190,11 @@ services:
       # Email delivery queue (BRPOPLPUSH + retries); unset → degraded
       # one-attempt direct sends (in-app notifications unaffected).
       REDIS_URL: redis://redis:6379
+      # Dev email preview (#673): SMTP takes precedence over Resend in email.ts,
+      # so by default every EN/SI email is captured in the Mailpit inbox
+      # (http://localhost:8025) instead of hitting Resend or the console. Set
+      # SMTP_URL= (empty) in your root .env to restore the Resend/console path.
+      SMTP_URL: ${SMTP_URL:-smtp://mailpit:1025}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM:-}
     ports:
@@ -202,6 +207,30 @@ services:
       redis:
         condition: service_healthy
     healthcheck: *node-healthcheck
+
+  # Mailpit (#673) — DEV-ONLY fake SMTP server + web UI for previewing the EN/SI
+  # emails notification-service sends. notification-service points SMTP_URL here
+  # by default (above), so every verify / password-reset / marketplace email is
+  # captured in this inbox instead of hitting Resend or the console fallback —
+  # open it at http://localhost:8025. NEVER added to docker-compose.prod.yml.
+  # Both host ports are loopback-bound (#387) like every other dev port. No
+  # volume: the inbox is in-memory, so each run starts empty (what you want in
+  # dev). Nothing critical depends_on this — if Mailpit is down, sends just
+  # retry via the notify:email queue; the app still boots.
+  mailpit:
+    image: axllent/mailpit:v1.22
+    environment:
+      # Accept mail from notification-service with no auth / no TLS (dev only).
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+    ports:
+      - "127.0.0.1:8025:8025" # web UI (inbox)
+      - "127.0.0.1:1025:1025" # SMTP
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8025/readyz > /dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   media-service:
     build: ./services/media-service
