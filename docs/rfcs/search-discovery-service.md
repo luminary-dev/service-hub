@@ -163,6 +163,20 @@ paginated `GET /internal/providers/export?cursor=` on provider-service (+ the ex
 absent from the export. Ops-cron triggered like the existing `sweep-orphans`
 (`docs/OPERATIONS.md`), daily.
 
+**Sweep-generation prune (#752):** rather than `deleteMany(notIn(seen))` — which both
+deletes a provider registered mid-sweep and blows the 65,535 Postgres bind-param cap past
+~65k providers — each run stamps every upserted row with a unique `sweepId` and captures
+`sweepStartedAt`, then prunes only rows it did not touch that also predate the run
+(`sweepId ≠ current AND updatedAt < sweepStartedAt`). A mid-sweep registration carries a
+fresh `updatedAt` and survives.
+
+**Delete tombstone (#752):** the index DELETE writes a `ProviderTombstone{providerId,
+deletedAt}` before removing the row; `upsertDocument`'s create branch refuses any id
+tombstoned more recently than the incoming document's `updatedAt`, so a fire-and-forget
+push built before a delete but delivered after it can't resurrect an erased/suspended
+provider. A genuinely newer document (re-activation) supersedes and clears the tombstone;
+the daily sweep purges tombstones once they predate the run.
+
 **Staleness tolerance:** push makes changes visible in seconds; a dropped push is bounded
 by the sweep (≤24 h). Acceptable for a public directory; anything transactional (alerts —
 §5.3) deliberately does **not** read the index.
