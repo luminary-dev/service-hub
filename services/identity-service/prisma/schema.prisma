@@ -43,6 +43,12 @@ model User {
   failedLogins  Int       @default(0)
   lockedUntil   DateTime?
   createdAt     DateTime  @default(now())
+  // #769: the most-mutated table in the system (role flips per #404,
+  // sessionVersion/failedLogins/lockedUntil bumps, email change, avatarUrl,
+  // emailVerified) previously carried no update timestamp. Prisma stamps this
+  // on every write; the hand-written migration adds the column DEFAULT now()
+  // so existing rows backfill.
+  updatedAt     DateTime  @updatedAt @default(now())
   favorites     Favorite[]
   savedSearches SavedSearch[]
 

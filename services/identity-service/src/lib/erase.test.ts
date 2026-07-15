@@ -2,8 +2,19 @@
 // erase depends on the providerId resolved from the Provider row — if the
 // provider erase committed first and the job erase failed, a retry would
 // resolve providerId as null and the JobResponses (PII) would be stranded.
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const { db } = vi.hoisted(() => ({
+  db: { favorite: { deleteMany: vi.fn() } },
+}));
+vi.mock("../db", () => ({ db }));
+
 import { eraseUserData } from "./erase";
+
+beforeEach(() => {
+  db.favorite.deleteMany.mockReset();
+  db.favorite.deleteMany.mockResolvedValue({ count: 0 });
+});
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -48,6 +59,30 @@ describe("eraseUserData", () => {
       String(call[0]).startsWith(JOB)
     );
     expect(jobCall?.[1]?.body).toBe(JSON.stringify({ providerId: "prov-1" }));
+  });
+
+  it("passes the providerId to the review erase (#749)", async () => {
+    const fetchMock = stubFetch(() => 200);
+    await eraseUserData("u1", "prov-1");
+
+    const reviewCall = fetchMock.mock.calls.find((call) =>
+      String(call[0]).startsWith(REVIEW)
+    );
+    expect(reviewCall?.[1]?.body).toBe(JSON.stringify({ providerId: "prov-1" }));
+  });
+
+  it("deletes favorites pointing at the erased provider (#767)", async () => {
+    stubFetch(() => 200);
+    await eraseUserData("u1", "prov-1");
+    expect(db.favorite.deleteMany).toHaveBeenCalledWith({
+      where: { providerId: "prov-1" },
+    });
+  });
+
+  it("does not touch favorites when the user had no provider profile", async () => {
+    stubFetch(() => 200);
+    await eraseUserData("u1", null);
+    expect(db.favorite.deleteMany).not.toHaveBeenCalled();
   });
 
   it("does NOT erase the provider profile when the job erase fails", async () => {

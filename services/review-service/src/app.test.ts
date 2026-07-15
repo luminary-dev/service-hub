@@ -40,13 +40,6 @@ import { s2s } from "./lib/http";
 const SECRET = "dev-internal-secret";
 const s2sMock = vi.mocked(s2s);
 
-function providerByUserResponse(provider: { id: string } | null) {
-  return new Response(JSON.stringify({ provider }), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });
-}
-
 function req(path: string, init: RequestInit = {}, withSecret = true) {
   const headers: Record<string, string> = {
     "content-type": "application/json",
@@ -165,30 +158,30 @@ describe("POST /internal/users/:id/erase", () => {
     dbMock.review.deleteMany.mockResolvedValue({ count: 0 });
   });
 
-  it("deletes only the user's authored reviews when they are not a provider", async () => {
-    s2sMock.mockResolvedValue(providerByUserResponse(null));
+  // #749: the providerId is supplied by the orchestrator in the request body
+  // (like the job erase), never re-resolved here over S2S — so a transient
+  // provider blip can no longer make this endpoint degrade-open and strand the
+  // received reviews.
+  it("deletes only the user's authored reviews when no providerId is supplied", async () => {
     const res = await req("/internal/users/u1/erase", { method: "POST" });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
     expect(dbMock.review.deleteMany).toHaveBeenCalledTimes(1);
     expect(dbMock.review.deleteMany).toHaveBeenCalledWith({ where: { userId: "u1" } });
+    // No S2S resolution happens any more (#749).
+    expect(s2sMock).not.toHaveBeenCalled();
   });
 
-  it("also deletes reviews received by the erased user's provider profile (#645)", async () => {
+  it("also deletes reviews received by the erased user's provider profile when the orchestrator passes the providerId (#645)", async () => {
     // ReviewResponse replies + received-review photos cascade with the review,
     // so deleting the received reviews clears the provider's public replies too.
-    s2sMock.mockResolvedValue(providerByUserResponse({ id: "prov_9" }));
-    const res = await req("/internal/users/u1/erase", { method: "POST" });
+    const res = await req("/internal/users/u1/erase", {
+      method: "POST",
+      body: JSON.stringify({ providerId: "prov_9" }),
+    });
     expect(res.status).toBe(200);
     expect(dbMock.review.deleteMany).toHaveBeenCalledWith({ where: { userId: "u1" } });
     expect(dbMock.review.deleteMany).toHaveBeenCalledWith({ where: { providerId: "prov_9" } });
-  });
-
-  it("degrades to authored-only cleanup when provider-service is unreachable", async () => {
-    s2sMock.mockRejectedValue(new Error("ECONNREFUSED"));
-    const res = await req("/internal/users/u1/erase", { method: "POST" });
-    expect(res.status).toBe(200);
-    expect(dbMock.review.deleteMany).toHaveBeenCalledTimes(1);
-    expect(dbMock.review.deleteMany).toHaveBeenCalledWith({ where: { userId: "u1" } });
+    expect(s2sMock).not.toHaveBeenCalled();
   });
 });

@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { db } from "../db";
 import { getAuth, getLocale, getOrigin } from "../lib/http";
 import { log } from "../lib/log";
+import { loginFailuresTotal } from "../lib/auth-metrics";
 import { createSession, destroySession } from "../lib/session";
 import { hashToken } from "../lib/tokens";
 import { eraseUserData } from "../lib/erase";
@@ -49,7 +50,10 @@ authRoutes.post("/register", async (c) => {
   const parsed = registerSchema.safeParse(body);
   if (!parsed.success) {
     return c.json(
-      { error: parsed.error.issues[0]?.message ?? "Invalid input" },
+      {
+        error: parsed.error.issues[0]?.message ?? "Invalid input",
+        code: "invalid_input",
+      },
       400
     );
   }
@@ -74,10 +78,19 @@ authRoutes.post("/register", async (c) => {
     // siteverify outage → 503 retryable (we fail closed but not as a 400).
     return bot.reason === "unavailable"
       ? c.json(
-          { error: "Could not verify you are human right now. Please try again." },
+          {
+            error: "Could not verify you are human right now. Please try again.",
+            code: "captcha_unavailable",
+          },
           503
         )
-      : c.json({ error: "Human verification failed. Please try again." }, 400);
+      : c.json(
+          {
+            error: "Human verification failed. Please try again.",
+            code: "captcha_failed",
+          },
+          400
+        );
   }
 
   // Served set (#502): dedupe + pin the home district here (a friendly 400,
@@ -92,6 +105,7 @@ authRoutes.post("/register", async (c) => {
     return c.json(
       {
         error: `You can serve at most ${MAX_SERVICE_DISTRICTS} districts (including your own)`,
+        code: "too_many_districts",
       },
       400
     );
@@ -104,7 +118,7 @@ authRoutes.post("/register", async (c) => {
     data.role === "PROVIDER" &&
     geoPairState(data.latitude, data.longitude) === "invalid"
   ) {
-    return c.json({ error: GEO_PAIR_MESSAGE }, 400);
+    return c.json({ error: GEO_PAIR_MESSAGE, code: "invalid_location" }, 400);
   }
 
   // Category is data now, not code: check it against provider-service's list
@@ -113,7 +127,7 @@ authRoutes.post("/register", async (c) => {
     data.role === "PROVIDER" &&
     !(await categoryValidator.isValidCategory(data.category))
   ) {
-    return c.json({ error: "Invalid category" }, 400);
+    return c.json({ error: "Invalid category", code: "invalid_category" }, 400);
   }
 
   // Anti-enumeration (#373): registration must not reveal whether an email is
@@ -465,22 +479,35 @@ authRoutes.post("/login", async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = loginSchema.safeParse(body);
   if (!parsed.success) {
-    return c.json({ error: "Invalid input" }, 400);
+    return c.json({ error: "Invalid input", code: "invalid_input" }, 400);
   }
 
+  // Every rejected attempt returns the SAME body + `code` (#761) so a client
+  // can localize the message without the code ever distinguishing which 401
+  // branch fired — that would re-open the account enumeration the uniform reply
+  // closes. The counter's `reason` label is server-side only (never in the
+  // response), so it can safely be more specific for ops (#759).
   const user = await db.user.findUnique({
     where: { email: parsed.data.email },
   });
   if (!user) {
     await bcrypt.compare(parsed.data.password, DUMMY_HASH);
-    return c.json({ error: "Invalid email or password" }, 401);
+    loginFailuresTotal.inc({ reason: "unknown_user" });
+    return c.json(
+      { error: "Invalid email or password", code: "invalid_credentials" },
+      401
+    );
   }
 
   // Social-only account (#398): no password set. Same uniform 401 as a wrong
   // password, with a dummy compare so the timing doesn't reveal the difference.
   if (!user.passwordHash) {
     await bcrypt.compare(parsed.data.password, DUMMY_HASH);
-    return c.json({ error: "Invalid email or password" }, 401);
+    loginFailuresTotal.inc({ reason: "no_password" });
+    return c.json(
+      { error: "Invalid email or password", code: "invalid_credentials" },
+      401
+    );
   }
 
   // Locked accounts get the same 401 as a wrong password (no enumeration),
@@ -490,7 +517,18 @@ authRoutes.post("/login", async (c) => {
   // no-hash reply leaks that the account exists and is locked.
   if (isLockedOut(user.lockedUntil)) {
     await bcrypt.compare(parsed.data.password, user.passwordHash);
-    return c.json({ error: "Invalid email or password" }, 401);
+    loginFailuresTotal.inc({ reason: "locked_out" });
+    // No email/password in the log line — keep the existing PII discipline
+    // (the gateway attaches the client IP to its own request-log line, #759).
+    log.warn("login attempt on locked account", {
+      context: "login",
+      userId: user.id,
+      lockedUntil: user.lockedUntil,
+    });
+    return c.json(
+      { error: "Invalid email or password", code: "invalid_credentials" },
+      401
+    );
   }
 
   if (!(await bcrypt.compare(parsed.data.password, user.passwordHash))) {
@@ -505,11 +543,27 @@ authRoutes.post("/login", async (c) => {
       data: { failedLogins: { increment: 1 } },
       select: { failedLogins: true },
     });
+    loginFailuresTotal.inc({ reason: "bad_password" });
+    // Structured warn so credential-stuffing is visible/countable in Loki
+    // (#759). userId + the resulting failure count only — never email/password.
+    log.warn("login failed", {
+      context: "login",
+      userId: user.id,
+      failedLogins,
+    });
     const lockedUntil = lockUntilFor(failedLogins);
     if (lockedUntil) {
       await db.user.update({ where: { id: user.id }, data: { lockedUntil } });
+      log.warn("account locked", {
+        context: "login",
+        userId: user.id,
+        lockedUntil,
+      });
     }
-    return c.json({ error: "Invalid email or password" }, 401);
+    return c.json(
+      { error: "Invalid email or password", code: "invalid_credentials" },
+      401
+    );
   }
 
   if (user.failedLogins > 0 || user.lockedUntil) {
