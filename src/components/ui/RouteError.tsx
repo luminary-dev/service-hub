@@ -5,6 +5,7 @@ import Link from "next/link";
 import { FaTriangleExclamation } from "@/components/icons";
 import { useLocale, useT } from "@/components/I18nProvider";
 import { localizedHref } from "@/lib/links";
+import { reportClientError } from "@/lib/sentry";
 
 // UI 2.0 — the shared route error boundary UI (#381): every `error.tsx`
 // (root and segment-level) renders this, so a throw anywhere shows the same
@@ -24,8 +25,9 @@ export default function RouteError({
   const locale = useLocale();
   const retry = unstable_retry ?? reset;
 
+  // Report to GlitchTip/Sentry instead of a browser-only console.error (#760).
   useEffect(() => {
-    console.error(error);
+    reportClientError(error);
   }, [error]);
 
   return (
@@ -35,6 +37,13 @@ export default function RouteError({
         {t.errors.errorTitle}
       </h1>
       <p className="mt-2 text-ink-500">{t.errors.errorBody}</p>
+      {/* Error ID (#760): the request digest, surfaced so a user can quote it
+          in a support report and we can tie it to the captured event. */}
+      {error.digest && (
+        <p className="mt-3 font-mono text-xs text-ink-400">
+          {t.errors.errorIdLabel}: {error.digest}
+        </p>
+      )}
       <div className="mt-8 flex gap-3">
         <button type="button" onClick={retry} className="btn-primary">
           {t.errors.retry}

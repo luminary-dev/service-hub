@@ -12,6 +12,8 @@ import {
   type FieldErrors,
 } from "./ui/FormError";
 import { useT } from "./I18nProvider";
+import { errorMessage } from "@/lib/error-codes";
+import { useSessionGuard } from "./useSessionGuard";
 
 export default function InquiryForm({
   providerId,
@@ -40,6 +42,7 @@ export default function InquiryForm({
   const honeypotRef = useRef<HTMLInputElement>(null);
   const { fieldErrors, show } = useFieldErrors();
   const t = useT();
+  const guard = useSessionGuard();
 
   function validate(): FieldErrors {
     const errs: FieldErrors = {};
@@ -71,9 +74,12 @@ export default function InquiryForm({
       });
       if (res.ok) {
         setSent(true);
+      } else if (guard(res)) {
+        // Session expired mid-form (#774) — prompt a re-sign-in.
+        return;
       } else {
         const data = await res.json().catch(() => ({}));
-        setError(data.error ?? t.inquiry.error);
+        setError(errorMessage(data, t.inquiry.error, t.errorCodes));
       }
     } catch {
       // Network failure — recover instead of wedging the button (#363).

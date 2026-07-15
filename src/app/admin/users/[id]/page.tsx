@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { apiJson } from "@/lib/api";
@@ -11,6 +12,11 @@ import AdminUserActions from "@/components/admin/AdminUserActions";
 // Caching (#57): admin-only view; edits must be visible on the next
 // request — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return { title: dict[locale].titles.adminUserDetail };
+}
 
 // Detail payload as served by `GET /api/admin/users/:id` on the gateway.
 type AdminUserDetail = {

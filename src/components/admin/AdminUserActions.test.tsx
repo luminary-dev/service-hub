@@ -84,7 +84,7 @@ describe("AdminUserActions", () => {
   it("surfaces the server error message on a failed role change", async () => {
     fetchMock.mockResolvedValue({
       ok: false,
-      json: async () => ({ error: "Cannot modify your own account here" }),
+      json: async () => ({ errorCode: "forbidden" }),
     });
     renderActions();
     fireEvent.change(screen.getByLabelText(t.admin.usersRole), {
@@ -93,7 +93,7 @@ describe("AdminUserActions", () => {
     fireEvent.click(screen.getByRole("button", { name: t.admin.applyRole }));
 
     const toast = await screen.findByRole("alert");
-    expect(toast.textContent).toContain("Cannot modify your own account here");
+    expect(toast.textContent).toContain(dict.en.errorCodes.forbidden);
     expect(refresh).not.toHaveBeenCalled();
   });
 

@@ -141,7 +141,7 @@ describe("AccountDetails — change email", () => {
   it("shows the server error via role=alert on a rejected change", async () => {
     fetchMock.mockResolvedValue({
       ok: false,
-      json: async () => ({ error: "Incorrect password." }),
+      json: async () => ({ errorCode: "current_password_incorrect" }),
     });
     renderDetails(true);
     fireEvent.change(screen.getByLabelText(t.emailNew), {
@@ -153,6 +153,6 @@ describe("AccountDetails — change email", () => {
     fireEvent.submit(findEmailForm());
 
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("Incorrect password.");
+    expect(alert.textContent).toContain(dict.en.errorCodes.current_password_incorrect);
   });
 });

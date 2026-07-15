@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useT } from "@/components/I18nProvider";
 import { useToast } from "@/components/ToastProvider";
+import { errorMessage } from "@/lib/error-codes";
 
 // Provider → customer downgrade (#403). Suspend/hide (reversible): posts
 // POST /api/auth/leave-provider, which hides the profile from listings, flips
@@ -11,7 +12,8 @@ import { useToast } from "@/components/ToastProvider";
 // confirm guards the danger action; try/finally keeps the button usable on a
 // network drop.
 export default function CloseProviderProfile() {
-  const t = useT().account;
+  const full = useT();
+  const t = full.account;
   const toast = useToast();
   const router = useRouter();
 
@@ -30,7 +32,7 @@ export default function CloseProviderProfile() {
         router.refresh();
       } else {
         const data = await res.json().catch(() => ({}));
-        setError(data.error ?? t.genericError);
+        setError(errorMessage(data, t.genericError, full.errorCodes));
       }
     } catch {
       setError(t.genericError);

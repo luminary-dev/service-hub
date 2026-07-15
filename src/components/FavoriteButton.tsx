@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FaHeart, FaRegHeart } from "@/components/icons";
 import { useT } from "./I18nProvider";
 import { useToast } from "./ToastProvider";
+import { useSessionGuard } from "./useSessionGuard";
 
 export default function FavoriteButton({
   providerId,
@@ -20,6 +21,7 @@ export default function FavoriteButton({
   const t = useT();
   const toast = useToast();
   const router = useRouter();
+  const guard = useSessionGuard();
 
   async function toggle(e: React.MouseEvent) {
     // Cards wrap this near a link; never navigate when toggling.
@@ -35,6 +37,12 @@ export default function FavoriteButton({
     }).catch(() => null);
     setPending(false);
 
+    // Session expired mid-browse (#774): prompt a re-sign-in instead of the
+    // generic error the user would otherwise retry forever.
+    if (guard(res)) {
+      setFavorited(!next); // revert the optimistic toggle
+      return;
+    }
     if (!res || !res.ok) {
       setFavorited(!next); // revert on failure
       toast.error(t.toast.favError);

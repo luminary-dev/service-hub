@@ -1,5 +1,13 @@
+import type { Metadata } from "next";
 import { fetchCategoryOptions } from "@/lib/categories-server";
+import { getLocale } from "@/lib/locale";
+import { dict } from "@/lib/i18n";
 import ProviderRegisterForm from "./ProviderRegisterForm";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return { title: dict[locale].titles.registerProvider };
+}
 
 // Server wrapper: category options come from provider-service's managed list
 // (static fallback inside fetchCategoryOptions); the multi-step form itself

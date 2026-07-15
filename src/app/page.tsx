@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import { FaArrowRight } from "@/components/icons";
-import { apiJson } from "@/lib/api";
+import { apiJsonSafe } from "@/lib/api";
 import { DISTRICTS } from "@/lib/constants";
 import { categoryOptionLabel } from "@/lib/categories";
 import { fetchCategoryOptions } from "@/lib/categories-server";
@@ -90,11 +90,13 @@ export default async function HomePage() {
   const [locale, session, listing, stats, categories] = await Promise.all([
     getLocale(),
     getSession(),
-    apiJson<{ providers: ProviderCardDTO[] }>(
+    // Best-effort (#747): the marketing home degrades to fewer featured cards /
+    // zeroed stats on a backend blip rather than erroring the landing page.
+    apiJsonSafe<{ providers: ProviderCardDTO[] }>(
       "/api/providers?sort=newest&pageSize=6",
       { revalidate: 300 }
     ),
-    apiJson<{ providerCount: number; reviewCount: number }>("/api/stats", {
+    apiJsonSafe<{ providerCount: number; reviewCount: number }>("/api/stats", {
       revalidate: 300,
     }),
     // Admin-managed categories (#561) — falls back to the static list inside.
@@ -104,7 +106,7 @@ export default async function HomePage() {
   const providerCount = stats?.providerCount ?? 0;
   const reviewCount = stats?.reviewCount ?? 0;
   const favorites = session
-    ? await apiJson<{ providerIds: string[] }>("/api/favorites")
+    ? await apiJsonSafe<{ providerIds: string[] }>("/api/favorites")
     : null;
   const favoriteIds = new Set(favorites?.providerIds ?? []);
 

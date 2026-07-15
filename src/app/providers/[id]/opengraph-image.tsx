@@ -1,5 +1,5 @@
 import { ImageResponse } from "next/og";
-import { apiJson } from "@/lib/api";
+import { apiJsonSafe } from "@/lib/api";
 import { categoryLabelLoc } from "@/lib/i18n";
 import { SITE_NAME } from "@/lib/site";
 
@@ -31,7 +31,7 @@ export default async function Image({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const provider = await apiJson<ProviderCard>(
+  const provider = await apiJsonSafe<ProviderCard>(
     `/api/providers/${encodeURIComponent(id)}/card`,
     { revalidate: 300 }
   );

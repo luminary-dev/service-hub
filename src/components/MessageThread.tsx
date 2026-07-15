@@ -5,6 +5,7 @@ import { useLocale, useT } from "@/components/I18nProvider";
 import { formatDate } from "@/lib/format";
 import ReportButton from "@/components/ReportButton";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { useSessionGuard } from "@/components/useSessionGuard";
 
 type Message = {
   id: string;
@@ -36,6 +37,7 @@ const POLL_MS = 5000;
 export default function MessageThread({ inquiryId }: { inquiryId: string }) {
   const t = useT();
   const locale = useLocale();
+  const guard = useSessionGuard();
   const [thread, setThread] = useState<ThreadPayload | null>(null);
   const [error, setError] = useState(false);
   const [draft, setDraft] = useState("");
@@ -132,6 +134,8 @@ export default function MessageThread({ inquiryId }: { inquiryId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body }),
       });
+      // Session expired mid-thread (#774) — prompt a re-sign-in.
+      if (guard(res)) return;
       if (!res.ok) {
         setSendError(true);
         return;

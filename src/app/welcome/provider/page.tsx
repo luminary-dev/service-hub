@@ -1,11 +1,16 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
+import { dict } from "@/lib/i18n";
 import { localizedHref } from "@/lib/links";
 import { fetchCategoryOptions } from "@/lib/categories-server";
 import ProviderRegisterForm from "@/app/register/provider/ProviderRegisterForm";
 
-export const metadata = { title: "Set up your provider profile — Baas.lk" };
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return { title: dict[locale].titles.welcomeProvider };
+}
 
 // Authenticated provider-profile completion (#398). Reuses the registration
 // wizard in `authed` mode: it skips the account step and posts to

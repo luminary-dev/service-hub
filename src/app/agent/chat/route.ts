@@ -8,6 +8,7 @@
 // outside the gateway-proxied /api/* prefix because the gateway buffers; a
 // direct web→chat stream doesn't.
 import { getSession } from "@/lib/auth";
+import { INTERNAL_API_SECRET } from "@/lib/internal-secret";
 import { getLocale } from "@/lib/locale";
 import { rateLimited } from "./rate-limit";
 
@@ -15,8 +16,6 @@ export const dynamic = "force-dynamic";
 
 const CHAT_SERVICE_URL =
   process.env.CHAT_SERVICE_URL ?? "http://localhost:4007";
-const INTERNAL_API_SECRET =
-  process.env.INTERNAL_API_SECRET ?? "dev-internal-secret";
 
 // The assistant drives a paid Claude tool loop, so the endpoint must not be
 // open to anonymous or unbounded traffic. Cap the request body; the per-user

@@ -1,49 +1,25 @@
 import type { NextConfig } from "next";
 
-// CSP directives — ENFORCED (promoted from Report-Only, #112). The app pulls
-// in no third-party origins today, so everything is 'self' except:
-// - script-src keeps 'unsafe-inline' because Next injects inline runtime/
-//   hydration scripts without a nonce when self-hosted; enforcing without it
-//   blanks the page. This is the minimal loosening required — migrating to a
-//   per-request nonce + 'strict-dynamic' is the follow-up hardening.
-// - script-src additionally allows 'unsafe-eval' IN DEVELOPMENT ONLY: Turbopack
-//   and React dev tooling use eval() for HMR and callstack reconstruction.
-//   Production builds never include it.
-// - style-src keeps 'unsafe-inline' for Tailwind, next/font, and the inline
-//   style attributes used for gradients / --rise-index vars.
-// - img-src is 'self' (uploads are served same-origin via /api/files/*, backed
-//   by R2 or local disk) plus data:/blob: for client-side upload previews, and
-//   the OpenStreetMap tile host for the provider location maps (#48 — the
-//   browser fetches tiles directly; see src/lib/geo.ts OSM_TILE_HOST).
-// - Cloudflare Turnstile (#633): when NEXT_PUBLIC_TURNSTILE_SITE_KEY is set the
-//   signup forms load Cloudflare's challenge script and render its widget in an
-//   iframe, so script-src and frame-src must allow challenges.cloudflare.com.
-//   Gated on the key so an unconfigured deploy keeps the byte-identical
-//   tighter CSP (graceful degradation).
-// No Report-Only copy is kept: we never had report-uri/report-to collection
-// infrastructure, so a shadow header would report to nowhere.
+// Security headers. Content-Security-Policy is NOT here — it moved to
+// src/proxy.ts (#770) so it can carry a fresh per-request nonce.
+//
+// CSP background — ENFORCED (promoted from Report-Only, #112). The app pulls in
+// no third-party origins today, so everything is 'self'. The per-request
+// nonce + 'strict-dynamic' migration is now DONE: production script-src is
+// `'self' 'nonce-<value>' 'strict-dynamic'` (no 'unsafe-inline'), generated
+// and emitted in src/proxy.ts. That's the one directive that needs a runtime
+// value, which a build-time next.config header can't provide — the rest of the
+// CSP (style-src 'unsafe-inline' for Tailwind/next/font/inline style vars;
+// img-src for R2/OSM tiles #48; Turnstile #633 when NEXT_PUBLIC_TURNSTILE_SITE_KEY
+// is set; etc.) lives alongside it there. Development keeps 'unsafe-inline' +
+// 'unsafe-eval' for Turbopack/React HMR. See src/proxy.ts for the full policy
+// and rationale. No Report-Only copy is kept: we never had report-uri/report-to
+// collection infrastructure, so a shadow header would report to nowhere.
+//
+// The headers below are static (no per-request value), so they stay here.
 const isDev = process.env.NODE_ENV !== "production";
-const turnstile = Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY);
-const TURNSTILE_ORIGIN = "https://challenges.cloudflare.com";
-
-const csp = [
-  "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}${
-    turnstile ? ` ${TURNSTILE_ORIGIN}` : ""
-  }`,
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://tile.openstreetmap.org",
-  "font-src 'self'",
-  "connect-src 'self'",
-  ...(turnstile ? [`frame-src ${TURNSTILE_ORIGIN}`] : []),
-  "frame-ancestors 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "object-src 'none'",
-].join("; ");
 
 const securityHeaders = [
-  { key: "Content-Security-Policy", value: csp },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },

@@ -506,6 +506,67 @@ const en = {
     errorBody:
       "An unexpected error occurred. It's not you, it's us — please try again.",
     retry: "Try again",
+    // Inline "backend temporarily down" panel (#747): distinct from a genuine
+    // empty state so a service blip never reads as "you have no data".
+    unavailableTitle: "Temporarily unavailable",
+    unavailableBody:
+      "We couldn't load this right now — the service may be briefly down. Please refresh in a moment.",
+    // Error correlation id surfaced on the error pages (#760) — the request id
+    // the gateway echoes, so a support report can be tied to the exact log chain.
+    errorIdLabel: "Error ID",
+  },
+  // Backend error CODES → localized copy (#761). Services return a stable
+  // machine-readable `errorCode`; we map it to a translated string so the
+  // otherwise-Sinhala UI never surfaces a raw English backend sentence. When a
+  // code is missing or unknown (e.g. before backend codes land) callers fall
+  // back to their own localized generic string — never to `data.error`.
+  errorCodes: {
+    invalid_credentials: "That email or password is incorrect.",
+    account_locked:
+      "This account is locked. Please contact support if you need help.",
+    email_taken: "An account with this email already exists.",
+    email_not_verified: "Please verify your email address first.",
+    human_verification_failed: "Human verification failed. Please try again.",
+    rate_limited: "Too many attempts. Please wait a moment and try again.",
+    validation_error: "Please check the details you entered and try again.",
+    unauthorized: "Please sign in and try again.",
+    forbidden: "You don't have permission to do that.",
+    not_found: "We couldn't find what you were looking for.",
+    conflict: "That action conflicts with the current state. Please refresh.",
+    payload_too_large: "That upload is too large.",
+    weak_password: "Please choose a stronger password.",
+    current_password_incorrect: "Your current password is incorrect.",
+    server_error: "Something went wrong on our side. Please try again.",
+  } as Record<string, string>,
+  // Localized page titles for metadata (#762). The root layout template appends
+  // "· Baas.lk", so these carry NO brand suffix (fixes the old double-branding).
+  titles: {
+    login: "Sign in",
+    forgotPassword: "Reset your password",
+    resetPassword: "Set a new password",
+    verifyEmail: "Verify your email",
+    verifyEmailChange: "Confirm your new email",
+    register: "Create an account",
+    registerCustomer: "Create a customer account",
+    registerProvider: "Become a provider",
+    welcome: "Welcome",
+    welcomeProvider: "Set up your provider profile",
+    jobs: "Jobs",
+    jobsNew: "Post a job",
+    dashboard: "Dashboard",
+    account: "Your account",
+    adminOverview: "Admin overview",
+    adminUsers: "Users",
+    adminUserDetail: "User details",
+    adminProviders: "Providers",
+    adminProviderDetail: "Provider details",
+    adminJobs: "Jobs",
+    adminJobDetail: "Job details",
+    adminReports: "Reports",
+    adminVerifications: "Verifications",
+    adminCategories: "Categories",
+    adminAuditLog: "Audit log",
+    adminImpersonate: "Impersonate a user",
   },
   verification: {
     title: "Get verified",
@@ -901,6 +962,9 @@ const en = {
     adminForceLogoutError: "Failed to force sign-out.",
     inquiryStatusError: "Failed to update the inquiry.",
     jobStatusError: "Failed to update the job.",
+    // Expired-session mutations (#774): a 401 mid-browse means the JWT lapsed —
+    // prompt a re-sign-in instead of a generic (endlessly retryable) failure.
+    sessionExpired: "Your session expired. Please sign in again.",
   },
   inquiry: {
     title: (name: string) => `Send an inquiry to ${name}`,
@@ -1874,6 +1938,56 @@ const si: Dict = {
     errorTitle: "යමක් වැරදුණා",
     errorBody: "අනපේක්ෂිත දෝෂයක් ඇති විය. එය ඔබේ වරදක් නොවේ — නැවත උත්සාහ කරන්න.",
     retry: "නැවත උත්සාහ කරන්න",
+    unavailableTitle: "තාවකාලිකව නොමැත",
+    unavailableBody:
+      "මෙය දැන් පූරණය කළ නොහැකි විය — සේවාව මොහොතකට අක්‍රිය විය හැක. මොහොතකින් නැවුම් කරන්න.",
+    errorIdLabel: "දෝෂ හැඳුනුම",
+  },
+  errorCodes: {
+    invalid_credentials: "එම ඊමේල් හෝ මුරපදය වැරදියි.",
+    account_locked:
+      "මෙම ගිණුම අගුළු දමා ඇත. උදව් අවශ්‍ය නම් සහාය අමතන්න.",
+    email_taken: "මෙම ඊමේල් සහිත ගිණුමක් දැනටමත් පවතී.",
+    email_not_verified: "කරුණාකර පළමුව ඔබේ ඊමේල් ලිපිනය සත්‍යාපනය කරන්න.",
+    human_verification_failed: "මානව සත්‍යාපනය අසාර්ථක විය. නැවත උත්සාහ කරන්න.",
+    rate_limited: "උත්සාහයන් වැඩියි. මොහොතක් රැඳී නැවත උත්සාහ කරන්න.",
+    validation_error: "ඔබ ඇතුළත් කළ තොරතුරු පරීක්ෂා කර නැවත උත්සාහ කරන්න.",
+    unauthorized: "කරුණාකර පිවිස නැවත උත්සාහ කරන්න.",
+    forbidden: "එය කිරීමට ඔබට අවසර නැත.",
+    not_found: "ඔබ සෙවූ දෙය සොයාගත නොහැකි විය.",
+    conflict: "එම ක්‍රියාව වත්මන් තත්ත්වයට නොගැලපේ. කරුණාකර නැවුම් කරන්න.",
+    payload_too_large: "එම උඩුගත කිරීම විශාල වැඩියි.",
+    weak_password: "කරුණාකර ශක්තිමත් මුරපදයක් තෝරන්න.",
+    current_password_incorrect: "ඔබේ වත්මන් මුරපදය වැරදියි.",
+    server_error: "අප පැත්තෙන් යමක් වැරදුණා. නැවත උත්සාහ කරන්න.",
+  } as Record<string, string>,
+  titles: {
+    login: "පිවිසෙන්න",
+    forgotPassword: "ඔබේ මුරපදය යළි සකසන්න",
+    resetPassword: "නව මුරපදයක් සකසන්න",
+    verifyEmail: "ඔබේ ඊමේල් සත්‍යාපනය කරන්න",
+    verifyEmailChange: "ඔබේ නව ඊමේල් තහවුරු කරන්න",
+    register: "ගිණුමක් සාදන්න",
+    registerCustomer: "පාරිභෝගික ගිණුමක් සාදන්න",
+    registerProvider: "සේවා සපයන්නෙකු වන්න",
+    welcome: "සාදරයෙන් පිළිගනිමු",
+    welcomeProvider: "ඔබේ සේවා පැතිකඩ සකසන්න",
+    jobs: "රැකියා",
+    jobsNew: "රැකියාවක් පළ කරන්න",
+    dashboard: "පාලක පුවරුව",
+    account: "ඔබේ ගිණුම",
+    adminOverview: "පරිපාලක දළ විශ්ලේෂණය",
+    adminUsers: "පරිශීලකයෝ",
+    adminUserDetail: "පරිශීලක විස්තර",
+    adminProviders: "සේවා සපයන්නෝ",
+    adminProviderDetail: "සේවා සපයන්නාගේ විස්තර",
+    adminJobs: "රැකියා",
+    adminJobDetail: "රැකියා විස්තර",
+    adminReports: "වාර්තා",
+    adminVerifications: "සත්‍යාපන",
+    adminCategories: "ප්‍රවර්ග",
+    adminAuditLog: "විගණන ලොගය",
+    adminImpersonate: "පරිශීලකයෙකු ලෙස පෙනී සිටින්න",
   },
   verification: {
     title: "සත්‍යාපනය ලබාගන්න",
@@ -2254,6 +2368,7 @@ const si: Dict = {
     adminForceLogoutError: "බලෙන් නික්මවීමට අසමත් විය.",
     inquiryStatusError: "විමසුම යාවත්කාලීන කිරීමට අසමත් විය.",
     jobStatusError: "රැකියාව යාවත්කාලීන කිරීමට අසමත් විය.",
+    sessionExpired: "ඔබේ සැසිය කල් ඉකුත් විය. කරුණාකර නැවත පිවිසෙන්න.",
   },
   inquiry: {
     title: (name: string) => `${name}ට විමසුමක් යවන්න`,

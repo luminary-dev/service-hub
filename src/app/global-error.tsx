@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { reportClientError } from "@/lib/sentry";
 
 // Catches errors thrown by the ROOT layout itself (e.g. getLocale/getTheme),
 // which the regular error.tsx — rendered inside that layout — cannot. It
@@ -14,8 +15,9 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  // Report to GlitchTip/Sentry instead of a browser-only console.error (#760).
   useEffect(() => {
-    console.error(error);
+    reportClientError(error);
   }, [error]);
 
   return (
@@ -39,6 +41,20 @@ export default function GlobalError({
           <p style={{ marginTop: "0.75rem", color: "#555", lineHeight: 1.6 }}>
             An unexpected error occurred while loading Baas.lk. Please try again.
           </p>
+          {/* Error ID (#760): the request digest, so a support report can be
+              tied to the captured event / gateway log chain. */}
+          {error.digest && (
+            <p
+              style={{
+                marginTop: "0.75rem",
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                fontSize: "0.75rem",
+                color: "#888",
+              }}
+            >
+              Error ID: {error.digest}
+            </p>
+          )}
           <button
             type="button"
             onClick={reset}
