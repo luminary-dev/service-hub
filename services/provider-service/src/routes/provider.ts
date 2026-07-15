@@ -27,7 +27,7 @@ import {
   syncIdentityProfile,
 } from "../lib/clients";
 import { getCurrentProvider } from "../lib/provider-auth";
-import { isSupportOrAdmin, s2s } from "../lib/http";
+import { getAuth, isSupportOrAdmin, s2s } from "../lib/http";
 import { advisoryXactLock } from "../lib/locks";
 import { syncProviderIndex } from "../lib/search-index";
 import { moneyToNumber } from "../lib/money";
@@ -685,9 +685,19 @@ providerDashboardRoutes.get("/api/files/provider/verification/*", async (c) => {
   if (!isSupportOrAdmin(c)) {
     return c.json({ error: "Forbidden" }, 403);
   }
+  // media-service's /internal/media/raw now requires the forwarded ADMIN/SUPPORT
+  // identity headers (#773, pairs with media #780) — the internal secret alone no
+  // longer authorizes a raw PII fetch. This route is already gated to ADMIN/
+  // SUPPORT above, so pass the caller's identity through so media can re-check it.
+  const auth = getAuth(c);
   const res = await s2s(
     MEDIA_SERVICE_URL,
-    `/internal/media/raw?url=${encodeURIComponent(c.req.path)}`
+    `/internal/media/raw?url=${encodeURIComponent(c.req.path)}`,
+    {
+      headers: {
+        ...(auth ? { "x-user-id": auth.userId, "x-user-role": auth.role } : {}),
+      },
+    }
   );
   if (!res.ok) {
     return c.json({ error: "Not found" }, 404);

@@ -79,8 +79,8 @@ time (EN↔SI re-renders the whole feed) — and a relative `link`.
 | Method + path | Auth | Summary |
 |---|---|---|
 | `GET /api/categories` | public | Active categories, sorted → `{ categories }`. |
-| `GET /api/providers` | public | Directory search. See params below. Returns `{ providers, total, page, pageSize }`. Each card includes the `latitude`/`longitude` map pin (#48) only when the provider set one (the same already-public pair the detail payloads carry). The web listing itself now queries `/api/search/providers` (RFC phase 3) and falls back here if search-service is down. |
-| `GET /api/providers/ids` | public | Every non-suspended provider `{ id, updatedAt }` (sitemap) → `{ providers }`. |
+| `GET /api/providers` | public | Directory search. See params below. Returns `{ providers, total, page, pageSize }`. Filter, sort, pagination and the real `total` all run **DB-side** on Postgres (#748) — no in-memory candidate cap and no per-request rating fan-out (rating comes from the denormalized `ratingAvg`/`ratingCount` columns, kept fresh by review-service's write-back). Each card includes the `latitude`/`longitude` map pin (#48) only when the provider set one (the same already-public pair the detail payloads carry). The web listing itself now queries `/api/search/providers` (RFC phase 3) and falls back here if search-service is down. |
+| `GET /api/providers/ids` | public | Non-suspended provider `{ id, updatedAt }` for the sitemap, **id-cursor paginated** (#766) → `{ providers, nextCursor }`. `?take=` (default 1000, max 5000) sizes the page; `?cursor=` continues after the last id; walk until `nextCursor` is `null`. Ordered by `id` (stable cursor). |
 | `GET /api/stats` | public | `{ providerCount, reviewCount }` (review count via S2S). |
 | `GET /api/providers/:id` | public | Legacy detail: provider + services + photos, contact as `user` (**name only**). Carries `categoryImageUrl` — the admin-managed per-trade cover (#436/#701), or `null` — so the profile page's cover banner can lead with it like the listing card. The `latitude`/`longitude` map pin (#48) is included only when the provider set one. Phone numbers **and the contact email are omitted** (#64/#655) — the payload carries `hasPhone`/`hasWhatsapp`/`hasPhone2`/`hasEmail` booleans instead; fetch the values via `POST /:id/contact`. The owner's `userId` is withheld from anonymous/third-party callers (#655) — it is only present when the caller is the owner (their own id) or an admin. Admin moderation fields (`rejectionReason`) are never included (#506). Suspended → 404 unless caller is ADMIN. |
 | `GET /api/providers/:id/full` | public | Full profile payload: services, first 50 photos (`photosTotal`), first page of reviews (`?reviewsTake`≤100, `?reviewsCursor`; `reviewsNextCursor` returned), `avgResponseMs` (over the 200 most recent answered inquiries, #372), `favorited`. Carries `categoryImageUrl` — the admin-managed per-trade cover (#436/#701), or `null` — powering the profile-hero cover banner, like the listing card. The `latitude`/`longitude` map pin (#48) is included only when set. Contact as `user` (**name only**) + `hasPhone`/`hasWhatsapp`/`hasPhone2`/`hasEmail` booleans — raw phone numbers **and the contact email** are withheld (#64/#655, see `POST /:id/contact`). The owner's `userId` is included only for the owner (powers the profile's owner check) or an admin (#655). Admin moderation fields (`rejectionReason`) are never included (#506). Suspended → 404 unless ADMIN. |
@@ -95,10 +95,10 @@ time (EN↔SI re-renders the whole feed) — and a relative `link`.
 | `q` | Free text over headline/bio, the optional Sinhala headlineSi/bioSi (#515), city, contactName, services (pg_trgm) + Category label match (en/si). |
 | `category`, `district` | `category` is exact; `district` is a **membership test on the provider's served set** (`serviceDistricts`, #502) — a provider based elsewhere but serving the district matches. |
 | `sort` | `recommended` (default), `rating`, `reviews`, `price`, `experience`, `newest`. |
-| `page` | ≥ 1 (default 1). |
+| `page` | 1..**500** (default 1; clamped so a deep page can't force a huge DB OFFSET). |
 | `pageSize` / `take` | Default 12, capped **24** (`take` is an alias). |
 | `priceMin`, `priceMax` | Integer rupees (swapped if min > max). |
-| `ratingMin` | Clamped to 1..5; applied in memory after S2S rating hydration. |
+| `ratingMin` | Clamped to 1..5; a DB-side predicate on `ratingAvg` (#748) that also excludes providers with no reviews. |
 | `availableOnly` | `1`/`true` → effective-availability filter (away providers excluded). |
 | `ids` | Comma list (≤500) → exactly those non-suspended providers in input order, no paging. |
 

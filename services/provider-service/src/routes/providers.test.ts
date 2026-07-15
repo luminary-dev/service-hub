@@ -14,12 +14,14 @@ const { dbMock } = vi.hoisted(() => ({
     // Content filter (#375): the auto-report path files a SYSTEM report on
     // the inquiry when its text matches the denylist.
     report: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+    // Browse now runs the ordered/paginated id slice + total count DB-side (#748)
+    // via $queryRaw; the id-select returns [{ id }], the count [{ count }].
+    $queryRaw: vi.fn(),
   },
 }));
 
 vi.mock("../db", () => ({ db: dbMock }));
 vi.mock("../lib/clients", () => ({
-  fetchRatings: vi.fn().mockResolvedValue({}),
   fetchProviderReviews: vi.fn().mockResolvedValue({ reviews: [], nextCursor: null }),
   fetchReviewCount: vi.fn().mockResolvedValue(0),
   // Verified-email inquiry gate (#115) — verified by default; the gate tests
@@ -81,10 +83,23 @@ function providerRow(overrides: Record<string, unknown> = {}) {
     verifiedAt: new Date("2026-01-01"),
     createdAt: new Date("2026-01-01"),
     suspended: false,
+    // Denormalized rating aggregates (#748) — the card DTO reads these directly.
+    ratingAvg: 0,
+    ratingCount: 0,
     services: [],
     photos: [],
     ...overrides,
   };
+}
+
+// Default $queryRaw stub (#748): the browse route runs the id-select and the
+// count query through it. Distinguish by the SQL text; individual tests override.
+function stubBrowseQueryRaw(ids: string[], total = ids.length) {
+  dbMock.$queryRaw.mockImplementation((q: { strings?: string[]; sql?: string }) => {
+    const text = Array.isArray(q?.strings) ? q.strings.join(" ") : String(q?.sql ?? "");
+    if (text.includes("COUNT(")) return Promise.resolve([{ count: total }]);
+    return Promise.resolve(ids.map((id) => ({ id })));
+  });
 }
 
 beforeEach(() => {
@@ -94,6 +109,7 @@ beforeEach(() => {
   dbMock.provider.findMany.mockResolvedValue([]);
   dbMock.provider.count.mockResolvedValue(0);
   dbMock.inquiry.findMany.mockResolvedValue([]);
+  stubBrowseQueryRaw([]);
   // clearAllMocks wipes the resolved value set at mock-definition time (#115).
   vi.mocked(isEmailVerified).mockResolvedValue(true);
 });
@@ -397,7 +413,11 @@ describe("GET /api/providers?ids= (favorites)", () => {
 });
 
 describe("GET /api/providers — browse card money serialization (#371)", () => {
-  it("emits fromPrice/services[].price as numbers and price-sorts Decimal rows", async () => {
+  it("emits fromPrice/services[].price as numbers, in the DB-ranked id order", async () => {
+    // Ranking/pagination run DB-side now (#748): $queryRaw returns the ordered
+    // ids (cheapest first for sort=price) and the total; findMany hydrates them
+    // (in arbitrary order) and the route re-orders back to the ranked ids.
+    stubBrowseQueryRaw(["cheap", "pricey"]);
     dbMock.provider.findMany.mockResolvedValue([
       providerRow({
         id: "pricey",
@@ -415,9 +435,10 @@ describe("GET /api/providers — browse card money serialization (#371)", () => 
     const res = await req("/api/providers?sort=price");
     expect(res.status).toBe(200);
     const body = await res.json();
-    // The in-memory price sort compares plain numbers — Decimals must be
-    // converted before ranking, lowest starting price first.
+    // Output follows the DB-ranked id order, not the findMany order.
     expect(body.providers.map((p: { id: string }) => p.id)).toEqual(["cheap", "pricey"]);
+    expect(body.total).toBe(2);
+    // Decimals must still be converted to plain numbers at the JSON edge.
     expect(body.providers[0].fromPrice).toBe(1500);
     expect(typeof body.providers[0].fromPrice).toBe("number");
     expect(body.providers[0].services[0].price).toBe(1500);
@@ -425,8 +446,28 @@ describe("GET /api/providers — browse card money serialization (#371)", () => 
   });
 });
 
+describe("GET /api/providers — browse card rating from denormalized columns (#748)", () => {
+  it("maps ratingCount 0 to a null rating and surfaces the cached average otherwise", async () => {
+    stubBrowseQueryRaw(["rated", "unrated"]);
+    dbMock.provider.findMany.mockResolvedValue([
+      providerRow({ id: "rated", ratingAvg: 4.5, ratingCount: 8 }),
+      providerRow({ id: "unrated", ratingAvg: 0, ratingCount: 0 }),
+    ]);
+    const res = await req("/api/providers");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const rated = body.providers.find((p: { id: string }) => p.id === "rated");
+    const unrated = body.providers.find((p: { id: string }) => p.id === "unrated");
+    expect(rated.rating).toBe(4.5);
+    expect(rated.reviewCount).toBe(8);
+    expect(unrated.rating).toBeNull();
+    expect(unrated.reviewCount).toBe(0);
+  });
+});
+
 describe("GET /api/providers — browse card map pin (#48)", () => {
   it("includes the pin on pinned cards and omits the keys on unpinned ones", async () => {
+    stubBrowseQueryRaw(["pinned", "unpinned"]);
     dbMock.provider.findMany.mockResolvedValue([
       providerRow({ id: "pinned", latitude: 6.9271, longitude: 79.8612 }),
       providerRow({ id: "unpinned" }),

@@ -146,6 +146,17 @@ homepage "newest" strip and the listing's outage fallback still call it, and
 the e2e parity check compares against it. Slimming it to the `ids=` favorites
 path is the RFC's post-soak cleanup (§5.2).
 
+Until that cleanup lands, the browse route no longer ranks in memory: `ratingAvg`
+/ `ratingCount` are **denormalized onto `Provider`** (#748, kept fresh by
+review-service's write-back to `PUT /internal/providers/:id/rating`), so filter,
+sort, pagination and the real `total` all run DB-side in Postgres — no 1000-row
+candidate cap and no per-request rating fan-out to review-service. The two sorts
+Prisma `orderBy` can't express live in raw SQL (`price` = MIN over the services
+relation, `recommended` = the Bayesian + recency + verified score); the id slice
+is selected DB-side then hydrated into the shared card DTO. Deploy-time reconcile
+and self-healing run through `POST /internal/providers/rating/backfill` (see
+[OPERATIONS.md](../OPERATIONS.md#provider-rating-denormalization-backfill-748)).
+
 ### Open Graph images
 
 **`/providers/[id]/opengraph-image`** generates a 1200×630 PNG via `next/og`
