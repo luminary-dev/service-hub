@@ -515,6 +515,73 @@ services:
     # comes from the image env (see the web Dockerfile).
     healthcheck: *node-healthcheck
 
+  # Observability (#668), metrics foundation. Prometheus scrapes every service's
+  # /metrics over the internal backend network (see deploy/observability/
+  # prometheus.yml); Grafana provisions a Prometheus datasource + a starter RED
+  # dashboard from deploy/observability/. Neither is a public surface: both live
+  # on `backend` only and publish their host ports to LOOPBACK (#387), so an
+  # operator reaches Grafana via an SSH tunnel (ssh -L 3001:127.0.0.1:3001 …,
+  # then http://localhost:3001 — admin / ${GRAFANA_ADMIN_PASSWORD}). There is no
+  # Caddy route to either. Logs (Loki), tracing (OTel/Tempo) and error capture
+  # are planned follow-ups on #668 — not part of this slice.
+  prometheus:
+    # dependabot: prom/prometheus:v3.1.0
+    image: prom/prometheus:v3.1.0@sha256:6559acbd5d770b15bb3c954629ce190ac3cbbdb2b7f1c30f0385c4e05104e218
+    mem_limit: 512m
+    <<: [*restart, *logging, *hardening]
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      # Bound retention so the metrics TSDB can't fill the single VPS's disk.
+      - "--storage.tsdb.retention.time=15d"
+    volumes:
+      - ./deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      # Loopback only — reachable from the host (SSH tunnel) for ad-hoc PromQL,
+      # never from the LAN/internet.
+      - "127.0.0.1:9090:9090"
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+
+  grafana:
+    # dependabot: grafana/grafana:11.4.0
+    image: grafana/grafana:11.4.0@sha256:d8ea37798ccc41061a62ab080f2676dda6bf7815558499f901bdb0f533a456fb
+    mem_limit: 256m
+    <<: [*restart, *logging, *hardening]
+    environment:
+      # Required secret: no dev fallback, so the stack refuses to start with a
+      # default admin password (mirrors the AUTH_SECRET / INTERNAL_API_SECRET
+      # guards). Rotate by changing this and recreating the container.
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      # Absolute URL for correct redirects behind the loopback publish.
+      GF_SERVER_ROOT_URL: "http://localhost:3001/"
+    volumes:
+      - ./deploy/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      # Loopback only (SSH tunnel to reach the UI); Grafana serves on 3000
+      # in-container, published on host 3001 (3000 is not used on the server).
+      - "127.0.0.1:3001:3000"
+    networks: [backend]
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+
   # The only public surface: terminates TLS (auto Let's Encrypt) and proxies to
   # the web app, which in turn proxies /api/* to the gateway internally.
   caddy:
@@ -579,3 +646,5 @@ volumes:
   review_uploads:
   caddy_data:
   caddy_config:
+  prometheus_data:
+  grafana_data:

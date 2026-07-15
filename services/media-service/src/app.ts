@@ -3,15 +3,18 @@ import { Hono } from "hono";
 import { requireInternalSecret } from "./lib/http";
 import { log } from "./lib/log";
 import { getRequestId, requestLogger } from "./lib/logging";
+import { metricsHandler, metricsMiddleware } from "./lib/metrics";
 import { filesRoutes } from "./routes/files";
 import { internalRoutes } from "./routes/internal";
 
 export const app = new Hono();
 
 app.use(requestLogger(log));
+app.use(metricsMiddleware());
 app.get("/healthz", (c) => c.json({ ok: true, service: "media-service" }));
 // Everything else (including /files/*, which the gateway supplies the secret
 // for on behalf of browsers) is behind the internal secret.
+app.get("/metrics", metricsHandler);
 app.use("*", requireInternalSecret);
 
 app.route("/", filesRoutes);

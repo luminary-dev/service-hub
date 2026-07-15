@@ -37,7 +37,8 @@ Every image runs as the **non-root `node` user** (`USER node`).
 `# dependabot: <tag>` comment plus the readable tag before the `@sha256:` digest,
 so a build is reproducible and Dependabot can bump the tag comment and digest
 together. Compose base images (`postgis/postgis:16-3.5-alpine`, `redis:7-alpine`,
-`edoburu/pgbouncer` (#674), `caddy:2-alpine` in `docker-compose.prod.yml`) are pinned the *same way* by hand,
+`edoburu/pgbouncer` (#674), `caddy:2-alpine`, and the observability pair
+`prom/prometheus` + `grafana/grafana` (#668) in `docker-compose.prod.yml`) are pinned the *same way* by hand,
 but **Dependabot can't bump them** — its `docker` ecosystem only parses `FROM`
 in Dockerfiles, never `image:` refs in compose files. A scheduled
 [`compose-image-digests`](../.github/workflows/compose-image-digests.yml)
@@ -479,6 +480,8 @@ so `migrate deploy` stops erroring with P3005); fresh DBs never need it.
 | trust-safety-service | 4009 | DB-owning — unified reports + audit (dark launch) |
 | postgres | 5432 (host **5433**) | remapped so it won't clash with a local Postgres |
 | redis | 6379 | rate-limit windows + session-revocation list + email queue |
+| prometheus | 9090 | scrapes every service's `/metrics` (loopback-only host port) |
+| grafana | 3000 (host **3001**) | dashboards; loopback-only (3000 is the web app) |
 
 In the **dev compose stack** every published port except web's `3000` is bound
 to **127.0.0.1** (#387): on shared wifi nobody else can reach Postgres (its dev
@@ -527,9 +530,62 @@ docker compose logs --no-log-prefix api-gateway | jq -c 'select(.level == "error
 docker compose logs --no-log-prefix | grep '"requestId":"<id>"'
 ```
 
-**Uptime probing, alerting, and an error-monitoring backend are still
-pending** — tracked by **#113 / #34** and listed among the pre-launch
-requirements in DEPLOYMENT.md. There is currently no external uptime probe,
-metrics/APM, or alerting (the one exception: backup freshness has a
-dead-man's-switch heartbeat, see [BACKUPS.md](BACKUPS.md)); log inspection is
-manual (`docker compose logs`) until those land.
+**A self-hosted metrics stack now ships with the compose stack** — see
+[Observability](#observability) below. **Uptime probing, alerting, and an
+error-monitoring backend are still pending** — tracked by **#113 / #34** and
+listed among the pre-launch requirements in DEPLOYMENT.md. There is still no
+external uptime probe or alerting on top of the metrics (the one exception:
+backup freshness has a dead-man's-switch heartbeat, see
+[BACKUPS.md](BACKUPS.md)); log inspection is manual (`docker compose logs`)
+until those land.
+
+## Observability
+
+**Metrics foundation (#668).** Every backend service (gateway included) exposes
+Prometheus metrics at `GET /metrics` on its own port via an identical
+`src/lib/metrics.ts` (the canonical-copy convention, enforced by
+`src/lib/shared-copies.test.ts`). It serves:
+
+- **`http_request_duration_seconds`** — a request-latency histogram, and
+  **`http_requests_total`** — a request counter, both labelled
+  `method` / `route` / `status`. `route` is the matched Hono route *pattern*
+  (e.g. `/api/admin/users/:id`), never the raw path, so ids don't explode
+  cardinality. `/metrics` and `/healthz` are excluded so the rate reflects real
+  traffic.
+- **Node/process defaults** (`collectDefaultMetrics`): event-loop lag, heap, GC,
+  fds, cpu. Every series carries a `service="<name>"` label stamped by
+  `initMetrics()` (called once in each `src/index.ts`).
+
+`/metrics` is deliberately **not** behind the internal secret — Prometheus
+scrapes it directly — and that is safe because the service ports are never
+public (loopback-bound in dev, `backend`-only network in prod).
+
+**The stack.** `docker-compose.yml` and `docker-compose.prod.yml` add two
+services:
+
+- **Prometheus** — scrapes all ten services every 15s
+  (`deploy/observability/prometheus.yml`). Prod pins the image by digest (#238)
+  and caps TSDB retention at 15d.
+- **Grafana** — auto-provisions a Prometheus datasource and a starter **RED**
+  dashboard (request rate / error rate / p50-p95-p99 latency, templated by
+  service) from `deploy/observability/grafana/`.
+
+**Reaching Grafana.**
+
+- *Dev*: `docker compose up -d prometheus grafana`, then
+  <http://localhost:3001> (user `admin`, password `GRAFANA_ADMIN_PASSWORD`,
+  default `admin`). Prometheus is at <http://localhost:9090>. Both host ports
+  are loopback-bound (#387).
+- *Prod*: neither is a public surface — both live on the `backend` network and
+  publish **loopback-only** host ports (no Caddy route). Reach Grafana through
+  an SSH tunnel: `ssh -L 3001:127.0.0.1:3001 <server>`, then
+  <http://localhost:3001>. `GRAFANA_ADMIN_PASSWORD` is a **required** secret
+  (the stack refuses to start without it); see `.env.prod.example`.
+
+**Planned follow-ups (still open on #668).** This slice is metrics only. Log
+aggregation (Loki), distributed tracing (OTel/Tempo), and an error-capture
+backend (Sentry/GlitchTip — the **#34** fold-in) are deliberately deferred to
+follow-up PRs; structured JSON logs and the `onError` /
+`installProcessErrorHandlers` choke points described under
+[Monitoring & alerting](#monitoring--alerting) are the hooks those will build
+on.

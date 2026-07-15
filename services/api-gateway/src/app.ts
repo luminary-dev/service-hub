@@ -3,6 +3,7 @@ import { bodyLimit } from "hono/body-limit";
 import { csrfMiddleware } from "./lib/csrf";
 import { log } from "./lib/log";
 import { getRequestId, requestLogger } from "./lib/logging";
+import { metricsHandler, metricsMiddleware } from "./lib/metrics";
 import { proxyRequest } from "./lib/proxy";
 import { rateLimitMiddleware } from "./lib/rate-limit";
 
@@ -17,10 +18,13 @@ export const app = new Hono();
 // Public edge: never trust a client-sent x-request-id — generate our own here
 // and propagate it upstream (see lib/proxy.ts buildUpstreamHeaders).
 app.use(requestLogger(log, { trustRequestId: false }));
+app.use(metricsMiddleware());
 
 // Public entry — no internal-secret check here; the gateway ADDS the secret
-// to upstream requests instead.
+// to upstream requests instead. /metrics is scraped by Prometheus over the
+// internal network only (the gateway port is never published publicly).
 app.get("/healthz", (c) => c.json({ ok: true, service: "api-gateway" }));
+app.get("/metrics", metricsHandler);
 
 app.use("/api/*", csrfMiddleware);
 app.use("/api/*", rateLimitMiddleware);

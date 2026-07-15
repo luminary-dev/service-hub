@@ -1,0 +1,13 @@
+# Grafana provisioned datasource (#668). Auto-loaded on startup so Grafana comes
+# up already pointed at Prometheus — no manual click-through. Reaches Prometheus
+# by its Docker-network service name.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false

@@ -3,12 +3,15 @@ import { Hono } from "hono";
 import { requireInternalSecret } from "./lib/http";
 import { log } from "./lib/log";
 import { getRequestId, requestLogger } from "./lib/logging";
+import { metricsHandler, metricsMiddleware } from "./lib/metrics";
 import { chatRoutes } from "./routes/chat";
 
 export const app = new Hono();
 
 app.use(requestLogger(log));
+app.use(metricsMiddleware());
 app.get("/healthz", (c) => c.json({ ok: true, service: "chat-service" }));
+app.get("/metrics", metricsHandler);
 app.use("*", requireInternalSecret);
 
 app.route("/", chatRoutes);

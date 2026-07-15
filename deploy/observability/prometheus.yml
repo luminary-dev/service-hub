@@ -1,0 +1,34 @@
+# Prometheus scrape config for the service-hub stack (#668, metrics foundation).
+# Mounted read-only into the prometheus container by both docker-compose.yml and
+# docker-compose.prod.yml. Every backend service exposes Prometheus text at
+# GET /metrics on its own port (see each service's src/lib/metrics.ts); that
+# route is deliberately NOT behind the internal secret, and the service ports
+# are never public (loopback in dev, backend-only network in prod), so Prometheus
+# scrapes them directly over the internal Docker network by service name.
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  external_labels:
+    stack: service-hub
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # The 10 backend services. Each metric already carries a `service` label
+  # (stamped by initMetrics), so the app-level label is authoritative; the
+  # target list here is just what to poll and on which port.
+  - job_name: service-hub
+    static_configs:
+      - targets:
+          - "api-gateway:4000"
+          - "identity-service:4001"
+          - "provider-service:4002"
+          - "review-service:4003"
+          - "job-service:4004"
+          - "notification-service:4005"
+          - "media-service:4006"
+          - "chat-service:4007"
+          - "search-service:4008"
+          - "trust-safety-service:4009"
