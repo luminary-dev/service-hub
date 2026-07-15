@@ -20,6 +20,15 @@ inquiry, which the customer then sends themselves, in English or Sinhala.
   loop: it streams text, and when the model requests a tool it runs it, feeds
   the result back, and continues — up to a safety bound (`MAX_LOOPS = 6`), with a
   message-history cap (`MAX_TURNS = 40`) and a 256 KB request-body cap.
+- **Client disconnect stops the work (#754).** An abandoned chat — closed tab,
+  navigation, mobile drop — must not keep spending tokens. The SSE
+  `ReadableStream` wires both the request's abort signal (`c.req.raw.signal`) and
+  its `cancel()` callback to a single `AbortController`, whose signal is passed
+  into every `anthropic.messages.stream(...)` call. On disconnect the in-flight
+  model request is torn down, the tool loop stops before starting further
+  gateway-hitting tool calls, and stream writes become no-ops — so an
+  unattended conversation stops incurring Anthropic spend instead of running to
+  completion server-side.
 - **Tools the model can call:**
   - `search_providers(category?, district?, q?)` — queries the public directory
     and returns up to 5 matches.

@@ -14,7 +14,14 @@ and links are scheme-validated before rendering.
 Marketplace events arrive on one generic S2S ingestion endpoint that fans out
 to the in-app feed (written inline, durable) and a Redis-backed email queue
 (`notify:email`, BRPOPLPUSH worker + processing-list reclaim, 3 attempts with
-30s × 2^n backoff; Redis unavailable → degraded one-attempt direct sends).
+30s × 2^n backoff; Redis unavailable → degraded one-attempt direct sends). A
+failed send is parked in a durable delayed-retry ZSET (`notify:retry`, scored
+by retry-at) *before* it is removed from the processing list, and the worker
+polls that set back onto `notify:email` when each retry-at passes — so a
+restart or crash during the backoff window never drops a pending retry (#751);
+graceful shutdown flushes them back to `notify:email`. Queue depth is exported
+as the `notification_email_queue_depth{state}` Prometheus gauge on `/metrics`
+(`state` = `pending` / `processing` / `retry`, #746).
 Every request except `/healthz` must carry
 `x-internal-secret: $INTERNAL_API_SECRET` (constant-time checked), or it is
 rejected with `403 { "error": "Forbidden" }`; the `/api/*` routes additionally

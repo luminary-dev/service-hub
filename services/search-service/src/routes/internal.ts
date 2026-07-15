@@ -32,7 +32,8 @@ internalRoutes.put("/internal/search/providers/:id", async (c) => {
 });
 
 // Removal (suspension, self-deactivation, erasure). Idempotent — deleting an
-// unindexed provider is a no-op 200.
+// unindexed provider is a no-op 200. Writes a delete tombstone (#752) so a
+// stale push landing after this DELETE can't resurrect the row.
 internalRoutes.delete("/internal/search/providers/:id", async (c) => {
   await deleteDocument(c.req.param("id"));
   return c.json({ ok: true });

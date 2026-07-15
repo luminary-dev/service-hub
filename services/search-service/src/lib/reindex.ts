@@ -4,6 +4,7 @@
 // endpoint, then delete index rows absent from the export — suspended/erased
 // providers drop out here even if their push was lost. Ops-cron triggered
 // daily like sweep-orphans (docs/OPERATIONS.md).
+import { randomUUID } from "node:crypto";
 import { db } from "../db";
 import { fetchExportPage, fetchRatings } from "./clients";
 import { indexDocumentSchema, patchRatings, upsertDocument } from "./documents";
@@ -15,9 +16,20 @@ const EXPORT_PAGE_SIZE = 200;
 const MAX_PAGES = 1000;
 const RATINGS_CHUNK = 200;
 
-export type ReindexResult = { indexed: number; skipped: number; deleted: number };
+export type ReindexResult = {
+  indexed: number;
+  skipped: number;
+  deleted: number;
+  purged: number;
+};
 
 export async function runReindex(): Promise<ReindexResult> {
+  // Sweep generation (#752): a unique id stamped onto every row this run
+  // upserts, and the wall-clock start captured before the first export page.
+  // The prune below deletes only rows this run did not stamp AND that predate
+  // the sweep, so a provider registered mid-sweep is never pruned.
+  const sweepId = randomUUID();
+  const sweepStartedAt = new Date();
   const seen: string[] = [];
   let skipped = 0;
   let cursor: string | null = null;
@@ -36,7 +48,7 @@ export async function runReindex(): Promise<ReindexResult> {
         log.warn("reindex skipped a malformed export row", { id });
         continue;
       }
-      await upsertDocument(id, parsed.data);
+      await upsertDocument(id, parsed.data, sweepId);
       seen.push(id);
     }
     cursor = page.nextCursor;
@@ -58,11 +70,27 @@ export async function runReindex(): Promise<ReindexResult> {
     }
   }
 
-  // Drift removal: anything the source no longer exports (suspended, erased)
-  // leaves the index. An empty export legitimately empties the index.
+  // Drift removal by sweep generation (#752): delete only rows this sweep did
+  // not stamp (a different or absent sweepId) AND that predate it — a provider
+  // registered mid-sweep carries a fresh updatedAt and survives. Anything the
+  // source no longer exports (suspended, erased) still has its old timestamp
+  // and drops out here. An empty export legitimately empties the index. The
+  // explicit `sweepId: null` arm covers rows created by a push before their
+  // first sweep, whichever way Prisma treats NULL under `not`.
   const { count: deleted } = await db.providerIndex.deleteMany({
-    where: { providerId: { notIn: seen } },
+    where: {
+      updatedAt: { lt: sweepStartedAt },
+      OR: [{ sweepId: { not: sweepId } }, { sweepId: null }],
+    },
   });
 
-  return { indexed: seen.length, skipped, deleted };
+  // Purge tombstones the sweep has made redundant (#752): once a tombstone
+  // predates this sweep, the sweep has already re-pruned any row a stale push
+  // may have resurrected before it, so the tombstone no longer protects
+  // anything and can be dropped.
+  const { count: purged } = await db.providerTombstone.deleteMany({
+    where: { deletedAt: { lt: sweepStartedAt } },
+  });
+
+  return { indexed: seen.length, skipped, deleted, purged };
 }

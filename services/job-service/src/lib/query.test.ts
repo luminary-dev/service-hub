@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PAGE_SIZE,
   MAX_PAGE_SIZE,
+  MAX_PAGE,
   MAX_BATCH_IDS,
   normalizeListQuery,
   capBatchIds,
@@ -55,6 +56,15 @@ describe("normalizeListQuery", () => {
       page: 2,
       pageSize: 12,
     });
+  });
+
+  // #753: an unbounded page feeds the SQL OFFSET, so clamp it to MAX_PAGE to
+  // keep skip int-safe and block deep-pagination DoS. Normal pages pass through.
+  it("clamps page at MAX_PAGE to bound the OFFSET", () => {
+    expect(normalizeListQuery({ page: "5" }).page).toBe(5);
+    expect(normalizeListQuery({ page: "999999" }).page).toBe(MAX_PAGE);
+    expect(normalizeListQuery({ page: String(MAX_PAGE + 1) }).page).toBe(MAX_PAGE);
+    expect(normalizeListQuery({ page: "1e300" }).page).toBe(MAX_PAGE);
   });
 });
 

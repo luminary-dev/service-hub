@@ -6,7 +6,12 @@ import { initErrorCapture } from "./lib/errors";
 import { log } from "./lib/log";
 import { installProcessErrorHandlers } from "./lib/logging";
 import { initMetrics } from "./lib/metrics";
-import { closeQueueRedis, startEmailWorker, stopEmailWorker } from "./lib/queue";
+import {
+  closeQueueRedis,
+  flushPendingRetries,
+  startEmailWorker,
+  stopEmailWorker,
+} from "./lib/queue";
 
 const port = Number(process.env.PORT ?? 4005);
 
@@ -48,6 +53,10 @@ function shutdown(signal: string) {
   forced.unref();
   server.close(async () => {
     try {
+      // Flush pending delayed retries back to the durable queue before the
+      // connections close (#751) — the worker loop is already stopped, so no
+      // poller races the flush.
+      await flushPendingRetries();
       await closeQueueRedis();
       await db.$disconnect();
     } catch (err) {

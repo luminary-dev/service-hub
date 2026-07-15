@@ -78,12 +78,15 @@ function toColumns(doc: IndexDocument) {
 // Full-document upsert, last-write-wins on updatedAt: an UPDATE guarded by
 // `updatedAt <= doc.updatedAt` (a stale push over a fresher row is a no-op),
 // then an INSERT when no row existed. Rating aggregates are untouched on
-// update and zeroed on create (review-service's patch fills them in).
+// update and zeroed on create (review-service's patch fills them in). The
+// reindex sweep passes its `sweepId` so every row it touches is stamped with
+// the current generation (the push path leaves it untouched).
 export async function upsertDocument(
   providerId: string,
-  doc: IndexDocument
+  doc: IndexDocument,
+  sweepId?: string
 ): Promise<void> {
-  const columns = toColumns(doc);
+  const columns = sweepId != null ? { ...toColumns(doc), sweepId } : toColumns(doc);
   const { count } = await db.providerIndex.updateMany({
     where: { providerId, updatedAt: { lte: doc.updatedAt } },
     data: columns,
@@ -94,6 +97,18 @@ export async function upsertDocument(
     select: { providerId: true },
   });
   if (existing) return; // fresher row already indexed — stale push dropped
+
+  // Tombstone guard (#752): a full-document push built before a DELETE can land
+  // after it (provider-service pushes fire-and-forget with retry). Refuse to
+  // recreate a row tombstoned more recently than this document — otherwise an
+  // erased/suspended provider reappears in search. A genuinely newer document
+  // (a re-activation) supersedes the tombstone and clears it below.
+  const tombstone = await db.providerTombstone.findUnique({
+    where: { providerId },
+    select: { deletedAt: true },
+  });
+  if (tombstone && tombstone.deletedAt > doc.updatedAt) return;
+
   try {
     await db.providerIndex.create({
       data: { providerId, ...columns, ratingAvg: null, ratingCount: 0 },
@@ -103,6 +118,11 @@ export async function upsertDocument(
     // (full documents are idempotent), so losing is fine.
     if ((e as { code?: string }).code === "P2002") return;
     throw e;
+  }
+  // This document superseded the tombstone — drop it so it can't block a later
+  // (correctly stale) push and so the sweep has less to purge.
+  if (tombstone) {
+    await db.providerTombstone.deleteMany({ where: { providerId } });
   }
 }
 
@@ -120,6 +140,16 @@ export async function patchRatings(patch: RatingPatch): Promise<void> {
   });
 }
 
+// Removal (suspension, self-deactivation, erasure). Writes a tombstone first
+// (#752) so a stale push that lands after this DELETE cannot resurrect the row,
+// then deletes it. The tombstone is upserted so a re-delete refreshes
+// deletedAt; the daily sweep purges tombstones once they predate it.
 export async function deleteDocument(providerId: string): Promise<void> {
+  const now = new Date();
+  await db.providerTombstone.upsert({
+    where: { providerId },
+    create: { providerId, deletedAt: now },
+    update: { deletedAt: now },
+  });
   await db.providerIndex.deleteMany({ where: { providerId } });
 }
