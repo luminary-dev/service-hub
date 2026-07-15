@@ -188,7 +188,13 @@ export default function FilterBar({
         </div>
       </form>
 
-      <div className="flex items-center justify-end gap-2">
+      {/*
+        Right-side clearance on mobile so the sort dropdown doesn't sit under
+        the fixed chat FAB (bottom-right, ~4.75rem of edge inset) and get its
+        label clipped at initial load (#707). The FAB never overlaps the
+        centered, max-width content on larger screens, so the padding resets.
+      */}
+      <div className="flex items-center justify-end gap-2 pe-20 sm:pe-0">
         <label htmlFor="sort" className="text-sm text-ink-500">
           {t.browse.sortLabel}
         </label>

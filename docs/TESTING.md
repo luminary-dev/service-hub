@@ -12,7 +12,7 @@ what kind of test belongs where.
 | Web unit tests | `src/lib/*.test.ts`, `src/proxy.test.ts` | Pure logic: locale formatting, i18n dictionary parity, category/district/price-type lookups, sort normalization, the `/api/*` proxy rewrite | Yes — web `npm run test` |
 | Web component tests | `src/components/*.test.tsx` | High-value client components (toasts, favorite/share buttons) rendered with Testing Library in jsdom; `fetch`, clipboard and `next/navigation` are mocked | Yes — same web suite |
 | Accessibility checks | `src/components/a11y.test.tsx` | axe-core runs against ~12 rendered components (nav, cards, filters, forms, chat, modals) and fails on any serious/critical WCAG violation | Yes — same web suite |
-| E2E smoke | `scripts/e2e-smoke.sh` | 60+ checks against the full docker-compose stack: health, auth, favorites, inquiries, reviews, jobs, admin moderation, CSRF, search browse-parity + geo | Yes (PRs only) — a dedicated `e2e` job boots the compose stack; also run locally |
+| E2E smoke | `scripts/e2e-smoke.sh` | 60+ checks against the full docker-compose stack: health, auth, favorites, inquiries, reviews, jobs, admin moderation, CSRF, search browse-parity + geo, and authed page-render (SSR-crash) guards | Yes (PRs only) — a dedicated `e2e` job boots the compose stack; also run locally |
 | Coverage | per-package `npm run coverage` | v8 coverage for the web app and every service, with a low ratchet-floor threshold so coverage can't silently regress | Yes — a separate `coverage` job per package |
 
 ## Running each layer
@@ -86,6 +86,16 @@ five jobs:
 - **Cross-service user flows → `scripts/e2e-smoke.sh`.** Register → browse →
   inquire → review style flows that need real databases and all the services
   talking to each other.
+- **Authed page-render (SSR-crash) guards → `scripts/e2e-smoke.sh`.** The
+  `check_renders` helper fetches the SSR HTML of key authenticated pages with
+  the already-logged-in cookie jars — `/admin`, `/admin/providers`,
+  `/admin/verifications`, `/admin/users` (admin), `/dashboard` (provider) and
+  `/account` (customer) — and fails if the response either lacks a
+  page-specific marker or contains the route error-boundary copy ("Something
+  went wrong", from `src/components/ui/RouteError.tsx` / `global-error.tsx`).
+  The API-only admin checks previously missed a full SSR crash on
+  `/admin/providers` (#706) because the layout still shipped "Baas" while the
+  page body fell back to the error boundary — these guards catch that (#711).
 
 ## Accessibility
 
