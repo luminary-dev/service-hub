@@ -689,7 +689,12 @@ services:
       # Connect as the superuser to the default `postgres` DB for cluster-wide
       # up / connection / activity metrics. Same POSTGRES_PASSWORD the app
       # cluster uses; sslmode=disable is fine on the internal backend network.
-      DATA_SOURCE_NAME: postgresql://postgres:${POSTGRES_PASSWORD:?}@postgres:5432/postgres?sslmode=disable
+      # Split URI/user/pass (not a single DATA_SOURCE_NAME) so the password isn't
+      # embedded in a `scheme://user:pass@host` URI — that shape trips secret
+      # scanners even though the value is a compose ${VAR} reference.
+      DATA_SOURCE_URI: postgres:5432/postgres?sslmode=disable
+      DATA_SOURCE_USER: postgres
+      DATA_SOURCE_PASS: ${POSTGRES_PASSWORD:?}
     networks: [backend]
     depends_on:
       postgres:
@@ -796,10 +801,13 @@ services:
       # Read-only API: block every mutating (POST/PUT/DELETE) call outright.
       POST: 0
       # Allow only the GET endpoints Alloy discovery/tailing + CrowdSec
-      # acquisition need: list/inspect containers, the event stream, and
-      # version/ping negotiation. Everything else (images, networks, exec,
-      # volumes, secrets, swarm, the write API) stays denied by default.
+      # acquisition need: list/inspect containers, the event stream, read-only
+      # network metadata (Alloy computes per-container network labels via
+      # /networks — without it discovery 403s and ships no logs), and
+      # version/ping negotiation. Everything else (images, exec, volumes,
+      # secrets, swarm, the write API) stays denied by default.
       CONTAINERS: 1
+      NETWORKS: 1
       EVENTS: 1
       PING: 1
       VERSION: 1
@@ -807,6 +815,10 @@ services:
       # The one place the real socket is mounted, read-only — into this hardened,
       # single-purpose proxy and nothing else.
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Version-pinned template (#744): a copy of the image's own template with a
+      # finite docker-events server timeout so HAProxy stops warning "missing
+      # timeouts for backend 'docker-events'". Re-sync on a digest bump.
+      - ./deploy/docker-socket-proxy/haproxy.cfg.template:/usr/local/etc/haproxy/haproxy.cfg.template:ro
     networks: [dockerproxy]
 
   # Grafana Alloy — the log shipper. Discovers every container via the Docker

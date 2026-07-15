@@ -450,8 +450,12 @@ services:
   postgres-exporter:
     image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
     environment:
-      # Dev superuser (postgres/postgres); cluster-wide metrics from the default DB.
-      DATA_SOURCE_NAME: postgresql://postgres:postgres@postgres:5432/postgres?sslmode=disable
+      # Dev superuser (postgres/postgres); cluster-wide metrics from the default
+      # DB. Split URI/user/pass (not a URI DATA_SOURCE_NAME) to match prod and
+      # keep the password out of a `scheme://user:pass@host` shape.
+      DATA_SOURCE_URI: postgres:5432/postgres?sslmode=disable
+      DATA_SOURCE_USER: postgres
+      DATA_SOURCE_PASS: postgres
     depends_on:
       postgres:
         condition: service_healthy
@@ -520,11 +524,17 @@ services:
     environment:
       POST: 0
       CONTAINERS: 1
+      # Alloy computes per-container network labels via /networks — without this
+      # read-only grant its discovery 403s and ships no logs.
+      NETWORKS: 1
       EVENTS: 1
       PING: 1
       VERSION: 1
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Version-pinned template (#744): image's own template with a finite
+      # docker-events server timeout, silencing HAProxy's missing-timeout warning.
+      - ./deploy/docker-socket-proxy/haproxy.cfg.template:/usr/local/etc/haproxy/haproxy.cfg.template:ro
 
   # Grafana Alloy — the log shipper. Discovers every container via the Docker
   # API and tails stdout, parses the JSON, and pushes to Loki (see

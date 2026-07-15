@@ -15,12 +15,13 @@
 // the socket does NOT restrict the API (connect() is exempt from the RO inode
 // check), so a compromised Alloy could otherwise drive the full write API —
 // root-equivalent on the host. The proxy allows only the GET endpoints Alloy
-// needs (containers/events/logs) and blocks every write (POST=0).
-DOCKER_HOST = coalesce(sys.env("ALLOY_DOCKER_HOST"), "tcp://docker-socket-proxy:2375")
+// needs (containers/events/logs) and blocks every write (POST=0). The endpoint
+// is inlined into each component's `host` (River has no bare top-level
+// attributes); override with the ALLOY_DOCKER_HOST env var if needed.
 
 // Discover running Docker containers via the filtered Docker API.
 discovery.docker "containers" {
-	host = DOCKER_HOST
+	host = coalesce(sys.env("ALLOY_DOCKER_HOST"), "tcp://docker-socket-proxy:2375")
 }
 
 // Derive stable labels from Docker metadata: the container name and the compose
@@ -43,7 +44,7 @@ discovery.relabel "containers" {
 
 // Tail the discovered containers' logs and forward to the JSON-parsing pipeline.
 loki.source.docker "containers" {
-	host          = DOCKER_HOST
+	host          = coalesce(sys.env("ALLOY_DOCKER_HOST"), "tcp://docker-socket-proxy:2375")
 	targets       = discovery.relabel.containers.output
 	forward_to    = [loki.process.parse.receiver]
 	relabel_rules = discovery.relabel.containers.rules
