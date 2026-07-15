@@ -73,6 +73,38 @@ jobs:
       - run: npm ci
       - run: npm run ${{ matrix.check }}
 
+  # Dead-code / unused-dependency scan (#673). knip runs across all 11 packages
+  # and reports unused files, exports and dependencies. REPORT-ONLY for now
+  # (continue-on-error) so it never fails CI on day one: there's a backlog of
+  # intentionally-uniform per-service template exports (lib/http.ts et al.) to
+  # triage first. Tighten to a hard gate once that's burned down — see
+  # docs/TESTING.md → "Dead-code scanning (knip)".
+  knip:
+    name: knip
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install workspace dependencies
+        # knip resolves each package against its own node_modules (this monorepo
+        # is not npm-hoisted — every service is its own package), so install the
+        # web root and each service before scanning.
+        run: |
+          npm ci
+          for d in services/*/; do (cd "$d" && npm ci); done
+      - name: Run knip (report-only)
+        # Report-only for now: knip surfaces ~107 genuine-but-low-priority unused
+        # exports (mostly the deliberately-uniform per-service lib templates), so
+        # it must not gate CI yet — the findings are in the log to triage/tighten
+        # later. Drop the `|| true` once the backlog is cleared to make it blocking.
+        run: npm run knip || true
+
   # Prod compose validation (#512): the fast per-package matrix and the e2e
   # smoke both exercise the *dev* `docker-compose.yml`; the file that actually
   # ships — `docker-compose.prod.yml` — was only ever parsed at deploy time over

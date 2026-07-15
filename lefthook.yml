@@ -1,0 +1,34 @@
+# Lefthook — fast, local git hooks (issue #673).
+#
+# These are a quick PRE-FLIGHT, not a replacement for CI: CI still runs the full
+# per-package typecheck/lint/test/build matrix on every PR. Everything here is
+# kept FAST so committing/pushing never stalls.
+#
+# Hooks auto-install via the root `prepare` script (`lefthook install`) on
+# `npm install`. To skip them in an emergency:
+#   - all hooks, one command:  LEFTHOOK=0 git commit ...   (or --no-verify)
+#   - a single hook:           LEFTHOOK_EXCLUDE=commitlint git commit ...
+#   - uninstall entirely:      npx lefthook uninstall
+
+# Lint only the web source files you actually staged — fast, and the common case.
+# Service files are covered by CI (each service has its own lint/typecheck).
+pre-commit:
+  parallel: true
+  commands:
+    lint-web:
+      glob: "src/**/*.{ts,tsx,js,jsx,mjs}"
+      run: npx eslint --no-warn-ignored {staged_files}
+
+# Typecheck the web app before pushing — still seconds, and catches the obvious
+# break the staged-file lint can't. The per-service typecheck stays in CI.
+pre-push:
+  commands:
+    typecheck-web:
+      run: npm run typecheck
+
+# Enforce Conventional-Commit messages (the CLAUDE.md commit/PR contract). {1} is
+# the path to the commit-message file lefthook passes through.
+commit-msg:
+  commands:
+    commitlint:
+      run: npx commitlint --edit {1}

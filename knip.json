@@ -1,0 +1,16 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignoreBinaries": ["tsx", "prisma"],
+  "ignoreDependencies": ["pg", "@types/pg", "tsx", "tailwindcss", "server-only"],
+  "prisma": false,
+  "workspaces": {
+    ".": {
+      "entry": ["scripts/*.{mjs,cjs,js}"],
+      "project": ["src/**/*.{ts,tsx}", "scripts/*.{mjs,cjs,js}"]
+    },
+    "services/*": {
+      "entry": ["prisma.config.ts", "prisma/create-admin.js", "scripts/*.{cjs,mjs,js}"],
+      "project": ["src/**/*.ts"]
+    }
+  }
+}
