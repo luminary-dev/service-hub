@@ -92,12 +92,27 @@ describe("browseOrderBySql", () => {
 
   it("recommended is the Bayesian + recency + verified computed score", () => {
     const sql = browseOrderBySql("recommended", NOW);
-    expect(sql.text).toContain(`p."ratingAvg" * p."ratingCount"`);
+    expect(sql.text).toContain(`COALESCE(p."ratingAvg", 0)::numeric`);
+    expect(sql.text).toContain(`COALESCE(p."ratingCount", 0)::numeric`);
     expect(sql.text).toContain(`exp(`);
     expect(sql.text).toContain(`EXTRACT(EPOCH FROM`);
     expect(sql.text).toContain(`p."verificationStatus" = 'VERIFIED'`);
     expect(sql.values).toContain(VERIFIED_BOOST);
     expect(sql.text.trimEnd().endsWith(`p."createdAt" DESC`)).toBe(true);
+  });
+
+  it("casts every arithmetic bind param to ::numeric so Postgres can pick an operator", () => {
+    // Regression for SQLSTATE 42725 ("operator is not unique: unknown * unknown"):
+    // Prisma binds JS numbers as untyped placeholders, so the score's param
+    // multiplications must each carry an explicit ::numeric cast.
+    const sql = browseOrderBySql("recommended", NOW);
+    // Each $n placeholder that feeds arithmetic is immediately cast.
+    const uncastParamInArithmetic = /\$\d+(?!::)/;
+    // The score body between the outer parens — everything up to the ORDER BY
+    // tiebreaker — must not contain a bare (uncast) placeholder.
+    const scoreBody = sql.text.slice(0, sql.text.lastIndexOf(", "));
+    expect(scoreBody).toMatch(/\$\d+::numeric/);
+    expect(uncastParamInArithmetic.test(scoreBody)).toBe(false);
   });
 
   it("falls back to recommended for an unknown sort key", () => {

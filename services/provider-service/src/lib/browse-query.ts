@@ -113,14 +113,22 @@ export function browseWhereSql(
 // The Bayesian + recency + verified "recommended" score, mirroring
 // recommendedScore's former in-memory form (constants shared from lib/sort.ts).
 // ratingSum = ratingAvg * ratingCount; recency decays over the age in days.
+//
+// Every arithmetic operand is cast to ::numeric. Prisma binds JS-number params as
+// untyped placeholders, so an unadorned `${a} * ${b}` reaches Postgres as
+// `$1 * $2` with both sides `unknown` — the planner then can't pick a `*`
+// operator ("operator is not unique: unknown * unknown", SQLSTATE 42725) and the
+// whole browse query 500s. The columns are cast (with COALESCE, defensive though
+// they are NOT NULL) so the entire expression is unambiguously numeric.
 function recommendedScoreSql(now: Date): Prisma.Sql {
   return Prisma.sql`(
-    (p."ratingAvg" * p."ratingCount" + ${PRIOR_MEAN} * ${PRIOR_COUNT})
-      / (p."ratingCount" + ${PRIOR_COUNT})
-    + ${RECENCY_WEIGHT}
+    (COALESCE(p."ratingAvg", 0)::numeric * COALESCE(p."ratingCount", 0)::numeric
+       + ${PRIOR_MEAN}::numeric * ${PRIOR_COUNT}::numeric)
+      / (COALESCE(p."ratingCount", 0)::numeric + ${PRIOR_COUNT}::numeric)
+    + ${RECENCY_WEIGHT}::numeric
       * exp(- (EXTRACT(EPOCH FROM (${now}::timestamptz - p."createdAt")) / 86400.0)
-            / ${RECENCY_HALFLIFE_DAYS})
-    + CASE WHEN p."verificationStatus" = 'VERIFIED' THEN ${VERIFIED_BOOST} ELSE 0 END
+            / ${RECENCY_HALFLIFE_DAYS}::numeric)
+    + CASE WHEN p."verificationStatus" = 'VERIFIED' THEN ${VERIFIED_BOOST}::numeric ELSE 0 END
   )`;
 }
 
