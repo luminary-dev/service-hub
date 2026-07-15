@@ -69,8 +69,10 @@ Thank you for helping keep Baas.lk and its users safe.
 
 Baas.lk is a Next.js web app in front of an API gateway that reverse-proxies a
 set of internal microservices (identity, provider, job, review, chat, media,
-notification). The gateway is the **only** public API entry point; individual
-services are never exposed. This section documents the controls that hold that
+notification, search, trust-safety). The gateway is the **only** public API
+entry point; individual services are never exposed. (search-service is publicly
+routed via the gateway like the rest; trust-safety-service is wired into the
+gateway but **dark** — no routes resolve to it yet.) This section documents the controls that hold that
 boundary. File references are canonical — read the code if this doc and the code
 ever disagree, and fix the doc.
 

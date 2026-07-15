@@ -183,7 +183,8 @@ Reasons enum: `spam`, `scam`, `offensive`, `fake`, `other`.
 | `GET /api/jobs/board` | authenticated (PROVIDER) | OPEN jobs matching the provider's category and **any of their served districts** (`serviceDistricts`, #502), excluding own and admin-hidden (#376), with customer names + `responded`. A **suspended** provider is 403'd (#642) — a hidden profile keeps its role but loses board access. Paginated → `{ jobs, total, page, pageSize }`. |
 | `GET /api/jobs/mine` | authenticated | Own jobs with responses hydrated with provider `{ name, phone }`. A **suspended** responder's contact details are withheld (name → `Unknown`, phone → `null`), matching the public listings it's already dropped from (#642). Paginated → `{ jobs, total, page, pageSize }`. |
 
-Board/mine pagination: `page` ≥ 1, `pageSize`/`take` default 20, capped **50**.
+Board/mine pagination: `page` ≥ 1 and ≤ **500** (#753, clamps the SQL OFFSET),
+`pageSize`/`take` default 20, capped **50**.
 
 ### Media / files — media-service
 

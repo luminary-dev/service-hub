@@ -188,14 +188,22 @@ accountRoutes.post("/email/change", async (c) => {
 
   const parsed = emailSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
-    return c.json({ error: "Enter a valid email address." }, 400);
+    // Stable machine-readable codes (#761) so the /si UI can localize the
+    // message instead of rendering the English string verbatim.
+    return c.json(
+      { error: "Enter a valid email address.", code: "invalid_input" },
+      400
+    );
   }
   const newEmail = parsed.data.email;
 
   const user = await db.user.findUnique({ where: { id: auth.userId } });
   if (!user) return c.json({ error: "Unauthorized" }, 401);
   if (newEmail.toLowerCase() === user.email.toLowerCase()) {
-    return c.json({ error: "That is already your email address." }, 400);
+    return c.json(
+      { error: "That is already your email address.", code: "same_email" },
+      400
+    );
   }
 
   // #504: changing the login email is a sensitive op, so re-authenticate the
@@ -210,7 +218,10 @@ accountRoutes.post("/email/change", async (c) => {
       !parsed.data.password ||
       !(await bcrypt.compare(parsed.data.password, user.passwordHash))
     ) {
-      return c.json({ error: "Incorrect password." }, 400);
+      return c.json(
+        { error: "Incorrect password.", code: "incorrect_password" },
+        400
+      );
     }
   }
 

@@ -363,7 +363,8 @@ staleness ≤ the sweep interval):
 docker compose -f docker-compose.prod.yml exec -T search-service \
   wget -qO- --header "x-internal-secret: $INTERNAL_API_SECRET" \
   --post-data= http://localhost:4008/internal/search/reindex
-# → { "indexed": n, "skipped": 0, "deleted": m }
+# → { "indexed": n, "skipped": 0, "deleted": m, "purged": t }
+# (`purged` = expired delete tombstones cleared this run, #752)
 
 # Drift metric — compare `indexed` against provider-service's non-suspended
 # count; a growing gap between sweeps means pushes are being dropped:
@@ -371,6 +372,15 @@ docker compose -f docker-compose.prod.yml exec -T search-service \
   wget -qO- --header "x-internal-secret: $INTERNAL_API_SECRET" \
   http://localhost:4008/internal/search/stats
 ```
+
+The sweep prunes by **generation** (#752): each run stamps every row it upserts
+with a unique `sweepId`, then deletes only rows it did not touch that also
+predate the run (`updatedAt < sweepStartedAt`) — so a provider registered while
+the multi-minute sweep is walking pages is never deleted, and the prune no
+longer builds an unbounded `NOT IN (…)` that Postgres' 65,535 bind-param cap
+would fail past ~65k providers. It also purges **delete tombstones** (written by
+the index DELETE so a stale push can't resurrect an erased/suspended provider)
+once they predate the run.
 
 The sweep fails loudly (502, `{ "error": "Reindex failed" }`) when
 provider-service or review-service is unreachable — an outage is never
@@ -593,10 +603,28 @@ Prometheus metrics at `GET /metrics` on its own port via an identical
 - **Node/process defaults** (`collectDefaultMetrics`): event-loop lag, heap, GC,
   fds, cpu. Every series carries a `service="<name>"` label stamped by
   `initMetrics()` (called once in each `src/index.ts`).
+- **`login_failures_total`** (identity-service, #759) — a counter of rejected
+  `POST /api/auth/login` attempts, labelled `reason`
+  (`unknown_user` / `no_password` / `locked_out` / `bad_password`) so a
+  credential-stuffing run is countable in Grafana. No per-user/email/IP labels
+  (that would explode cardinality and re-introduce PII). Registered on the same
+  default registry as the RED metrics, so it needs no extra wiring; it lives in
+  `src/lib/auth-metrics.ts` rather than the byte-identical shared `metrics.ts`.
+  The matching structured log lines — `login failed` (`{ userId, failedLogins }`),
+  `account locked` (`{ userId, lockedUntil }`) and `login attempt on locked
+  account` — carry no email/password, keeping the existing PII discipline (the
+  gateway attaches the client IP to its own request-log line).
 
-`/metrics` is deliberately **not** behind the internal secret — Prometheus
-scrapes it directly — and that is safe because the service ports are never
-public (loopback-bound in dev, `backend`-only network in prod).
+`/metrics` is behind the internal secret (#742): it exposes route names,
+request counts and latencies (internal recon that widens the blast radius of any
+port exposure or SSRF), so — like every other non-`/healthz` route — it requires
+the `x-internal-secret` header. The Prometheus scrape config must send that
+header (`deploy/observability/prometheus.yml`). Only `/healthz` stays open. On
+the backend services this is enforced by the global `requireInternalSecret`; the
+gateway, which has no global gate (it *adds* the secret upstream), guards
+`/metrics` explicitly via `src/lib/internal-secret.ts`. The service ports are
+still never public (loopback-bound in dev, `backend`-only network in prod), so
+this is defence-in-depth on top of that.
 
 **Log aggregation (#668).** Every service already emits **one JSON line per
 event** to stdout (`{ level, time, service, msg, requestId, … }` — see each

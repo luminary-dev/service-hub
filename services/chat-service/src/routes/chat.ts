@@ -61,22 +61,61 @@ chatRoutes.post("/internal/chat/:persona/stream", async (c) => {
   }));
 
   const encoder = new TextEncoder();
+
+  // Abort plumbing (#754): an abandoned chat (closed tab, navigation, mobile
+  // drop) must stop spending Anthropic tokens and gateway traffic. We tie a
+  // single AbortController to two disconnect signals — the request's own
+  // `c.req.raw.signal` and the ReadableStream `cancel()` callback — and pass
+  // its signal into every `anthropic.messages.stream(...)` call so an in-flight
+  // model request is torn down the moment the client goes away.
+  const abortController = new AbortController();
+  const requestOptions = { signal: abortController.signal };
+  // Once the stream is closed (normally or via disconnect), enqueue() would
+  // throw; `aborted` makes send() a no-op instead so a stray SDK text callback
+  // firing after teardown can't surface as an unhandled error.
+  let aborted = false;
+  const abort = () => {
+    if (aborted) return;
+    aborted = true;
+    abortController.abort();
+  };
+
+  // The web proxy forwards the end-user's request; when they disconnect, Hono
+  // aborts this signal.
+  const reqSignal = c.req.raw.signal;
+  if (reqSignal?.aborted) abort();
+  else reqSignal?.addEventListener("abort", abort, { once: true });
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const send = (event: Record<string, unknown>) =>
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+      const send = (event: Record<string, unknown>) => {
+        // No-op once the stream is closed/aborted so an abandoned chat neither
+        // enqueues onto a dead controller nor throws inside an SDK listener.
+        if (aborted) return;
+        try {
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify(event)}\n\n`)
+          );
+        } catch {
+          // Controller already closed (racing teardown): treat as aborted.
+          aborted = true;
+        }
+      };
       try {
         let stopReason: string | null = null;
-        for (let loop = 0; loop < MAX_LOOPS; loop++) {
-          const msgStream = anthropic.messages.stream({
-            model: MODEL,
-            max_tokens: 4096, // chat replies are deliberately short
-            thinking: { type: "adaptive" },
-            output_config: { effort: "low" }, // latency-sensitive consumer chat
-            system,
-            tools: persona.tools,
-            messages,
-          });
+        for (let loop = 0; loop < MAX_LOOPS && !aborted; loop++) {
+          const msgStream = anthropic.messages.stream(
+            {
+              model: MODEL,
+              max_tokens: 4096, // chat replies are deliberately short
+              thinking: { type: "adaptive" },
+              output_config: { effort: "low" }, // latency-sensitive consumer chat
+              system,
+              tools: persona.tools,
+              messages,
+            },
+            requestOptions
+          );
           msgStream.on("text", (delta) => send({ type: "text", text: delta }));
           const message = await msgStream.finalMessage();
           stopReason = message.stop_reason;
@@ -90,6 +129,9 @@ chatRoutes.post("/internal/chat/:persona/stream", async (c) => {
 
           const results: Anthropic.ToolResultBlockParam[] = [];
           for (const tool of toolUses) {
+            // Stop the tool loop the moment the client is gone rather than
+            // running the remaining (gateway-hitting) tool calls.
+            if (aborted) break;
             send({ type: "tool", name: tool.name });
             const outcome = await persona.runTool(
               tool.name,
@@ -110,26 +152,46 @@ chatRoutes.post("/internal/chat/:persona/stream", async (c) => {
         // If we hit MAX_LOOPS while the model still wanted to use tools, the
         // last tool results were never answered — make one final pass with no
         // tools so the user gets a closing message instead of silence.
-        if (stopReason === "tool_use") {
-          const closing = anthropic.messages.stream({
-            model: MODEL,
-            max_tokens: 4096,
-            thinking: { type: "adaptive" },
-            output_config: { effort: "low" },
-            system,
-            tools: [],
-            messages,
-          });
+        if (!aborted && stopReason === "tool_use") {
+          const closing = anthropic.messages.stream(
+            {
+              model: MODEL,
+              max_tokens: 4096,
+              thinking: { type: "adaptive" },
+              output_config: { effort: "low" },
+              system,
+              tools: [],
+              messages,
+            },
+            requestOptions
+          );
           closing.on("text", (delta) => send({ type: "text", text: delta }));
           await closing.finalMessage();
         }
         send({ type: "done" });
       } catch (e) {
-        log.error("stream failed", { context: "chat", err: e });
-        send({ type: "error" });
+        // An abort surfaces here as a rejected finalMessage(); that's expected
+        // teardown, not a failure, so don't log it or emit an error event.
+        if (!aborted) {
+          log.error("stream failed", { context: "chat", err: e });
+          send({ type: "error" });
+        }
       } finally {
-        controller.close();
+        reqSignal?.removeEventListener("abort", abort);
+        if (!aborted) {
+          aborted = true;
+          try {
+            controller.close();
+          } catch {
+            // Already closed by a racing cancel() — nothing to do.
+          }
+        }
       }
+    },
+    // Called when the consumer (the disconnecting client) cancels the response
+    // body. Flip the flag and abort so the tool loop and model calls unwind.
+    cancel() {
+      abort();
     },
   });
 

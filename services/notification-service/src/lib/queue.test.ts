@@ -13,30 +13,45 @@ vi.mock("./email", async (importActual) => {
 import { sendMail } from "./email";
 import {
   enqueueEmailJobs,
+  flushRetries,
   MAX_ATTEMPTS,
+  pollRetries,
   processEntry,
   PROCESSING_KEY,
+  queueDepth,
   QUEUE_KEY,
   reclaimStale,
   RECLAIM_AFTER_MS,
   resetReclaimState,
   retryDelayMs,
   RETRY_BASE_MS,
+  RETRY_KEY,
   type EmailJob,
   type QueueRedis,
 } from "./queue";
 
 const sendMailMock = vi.mocked(sendMail);
 
-// In-memory list store implementing the QueueRedis surface.
-function fakeRedis(): QueueRedis & { lists: Map<string, string[]> } {
+// In-memory list + sorted-set store implementing the QueueRedis surface.
+function fakeRedis(): QueueRedis & {
+  lists: Map<string, string[]>;
+  zsets: Map<string, Map<string, number>>;
+} {
   const lists = new Map<string, string[]>();
+  const zsets = new Map<string, Map<string, number>>();
   const list = (key: string) => {
     if (!lists.has(key)) lists.set(key, []);
     return lists.get(key)!;
   };
+  const zset = (key: string) => {
+    if (!zsets.has(key)) zsets.set(key, new Map());
+    return zsets.get(key)!;
+  };
+  const bound = (v: number | string, dir: 1 | -1) =>
+    v === "-inf" || v === "+inf" ? dir * Infinity : Number(v);
   return {
     lists,
+    zsets,
     async lpush(key, value) {
       list(key).unshift(value);
       return list(key).length;
@@ -56,6 +71,27 @@ function fakeRedis(): QueueRedis & { lists: Map<string, string[]> } {
     },
     async lrange(key) {
       return [...list(key)];
+    },
+    async llen(key) {
+      return list(key).length;
+    },
+    async zadd(key, score, member) {
+      zset(key).set(member, Number(score));
+      return 1;
+    },
+    async zrangebyscore(key, min, max) {
+      const lo = bound(min, -1);
+      const hi = bound(max, 1);
+      return [...zset(key).entries()]
+        .filter(([, s]) => s >= lo && s <= hi)
+        .sort((a, b) => a[1] - b[1])
+        .map(([m]) => m);
+    },
+    async zrem(key, member) {
+      return zset(key).delete(member) ? 1 : 0;
+    },
+    async zcard(key) {
+      return zset(key).size;
     },
   };
 }
@@ -126,24 +162,61 @@ describe("processEntry", () => {
     expect(redis.lists.get(QUEUE_KEY) ?? []).toEqual([]);
   });
 
-  it("re-enqueues with attempt+1 after the exponential backoff on failure", async () => {
-    vi.useFakeTimers();
+  it("moves a failed entry to the durable retry ZSET scored by its retry-at", async () => {
     sendMailMock.mockRejectedValue(new Error("resend down"));
     const redis = fakeRedis();
     const entry = JSON.stringify(job({ attempt: 0 }));
     await redis.lpush(PROCESSING_KEY, entry);
 
-    await processEntry(redis, entry);
+    const t0 = 1_000_000;
+    await processEntry(redis, entry, t0);
     expect(redis.lists.get(PROCESSING_KEY)).toEqual([]); // acked off processing
-    expect(redis.lists.get(QUEUE_KEY) ?? []).toEqual([]); // not yet — delayed
+    expect(redis.lists.get(QUEUE_KEY) ?? []).toEqual([]); // not on the main queue — delayed
+    // Durably parked in notify:retry (attempt: 1) at now + 30s × 2^0.
+    const retry = redis.zsets.get(RETRY_KEY)!;
+    expect(retry.size).toBe(1);
+    const [[member, score]] = [...retry.entries()];
+    expect(JSON.parse(member)).toMatchObject({ attempt: 1 });
+    expect(score).toBe(t0 + RETRY_BASE_MS);
+  });
 
-    // 30s × 2^0: nothing a tick early, re-enqueued (attempt: 1) on the mark.
-    await vi.advanceTimersByTimeAsync(RETRY_BASE_MS - 1);
+  it("persists the retry BEFORE removing the entry from processing (#751 crash-safety)", async () => {
+    sendMailMock.mockRejectedValue(new Error("resend down"));
+    const redis = fakeRedis();
+    const entry = JSON.stringify(job({ attempt: 0 }));
+    await redis.lpush(PROCESSING_KEY, entry);
+
+    const order: string[] = [];
+    const realZadd = redis.zadd.bind(redis);
+    const realLrem = redis.lrem.bind(redis);
+    redis.zadd = async (k, s, m) => {
+      order.push("zadd");
+      return realZadd(k, s, m);
+    };
+    redis.lrem = async (k, c, v) => {
+      if (k === PROCESSING_KEY) order.push("lrem");
+      return realLrem(k, c, v);
+    };
+
+    await processEntry(redis, entry);
+    expect(order).toEqual(["zadd", "lrem"]);
+  });
+
+  it("polls due retries from the ZSET back onto notify:email", async () => {
+    const redis = fakeRedis();
+    const entry = JSON.stringify(job({ attempt: 1 }));
+    const t0 = 1_000_000;
+    await redis.zadd(RETRY_KEY, t0 + RETRY_BASE_MS, entry);
+
+    // Not due yet → left in place.
+    expect(await pollRetries(redis, t0)).toBe(0);
+    expect(redis.zsets.get(RETRY_KEY)!.size).toBe(1);
     expect(redis.lists.get(QUEUE_KEY) ?? []).toEqual([]);
-    await vi.advanceTimersByTimeAsync(1);
-    const requeued = redis.lists.get(QUEUE_KEY)!;
-    expect(requeued).toHaveLength(1);
-    expect(JSON.parse(requeued[0])).toMatchObject({ attempt: 1 });
+
+    // Due → removed from the ZSET and pushed to the queue exactly once.
+    expect(await pollRetries(redis, t0 + RETRY_BASE_MS)).toBe(1);
+    expect(redis.zsets.get(RETRY_KEY)!.size).toBe(0);
+    expect(redis.lists.get(QUEUE_KEY)).toEqual([entry]);
   });
 
   it("doubles the delay per attempt (30s × 2^n)", () => {
@@ -153,7 +226,6 @@ describe("processEntry", () => {
   });
 
   it(`drops the job after ${MAX_ATTEMPTS} attempts`, async () => {
-    vi.useFakeTimers();
     sendMailMock.mockRejectedValue(new Error("resend down"));
     const redis = fakeRedis();
     // attempt index MAX_ATTEMPTS-1 = the final try.
@@ -161,9 +233,9 @@ describe("processEntry", () => {
     await redis.lpush(PROCESSING_KEY, entry);
 
     await processEntry(redis, entry);
-    await vi.advanceTimersByTimeAsync(retryDelayMs(MAX_ATTEMPTS) * 2);
     expect(redis.lists.get(QUEUE_KEY) ?? []).toEqual([]); // dropped, not re-enqueued
-    expect(redis.lists.get(PROCESSING_KEY)).toEqual([]);
+    expect(redis.zsets.get(RETRY_KEY) ?? new Map()).toEqual(new Map()); // not parked for retry
+    expect(redis.lists.get(PROCESSING_KEY)).toEqual([]); // still acked off processing
   });
 
   it("drops a non-JSON entry instead of crash-looping on it", async () => {
@@ -238,5 +310,40 @@ describe("reclaimStale", () => {
     };
     expect(await reclaimStale(redis, t0 + RECLAIM_AFTER_MS)).toBe(0);
     expect(redis.lists.get(QUEUE_KEY) ?? []).toEqual([]);
+  });
+});
+
+describe("flushRetries", () => {
+  it("moves every pending retry (due or not) back onto notify:email", async () => {
+    const redis = fakeRedis();
+    const soon = JSON.stringify(job({ to: "a@example.com", attempt: 1 }));
+    const later = JSON.stringify(job({ to: "b@example.com", attempt: 2 }));
+    const t0 = 1_000_000;
+    await redis.zadd(RETRY_KEY, t0 + RETRY_BASE_MS, soon);
+    await redis.zadd(RETRY_KEY, t0 + RETRY_BASE_MS * 100, later);
+
+    expect(await flushRetries(redis)).toBe(2);
+    expect(redis.zsets.get(RETRY_KEY)!.size).toBe(0);
+    // Both are back on the durable queue for a restarting instance to pick up.
+    expect(redis.lists.get(QUEUE_KEY)).toHaveLength(2);
+    expect(redis.lists.get(QUEUE_KEY)).toEqual(expect.arrayContaining([soon, later]));
+  });
+
+  it("is a no-op when there are no pending retries", async () => {
+    const redis = fakeRedis();
+    expect(await flushRetries(redis)).toBe(0);
+    expect(redis.lists.get(QUEUE_KEY) ?? []).toEqual([]);
+  });
+});
+
+describe("queueDepth", () => {
+  it("reports pending (queue), processing, and retry (ZSET) depths", async () => {
+    const redis = fakeRedis();
+    await redis.lpush(QUEUE_KEY, JSON.stringify(job()));
+    await redis.lpush(QUEUE_KEY, JSON.stringify(job({ to: "b@example.com" })));
+    await redis.lpush(PROCESSING_KEY, JSON.stringify(job({ to: "c@example.com" })));
+    await redis.zadd(RETRY_KEY, Date.now() + RETRY_BASE_MS, JSON.stringify(job({ attempt: 1 })));
+
+    expect(await queueDepth(redis)).toEqual({ pending: 2, processing: 1, retry: 1 });
   });
 });

@@ -167,7 +167,10 @@ describe("POST /api/account/email/change", () => {
       password: "wrong-password",
     });
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: "Incorrect password." });
+    expect(await res.json()).toEqual({
+      error: "Incorrect password.",
+      code: "incorrect_password",
+    });
     // No taken-check, no email: the re-auth gate fails closed.
     expect(db.user.findUnique).toHaveBeenCalledTimes(1);
     expect(sendEmailChangeConfirmation).not.toHaveBeenCalled();
@@ -180,7 +183,10 @@ describe("POST /api/account/email/change", () => {
       email: "new@baas.lk",
     });
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: "Incorrect password." });
+    expect(await res.json()).toEqual({
+      error: "Incorrect password.",
+      code: "incorrect_password",
+    });
     expect(sendEmailChangeConfirmation).not.toHaveBeenCalled();
   });
 

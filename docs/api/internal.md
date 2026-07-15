@@ -19,7 +19,7 @@ using the shared `s2s()` helper (one bounded retry on idempotent GETs).
 | `PATCH /internal/users/:id` | Profile sync `{ name?, phone? }` from provider-service. |
 | `GET /internal/saved-searches/candidates?category=&districts=a,b&excludeUserId=` | Saved-search alert feed (#516): the searches a newly published provider could match, joined with the owner's email → `{ savedSearches: [{ id, userId, query, locale, email }] }` (`userId` addresses the in-app half of the `SAVED_SEARCH_MATCH` notification). `districts` is the provider's full served set (#502 multi-district), so a search for any served district qualifies; a null filter on a search means "any". Only current CUSTOMER accounts with a verified email, cooled down ≥24 h since `lastNotifiedAt`; capped at 500 (oldest first). Free-text `query` is returned unevaluated — provider-service decides the actual match. |
 | `POST /internal/saved-searches/notified` | Cooldown bookkeeping (#516): `{ ids[] (≤500) }` — stamps `lastNotifiedAt` on the searches whose owners were just emailed. |
-| `POST /internal/maintenance/sweep-orphans` | Remove orphaned `user`-namespace avatar files (#555, ops tooling). |
+| `POST /internal/maintenance/sweep-orphans` | Remove orphaned `user`-namespace avatar files (#555, ops tooling). The `User` table is walked in id-ordered pages, not loaded whole (#766). |
 
 ### provider-service
 
@@ -50,8 +50,8 @@ using the shared `s2s()` helper (one bounded retry on idempotent GETs).
 | `GET /internal/ratings?providerIds=a,b,c` | Batch rating summaries → `{ ratings }`. Each entry: `{ rating, count }` (authoritative for ranking) plus the additive per-dimension averages and 5→1 star `distribution` (#528) — existing consumers keep reading `rating`/`count`. Also the ratings feed for search-service's reindex sweep. `providerIds` is capped at 500 (`MAX_BATCH_IDS`), matching the peer batch endpoints. |
 | `GET /internal/by-provider/:id?take&cursor&includeDeleted` | Reviews for one provider (cursor-paginated) → `{ reviews, nextCursor }`. Each review carries the provider's reply as `response` (#395), threaded through provider-service's `/full` composition unchanged. |
 | `GET /internal/count` | Total (non-deleted) review count. |
-| `POST /internal/users/:id/erase` | Account-deletion fan-out: delete the user's authored reviews + photo files. If the user owned a provider profile (resolved over S2S from provider-service), also hard-delete the reviews *received* by that profile — which cascades the public `ReviewResponse` replies the user authored (#645) and those reviews' photo rows — since the profile itself is being deleted. Idempotent; degrades to authored-only cleanup if provider-service is unreachable (a retried erase finishes the job). |
-| `POST /internal/maintenance/sweep-orphans` | Remove orphaned review-photo files (ops tooling). |
+| `POST /internal/users/:id/erase` | Account-deletion fan-out: delete the user's authored reviews + photo files. When the orchestrator passes `{ providerId }` (identity resolves it before this call, exactly as for the job erase), also hard-delete the reviews *received* by that profile — which cascades the public `ReviewResponse` replies the user authored (#645) and those reviews' photo rows — since the profile itself is being deleted. No S2S re-resolution here, so a transient provider blip can no longer make this endpoint degrade-open and strand the received reviews forever (#749). A missing `providerId` means "not a provider" → authored-only cleanup. Idempotent. |
+| `POST /internal/maintenance/sweep-orphans` | Remove orphaned review-photo files (ops tooling). The `ReviewPhoto` table is walked in id-ordered pages, not loaded whole (#766). |
 
 ### search-service
 

@@ -62,6 +62,23 @@ renders before the i18n providers exist) and the generated OG images
 (`opengraph-image.tsx`, canonical English social cards) are excluded by path.
 Do **not** silence a real violation with a blanket disable — translate it.
 
+### Backend error codes
+
+Backend error strings are English-only, so rendering `data.error` verbatim
+surfaces raw English inside the `/si` UI (#566/#761). The fix in progress is for
+services to return a stable machine-readable `code` alongside the human `error`;
+the client maps the code to a localized dict entry and falls back to a localized
+**generic** message (never the raw `data.error`) when the code is unknown.
+identity-service has started this (#761): `POST /api/auth/login` returns
+`code: "invalid_credentials"` on every uniform 401 (the same code across the
+unknown-email / no-password / locked / wrong-password branches, so the code
+never becomes an enumeration oracle) and `"invalid_input"` on a 400;
+`POST /api/auth/register` returns `invalid_input` / `captcha_unavailable` /
+`captcha_failed` / `too_many_districts` / `invalid_location` /
+`invalid_category`; and `POST /api/account/email/change` returns
+`invalid_input` / `same_email` / `incorrect_password`. Wiring the web client's
+code→dict mapping is the remaining follow-up.
+
 ### Theme
 
 Light/dark theme (`src/lib/theme.ts`, `ThemeToggle`), default light. The choice

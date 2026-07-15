@@ -14,6 +14,11 @@ const { dbMock, clientsMock } = vi.hoisted(() => ({
       deleteMany: vi.fn(),
       count: vi.fn(),
     },
+    providerTombstone: {
+      findUnique: vi.fn(),
+      upsert: vi.fn(),
+      deleteMany: vi.fn(),
+    },
     $queryRaw: vi.fn(),
   },
   clientsMock: {
@@ -66,6 +71,10 @@ const doc = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Sensible defaults for the tombstone table (#752): no tombstone, writes ok.
+  dbMock.providerTombstone.findUnique.mockResolvedValue(null);
+  dbMock.providerTombstone.upsert.mockResolvedValue({});
+  dbMock.providerTombstone.deleteMany.mockResolvedValue({ count: 0 });
 });
 
 describe("internal secret enforcement", () => {
@@ -146,6 +155,40 @@ describe("PUT /internal/search/providers/:id", () => {
     expect(dbMock.providerIndex.create).not.toHaveBeenCalled();
   });
 
+  it("refuses to recreate a row tombstoned after the document (#752)", async () => {
+    dbMock.providerIndex.updateMany.mockResolvedValue({ count: 0 });
+    dbMock.providerIndex.findUnique.mockResolvedValue(null);
+    // Tombstone is newer than the document's updatedAt → the delete wins.
+    dbMock.providerTombstone.findUnique.mockResolvedValue({
+      deletedAt: new Date("2026-07-02T00:00:00.000Z"),
+    });
+    const res = await req("/internal/search/providers/p1", {
+      method: "PUT",
+      body: JSON.stringify(doc),
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.providerIndex.create).not.toHaveBeenCalled();
+  });
+
+  it("recreates and clears the tombstone when the document is newer (#752)", async () => {
+    dbMock.providerIndex.updateMany.mockResolvedValue({ count: 0 });
+    dbMock.providerIndex.findUnique.mockResolvedValue(null);
+    dbMock.providerIndex.create.mockResolvedValue({});
+    // Tombstone predates the document's updatedAt → a re-activation supersedes it.
+    dbMock.providerTombstone.findUnique.mockResolvedValue({
+      deletedAt: new Date("2026-06-01T00:00:00.000Z"),
+    });
+    const res = await req("/internal/search/providers/p1", {
+      method: "PUT",
+      body: JSON.stringify(doc),
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.providerIndex.create).toHaveBeenCalled();
+    expect(dbMock.providerTombstone.deleteMany).toHaveBeenCalledWith({
+      where: { providerId: "p1" },
+    });
+  });
+
   it("rejects a malformed document", async () => {
     const res = await req("/internal/search/providers/p1", {
       method: "PUT",
@@ -165,6 +208,19 @@ describe("DELETE /internal/search/providers/:id", () => {
     expect(dbMock.providerIndex.deleteMany).toHaveBeenCalledWith({
       where: { providerId: "p1" },
     });
+  });
+
+  it("writes a tombstone so a later stale push can't resurrect the row (#752)", async () => {
+    dbMock.providerIndex.deleteMany.mockResolvedValue({ count: 1 });
+    const res = await req("/internal/search/providers/p1", { method: "DELETE" });
+    expect(res.status).toBe(200);
+    expect(dbMock.providerTombstone.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { providerId: "p1" },
+        create: expect.objectContaining({ providerId: "p1" }),
+        update: expect.objectContaining({ deletedAt: expect.any(Date) }),
+      })
+    );
   });
 });
 

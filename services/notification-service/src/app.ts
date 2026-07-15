@@ -29,8 +29,11 @@ app.get("/healthz", async (c) => {
     return c.json({ ok: false, service: "notification-service", db: "down" }, 503);
   }
 });
-app.get("/metrics", metricsHandler);
 app.use("*", requireInternalSecret);
+// /metrics is behind the internal secret (#742): the Prometheus scrape must
+// send the x-internal-secret header. The service port is never exposed
+// publicly, so this stays internal-only either way.
+app.get("/metrics", metricsHandler);
 
 // Transactional auth mails keep their dedicated routes permanently; the four
 // marketplace email routes stay only until their callers migrate to

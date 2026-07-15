@@ -11,6 +11,13 @@ export const ADMIN_DEFAULT_SORT: AdminSortKey = "newest";
 export const ADMIN_DEFAULT_PAGE_SIZE = 20;
 export const ADMIN_MAX_PAGE_SIZE = 100;
 
+// Deep-pagination guard (#657/#753): `page` feeds the SQL OFFSET
+// (`(page - 1) * pageSize`), so an unbounded page number lets a caller force
+// Postgres to scan-and-discard an arbitrarily large prefix — and a huge value
+// overflows the 64-bit skip Prisma rejects with a 500. Cap it in lockstep with
+// search-service's MAX_PAGE.
+export const MAX_PAGE = 500;
+
 // Provider.verificationStatus is a plain string column (no DB enum), but
 // these are the only values the app ever writes.
 export const VERIFICATION_STATUSES = [
@@ -49,7 +56,7 @@ export function normalizePagination(params: {
   page?: string | null;
   pageSize?: string | null;
 }): Pagination {
-  const page = toPositiveInt(params.page, 1);
+  const page = Math.min(MAX_PAGE, toPositiveInt(params.page, 1));
   const pageSize = Math.min(
     ADMIN_MAX_PAGE_SIZE,
     toPositiveInt(params.pageSize, ADMIN_DEFAULT_PAGE_SIZE)
