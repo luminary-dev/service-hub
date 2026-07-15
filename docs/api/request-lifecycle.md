@@ -56,5 +56,9 @@ run it as a readiness probe (`200 {ok:true,service}` /
   through `GET /api/files/<namespace>/*`.
 - **Pagination:** list endpoints that page return `{ <items>, total, page,
   pageSize }`. Caps: public provider directory `pageSize` ≤ 24 (default 12);
-  admin lists ≤ 100 (default 20); job board/mine ≤ 50 (default 20). Public
-  reviews use cursor pagination (`take` ≤ 100, `cursor`/`nextCursor`).
+  admin lists ≤ 100 (default 20); job board/mine ≤ 50 (default 20). Every
+  offset-based paginator also clamps `page` to ≤ **500** (#753), matching
+  search-service (#657): `page` feeds the SQL `OFFSET`, so an unbounded value
+  would overflow the 64-bit skip (a Prisma 500) and force Postgres to
+  scan-and-discard the whole match set. Public reviews use cursor pagination
+  (`take` ≤ 100, `cursor`/`nextCursor`).
