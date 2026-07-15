@@ -1,6 +1,7 @@
 // Exports the app so tests can use app.request().
 import { Hono } from "hono";
 import { db } from "./db";
+import { captureException } from "./lib/errors";
 import { requireInternalSecret } from "./lib/http";
 import { log } from "./lib/log";
 import { getRequestId, requestLogger } from "./lib/logging";
@@ -55,6 +56,9 @@ app.route("/", internalMaintenanceRoutes);
 // Fallbacks mirror the monolith's Next.js behavior.
 app.notFound((c) => c.json({ error: "Not found" }, 404));
 app.onError((err, c) => {
-  log.error("unhandled error", { requestId: getRequestId(c), err });
+  const requestId = getRequestId(c);
+  log.error("unhandled error", { requestId, err });
+  // Report to the error backend (no-op if SENTRY_DSN unset).
+  captureException(err, { requestId, path: c.req.path, method: c.req.method });
   return c.json({ error: "Internal server error" }, 500);
 });

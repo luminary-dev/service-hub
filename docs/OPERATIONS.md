@@ -618,13 +618,64 @@ Loki and Alloy need **no new secret**.
   **Request ID** textbox that does exactly this. Because `requestId` is
   structured metadata, this stays fast without inflating stream cardinality.
 
-**Planned follow-ups (still open on #668).** With metrics (Prometheus) and logs
-(Loki) in place, the remaining two legs are **distributed tracing** (OTel/Tempo)
-and an **error-capture backend** (Sentry/GlitchTip — the **#34** fold-in). Both
-are deferred to follow-up PRs; the structured JSON logs and the `onError` /
-`installProcessErrorHandlers` choke points described under
-[Monitoring & alerting](#monitoring--alerting) are the hooks those will build
-on.
+**Error capture (GlitchTip, #34).** The third leg of #668 is now in place:
+every backend service (gateway included) reports unhandled errors to a
+self-hosted **GlitchTip** — a Sentry-compatible backend, chosen over hosted
+Sentry for **data residency / PDPA**. Each service keeps an identical
+`src/lib/errors.ts` (the canonical-copy convention, enforced by
+`src/lib/shared-copies.test.ts`) wired into the two choke points the logging
+module already owns:
+
+- each Hono app's **`onError`** — errors thrown inside a request (500s), with
+  the `requestId` / path / method attached; and
+- **`installProcessErrorHandlers`** (`src/lib/logging.ts`) — **uncaught
+  exceptions** and **unhandled rejections** captured just before the process
+  exits.
+
+So a crash surfaces in GlitchTip with a stack trace, the service name (a
+`service` tag), and `NODE_ENV` as the environment — grouped and searchable
+instead of scrolling past in the logs.
+
+**Graceful degradation is mandatory.** Capture is gated on a single env var,
+**`SENTRY_DSN`**. **Unset (the default — every dev machine and CI)** →
+`initErrorCapture()` does nothing (no SDK init, no network) and
+`captureException()` is a pure no-op, so behavior is unchanged. It is the
+**activation switch**, exactly like `UNLEASH_FRONTEND_TOKEN`: nothing reports
+until an operator provisions a DSN.
+
+**The stack** (in both compose files): **GlitchTip web** (ingest API + UI) +
+**worker** (celery) + a one-shot **migrate** + GlitchTip's **OWN** Postgres and
+Redis — never the app cluster's. Prod pins all images by digest (#238). Like
+Grafana/Unleash it is **internal-only**: `backend` network, **no Caddy route**,
+host port published to **loopback** (#387). In dev it sits behind the **`errors`
+compose profile**, so a plain `docker compose up` (and the CI e2e) don't start
+this heavy stack.
+
+`GLITCHTIP_SECRET_KEY` and `GLITCHTIP_DB_PASSWORD` are **required** prod secrets
+(the stack refuses to start without them, like `GRAFANA_ADMIN_PASSWORD` /
+`UNLEASH_DB_PASSWORD`); `SENTRY_DSN` is **optional** (the activation switch). See
+`.env.prod.example`.
+
+**Wiring a DSN.**
+
+- *Dev*: `docker compose --profile errors up -d glitchtip-web`, open
+  <http://localhost:8000> (loopback, #387), register the first account + a
+  project, copy its DSN, then run the stack with `SENTRY_DSN` set in the root
+  `.env`. GlitchTip's DB is on host `127.0.0.1:5435` (app cluster is 5433,
+  Unleash 5434).
+- *Prod*: none of it is public — reach the UI through an SSH tunnel
+  (`ssh -L 8000:127.0.0.1:8000 <server>`, then <http://localhost:8000>), create
+  the project, and set `SENTRY_DSN` (a GitHub secret rendered into the server
+  `.env` by CD). The DSN points at `glitchtip-web` over the internal `backend`
+  network, e.g. `http://<publicKey>@glitchtip-web:8000/<projectId>`.
+
+This **closes #34**. Web (Next.js) error capture is intentionally **out of
+scope** here and tracked as a follow-up.
+
+**Planned follow-up (still open on #668).** With metrics (Prometheus), logs
+(Loki), and error capture (GlitchTip) in place, the one remaining leg is
+**distributed tracing** (OTel/Tempo), deferred to a follow-up PR. Web (Next.js)
+error capture is the other open thread.
 
 ## Feature flags (#675)
 

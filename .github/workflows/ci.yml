@@ -138,6 +138,8 @@ jobs:
           REDIS_PASSWORD: ci-dummy-password
           GRAFANA_ADMIN_PASSWORD: ci-dummy-password
           UNLEASH_DB_PASSWORD: ci-dummy-password
+          GLITCHTIP_DB_PASSWORD: ci-dummy-password
+          GLITCHTIP_SECRET_KEY: ci-dummy-secret
           WEB_ORIGIN: https://ci.example.test
           DOMAIN: ci.example.test
         run: docker compose -f docker-compose.prod.yml config -q

@@ -1,12 +1,18 @@
 import "./load-env";
 import { serve } from "@hono/node-server";
 import { app } from "./app";
+import { initErrorCapture } from "./lib/errors";
 import { log } from "./lib/log";
 import { installProcessErrorHandlers } from "./lib/logging";
 import { initMetrics } from "./lib/metrics";
 import { checkProxyConfig, closeRedis } from "./lib/rate-limit";
 
 const port = Number(process.env.PORT ?? 4000);
+
+// Init the error-capture backend (GlitchTip, #34) BEFORE the process handlers
+// so a process-level capture has an initialised client. No-op if SENTRY_DSN is
+// unset. See lib/errors.ts.
+initErrorCapture("api-gateway");
 
 // Last-resort structured capture for errors outside a request (#34); Hono's
 // onError covers errors inside one. See lib/logging.ts.

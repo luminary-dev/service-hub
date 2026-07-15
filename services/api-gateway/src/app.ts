@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { csrfMiddleware } from "./lib/csrf";
+import { captureException } from "./lib/errors";
 import { log } from "./lib/log";
 import { getRequestId, requestLogger } from "./lib/logging";
 import { metricsHandler, metricsMiddleware } from "./lib/metrics";
@@ -39,6 +40,9 @@ app.all("/api/*", proxyRequest);
 
 app.notFound((c) => c.json({ error: "Not found" }, 404));
 app.onError((err, c) => {
-  log.error("unhandled error", { requestId: getRequestId(c), err });
+  const requestId = getRequestId(c);
+  log.error("unhandled error", { requestId, err });
+  // Report to the error backend (no-op if SENTRY_DSN unset).
+  captureException(err, { requestId, path: c.req.path, method: c.req.method });
   return c.json({ error: "Internal server error" }, 500);
 });
