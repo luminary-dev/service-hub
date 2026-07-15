@@ -85,7 +85,6 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-    continue-on-error: true
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
@@ -100,7 +99,11 @@ jobs:
           npm ci
           for d in services/*/; do (cd "$d" && npm ci); done
       - name: Run knip (report-only)
-        run: npm run knip
+        # Report-only for now: knip surfaces ~107 genuine-but-low-priority unused
+        # exports (mostly the deliberately-uniform per-service lib templates), so
+        # it must not gate CI yet — the findings are in the log to triage/tighten
+        # later. Drop the `|| true` once the backlog is cleared to make it blocking.
+        run: npm run knip || true
 
   # Prod compose validation (#512): the fast per-package matrix and the e2e
   # smoke both exercise the *dev* `docker-compose.yml`; the file that actually
