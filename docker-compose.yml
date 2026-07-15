@@ -372,13 +372,14 @@ services:
       chat-service:
         condition: service_healthy
 
-  # Observability (#668), metrics foundation. Prometheus scrapes every service's
-  # /metrics (see deploy/observability/prometheus.yml); Grafana auto-provisions a
-  # Prometheus datasource + a starter RED dashboard from deploy/observability/.
-  # Both host ports are loopback-bound (#387) like every other dev port — reach
-  # Grafana at http://localhost:3001 (admin / ${GRAFANA_ADMIN_PASSWORD:-admin}).
-  # Log aggregation (Loki), tracing (OTel/Tempo) and error capture are planned
-  # follow-ups on #668 — not part of this slice.
+  # Observability (#668). Prometheus scrapes every service's /metrics (see
+  # deploy/observability/prometheus.yml); Grafana Alloy tails every container's
+  # stdout, parses the JSON log lines, and ships them to Loki. Grafana
+  # auto-provisions Prometheus + Loki datasources and starter RED + logs
+  # dashboards from deploy/observability/. Every host port is loopback-bound
+  # (#387) like the other dev ports — reach Grafana at http://localhost:3001
+  # (admin / ${GRAFANA_ADMIN_PASSWORD:-admin}). Distributed tracing (OTel/Tempo)
+  # and error capture (Sentry/GlitchTip, #34) are the remaining #668 follow-ups.
   prometheus:
     image: prom/prometheus:v3.1.0
     command:
@@ -411,11 +412,55 @@ services:
     depends_on:
       prometheus:
         condition: service_healthy
+      loki:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health > /dev/null || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 10
+
+  # Loki — the log store. Single-binary, filesystem-backed (see
+  # deploy/observability/loki/loki-config.yaml). Alloy ships parsed JSON logs
+  # here; Grafana queries it as a datasource.
+  loki:
+    image: grafana/loki:3.5.1
+    command: ["-config.file=/etc/loki/loki-config.yaml"]
+    volumes:
+      - ./deploy/observability/loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - loki_data:/loki
+    ports:
+      - "127.0.0.1:3100:3100"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 15
+
+  # Grafana Alloy — the log shipper. Discovers every container via the Docker
+  # socket (mounted read-only), tails stdout, parses the JSON, and pushes to
+  # Loki (see deploy/observability/alloy/config.alloy). Its own UI is on 12345.
+  alloy:
+    image: grafana/alloy:v1.10.0
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --storage.path=/var/lib/alloy/data
+      - --server.http.listen-addr=0.0.0.0:12345
+    volumes:
+      - ./deploy/observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy_data:/var/lib/alloy/data
+    ports:
+      - "127.0.0.1:12345:12345"
+    depends_on:
+      loki:
+        condition: service_healthy
+    # No healthcheck: the alloy image has no reliable in-container HTTP client
+    # for a `/-/ready` probe (wget/curl absent), so a CMD-SHELL check is always
+    # "unhealthy" and stalls `docker compose up --wait`. Alloy is a fire-and-forget
+    # log tailer — nothing depends on it being healthy — so `--wait` treating it
+    # as ready once running is correct.
 
   # Feature flags (#675) — self-hosted Unleash + its OWN Postgres (never the app
   # cluster). Behind the `flags` profile so a plain `docker compose up` (and the
@@ -478,4 +523,6 @@ volumes:
   review_uploads:
   prometheus_data:
   grafana_data:
+  loki_data:
+  alloy_data:
   unleash_db_data:

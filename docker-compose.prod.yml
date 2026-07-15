@@ -522,15 +522,17 @@ services:
     # comes from the image env (see the web Dockerfile).
     healthcheck: *node-healthcheck
 
-  # Observability (#668), metrics foundation. Prometheus scrapes every service's
-  # /metrics over the internal backend network (see deploy/observability/
-  # prometheus.yml); Grafana provisions a Prometheus datasource + a starter RED
-  # dashboard from deploy/observability/. Neither is a public surface: both live
-  # on `backend` only and publish their host ports to LOOPBACK (#387), so an
-  # operator reaches Grafana via an SSH tunnel (ssh -L 3001:127.0.0.1:3001 …,
-  # then http://localhost:3001 — admin / ${GRAFANA_ADMIN_PASSWORD}). There is no
-  # Caddy route to either. Logs (Loki), tracing (OTel/Tempo) and error capture
-  # are planned follow-ups on #668 — not part of this slice.
+  # Observability (#668). Prometheus scrapes every service's /metrics over the
+  # internal backend network (see deploy/observability/prometheus.yml); Grafana
+  # Alloy tails every container's stdout via the Docker socket, parses the JSON
+  # log lines, and ships them to Loki. Grafana provisions Prometheus + Loki
+  # datasources and starter RED + logs dashboards from deploy/observability/.
+  # None of it is a public surface: every piece lives on `backend` only and
+  # publishes its host port to LOOPBACK (#387), so an operator reaches Grafana
+  # via an SSH tunnel (ssh -L 3001:127.0.0.1:3001 …, then http://localhost:3001
+  # — admin / ${GRAFANA_ADMIN_PASSWORD}). There is no Caddy route to any of it.
+  # Distributed tracing (OTel/Tempo) and error capture (Sentry/GlitchTip, #34)
+  # are the remaining #668 follow-ups.
   prometheus:
     # dependabot: prom/prometheus:v3.1.0
     image: prom/prometheus:v3.1.0@sha256:6559acbd5d770b15bb3c954629ce190ac3cbbdb2b7f1c30f0385c4e05104e218
@@ -582,12 +584,69 @@ services:
     depends_on:
       prometheus:
         condition: service_healthy
+      loki:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health > /dev/null || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 10
       start_period: 30s
+
+  # Loki — the log store. Single-binary, filesystem-backed on the VPS disk (see
+  # deploy/observability/loki/loki-config.yaml, 7d retention). Alloy ships parsed
+  # JSON logs here; Grafana queries it. Loopback-only host port for ad-hoc API
+  # access over an SSH tunnel, `backend` network, no Caddy route (like
+  # Prometheus). Needs no secret.
+  loki:
+    # dependabot: grafana/loki:3.5.1
+    image: grafana/loki:3.5.1@sha256:a74594532eec4cc313401beedc4dd2708c43674c032084b1aeb87c14a5be1745
+    mem_limit: 512m
+    <<: [*restart, *logging, *hardening]
+    command: ["-config.file=/etc/loki/loki-config.yaml"]
+    volumes:
+      - ./deploy/observability/loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - loki_data:/loki
+    ports:
+      - "127.0.0.1:3100:3100"
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 15
+      start_period: 30s
+
+  # Grafana Alloy — the log shipper. Discovers every container via the Docker
+  # socket (mounted READ-ONLY), tails stdout, parses the JSON, and pushes to Loki
+  # (see deploy/observability/alloy/config.alloy). `backend` network (no egress
+  # — it only talks to Loki and the local socket), loopback-only UI, no Caddy
+  # route, no secret. Alloy runs as root to read the root-owned docker.sock; the
+  # socket bind is ro, so it can read the daemon/logs but not mutate containers.
+  alloy:
+    # dependabot: grafana/alloy:v1.10.0
+    image: grafana/alloy:v1.10.0@sha256:1bc130e909116a4bf950eb5187a346007d3b796f96832b529acb14a64e41230f
+    mem_limit: 256m
+    <<: [*restart, *logging, *hardening]
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --storage.path=/var/lib/alloy/data
+      - --server.http.listen-addr=0.0.0.0:12345
+    volumes:
+      - ./deploy/observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy_data:/var/lib/alloy/data
+    ports:
+      - "127.0.0.1:12345:12345"
+    networks: [backend]
+    depends_on:
+      loki:
+        condition: service_healthy
+    # No healthcheck: the alloy image has no reliable in-container HTTP client for
+    # a `/-/ready` probe, so a CMD-SHELL check is always "unhealthy" and stalls the
+    # deploy's `up -d --wait` gate. Alloy is a fire-and-forget log tailer (nothing
+    # depends on it being healthy), so "ready when running" is correct here.
 
   # Feature flags (#675) — self-hosted Unleash + its OWN Postgres (never the app
   # cluster: separate container, separate volume, separate role). Like Grafana,
@@ -726,4 +785,6 @@ volumes:
   caddy_config:
   prometheus_data:
   grafana_data:
+  loki_data:
+  alloy_data:
   unleash_db_data:

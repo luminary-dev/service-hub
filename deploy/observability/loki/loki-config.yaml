@@ -1,0 +1,62 @@
+# Loki config for the service-hub stack (#668, log-aggregation follow-up).
+# Mounted read-only into the loki container by both docker-compose.yml and
+# docker-compose.prod.yml. Single-binary, filesystem-backed store — right-sized
+# for one VPS (mirrors the Prometheus "one small TSDB" model, not a clustered
+# deployment). Grafana Alloy tails every container's stdout, parses the one
+# JSON line per event the services emit (see each service's src/lib/logging.ts),
+# and pushes here; Grafana queries it as a provisioned datasource.
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  # Loki is chatty at info; keep its own logs to warnings so it doesn't drown
+  # the aggregated app logs (Alloy tails Loki's container too).
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+# TSDB + schema v13 is required for structured metadata (below) and is the
+# current recommended store. `from:` is a fixed historical date so the single
+# active schema always applies.
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  # Structured metadata carries the per-request `requestId` WITHOUT making it a
+  # stream label (a label would explode cardinality). Query it in Grafana with
+  # LogQL, e.g. `{compose_service=~".+"} | requestId="<uuid>"`.
+  allow_structured_metadata: true
+  # Bound retention like Prometheus's 15d TSDB so logs can't fill the VPS disk.
+  retention_period: 168h
+  # Demo/seed lines can carry old timestamps; don't drop them on ingest.
+  reject_old_samples: false
+  volume_enabled: true
+
+# Retention is only enforced when the compactor runs with deletion enabled.
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
+
+# The repo is public and the stack runs air-gapped on the backend network — no
+# phone-home analytics.
+analytics:
+  reporting_enabled: false

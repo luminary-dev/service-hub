@@ -11,3 +11,14 @@ datasources:
     url: http://prometheus:9090
     isDefault: true
     editable: false
+
+  # Loki log aggregation (#668, log-aggregation follow-up). Grafana Alloy ships
+  # every container's parsed JSON logs here; reach them via Explore or the
+  # "Logs — service-hub" dashboard. Reached by Docker-network service name.
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    isDefault: false
+    editable: false
