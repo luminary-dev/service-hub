@@ -12,7 +12,7 @@
 # Plugin v0.13.1 requires caddy v2.11.3 (its go.mod), so pin the matching
 # builder — a mismatch makes xcaddy rebuild a different Caddy than the runtime.
 # dependabot: caddy:2.11.3-builder-alpine
-FROM caddy:2.11.3-builder-alpine@sha256:3eae6b351ecdb05da6d16e341261a457692d344a435764c5ece7a60cf03a23f3 AS builder
+FROM caddy:2.11.4-builder-alpine@sha256:8e89605351333ad2cc2f3bcc95275a2ccc427f88914050e86a5fde0fd77a63c4 AS builder
 
 # Only the HTTP bouncer is needed (the edge is an L7 reverse proxy only — no
 # layer4 TCP/UDP bouncing, no AppSec WAF here). The base app module it depends
@@ -23,7 +23,7 @@ RUN xcaddy build v2.11.3 \
 # Runtime: identical to the stock caddy:2-alpine base the prod stack used before,
 # just carrying our xcaddy-built binary instead of the vanilla one.
 # dependabot: caddy:2.11.3-alpine
-FROM caddy:2.11.3-alpine@sha256:86deaf5e3d3408a6ccec08fbb79989783dd26e206ae10bcf78a801dc8c9ab794
+FROM caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
 
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 
