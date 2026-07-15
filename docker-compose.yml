@@ -388,9 +388,65 @@ services:
       timeout: 3s
       retries: 10
 
+  # Feature flags (#675) — self-hosted Unleash + its OWN Postgres (never the app
+  # cluster). Behind the `flags` profile so a plain `docker compose up` (and the
+  # CI e2e) DON'T start it: the web app degrades gracefully with the flag env
+  # unset, so dev works exactly as today. Opt in for local flag work with
+  # `docker compose --profile flags up -d unleash`, open the admin UI at
+  # http://localhost:4242 (default login admin / unleash4all), create a flag +
+  # a Frontend API token, then run the web app with UNLEASH_URL +
+  # UNLEASH_FRONTEND_TOKEN set (see docs/OPERATIONS.md → Feature flags).
+  unleash-db:
+    profiles: ["flags"]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: unleash
+      POSTGRES_PASSWORD: unleash
+      POSTGRES_DB: unleash
+    ports:
+      # Loopback-bound (#387) like every other dev port; 5433 is the app cluster.
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - unleash_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U unleash -h 127.0.0.1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  unleash:
+    profiles: ["flags"]
+    image: unleashorg/unleash-server:7.6
+    environment:
+      DATABASE_URL: postgres://unleash:unleash@unleash-db:5432/unleash
+      DATABASE_SSL: "false"
+      # No phone-home version check → the container needs no internet.
+      CHECK_VERSION: "false"
+      # Optionally seed a Frontend API token from the environment so a fresh dev
+      # instance is usable without a manual admin step. No token literal lives in
+      # the tree (the repo is public, #675) — empty by default; set
+      # UNLEASH_FRONTEND_TOKEN in your local .env (same value you give the web
+      # app) to pre-seed it, OR just create a token in the admin UI. Mirrors the
+      # prod side. See docs/OPERATIONS.md → Feature flags.
+      INIT_FRONTEND_API_TOKENS: ${UNLEASH_FRONTEND_TOKEN:-}
+    ports:
+      # Loopback-bound admin UI (#387) — never LAN/internet-reachable.
+      - "127.0.0.1:4242:4242"
+    depends_on:
+      unleash-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4242/health > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+
 volumes:
   pgdata:
   provider_uploads:
   review_uploads:
   prometheus_data:
   grafana_data:
+  unleash_db_data:

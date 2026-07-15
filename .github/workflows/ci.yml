@@ -105,6 +105,7 @@ jobs:
           TRUST_SAFETY_DB_PASSWORD: ci-dummy-password
           REDIS_PASSWORD: ci-dummy-password
           GRAFANA_ADMIN_PASSWORD: ci-dummy-password
+          UNLEASH_DB_PASSWORD: ci-dummy-password
           WEB_ORIGIN: https://ci.example.test
           DOMAIN: ci.example.test
         run: docker compose -f docker-compose.prod.yml config -q

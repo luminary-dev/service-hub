@@ -12,6 +12,7 @@ import { ToastProvider } from "@/components/ToastProvider";
 import ChatAssistant from "@/components/ChatAssistant";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import { getSession } from "@/lib/auth";
+import { isFlagEnabled } from "@/lib/flags";
 import { getLocale, getUrlLocale } from "@/lib/locale";
 import { siteOpenGraph } from "@/lib/seo";
 import { getTheme } from "@/lib/theme";
@@ -86,10 +87,16 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const [locale, theme, session] = await Promise.all([
+  // `chat-assistant` is a runtime feature flag (#675). Its default is TRUE, so
+  // when the flag service is unset/unreachable (dev, CI, prod pre-provision)
+  // the assistant renders exactly as it does today; an operator can dark-launch
+  // it off from the Unleash admin UI without a redeploy. Evaluated in parallel
+  // with the other server reads so it adds no serial latency.
+  const [locale, theme, session, assistantFlag] = await Promise.all([
     getLocale(),
     getTheme(),
     getSession(),
+    isFlagEnabled("chat-assistant", true),
   ]);
   const t = dict[locale];
   const impersonating = Boolean(session?.impersonatedBy);
@@ -97,7 +104,7 @@ export default async function RootLayout({
   // signed-out visitors and CUSTOMERs find providers and draft inquiries. It
   // has no purpose for PROVIDER/ADMIN/SUPPORT sessions, so scope it to the
   // public/customer surface rather than mounting it on every route/role (#662).
-  const showAssistant = !session || session.role === "CUSTOMER";
+  const showAssistant = (!session || session.role === "CUSTOMER") && assistantFlag;
 
   return (
     <html

@@ -502,6 +502,13 @@ services:
       # Session-revocation check for page gating (src/lib/session-version.ts) —
       # reaches identity directly with the internal secret; fails open if unset.
       IDENTITY_SERVICE_URL: http://identity-service:4001
+      # Feature flags (#675), evaluated server-side by src/lib/flags.ts. The URL
+      # is static (internal), but the TOKEN is the activation switch: unset (the
+      # default) → flags.ts is a no-op and every flag falls back to its coded
+      # default, so behavior is unchanged. Set UNLEASH_FRONTEND_TOKEN only AFTER
+      # you've created + enabled the flags in Unleash (docs/OPERATIONS.md).
+      UNLEASH_URL: http://unleash:4242/api
+      UNLEASH_FRONTEND_TOKEN: ${UNLEASH_FRONTEND_TOKEN:-}
     # Straddles both networks: reachable from Caddy on edge, reaches the
     # gateway / chat / identity on backend.
     networks: [edge, backend]
@@ -582,6 +589,77 @@ services:
       retries: 10
       start_period: 30s
 
+  # Feature flags (#675) — self-hosted Unleash + its OWN Postgres (never the app
+  # cluster: separate container, separate volume, separate role). Like Grafana,
+  # it's internal-only — `backend` network, NO Caddy route, host port published
+  # to LOOPBACK (#387) so an operator reaches the admin UI via an SSH tunnel
+  # (ssh -L 4242:127.0.0.1:4242 <server>, then http://localhost:4242). The web
+  # app reads flags SERVER-SIDE and DEGRADES GRACEFULLY (src/lib/flags.ts): with
+  # UNLEASH_FRONTEND_TOKEN unset it never calls Unleash and returns each flag's
+  # documented default, so shipping this stack changes NO product behavior until
+  # an operator provisions a token. See docs/OPERATIONS.md → Feature flags.
+  unleash-db:
+    # dependabot: postgres:16-alpine
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    mem_limit: 256m
+    <<: [*restart, *logging, *hardening]
+    # The postgres entrypoint starts as root to chown the data dir, then drops to
+    # the `postgres` user — so under cap_drop: ALL it needs these back (same as
+    # the app postgres block above).
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    environment:
+      POSTGRES_USER: unleash
+      # Required secret: no dev fallback (mirrors GRAFANA_ADMIN_PASSWORD and the
+      # per-service DB roles). URL-interpolated into DATABASE_URL below → hex.
+      POSTGRES_PASSWORD: ${UNLEASH_DB_PASSWORD:?UNLEASH_DB_PASSWORD is required}
+      POSTGRES_DB: unleash
+    volumes:
+      - unleash_db_data:/var/lib/postgresql/data
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U unleash -h 127.0.0.1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+
+  unleash:
+    # dependabot: unleashorg/unleash-server:7.6
+    image: unleashorg/unleash-server:7.6@sha256:1a35c84bf532272e15464c62c0d1f865273e9b3a0c8d34b1d960cc8f2ba55c85
+    mem_limit: 512m
+    <<: [*restart, *logging, *hardening]
+    environment:
+      DATABASE_URL: postgres://unleash:${UNLEASH_DB_PASSWORD:?}@unleash-db:5432/unleash
+      DATABASE_SSL: "false"
+      # No phone-home version check → Unleash stays on the internet-less backend
+      # network (no egress), like every other internal service.
+      CHECK_VERSION: "false"
+      # Absolute URL for correct admin-UI redirects behind the loopback publish.
+      UNLEASH_URL: "http://localhost:4242"
+      # Optional: seed the Frontend API token the web app consumes so a fresh
+      # instance is usable without a manual admin step. Empty (the default) → the
+      # operator creates the token in the admin UI instead. Format:
+      # <project>:<environment>.<secret>, e.g. default:production.<hex>.
+      INIT_FRONTEND_API_TOKENS: ${UNLEASH_FRONTEND_TOKEN:-}
+    ports:
+      # Loopback only (SSH tunnel to reach the admin UI); no public/Caddy route.
+      - "127.0.0.1:4242:4242"
+    networks: [backend]
+    depends_on:
+      unleash-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4242/health > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+
   # The only public surface: terminates TLS (auto Let's Encrypt) and proxies to
   # the web app, which in turn proxies /api/* to the gateway internally.
   caddy:
@@ -648,3 +726,4 @@ volumes:
   caddy_config:
   prometheus_data:
   grafana_data:
+  unleash_db_data:
