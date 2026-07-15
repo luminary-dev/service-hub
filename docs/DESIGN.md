@@ -152,6 +152,9 @@ components:
 - **`StatReadout`** — a horizontal `dl` of `tech-corners` panels, each a big
   `font-mono` `tabular-nums` figure over a mono uppercase caption. Numeric
   values are zero-padded (default width 2) for the fixed-width instrument look.
+  Pass `wrap` to reflow the row into an even 2-column grid on mobile (used on
+  the provider dashboard, where four instruments would otherwise overflow a
+  ~390px viewport) — it falls back to the horizontal row from `sm` up.
 - **`EmptyState`** — the centered `.card` for empty listings/panels: a large
   muted icon (from `@/components/icons`), a title, a body line, an optional
   action, and an optional `children` slot.

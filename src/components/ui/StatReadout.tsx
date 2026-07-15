@@ -15,15 +15,27 @@ export type Stat = {
 export default function StatReadout({
   stats,
   pad = 2,
+  wrap = false,
   className = "",
 }: {
   stats: Stat[];
   /** Minimum digit width for numeric values (zero-padded). */
   pad?: number;
+  /**
+   * Reflow the readout into an even 2-column grid on mobile instead of a
+   * single row (which overflows / crams four instruments at ~390px). Falls
+   * back to the horizontal flex row from `sm` up. Opt-in so single-stat
+   * headers keep hugging their content (#708).
+   */
+  wrap?: boolean;
   className?: string;
 }) {
   return (
-    <dl className={`flex gap-3 ${className}`}>
+    <dl
+      className={`gap-3 ${
+        wrap ? "grid grid-cols-2 sm:flex sm:flex-wrap" : "flex"
+      } ${className}`}
+    >
       {stats.map(({ label, value }, i) => (
         <div
           key={i}

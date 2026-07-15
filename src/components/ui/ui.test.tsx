@@ -34,6 +34,25 @@ describe("StatReadout", () => {
     expect(screen.getByText("A-Z")).toBeTruthy();
     expect(screen.getByText("TOTAL")).toBeTruthy();
   });
+
+  it("stays a single flex row by default", () => {
+    const { container } = render(
+      <StatReadout stats={[{ label: "TOTAL", value: 7 }]} />
+    );
+    const dl = container.querySelector("dl")!;
+    expect(dl.className).toContain("flex");
+    expect(dl.className).not.toContain("grid");
+  });
+
+  it("reflows into a 2-column grid on mobile when `wrap` is set (#708)", () => {
+    const { container } = render(
+      <StatReadout wrap stats={[{ label: "TOTAL", value: 7 }]} />
+    );
+    const dl = container.querySelector("dl")!;
+    expect(dl.className).toContain("grid-cols-2");
+    // still a flex row from `sm` up
+    expect(dl.className).toContain("sm:flex");
+  });
 });
 
 describe("EmptyState", () => {
