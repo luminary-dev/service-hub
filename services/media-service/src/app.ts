@@ -13,10 +13,12 @@ export const app = new Hono();
 app.use(requestLogger(log));
 app.use(metricsMiddleware());
 app.get("/healthz", (c) => c.json({ ok: true, service: "media-service" }));
-// Everything else (including /files/*, which the gateway supplies the secret
-// for on behalf of browsers) is behind the internal secret.
-app.get("/metrics", metricsHandler);
+// Everything else — including /files/* (the gateway supplies the secret for it
+// on behalf of browsers) AND /metrics (#742) — is behind the internal secret.
+// The Prometheus scrape must send the x-internal-secret header; the service
+// port is never exposed publicly.
 app.use("*", requireInternalSecret);
+app.get("/metrics", metricsHandler);
 
 app.route("/", filesRoutes);
 app.route("/", internalRoutes);

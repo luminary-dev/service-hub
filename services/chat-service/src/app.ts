@@ -12,8 +12,11 @@ export const app = new Hono();
 app.use(requestLogger(log));
 app.use(metricsMiddleware());
 app.get("/healthz", (c) => c.json({ ok: true, service: "chat-service" }));
-app.get("/metrics", metricsHandler);
 app.use("*", requireInternalSecret);
+// /metrics is behind the internal secret (#742): the Prometheus scrape must
+// send the x-internal-secret header. The service port is never exposed
+// publicly, so this stays internal-only either way.
+app.get("/metrics", metricsHandler);
 
 app.route("/", chatRoutes);
 

@@ -580,9 +580,16 @@ Prometheus metrics at `GET /metrics` on its own port via an identical
   fds, cpu. Every series carries a `service="<name>"` label stamped by
   `initMetrics()` (called once in each `src/index.ts`).
 
-`/metrics` is deliberately **not** behind the internal secret — Prometheus
-scrapes it directly — and that is safe because the service ports are never
-public (loopback-bound in dev, `backend`-only network in prod).
+`/metrics` is behind the internal secret (#742): it exposes route names,
+request counts and latencies (internal recon that widens the blast radius of any
+port exposure or SSRF), so — like every other non-`/healthz` route — it requires
+the `x-internal-secret` header. The Prometheus scrape config must send that
+header (`deploy/observability/prometheus.yml`). Only `/healthz` stays open. On
+the backend services this is enforced by the global `requireInternalSecret`; the
+gateway, which has no global gate (it *adds* the secret upstream), guards
+`/metrics` explicitly via `src/lib/internal-secret.ts`. The service ports are
+still never public (loopback-bound in dev, `backend`-only network in prod), so
+this is defence-in-depth on top of that.
 
 **Log aggregation (#668).** Every service already emits **one JSON line per
 event** to stdout (`{ level, time, service, msg, requestId, … }` — see each
