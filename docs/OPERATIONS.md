@@ -363,7 +363,8 @@ staleness ≤ the sweep interval):
 docker compose -f docker-compose.prod.yml exec -T search-service \
   wget -qO- --header "x-internal-secret: $INTERNAL_API_SECRET" \
   --post-data= http://localhost:4008/internal/search/reindex
-# → { "indexed": n, "skipped": 0, "deleted": m }
+# → { "indexed": n, "skipped": 0, "deleted": m, "purged": t }
+# (`purged` = expired delete tombstones cleared this run, #752)
 
 # Drift metric — compare `indexed` against provider-service's non-suspended
 # count; a growing gap between sweeps means pushes are being dropped:
@@ -371,6 +372,15 @@ docker compose -f docker-compose.prod.yml exec -T search-service \
   wget -qO- --header "x-internal-secret: $INTERNAL_API_SECRET" \
   http://localhost:4008/internal/search/stats
 ```
+
+The sweep prunes by **generation** (#752): each run stamps every row it upserts
+with a unique `sweepId`, then deletes only rows it did not touch that also
+predate the run (`updatedAt < sweepStartedAt`) — so a provider registered while
+the multi-minute sweep is walking pages is never deleted, and the prune no
+longer builds an unbounded `NOT IN (…)` that Postgres' 65,535 bind-param cap
+would fail past ~65k providers. It also purges **delete tombstones** (written by
+the index DELETE so a stale push can't resurrect an erased/suspended provider)
+once they predate the run.
 
 The sweep fails loudly (502, `{ "error": "Reindex failed" }`) when
 provider-service or review-service is unreachable — an outage is never
