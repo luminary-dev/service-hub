@@ -105,7 +105,10 @@
   — the overall `rating` stays authoritative for ranking; the required `rating`
   and each nullable sub-dimension are range-guarded by DB CHECKs — `rating`
   `BETWEEN 1 AND 5`, each `<dim> IS NULL OR <dim> BETWEEN 1 AND 5` — #649,
-  migration `20260714140000`), `ReviewPhoto`,
+  migration `20260714140000`), `ReviewPhoto`
+  (+ `deletedAt` moderation soft-delete #756, migration `20260716120000` —
+  mirrors `WorkPhoto`: an admin takedown soft-deletes + audit-logs and keeps the
+  file until a later purge, the owner's own delete stays a hard delete),
   `Report` (**identical shape to provider-service's**, reconciled in #370 —
   same field set including `source` (`USER`|`SYSTEM`) and `updatedAt`;
   `targetType` = `REVIEW`; same `resolvedBy`/`resolvedAt` audit fields; same

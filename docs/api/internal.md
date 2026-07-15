@@ -38,6 +38,7 @@ using the shared `s2s()` helper (one bounded retry on idempotent GETs).
 | `GET /internal/providers/export?cursor=&take=` | Reindex export for search-service's sweep (search RFC §4.2): every **non-suspended** provider as a full index document (the exact shape the push path PUTs), id-cursor paginated (`take` default 100, max 500) → `{ providers, nextCursor }`. No contact PII beyond the display name. |
 | `GET /internal/inquiries/exists?providerId=&userId=` | Review gate — has this user inquired with this provider? → `{ exists }`. |
 | `GET /internal/providers/:id/summary` | Existence/suspended check (favorites, reviews) — always 200 → `{ provider: { id, userId, suspended, contactEmail } \| null }` (`contactEmail` lets review-service address the owner's `NEW_REVIEW` notification). |
+| `PUT /internal/providers/:providerId/rating` | Denormalized rating write-back target (#748): `{ ratingAvg, ratingCount }` recomputed from the `Review` table and pushed by review-service after any write that changes a provider's aggregates (create/edit, moderation soft-delete/restore, erasure), so the hot public browse can filter/sort/count `ratingAvg`/`ratingCount` DB-side instead of a live per-request aggregation. Best-effort/idempotent (last-write-wins). **Provider-side handler + `Provider.ratingAvg`/`ratingCount` columns are the other half of #748 — see the note in review-service's row.** |
 | `POST /internal/users/:id/erase` | Account-deletion fan-out: hard-delete the user's provider row + owned children (services/photos/docs) + files + search-index doc, and delete the inquiries this user *sent*. Inquiries the provider *received* are the customers' data — the `Inquiry → Provider` FK is `ON DELETE SET NULL` (#650), so deleting the provider detaches them (`providerId → null`, thread preserved) instead of cascade-deleting the customer's history. Idempotent. |
 | `POST /internal/maintenance/sweep-orphans` | Remove stored files no row references, in the `provider` **and** `category` namespaces (#555, ops tooling). Media tables are walked in id/slug-ordered pages, not loaded whole (#639). |
 
@@ -48,6 +49,15 @@ using the shared `s2s()` helper (one bounded retry on idempotent GETs).
 | `GET /internal/ratings?providerIds=a,b,c` | Batch rating summaries → `{ ratings }`. Each entry: `{ rating, count }` (authoritative for ranking) plus the additive per-dimension averages and 5→1 star `distribution` (#528) — existing consumers keep reading `rating`/`count`. Also the ratings feed for search-service's reindex sweep. `providerIds` is capped at 500 (`MAX_BATCH_IDS`), matching the peer batch endpoints. |
 | `GET /internal/by-provider/:id?take&cursor&includeDeleted` | Reviews for one provider (cursor-paginated) → `{ reviews, nextCursor }`. Each review carries the provider's reply as `response` (#395), threaded through provider-service's `/full` composition unchanged. |
 | `GET /internal/count` | Total (non-deleted) review count. |
+
+> **Rating write-back (#748).** On every write that changes a provider's rating
+> aggregates (review create/edit, admin moderation soft-delete/restore),
+> review-service recomputes the overall `{ ratingAvg, ratingCount }` from the
+> `Review` table (non-deleted only) and PUTs them to provider-service's
+> `/internal/providers/:providerId/rating` via the `s2s` helper — same
+> fire-and-forget/best-effort contract as the search-index rating push.
+> provider-service denormalizes `ratingAvg`/`ratingCount` onto `Provider` and
+> the public `/api/providers` browse sorts/counts off them (#748).
 | `POST /internal/users/:id/erase` | Account-deletion fan-out: delete the user's authored reviews + photo files. When the orchestrator passes `{ providerId }` (identity resolves it before this call, exactly as for the job erase), also hard-delete the reviews *received* by that profile — which cascades the public `ReviewResponse` replies the user authored (#645) and those reviews' photo rows — since the profile itself is being deleted. No S2S re-resolution here, so a transient provider blip can no longer make this endpoint degrade-open and strand the received reviews forever (#749). A missing `providerId` means "not a provider" → authored-only cleanup. Idempotent. |
 | `POST /internal/maintenance/sweep-orphans` | Remove orphaned review-photo files (ops tooling). The `ReviewPhoto` table is walked in id-ordered pages, not loaded whole (#766). |
 
