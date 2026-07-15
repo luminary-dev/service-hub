@@ -1,8 +1,38 @@
 # Public edge for the production stack. Caddy auto-provisions and renews TLS
 # (Let's Encrypt) for $DOMAIN and reverse-proxies to the web app, which proxies
 # /api/* to the gateway on the internal network. No other service is exposed.
+#
+# NOTE: this config requires the CrowdSec bouncer plugin (#670), so it is NOT
+# valid against stock caddy:2-alpine — it must be built/validated with
+# deploy/caddy/Dockerfile (the CI `compose-config` job does exactly that).
 {
 	email {$ACME_EMAIL}
+
+	# CrowdSec bouncer (#670) — behavioural edge intrusion prevention: bans
+	# abusive IPs (credential stuffing on /api/auth, form spam, scraping) a
+	# layer ABOVE the gateway's Redis rate-limiter, which only throttles. The
+	# `crowdsec` handler is a custom directive, so give it an explicit order so
+	# it runs before `reverse_proxy` (Caddy has no default slot for it).
+	order crowdsec first
+	crowdsec {
+		# The LAPI lives on the dedicated `crowdsec` docker network (see
+		# docker-compose.prod.yml); Caddy is the only other member.
+		api_url http://crowdsec:8080
+		# Registered against the LAPI via BOUNCER_KEY_caddy on the crowdsec
+		# container — same secret both sides. Required prod secret.
+		api_key {$CROWDSEC_BOUNCER_API_KEY}
+		# Streaming mode (the default — `disable_streaming` is NOT set): the
+		# bouncer keeps the decision list in memory, refreshed on this ticker, so
+		# per-request checks never make a LAPI round-trip and LAPI latency adds
+		# ZERO request latency.
+		ticker_interval 15s
+		# FAIL OPEN — non-negotiable, this is the only public entrypoint.
+		# `enable_hard_fails` is deliberately OMITTED: with it unset the bouncer's
+		# failure mode is allow-on-error, so an unreachable/slow/erroring LAPI (or
+		# a CrowdSec container that is down or still starting) lets traffic
+		# through instead of blocking it. A CrowdSec problem must NEVER take the
+		# site down. DO NOT add `enable_hard_fails` here.
+	}
 }
 
 {$DOMAIN} {
@@ -19,5 +49,9 @@
 	# hstspreload.org once the site is stable). Caddy already redirects HTTP→HTTPS;
 	# this closes the first-request SSL-strip window for the session cookie.
 	header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+	# CrowdSec check runs first (see `order crowdsec first` above): a banned IP
+	# gets a 403 here; everything else falls through to the web app. On any LAPI
+	# error this allows the request (fail-open, see the global block).
+	crowdsec
 	reverse_proxy web:3000
 }

@@ -146,6 +146,10 @@ jobs:
           WEB_ORIGIN: ${{ secrets.WEB_ORIGIN }}
           DOMAIN: ${{ secrets.DOMAIN }}
           ACME_EMAIL: ${{ secrets.ACME_EMAIL }}
+          # CrowdSec Caddy bouncer (#670): REQUIRED prod secret — compose guards
+          # it with ${VAR:?}. Shared by the Caddy bouncer and the crowdsec
+          # container (BOUNCER_KEY_caddy). Generate: openssl rand -hex 32.
+          CROWDSEC_BOUNCER_API_KEY: ${{ secrets.CROWDSEC_BOUNCER_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
@@ -203,7 +207,8 @@ jobs:
                      UNLEASH_DB_PASSWORD UNLEASH_FRONTEND_TOKEN \
                      GLITCHTIP_SECRET_KEY GLITCHTIP_DB_PASSWORD SENTRY_DSN \
                      WEB_ORIGIN \
-                     DOMAIN ACME_EMAIL ANTHROPIC_API_KEY RESEND_API_KEY EMAIL_FROM \
+                     DOMAIN ACME_EMAIL CROWDSEC_BOUNCER_API_KEY \
+                     ANTHROPIC_API_KEY RESEND_API_KEY EMAIL_FROM \
                      R2_ENDPOINT R2_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY \
                      GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET \
                      FACEBOOK_CLIENT_ID FACEBOOK_CLIENT_SECRET; do
@@ -233,7 +238,13 @@ jobs:
           #    images could fail identically. A rollback that STILL comes up
           #    unhealthy is reported loudly instead of swallowed. Pruning
           #    happens only AFTER a healthy rollout and keeps the previous tag,
-          #    so rollback stays a one-liner.
+          #    so rollback stays a one-liner. `--build` (#670): every service
+          #    runs a pre-built GHCR image EXCEPT caddy, which is built on the
+          #    server from deploy/caddy/Dockerfile (custom Caddy + CrowdSec
+          #    bouncer). `--build` reconstructs it from the just-reset git tree
+          #    so a Dockerfile/plugin bump actually takes effect; the layer
+          #    cache makes it a near-instant no-op when nothing changed, and the
+          #    same health-gate + rollback still covers it.
           "${SSH[@]}" bash -s <<EOF
             set -euo pipefail
             cd "$APP_DIR"
@@ -241,7 +252,7 @@ jobs:
             PREV_SHA=\$(git rev-parse HEAD 2>/dev/null || true)
             git fetch origin prod && git reset --hard origin/prod
             \$COMPOSE pull
-            if \$COMPOSE up -d --remove-orphans --wait --wait-timeout 300; then
+            if \$COMPOSE up -d --remove-orphans --build --wait --wait-timeout 300; then
               echo "Deploy healthy."
               # Prune superseded images (#567): tagged images are never
               # "dangling", so a plain prune left every old :<sha> set on disk
@@ -267,7 +278,7 @@ jobs:
                     || echo "WARNING: could not restore compose/deploy config from \$PREV_SHA; retrying with the new one." >&2
                 fi
                 \$COMPOSE pull
-                if \$COMPOSE up -d --remove-orphans --wait --wait-timeout 300; then
+                if \$COMPOSE up -d --remove-orphans --build --wait --wait-timeout 300; then
                   echo "Rolled back to ${PREV_TAG}." >&2
                 else
                   echo "ROLLBACK FAILED — stack may be down or unhealthy. Manual intervention required (see docs/DEPLOYMENT.md#rollback)." >&2

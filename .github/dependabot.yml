@@ -39,18 +39,20 @@ updates:
 
   # Track container base images (#238) so base-layer CVEs generate update PRs
   # instead of silently persisting. Covers Dockerfiles ONLY: the root web
-  # Dockerfile at "/" and every service Dockerfile under "/services/*". Base
-  # images are pinned by digest with a `# dependabot: <tag>` comment; Dependabot
-  # bumps the digest and keeps the readable tag current.
+  # Dockerfile at "/", every service Dockerfile under "/services/*", and the
+  # custom edge Caddy image at "/deploy/caddy" (#670 — xcaddy builder + alpine
+  # runtime). Base images are pinned by digest with a `# dependabot: <tag>`
+  # comment; Dependabot bumps the digest and keeps the readable tag current.
   #
   # NOTE (#664): the `docker` ecosystem parses `FROM` refs in Dockerfiles only —
   # it does NOT read `image:` refs in docker-compose*.yml. The postgis/redis/
-  # caddy digests pinned in docker-compose.prod.yml are therefore tracked out of
-  # band by the `.github/workflows/compose-image-digests.yml` workflow.
+  # crowdsec digests pinned in docker-compose.prod.yml are therefore tracked out
+  # of band by the `.github/workflows/compose-image-digests.yml` workflow.
   - package-ecosystem: docker
     directories:
       - "/"
       - "/services/*"
+      - "/deploy/caddy"
     schedule:
       interval: weekly
     open-pull-requests-limit: 10

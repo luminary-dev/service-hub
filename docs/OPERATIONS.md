@@ -37,10 +37,16 @@ Every image runs as the **non-root `node` user** (`USER node`).
 `# dependabot: <tag>` comment plus the readable tag before the `@sha256:` digest,
 so a build is reproducible and Dependabot can bump the tag comment and digest
 together. Compose base images (`postgis/postgis:16-3.5-alpine`, `redis:7-alpine`,
-`edoburu/pgbouncer` (#674), `caddy:2-alpine`, and the observability pair
-`prom/prometheus` + `grafana/grafana` (#668) in `docker-compose.prod.yml`) are pinned the *same way* by hand,
+`edoburu/pgbouncer` (#674), `crowdsecurity/crowdsec` (#670), and the
+observability pair `prom/prometheus` + `grafana/grafana` (#668) in
+`docker-compose.prod.yml`) are pinned the *same way* by hand,
 but **Dependabot can't bump them** — its `docker` ecosystem only parses `FROM`
-in Dockerfiles, never `image:` refs in compose files. A scheduled
+in Dockerfiles, never `image:` refs in compose files. The edge Caddy is the
+exception: it is no longer a stock compose image but a **custom build**
+([`deploy/caddy/Dockerfile`](../deploy/caddy/Dockerfile): xcaddy + the CrowdSec
+bouncer plugin, #670), so its `FROM` digests (builder + `caddy:*-alpine`
+runtime) live in a Dockerfile and Dependabot's `docker` ecosystem **does** track
+them (`/deploy/caddy` is in `.github/dependabot.yml`). A scheduled
 [`compose-image-digests`](../.github/workflows/compose-image-digests.yml)
 workflow (#664) diffs those pinned compose digests against the live upstream
 tags weekly and opens a tracking issue on drift, so a base-layer CVE fix still
@@ -62,10 +68,12 @@ surfaces as work instead of persisting silently.
 - **docker** — bumps the pinned base-image digests **in the Dockerfiles** (the
   root web image at `/` and every `services/*` image) so base-layer CVEs surface
   as PRs instead of silently persisting. It does **not** see the `image:` refs in
-  the compose files — the postgis/redis/pgbouncer/caddy digests in
+  the compose files — the postgis/redis/pgbouncer/crowdsec digests in
   `docker-compose.prod.yml` are watched by the separate `compose-image-digests`
   workflow instead (#664; it auto-discovers every `image: …@sha256:` ref, so a
-  newly pinned compose image is covered without editing the workflow).
+  newly pinned compose image — e.g. crowdsec, #670 — is covered without editing
+  the workflow), while the custom edge Caddy's `FROM` digests are tracked by
+  Dependabot via `/deploy/caddy` (above).
 
 ## Runtime behavior
 
@@ -190,11 +198,15 @@ Runs on push and PR to `dev` and `prod`. Jobs:
   parses/interpolates without pulling images or starting containers, so it's a
   fast gate; the job supplies **dummy** values for the required `${VAR:?}` secrets
   (`AUTH_SECRET`, `INTERNAL_API_SECRET`, `POSTGRES_PASSWORD`, the seven
-  per-service `*_DB_PASSWORD`s, `REDIS_PASSWORD`, `WEB_ORIGIN`, `DOMAIN`) so
+  per-service `*_DB_PASSWORD`s, `REDIS_PASSWORD`, `WEB_ORIGIN`, `DOMAIN`,
+  `CROWDSEC_BOUNCER_API_KEY`) so
   interpolation succeeds — `ACME_EMAIL` is left unset to exercise its
   `admin@${DOMAIN}` compose default (#387) — and fails loudly if the file is
-  invalid. The job also runs **`caddy validate`** over `deploy/Caddyfile`
-  (same digest-pinned image), so a Caddyfile that would crash-loop the only
+  invalid. The job also **builds the custom edge Caddy image**
+  (`deploy/caddy/Dockerfile`) and runs **`caddy validate`** over
+  `deploy/Caddyfile` with it (#670) — the CrowdSec bouncer directive can't be
+  parsed by stock Caddy, so validating with the plugin-carrying image is what
+  proves the config actually loads; a Caddyfile that would crash-loop the only
   public entrypoint fails CI instead of the live deploy.
 
 A `concurrency` group (`${{ github.workflow }}-${{ github.ref }}`,
@@ -731,6 +743,51 @@ matching Loki lines. Reach Grafana the same way as for metrics/logs above
 
 This **completes #668** (metrics + logs + error capture + tracing). Web
 (Next.js) tracing/error capture remains intentionally out of scope.
+
+## Edge intrusion prevention — CrowdSec (#670)
+
+CrowdSec bans abusive IPs **at the edge**, a layer above the gateway's Redis
+rate-limiter (which only throttles — it never bans). The `crowdsec` container
+(LAPI) reads Caddy's #527 JSON access logs off `docker.sock:ro`
+([`deploy/crowdsec/acquis.yaml`](../deploy/crowdsec/acquis.yaml)), scores them
+with the `crowdsecurity/caddy` + `crowdsecurity/base-http-scenarios` collections
+(auto-installed on boot via `COLLECTIONS`), and serves ban decisions to the
+**CrowdSec bouncer compiled into Caddy** (`deploy/caddy/Dockerfile`). It targets
+credential stuffing on `/api/auth`, form spam, and scraping. **Prod-only** — the
+edge (Caddy) exists only in `docker-compose.prod.yml`; the dev stack is
+untouched. Setup, the fail-open design, and the custom Caddy build are in
+[DEPLOYMENT.md](DEPLOYMENT.md) → Edge intrusion prevention.
+
+**Fail-open.** The bouncer is allow-on-error (the Caddyfile `crowdsec` block
+omits `enable_hard_fails`) and Caddy does not `depend_on` crowdsec, so a
+CrowdSec outage never blocks or delays traffic. This is a hard requirement: the
+edge is the only public entrypoint.
+
+**Day-to-day (`cscli`).** CrowdSec has no public/loopback UI beyond its
+loopback-only LAPI port; operate it from inside the container:
+
+```bash
+CS="docker compose -f docker-compose.prod.yml exec crowdsec cscli"
+$CS metrics                         # acquisition + scenario activity
+$CS decisions list                  # current bans
+$CS decisions delete --ip 1.2.3.4   # unban an IP (e.g. a false positive)
+$CS decisions add   --ip 1.2.3.4 --duration 24h   # manual ban
+$CS alerts list                     # what tripped the scenarios
+$CS bouncers list                   # confirm the caddy bouncer is registered
+$CS hub list                        # installed collections/parsers/scenarios
+```
+
+Bans + the registered bouncer key persist in the SQLite DB on the
+`crowdsec_data` volume, so they survive container recreation. The community
+blocklist (CAPI) is pulled over `egress`; if egress is unavailable CrowdSec
+degrades to local scenarios only.
+
+**Validation is deploy-time.** Real bans on real abuse can only be observed on
+the live edge with real traffic — there is no edge in dev or CI. CI proves only
+that the custom Caddy image builds (asserting the plugin linked) and that
+`caddy validate` + `docker compose config -q` accept the config. After a deploy,
+confirm with `$CS metrics` (acquisition reading caddy lines) and
+`$CS bouncers list` (the caddy bouncer present and recently seen).
 
 ## Feature flags (#675)
 
