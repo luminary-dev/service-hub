@@ -1,0 +1,43 @@
+# OpenTelemetry Collector — the central span pipeline for the service-hub stack
+# (#668, distributed tracing follow-up). Mounted read-only into the
+# otel-collector container by both docker-compose.yml (dev, behind the `tracing`
+# profile) and docker-compose.prod.yml (always on). Backend services export
+# OTLP to it (otel-collector:4318); it batches and forwards to Tempo over
+# OTLP/gRPC (tempo:4317). Keeping a collector between the apps and Tempo means
+# batching/back-pressure/retry live in one place and the services stay thin.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # Bound the collector's own memory so a trace spike can't OOM the VPS.
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 25
+  batch:
+    timeout: 5s
+    send_batch_size: 512
+
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    # In-cluster plaintext on the internal `backend` network — never public.
+    tls:
+      insecure: true
+
+service:
+  # The collector's own self-telemetry is not scraped here; keep it quiet.
+  telemetry:
+    metrics:
+      level: none
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/tempo]

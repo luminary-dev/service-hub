@@ -32,6 +32,23 @@ x-service-env: &service-env
   # its value is the DSN that project issues (points at glitchtip-web on the
   # internal backend network). See docs/OPERATIONS.md → Error capture.
   SENTRY_DSN: ${SENTRY_DSN:-}
+  # Distributed tracing (#668, tracing follow-up — COMPLETES #668) — ON in prod.
+  # Each service loads src/tracing.js via NODE_OPTIONS before the app requires
+  # http/pg/ioredis, so OpenTelemetry auto-instruments the HTTP server, S2S
+  # fetch, Prisma/pg and ioredis. Spans go services → otel-collector → tempo,
+  # queryable in Grafana's Tempo datasource (SSH tunnel to :3001). No secret
+  # required. NODE_OPTIONS applies to EVERY node process in the container, but
+  # tracing.js only stands up the SDK for the app entrypoint (node dist/index.js)
+  # — npm / `prisma migrate deploy` stay untraced. service.name comes from
+  # OTEL_SERVICE_NAME, baked into each service image's Dockerfile.
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  NODE_OPTIONS: --require ./dist/tracing.js
+  # Bound trace volume on the single VPS: sample a fraction of root traces
+  # (children inherit the parent's decision, so a whole request-tree is kept or
+  # dropped together). Defaults to 10%; override OTEL_TRACES_SAMPLER_ARG in the
+  # server .env (0.0–1.0) to capture more or less. Read natively by the OTel SDK.
+  OTEL_TRACES_SAMPLER: parentbased_traceidratio
+  OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-0.1}
 
 # GlitchTip (#34) shared env for its web + worker + migrate containers. Points
 # at GlitchTip's OWN Postgres + Redis (a separate container/volume, never the
@@ -674,6 +691,51 @@ services:
     # deploy's `up -d --wait` gate. Alloy is a fire-and-forget log tailer (nothing
     # depends on it being healthy), so "ready when running" is correct here.
 
+  # Distributed tracing (#668, tracing follow-up — COMPLETES #668). Grafana Tempo
+  # (the trace store) + the OpenTelemetry Collector (the span pipeline). Same
+  # internal-only posture as Prometheus/Loki: `backend` network only, NO Caddy
+  # route, needs no secret. Every service exports OTLP → otel-collector:4318 →
+  # tempo:4317 (see x-service-env's NODE_OPTIONS/OTEL_EXPORTER_OTLP_ENDPOINT);
+  # Grafana's provisioned Tempo datasource queries Tempo on :3200 (SSH tunnel to
+  # :3001). Filesystem-backed on the VPS disk (48h retention — see the config),
+  # digest-pinned (#238) like the rest of the stack.
+  tempo:
+    # dependabot: grafana/tempo:2.7.1
+    image: grafana/tempo:2.7.1@sha256:4443be217c396b065ee34845534199c36fdba4dc619cb96550e228d73fba6e69
+    mem_limit: 512m
+    <<: [*restart, *logging, *hardening]
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./deploy/observability/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    ports:
+      # Loopback only (SSH tunnel for ad-hoc trace queries); Grafana reaches
+      # Tempo over the internal network, never this host port.
+      - "127.0.0.1:3200:3200"
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3200/ready > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 15
+      start_period: 30s
+
+  otel-collector:
+    # dependabot: otel/opentelemetry-collector:0.120.0
+    image: otel/opentelemetry-collector:0.120.0@sha256:1daa4312b48312dbae2d543e67b77e897dd5d9c48e7651d1416cdb417026ad06
+    mem_limit: 256m
+    <<: [*restart, *logging, *hardening]
+    command: ["--config=/etc/otel-collector/config.yaml"]
+    volumes:
+      - ./deploy/observability/otel-collector/config.yaml:/etc/otel-collector/config.yaml:ro
+    networks: [backend]
+    depends_on:
+      tempo:
+        condition: service_healthy
+    # No healthcheck: the collector image is distroless (no wget/curl for a
+    # CMD-SHELL probe, same as alloy). Services export best-effort — nothing
+    # gates on it being healthy — so "ready when running" is correct.
+
   # Feature flags (#675) — self-hosted Unleash + its OWN Postgres (never the app
   # cluster: separate container, separate volume, separate role). Like Grafana,
   # it's internal-only — `backend` network, NO Caddy route, host port published
@@ -931,5 +993,6 @@ volumes:
   grafana_data:
   loki_data:
   alloy_data:
+  tempo_data:
   unleash_db_data:
   glitchtip_db_data:

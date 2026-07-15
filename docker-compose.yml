@@ -17,6 +17,18 @@ x-service-env: &service-env
   # the `errors` profile below, create a project in the GlitchTip UI, and put
   # its DSN in your root .env as SENTRY_DSN.
   SENTRY_DSN: ${SENTRY_DSN:-}
+  # Distributed tracing (#668, tracing follow-up — COMPLETES #668). OFF by
+  # default so a plain `docker compose up` — and CI's e2e/playwright boot —
+  # never load the OTel bootstrap: both vars are empty, so NODE_OPTIONS carries
+  # no `--require` and src/tracing.ts is never loaded. To trace locally, start
+  # the `tracing` profile below (tempo + otel-collector) and set BOTH in your
+  # root .env, then recreate the services:
+  #   OTEL_NODE_OPTIONS=--require ./dist/tracing.js
+  #   OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+  # Belt and braces: tracing.ts is ALSO a no-op whenever the endpoint is unset,
+  # so even a stray NODE_OPTIONS can't stand up an exporter on its own.
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+  NODE_OPTIONS: ${OTEL_NODE_OPTIONS:-}
 
 # GlitchTip (#34) shared env for its web + worker + migrate containers. Points
 # at GlitchTip's OWN Postgres + Redis (never the app cluster). GlitchTip is
@@ -486,6 +498,51 @@ services:
     # log tailer — nothing depends on it being healthy — so `--wait` treating it
     # as ready once running is correct.
 
+  # Distributed tracing (#668, tracing follow-up — COMPLETES #668). Grafana Tempo
+  # stores spans; the OpenTelemetry Collector receives OTLP from the services and
+  # forwards them to Tempo. BOTH sit behind the opt-in `tracing` profile — like
+  # GlitchTip's `errors` profile — so a plain `docker compose up` (and CI's
+  # e2e/playwright boot) NEVER start them and the default stack stays light.
+  # Grafana's Tempo datasource is always provisioned; it just shows no data
+  # until this profile is up. Host ports are loopback-bound (#387) like the rest.
+  #
+  # Enable locally: set OTEL_NODE_OPTIONS + OTEL_EXPORTER_OTLP_ENDPOINT in the
+  # root .env (see x-service-env above), then
+  # `docker compose --profile tracing up -d --build` and open Grafana Explore →
+  # Tempo (http://localhost:3001). See docs/OPERATIONS.md → Observability.
+  tempo:
+    profiles: ["tracing"]
+    image: grafana/tempo:2.7.1
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./deploy/observability/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    ports:
+      - "127.0.0.1:3200:3200" # Tempo query API (Grafana reaches it in-network)
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3200/ready > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 15
+      start_period: 20s
+
+  otel-collector:
+    profiles: ["tracing"]
+    image: otel/opentelemetry-collector:0.120.0
+    command: ["--config=/etc/otel-collector/config.yaml"]
+    volumes:
+      - ./deploy/observability/otel-collector/config.yaml:/etc/otel-collector/config.yaml:ro
+    ports:
+      - "127.0.0.1:4318:4318" # OTLP/HTTP — what the services export to
+      - "127.0.0.1:4317:4317" # OTLP/gRPC
+    depends_on:
+      tempo:
+        condition: service_healthy
+    # No healthcheck: the collector image is distroless (no wget/curl for a
+    # CMD-SHELL probe, same as alloy). Nothing gates on it being healthy —
+    # services export best-effort — so `--wait` treating it as ready once
+    # running is correct.
+
   # Feature flags (#675) — self-hosted Unleash + its OWN Postgres (never the app
   # cluster). Behind the `flags` profile so a plain `docker compose up` (and the
   # CI e2e) DON'T start it: the web app degrades gracefully with the flag env
@@ -639,5 +696,6 @@ volumes:
   grafana_data:
   loki_data:
   alloy_data:
+  tempo_data:
   unleash_db_data:
   glitchtip_db_data:

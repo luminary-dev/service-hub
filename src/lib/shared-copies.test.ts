@@ -13,6 +13,11 @@ const ROOT = path.resolve(__dirname, "../..");
 const svc = (name: string, file: string) =>
   path.join(ROOT, "services", name, "src", "lib", file);
 
+// The tracing bootstrap lives at src/ (not src/lib/) so its built path is
+// dist/tracing.js — the file NODE_OPTIONS=--require points at.
+const svcRoot = (name: string, file: string) =>
+  path.join(ROOT, "services", name, "src", file);
+
 // Groups whose members must be byte-identical. Provider's categories.ts is
 // deliberately NOT in its group: provider owns the table and reads its own
 // DB, while identity/job fetch S2S — same factory, different fetcher.
@@ -82,6 +87,33 @@ const IDENTICAL: Record<string, string[]> = {
     svc("search-service", "metrics.ts"),
     svc("trust-safety-service", "metrics.ts"),
     svc("api-gateway", "metrics.ts"),
+  ],
+  // Distributed tracing (#668): every service — gateway included — keeps the
+  // same OpenTelemetry bootstrap, loaded via NODE_OPTIONS only where tracing is
+  // enabled. No-op until OTEL_EXPORTER_OTLP_ENDPOINT is set.
+  "tracing.ts": [
+    svcRoot("identity-service", "tracing.ts"),
+    svcRoot("provider-service", "tracing.ts"),
+    svcRoot("review-service", "tracing.ts"),
+    svcRoot("job-service", "tracing.ts"),
+    svcRoot("notification-service", "tracing.ts"),
+    svcRoot("media-service", "tracing.ts"),
+    svcRoot("chat-service", "tracing.ts"),
+    svcRoot("search-service", "tracing.ts"),
+    svcRoot("trust-safety-service", "tracing.ts"),
+    svcRoot("api-gateway", "tracing.ts"),
+  ],
+  "tracing.test.ts": [
+    svcRoot("identity-service", "tracing.test.ts"),
+    svcRoot("provider-service", "tracing.test.ts"),
+    svcRoot("review-service", "tracing.test.ts"),
+    svcRoot("job-service", "tracing.test.ts"),
+    svcRoot("notification-service", "tracing.test.ts"),
+    svcRoot("media-service", "tracing.test.ts"),
+    svcRoot("chat-service", "tracing.test.ts"),
+    svcRoot("search-service", "tracing.test.ts"),
+    svcRoot("trust-safety-service", "tracing.test.ts"),
+    svcRoot("api-gateway", "tracing.test.ts"),
   ],
 };
 
