@@ -432,12 +432,49 @@ services:
       timeout: 3s
       retries: 10
 
+  # Infra exporters (#746) — host, Postgres and Redis metrics for Prometheus
+  # (scrape jobs in deploy/observability/prometheus.yml), matching prod so the
+  # scrape config and alert rules exercise the same targets in dev/CI.
+  node-exporter:
+    image: quay.io/prometheus/node-exporter:v1.9.1
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/rootfs"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|run)($$|/)"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+    environment:
+      # Dev superuser (postgres/postgres); cluster-wide metrics from the default DB.
+      DATA_SOURCE_NAME: postgresql://postgres:postgres@postgres:5432/postgres?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.69.0
+    environment:
+      # Dev Redis has no requirepass.
+      REDIS_ADDR: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+
   grafana:
     image: grafana/grafana:11.4.0
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_AUTH_ANONYMOUS_ENABLED: "false"
+      # Alerting webhook (#746): interpolated by the provisioned contact point
+      # (deploy/observability/grafana/provisioning/alerting/). Placeholder in dev
+      # so provisioning loads and the rules are visible in the local Grafana.
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-http://localhost:9099/alerts-unconfigured}
     volumes:
       - ./deploy/observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./deploy/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
@@ -473,9 +510,31 @@ services:
       timeout: 3s
       retries: 15
 
+  # Docker socket proxy (#744) — the ONLY container that mounts the real
+  # /var/run/docker.sock. Fronts the Docker API with an HAProxy ACL layer and
+  # exposes a read-only GET subset over TCP :2375; alloy talks to this instead of
+  # the raw socket. POST=0 blocks all writes. Mirrors the prod posture so the
+  # shared config.alloy works unchanged in both files.
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    environment:
+      POST: 0
+      CONTAINERS: 1
+      EVENTS: 1
+      PING: 1
+      VERSION: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
   # Grafana Alloy — the log shipper. Discovers every container via the Docker
-  # socket (mounted read-only), tails stdout, parses the JSON, and pushes to
-  # Loki (see deploy/observability/alloy/config.alloy). Its own UI is on 12345.
+  # API and tails stdout, parses the JSON, and pushes to Loki (see
+  # deploy/observability/alloy/config.alloy). Its own UI is on 12345.
+  #
+  # Socket access (#744): Alloy reaches the Docker API through the read-only
+  # docker-socket-proxy (below), NOT a raw /var/run/docker.sock bind — matching
+  # prod, where a raw read-only socket bind is still root-equivalent if Alloy is
+  # compromised (connect() bypasses the RO inode check). Same config.alloy in
+  # both files, pointing at tcp://docker-socket-proxy:2375.
   alloy:
     image: grafana/alloy:v1.10.0
     command:
@@ -485,13 +544,14 @@ services:
       - --server.http.listen-addr=0.0.0.0:12345
     volumes:
       - ./deploy/observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - alloy_data:/var/lib/alloy/data
     ports:
       - "127.0.0.1:12345:12345"
     depends_on:
       loki:
         condition: service_healthy
+      docker-socket-proxy:
+        condition: service_started
     # No healthcheck: the alloy image has no reliable in-container HTTP client
     # for a `/-/ready` probe (wget/curl absent), so a CMD-SHELL check is always
     # "unhealthy" and stalls `docker compose up --wait`. Alloy is a fire-and-forget

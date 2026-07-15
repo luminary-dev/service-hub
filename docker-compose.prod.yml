@@ -57,15 +57,28 @@ x-service-env: &service-env
 x-glitchtip-env: &glitchtip-env
   DATABASE_URL: postgres://glitchtip:${GLITCHTIP_DB_PASSWORD:?GLITCHTIP_DB_PASSWORD is required}@glitchtip-postgres:5432/glitchtip
   SECRET_KEY: ${GLITCHTIP_SECRET_KEY:?GLITCHTIP_SECRET_KEY is required}
-  REDIS_URL: redis://glitchtip-redis:6379/0
+  # Broker/cache is GlitchTip's OWN Redis. requirepass (#764): mirrors the app
+  # Redis so a compromised container can't read/inject/purge Celery messages
+  # unauthenticated. The password defaults to the (already required) glitchtip DB
+  # password so no NEW required secret is introduced; set GLITCHTIP_REDIS_PASSWORD
+  # to use a distinct one. Same expression as glitchtip-redis' --requirepass.
+  REDIS_URL: redis://:${GLITCHTIP_REDIS_PASSWORD:-${GLITCHTIP_DB_PASSWORD:?GLITCHTIP_DB_PASSWORD is required}}@glitchtip-redis:6379/0
   PORT: "8000"
-  # Loopback-only UI reached over an SSH tunnel, so the external domain is
-  # localhost:8000 (drives allowed-hosts / link generation).
-  GLITCHTIP_DOMAIN: http://localhost:8000
-  # No SMTP wired — alert emails log to the container console. Add an EMAIL_URL
-  # later if you want GlitchTip to email alerts.
-  EMAIL_URL: consolemail://
-  DEFAULT_FROM_EMAIL: glitchtip@localhost
+  # Link generation / allowed-hosts (#746). GlitchTip is internal-only (SSH
+  # tunnel to :8000), so the default stays localhost:8000; but the previous
+  # hardcode broke alert-email links entirely. Make it overridable so an
+  # operator who wires SMTP below also points this at a URL the recipients can
+  # actually reach (e.g. an internal reverse-tunnel host). See docs/OPERATIONS.md.
+  GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:-http://localhost:8000}
+  # Email delivery (#746). The old `consolemail://` logged alert emails to a
+  # container console nobody tails — so nothing reached a human. EMAIL_URL is now
+  # a knob: set GLITCHTIP_EMAIL_URL to a real SMTP DSN
+  # (e.g. smtp://user:pass@smtp.example.com:587) to have GlitchTip email issue
+  # alerts. Unset → it falls back to consolemail:// (unchanged, no delivery), so
+  # the stack still starts before SMTP is provisioned. DEFAULT_FROM_EMAIL reuses
+  # the app's EMAIL_FROM when set. See docs/OPERATIONS.md → Error capture.
+  EMAIL_URL: ${GLITCHTIP_EMAIL_URL:-consolemail://}
+  DEFAULT_FROM_EMAIL: ${GLITCHTIP_FROM_EMAIL:-${EMAIL_FROM:-glitchtip@localhost}}
   CELERY_WORKER_AUTOSCALE: "1,3"
 
 # Probe failures during start_period don't count against the retry budget
@@ -122,6 +135,11 @@ services:
     # dependabot: postgis/postgis:16-3.5-alpine
     image: postgis/postgis:16-3.5-alpine@sha256:becb8d49a20a2c1fcce1b154e853e1ea1a19cd5de99310852888b998694ec2ea
     mem_limit: 1g
+    # Critical path (#758): reserve a soft memory floor so compose surfaces host
+    # oversubscription, and cap CPU so a runaway PostGIS query can't starve
+    # Caddy/web/gateway. See docs/DEPLOYMENT.md → Host sizing.
+    mem_reservation: 512m
+    cpus: 2.0
     <<: [*restart, *logging, *hardening]
     # The entrypoint starts as root to chown/chmod the data dir and the socket
     # dir, then drops to the `postgres` user via su-exec — so with cap_drop: ALL
@@ -174,21 +192,45 @@ services:
     # dependabot: redis:7-alpine
     image: redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
     mem_limit: 256m
+    # Critical path (#758): reserve a soft memory floor matching maxmemory so
+    # compose surfaces host oversubscription of the session-revocation store.
+    mem_reservation: 200m
     <<: [*restart, *logging, *hardening]
     # requirepass (#387): Redis holds the session-revocation list and the
     # rate-limit windows — unauthenticated, any compromised container on the
     # same network could FLUSHALL them (undoing every revocation and resetting
-    # the limits). Passing --requirepass as a flag keeps the image's default
-    # config (including the RDB snapshot save points) and only adds auth.
-    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"]
+    # the limits). --requirepass as a flag keeps the image defaults and adds auth.
+    #
+    # Durability + memory bound (#757): this Redis also holds the notification
+    # email retry queue, so a crash/OOM losing minutes of writes means revoked
+    # sessions become valid again AND queued emails are dropped. RDB-only save
+    # points can lose the window since the last snapshot, so enable AOF
+    # (--appendonly yes, fsync once/sec) for at-most-1s loss on the existing
+    # redis_data volume. Cap memory BELOW mem_limit (--maxmemory 200mb) with
+    # --maxmemory-policy noeviction so write pressure surfaces as loud write
+    # errors the app handles, instead of the kernel OOM-killing the whole
+    # container (256m cap, nothing to evict) and wiping everything.
+    command:
+      - "redis-server"
+      - "--requirepass"
+      - "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"
+      - "--appendonly"
+      - "yes"
+      - "--appendfsync"
+      - "everysec"
+      - "--maxmemory"
+      - "200mb"
+      - "--maxmemory-policy"
+      - "noeviction"
     environment:
       # Auths the healthcheck's redis-cli without the password appearing in
       # the probe's command line.
       REDISCLI_AUTH: ${REDIS_PASSWORD:?}
-    # Redis holds the session-revocation list (#374) as well as rate-limit
-    # windows, so its default RDB snapshot in /data must survive container
-    # recreation (#571) — otherwise every `revocation:<userId>` key is wiped by
-    # any image bump or compose change.
+    # Redis holds the session-revocation list (#374), the rate-limit windows and
+    # the notification email queue, so its on-disk state (RDB + the AOF enabled
+    # above, #757) in /data must survive container recreation (#571) — otherwise
+    # every `revocation:<userId>` key and queued email is wiped by any image bump
+    # or compose change.
     volumes:
       - redis_data:/data
     networks: [backend]
@@ -350,6 +392,9 @@ services:
   search-service:
     image: ghcr.io/luminary-dev/service-hub-search-service:${IMAGE_TAG:-prod}
     mem_limit: 384m
+    # CPU cap (#758): PostGIS discovery queries can spike CPU; bound them so a
+    # heavy search can't starve the critical path.
+    cpus: 1.0
     <<: [*restart, *logging, *hardening]
     # TODO read_only: verify writable paths (runs `prisma migrate deploy` on
     # boot — same unverified migration-engine temp behaviour as identity).
@@ -432,6 +477,9 @@ services:
   media-service:
     image: ghcr.io/luminary-dev/service-hub-media-service:${IMAGE_TAG:-prod}
     mem_limit: 512m
+    # CPU cap (#758): sharp image re-encoding is CPU-heavy and bursty; bound it
+    # so an upload storm can't starve the critical path. See docs/DEPLOYMENT.md.
+    cpus: 1.0
     <<: [*restart, *logging, *hardening]
     # TODO read_only: verify writable paths. Only the `provider`/`review`
     # namespaces have volumes below; in the local-disk fallback the `category`
@@ -477,6 +525,9 @@ services:
   api-gateway:
     image: ghcr.io/luminary-dev/service-hub-api-gateway:${IMAGE_TAG:-prod}
     mem_limit: 384m
+    # Critical path (#758): soft memory floor so compose surfaces host
+    # oversubscription of the only request router.
+    mem_reservation: 192m
     <<: [*restart, *logging, *hardening]
     # Stateless proxy — keeps its rate-limit state in Redis and writes nothing to
     # its own filesystem, so the rootfs is read-only with just a tmpfs for /tmp.
@@ -523,6 +574,9 @@ services:
   web:
     image: ghcr.io/luminary-dev/service-hub-web:${IMAGE_TAG:-prod}
     mem_limit: 640m
+    # Critical path (#758): soft memory floor for the user-facing app so compose
+    # surfaces host oversubscription.
+    mem_reservation: 384m
     <<: [*restart, *logging, *hardening]
     # Next's standalone server writes only its response cache under
     # /app/.next/cache (see the web Dockerfile), so the rootfs is read-only with a
@@ -580,6 +634,8 @@ services:
     # dependabot: prom/prometheus:v3.1.0
     image: prom/prometheus:v3.1.0@sha256:6559acbd5d770b15bb3c954629ce190ac3cbbdb2b7f1c30f0385c4e05104e218
     mem_limit: 512m
+    # CPU cap (#758): TSDB compaction/queries are bursty; bound them.
+    cpus: 1.0
     <<: [*restart, *logging, *hardening]
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -601,6 +657,58 @@ services:
       retries: 10
       start_period: 20s
 
+  # Infra exporters (#746) — before these, host disk/CPU/memory, Postgres, and
+  # Redis were all invisible to alerting. Three tiny exporters expose them to
+  # Prometheus (scrape jobs in deploy/observability/prometheus.yml). All
+  # internal-only on `backend`, no host ports, no Caddy route; prod pins each by
+  # digest (#238).
+  node-exporter:
+    # dependabot: quay.io/prometheus/node-exporter:v1.9.1
+    image: quay.io/prometheus/node-exporter:v1.9.1@sha256:d00a542e409ee618a4edc67da14dd48c5da66726bbd5537ab2af9c1dfc442c8a
+    mem_limit: 128m
+    <<: [*restart, *logging, *hardening]
+    # Read host metrics from the host's /proc, /sys and rootfs (all read-only),
+    # so the disk>85% / CPU / memory alerts see the HOST, not just this container.
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/rootfs"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|run)($$|/)"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    networks: [backend]
+
+  postgres-exporter:
+    # dependabot: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1@sha256:38606faa38c54787525fb0ff2fd6b41b4cfb75d455c1df294927c5f611699b17
+    mem_limit: 128m
+    <<: [*restart, *logging, *hardening]
+    environment:
+      # Connect as the superuser to the default `postgres` DB for cluster-wide
+      # up / connection / activity metrics. Same POSTGRES_PASSWORD the app
+      # cluster uses; sslmode=disable is fine on the internal backend network.
+      DATA_SOURCE_NAME: postgresql://postgres:${POSTGRES_PASSWORD:?}@postgres:5432/postgres?sslmode=disable
+    networks: [backend]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  redis-exporter:
+    # dependabot: oliver006/redis_exporter:v1.69.0
+    image: oliver006/redis_exporter:v1.69.0@sha256:dbd410eb9255016c9440b40b8fa18872fdf0e7972d06fc1df8d5b120d35efe05
+    mem_limit: 128m
+    <<: [*restart, *logging, *hardening]
+    environment:
+      REDIS_ADDR: redis://redis:6379
+      # Auth to the app Redis (requirepass, #387) so it can read INFO/memory.
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    networks: [backend]
+    depends_on:
+      redis:
+        condition: service_healthy
+
   grafana:
     # dependabot: grafana/grafana:11.4.0
     image: grafana/grafana:11.4.0@sha256:d8ea37798ccc41061a62ab080f2676dda6bf7815558499f901bdb0f533a456fb
@@ -615,6 +723,13 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "false"
       # Absolute URL for correct redirects behind the loopback publish.
       GF_SERVER_ROOT_URL: "http://localhost:3001/"
+      # Alerting webhook (#746): the contact point provisioned under
+      # deploy/observability/grafana/provisioning/alerting/ interpolates this env
+      # var. OPTIONAL — unset falls back to a non-routable placeholder so
+      # provisioning still loads (rules + contact point visible in the UI); set
+      # it to a real Slack/Telegram/ntfy/Discord incoming-webhook URL to actually
+      # receive alerts. See docs/OPERATIONS.md → Monitoring & alerting.
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-http://localhost:9099/alerts-unconfigured}
     volumes:
       - ./deploy/observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./deploy/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
@@ -645,6 +760,9 @@ services:
     # dependabot: grafana/loki:3.5.1
     image: grafana/loki:3.5.1@sha256:a74594532eec4cc313401beedc4dd2708c43674c032084b1aeb87c14a5be1745
     mem_limit: 512m
+    # CPU cap (#758): log compaction is bursty; bound it so it can't starve the
+    # critical path.
+    cpus: 1.0
     <<: [*restart, *logging, *hardening]
     command: ["-config.file=/etc/loki/loki-config.yaml"]
     volumes:
@@ -660,12 +778,51 @@ services:
       retries: 15
       start_period: 30s
 
+  # Docker socket proxy (#744) — the ONLY container that touches the real
+  # /var/run/docker.sock. It fronts the Docker API with tecnativa/docker-socket-
+  # proxy (an HAProxy ACL layer) and exposes a read-only subset over TCP :2375 on
+  # the dedicated `dockerproxy` internal network. Alloy (log discovery + tailing)
+  # and CrowdSec (log acquisition) talk to THIS, never the raw socket — so a
+  # compromise of either can issue only the whitelisted GET calls, never the
+  # write API a read-only socket bind would still expose (connect() bypasses the
+  # RO inode check). This is the mitigation for the root-equivalent escape in
+  # #744. Internal network only, no host port, no secret.
+  docker-socket-proxy:
+    # dependabot: tecnativa/docker-socket-proxy:0.3.0
+    image: tecnativa/docker-socket-proxy:0.3.0@sha256:9e4b9e7517a6b660f2cc903a19b257b1852d5b3344794e3ea334ff00ae677ac2
+    mem_limit: 64m
+    <<: [*restart, *logging, *hardening]
+    environment:
+      # Read-only API: block every mutating (POST/PUT/DELETE) call outright.
+      POST: 0
+      # Allow only the GET endpoints Alloy discovery/tailing + CrowdSec
+      # acquisition need: list/inspect containers, the event stream, and
+      # version/ping negotiation. Everything else (images, networks, exec,
+      # volumes, secrets, swarm, the write API) stays denied by default.
+      CONTAINERS: 1
+      EVENTS: 1
+      PING: 1
+      VERSION: 1
+    volumes:
+      # The one place the real socket is mounted, read-only — into this hardened,
+      # single-purpose proxy and nothing else.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [dockerproxy]
+
   # Grafana Alloy — the log shipper. Discovers every container via the Docker
-  # socket (mounted READ-ONLY), tails stdout, parses the JSON, and pushes to Loki
-  # (see deploy/observability/alloy/config.alloy). `backend` network (no egress
-  # — it only talks to Loki and the local socket), loopback-only UI, no Caddy
-  # route, no secret. Alloy runs as root to read the root-owned docker.sock; the
-  # socket bind is ro, so it can read the daemon/logs but not mutate containers.
+  # API, tails stdout, parses the JSON, and pushes to Loki (see
+  # deploy/observability/alloy/config.alloy). Loopback-only UI, no Caddy route,
+  # no secret.
+  #
+  # Socket access (#744): Alloy reaches the Docker API through the read-only
+  # filtering `docker-socket-proxy` on the dedicated `dockerproxy` network — it
+  # NO LONGER bind-mounts /var/run/docker.sock. A read-only socket bind does NOT
+  # restrict the Docker API (connect() is exempt from the RO inode check), so a
+  # compromised Alloy (an image CVE) could otherwise drive the full write API —
+  # create a privileged container, bind-mount the host FS, read the rendered
+  # .env with every secret: root-equivalent on the single VPS, bypassing #387.
+  # The proxy allows only the GET endpoints Alloy needs and blocks every write.
+  # `backend`: reach Loki. `dockerproxy`: reach the socket proxy.
   alloy:
     # dependabot: grafana/alloy:v1.10.0
     image: grafana/alloy:v1.10.0@sha256:1bc130e909116a4bf950eb5187a346007d3b796f96832b529acb14a64e41230f
@@ -678,14 +835,15 @@ services:
       - --server.http.listen-addr=0.0.0.0:12345
     volumes:
       - ./deploy/observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - alloy_data:/var/lib/alloy/data
     ports:
       - "127.0.0.1:12345:12345"
-    networks: [backend]
+    networks: [backend, dockerproxy]
     depends_on:
       loki:
         condition: service_healthy
+      docker-socket-proxy:
+        condition: service_started
     # No healthcheck: the alloy image has no reliable in-container HTTP client for
     # a `/-/ready` probe, so a CMD-SHELL check is always "unhealthy" and stalls the
     # deploy's `up -d --wait` gate. Alloy is a fire-and-forget log tailer (nothing
@@ -808,13 +966,16 @@ services:
       start_period: 30s
 
   # Error capture (#34) — self-hosted GlitchTip (Sentry-compatible ingest,
-  # chosen for data residency / PDPA). Like Grafana + Unleash it is INTERNAL
-  # ONLY: `backend` network, NO Caddy route, host port published to LOOPBACK
-  # (#387) so an operator reaches the UI via an SSH tunnel (ssh -L
-  # 8000:127.0.0.1:8000 <server>, then http://localhost:8000). Its OWN Postgres
-  # + Redis (separate containers/volume, never the app cluster). Services report
-  # to it via SENTRY_DSN, which DEGRADES GRACEFULLY: unset (the default) → no SDK
-  # init, no network, behavior unchanged. See docs/OPERATIONS.md → Error capture.
+  # chosen for data residency / PDPA). INTERNAL ONLY: NO Caddy route, host port
+  # published to LOOPBACK (#387) so an operator reaches the UI via an SSH tunnel
+  # (ssh -L 8000:127.0.0.1:8000 <server>, then http://localhost:8000). Its OWN
+  # Postgres + Redis (separate containers/volume, never the app cluster).
+  # Network segmentation (#764): GlitchTip's datastores + worker + migrate live
+  # on a DEDICATED `glitchtip` internal network, off the shared `backend`; only
+  # glitchtip-web also joins `backend`, purely so app services can post errors to
+  # it via SENTRY_DSN. Services report DEGRADE GRACEFULLY: SENTRY_DSN unset (the
+  # default) → no SDK init, no network, behavior unchanged. See
+  # docs/OPERATIONS.md → Error capture.
   glitchtip-postgres:
     # dependabot: postgres:16-alpine
     image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
@@ -837,7 +998,8 @@ services:
       POSTGRES_DB: glitchtip
     volumes:
       - glitchtip_db_data:/var/lib/postgresql/data
-    networks: [backend]
+    # Dedicated `glitchtip` internal network (#764), off the shared `backend`.
+    networks: [glitchtip]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U glitchtip -h 127.0.0.1"]
       interval: 10s
@@ -850,11 +1012,24 @@ services:
     image: redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
     mem_limit: 256m
     <<: [*restart, *logging, *hardening]
-    # GlitchTip's OWN broker/cache — holds only ephemeral celery tasks, reachable
-    # only by glitchtip-web/-worker on the internal backend network, so (unlike
-    # the app Redis, which holds the session-revocation list, #387) it needs no
-    # requirepass and adds no secret.
-    networks: [backend]
+    # GlitchTip's OWN celery broker/cache. Hardened two ways (#764):
+    #   1. requirepass — mirrors the app Redis (#387). Previously unauthenticated;
+    #      any compromised app container could read/inject/purge celery messages,
+    #      tampering with or suppressing error reports and pivoting to
+    #      glitchtip-worker (which holds GLITCHTIP_SECRET_KEY + the DB password).
+    #   2. It sits on the dedicated `glitchtip` internal network below, NOT the
+    #      shared `backend` that carries every app service — so it is no longer
+    #      even routable from the rest of the stack (only glitchtip-web/-worker/
+    #      -migrate share that network). Defense in depth, matching #387.
+    command:
+      - "redis-server"
+      - "--requirepass"
+      - "${GLITCHTIP_REDIS_PASSWORD:-${GLITCHTIP_DB_PASSWORD:?GLITCHTIP_DB_PASSWORD is required}}"
+    environment:
+      # Auths the healthcheck's redis-cli without the password on its argv. Same
+      # default-to-DB-password expression as the --requirepass flag above.
+      REDISCLI_AUTH: ${GLITCHTIP_REDIS_PASSWORD:-${GLITCHTIP_DB_PASSWORD:?GLITCHTIP_DB_PASSWORD is required}}
+    networks: [glitchtip]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -872,7 +1047,7 @@ services:
     command: ["./manage.py", "migrate"]
     environment:
       <<: *glitchtip-env
-    networks: [backend]
+    networks: [glitchtip]
     depends_on:
       glitchtip-postgres:
         condition: service_healthy
@@ -883,13 +1058,19 @@ services:
     # dependabot: glitchtip/glitchtip:6.2.0
     image: glitchtip/glitchtip:6.2.0@sha256:a1208e3c696b9d96d20f44026f73b8a15af863a9aa149a603ff3bda8600d259c
     mem_limit: 768m
+    # CPU cap (#758): the ingest web tier can burst under an error storm; bound
+    # it so error capture can't starve the app it observes.
+    cpus: 1.0
     <<: [*restart, *logging, *hardening]
     environment:
       <<: *glitchtip-env
     ports:
       # Loopback only (SSH tunnel to reach the ingest API + UI); no Caddy route.
       - "127.0.0.1:8000:8000"
-    networks: [backend]
+    # `backend`: app services post errors to it via SENTRY_DSN (the ingest path).
+    # `glitchtip` (#764): reach its OWN postgres/redis, off the shared backend.
+    # `egress` (#746): outbound SMTP when GLITCHTIP_EMAIL_URL is wired.
+    networks: [backend, glitchtip, egress]
     depends_on:
       glitchtip-postgres:
         condition: service_healthy
@@ -909,11 +1090,17 @@ services:
     # dependabot: glitchtip/glitchtip:6.2.0
     image: glitchtip/glitchtip:6.2.0@sha256:a1208e3c696b9d96d20f44026f73b8a15af863a9aa149a603ff3bda8600d259c
     mem_limit: 512m
+    # CPU cap (#758): a celery burst is exactly the "CPU-hungry container" that
+    # can starve the critical path; bound it.
+    cpus: 1.0
     <<: [*restart, *logging, *hardening]
     command: ["./bin/run-celery-with-beat.sh"]
     environment:
       <<: *glitchtip-env
-    networks: [backend]
+    # `glitchtip` (#764): reach its OWN postgres/redis, off the shared backend.
+    # `egress` (#746): the worker sends the alert emails, so it needs outbound
+    # SMTP when GLITCHTIP_EMAIL_URL is wired. NOT on `backend`.
+    networks: [glitchtip, egress]
     depends_on:
       glitchtip-postgres:
         condition: service_healthy
@@ -940,6 +1127,9 @@ services:
     build:
       context: ./deploy/caddy
     mem_limit: 128m
+    # Critical path (#758): soft memory floor for the only public entry so
+    # compose surfaces host oversubscription.
+    mem_reservation: 64m
     <<: [*restart, *logging, *hardening]
     # Caddy binds the privileged ports 80/443; its binary ships with the
     # net_bind_service file capability, so under cap_drop: ALL + no-new-privileges
@@ -989,8 +1179,9 @@ services:
   # CrowdSec LAPI (#670) — behavioural edge intrusion prevention, a layer ABOVE
   # the gateway's Redis rate-limiter (which only throttles; this BANS abusive
   # IPs: credential stuffing on /api/auth, form spam, scraping). Reads Caddy's
-  # #527 JSON access logs off the Docker socket (deploy/crowdsec/acquis.yaml),
-  # scores them with the caddy + base-http scenarios, and serves ban decisions
+  # #527 JSON access logs off the Docker API via the read-only docker-socket-proxy
+  # (#744; deploy/crowdsec/acquis.yaml), scores them with the caddy + base-http
+  # scenarios, and serves ban decisions
   # to the Caddy bouncer over the private `crowdsec` network. PROD-ONLY (dev has
   # no edge). Its LAPI/DB is internal-only; behavioural bans are validated on
   # deploy, not locally (no live edge + no real traffic here).
@@ -1012,11 +1203,11 @@ services:
       # Persist the SQLite DB (registered bouncers + live ban decisions) across
       # container recreation — otherwise every deploy wipes the bans and the key.
       - crowdsec_data:/var/lib/crowdsec/data
-      # Docker-log acquisition reads container stdout off the daemon socket,
-      # mounted READ-ONLY so CrowdSec can read logs but not mutate containers —
-      # the same posture the observability Alloy shipper already uses.
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       # Acquisition datasource: follow the Caddy container's JSON access logs.
+      # It reaches the Docker API through the read-only docker-socket-proxy (see
+      # docker_host in this file), NOT the raw socket (#744) — a log-parse bug
+      # fed attacker-controlled Caddy request lines can no longer reach the write
+      # API and become root-equivalent on the VPS.
       - ./deploy/crowdsec/acquis.yaml:/etc/crowdsec/acquis.d/caddy.yaml:ro
     ports:
       # Loopback only (#387): the bouncer reaches the LAPI over the internal
@@ -1024,9 +1215,13 @@ services:
       # `cscli` from the host (e.g. over an SSH tunnel). Never public.
       - "127.0.0.1:8080:8080"
     # `crowdsec`: the internal LAPI link to the Caddy bouncer. `egress`: pull
-    # collections from the hub + the free community blocklist (CAPI). NOT on
-    # `backend` — it touches none of the app datastores.
-    networks: [crowdsec, egress]
+    # collections from the hub + the free community blocklist (CAPI).
+    # `dockerproxy` (#744): read Caddy's access logs through the socket proxy.
+    # NOT on `backend` — it touches none of the app datastores.
+    networks: [crowdsec, egress, dockerproxy]
+    depends_on:
+      docker-socket-proxy:
+        condition: service_started
     healthcheck:
       test: ["CMD", "cscli", "lapi", "status"]
       interval: 30s
@@ -1054,6 +1249,18 @@ networks:
   # keeping the LAPI off `edge` means the web app can't reach it — preserving
   # #387's "edge = Caddy ↔ web only".
   crowdsec:
+    internal: true
+  # dockerproxy (#744) — links the read-only docker-socket-proxy to its only two
+  # clients (alloy, crowdsec) and nothing else. `internal: true`: no internet,
+  # and the proxy is unreachable from `backend`/`edge`, so the filtered Docker
+  # API surface is not exposed to the app services.
+  dockerproxy:
+    internal: true
+  # glitchtip (#764) — GlitchTip's OWN datastores + worker + migrate, isolated
+  # from the shared `backend`. `internal: true`; only glitchtip-web bridges to
+  # `backend` (for SENTRY_DSN ingest). Keeps the (now password-protected)
+  # glitchtip-redis off the network every app service can reach.
+  glitchtip:
     internal: true
 
 volumes:

@@ -1,0 +1,24 @@
+# Grafana unified alerting — contact point (#746). Before this, telemetry was
+# collected but nothing reached a human: no rules, no contact point, GlitchTip
+# mailing to a console nobody tails. This provisions ONE webhook contact point
+# so a small team can wire Slack / Telegram / ntfy / Discord with a single URL.
+#
+# The URL is read from the ALERT_WEBHOOK_URL env var (both compose files pass it
+# through). It is OPTIONAL: unset → it falls back to a non-routable placeholder
+# so Grafana still provisions cleanly and the rules + this contact point are
+# visible in the UI; alerts simply have nowhere to go until an operator sets the
+# secret to a real incoming-webhook URL. Wire it in docs/OPERATIONS.md →
+# Monitoring & alerting.
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: default-webhook
+    receivers:
+      - uid: default-webhook
+        type: webhook
+        settings:
+          url: ${ALERT_WEBHOOK_URL}
+          httpMethod: POST
+        # Also notify when an alert stops firing, so a channel shows recovery.
+        disableResolveMessage: false

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Logical backup of every service database (#61). Dumps run through the
-# compose postgres container, so the host needs no Postgres tooling.
+# Logical backup of every service database (#61) plus a Redis RDB snapshot
+# (#757). Dumps run through the compose postgres/redis containers, so the host
+# needs no Postgres/Redis tooling.
 #
 #   ./scripts/backup-dbs.sh                 # dumps to ./backups/<UTC timestamp>/
 #   BACKUP_DIR=/mnt/backups RETENTION=30 ./scripts/backup-dbs.sh
@@ -44,6 +45,32 @@ for db in "${DATABASES[@]}"; do
     exit 1
   fi
 done
+
+# Redis snapshot (#757). The app Redis holds the session-revocation list (#374)
+# and the durable notification email queue — losing it makes revoked sessions
+# valid again (a security regression) and drops queued emails. RDB+AOF on the
+# redis_data volume survive container recreation, but a lost volume or a dead
+# host needs the OFFSITE copy too, so capture a point-in-time RDB alongside the
+# DB dumps (shipped offsite + pruned with everything else below). `redis-cli
+# --rdb -` streams a fresh dump to stdout; prod auth comes from the container's
+# REDISCLI_AUTH env (absent in dev, where Redis has no password). Progress text
+# goes to stderr, so stdout is the pure RDB stream.
+echo "==> Dumping redis (RDB snapshot)"
+if "${COMPOSE[@]}" exec -T redis redis-cli --no-auth-warning --rdb - > "$DEST/redis.rdb" 2>/dev/null; then
+  size=$(wc -c < "$DEST/redis.rdb" | tr -d ' ')
+  # A valid RDB begins with the "REDIS" magic + a version and is never tiny; a
+  # near-empty file means the stream failed and produced nothing.
+  if [ "$size" -lt 40 ]; then
+    echo "ERROR: redis.rdb is suspiciously small ($size bytes) — dump produced nothing" >&2
+    rm -f "$DEST/redis.rdb"
+    exit 1
+  fi
+  echo "    redis -> redis.rdb ($size bytes)"
+else
+  echo "ERROR: redis RDB dump failed" >&2
+  rm -f "$DEST/redis.rdb" 2>/dev/null || true
+  exit 1
+fi
 
 # Media uploads (#663). Local-disk media lives in the provider_uploads /
 # review_uploads volumes; R2-backed media is durable managed storage and needs

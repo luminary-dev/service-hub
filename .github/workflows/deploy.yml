@@ -163,6 +163,10 @@ jobs:
           FACEBOOK_CLIENT_SECRET: ${{ secrets.FACEBOOK_CLIENT_SECRET }}
           # Observability (#668): required by docker-compose.prod.yml's Grafana.
           GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+          # Alerting (#746): optional webhook URL for Grafana's provisioned
+          # contact point (Slack/Telegram/ntfy/Discord). Unset → a non-routable
+          # placeholder (rules still provision; nothing is delivered).
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
           # Feature flags (#675): UNLEASH_DB_PASSWORD is REQUIRED by the flag
           # stack; UNLEASH_FRONTEND_TOKEN is optional (the activation switch —
           # unset → the web app degrades to coded flag defaults).
@@ -175,6 +179,14 @@ jobs:
           GLITCHTIP_SECRET_KEY: ${{ secrets.GLITCHTIP_SECRET_KEY }}
           GLITCHTIP_DB_PASSWORD: ${{ secrets.GLITCHTIP_DB_PASSWORD }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          # Error-capture delivery/hardening (#746/#764) — all OPTIONAL. SMTP DSN
+          # for GlitchTip alert emails + a reachable link domain; a distinct
+          # broker password (unset → reuses GLITCHTIP_DB_PASSWORD); an alt
+          # from-address (unset → EMAIL_FROM).
+          GLITCHTIP_EMAIL_URL: ${{ secrets.GLITCHTIP_EMAIL_URL }}
+          GLITCHTIP_DOMAIN: ${{ secrets.GLITCHTIP_DOMAIN }}
+          GLITCHTIP_REDIS_PASSWORD: ${{ secrets.GLITCHTIP_REDIS_PASSWORD }}
+          GLITCHTIP_FROM_EMAIL: ${{ secrets.GLITCHTIP_FROM_EMAIL }}
         run: |
           install -m 600 /dev/stdin "$HOME/deploy_key" <<< "$SSH_KEY"
           # Host-key pinning (#388): the runner's known_hosts is empty every
@@ -204,8 +216,11 @@ jobs:
                      IDENTITY_DB_PASSWORD PROVIDER_DB_PASSWORD REVIEW_DB_PASSWORD \
                      JOB_DB_PASSWORD NOTIFICATION_DB_PASSWORD SEARCH_DB_PASSWORD \
                      TRUST_SAFETY_DB_PASSWORD REDIS_PASSWORD GRAFANA_ADMIN_PASSWORD \
+                     ALERT_WEBHOOK_URL \
                      UNLEASH_DB_PASSWORD UNLEASH_FRONTEND_TOKEN \
                      GLITCHTIP_SECRET_KEY GLITCHTIP_DB_PASSWORD SENTRY_DSN \
+                     GLITCHTIP_EMAIL_URL GLITCHTIP_DOMAIN GLITCHTIP_REDIS_PASSWORD \
+                     GLITCHTIP_FROM_EMAIL \
                      WEB_ORIGIN \
                      DOMAIN ACME_EMAIL CROWDSEC_BOUNCER_API_KEY \
                      ANTHROPIC_API_KEY RESEND_API_KEY EMAIL_FROM \
@@ -252,6 +267,38 @@ jobs:
             PREV_SHA=\$(git rev-parse HEAD 2>/dev/null || true)
             git fetch origin prod && git reset --hard origin/prod
             \$COMPOSE pull
+            # Pre-deploy DB snapshot (#745): the DB services run
+            # `prisma migrate deploy` on boot, so the `up -d` below can
+            # forward-migrate the schema BEFORE the health gate trips — and the
+            # auto-rollback then brings the OLD images back up against the NEW
+            # schema (a second outage on any non-backward-compatible migration).
+            # Snapshot the 6 stateful DBs from the currently-running postgres NOW,
+            # seconds before any migration runs, so rollback has a restore point
+            # (see docs/DEPLOYMENT.md#rollback). search_db is excluded (derived,
+            # rebuildable). Best-effort: on the very first deploy postgres isn't
+            # up yet, so log + continue rather than block the initial rollout.
+            POSTGRES_CID=\$(\$COMPOSE ps -q postgres 2>/dev/null || true)
+            if [ -n "\$POSTGRES_CID" ]; then
+              SNAP_DIR="backups/pre-deploy/\$(date -u +%Y%m%dT%H%M%SZ)-${TAG}"
+              mkdir -p "\$SNAP_DIR"
+              # Keep only the newest 10 pre-deploy snapshots so they can't fill
+              # the disk over many deploys (nightly backups are separate, #389).
+              ls -1dt backups/pre-deploy/*/ 2>/dev/null | tail -n +11 | xargs -r rm -rf || true
+              echo "Pre-deploy DB snapshot → \$SNAP_DIR"
+              snap_ok=1
+              for db in identity_db provider_db review_db job_db notification_db trust_safety_db; do
+                if \$COMPOSE exec -T postgres pg_dump -U postgres --format=custom "\$db" > "\$SNAP_DIR/\$db.dump"; then
+                  echo "  dumped \$db"
+                else
+                  echo "WARNING: pre-deploy dump of \$db failed" >&2
+                  snap_ok=0
+                fi
+              done
+              [ "\$snap_ok" = 1 ] && echo "Pre-deploy snapshot complete." \
+                || echo "WARNING: pre-deploy snapshot INCOMPLETE — proceeding with deploy." >&2
+            else
+              echo "postgres not running (first deploy?) — skipping pre-deploy snapshot."
+            fi
             if \$COMPOSE up -d --remove-orphans --build --wait --wait-timeout 300; then
               echo "Deploy healthy."
               # Prune superseded images (#567): tagged images are never
