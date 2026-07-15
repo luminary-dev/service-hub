@@ -13,7 +13,10 @@ what kind of test belongs where.
 | Web component tests | `src/components/*.test.tsx` | High-value client components (toasts, favorite/share buttons) rendered with Testing Library in jsdom; `fetch`, clipboard and `next/navigation` are mocked | Yes — same web suite |
 | Accessibility checks | `src/components/a11y.test.tsx` | axe-core runs against ~12 rendered components (nav, cards, filters, forms, chat, modals) and fails on any serious/critical WCAG violation | Yes — same web suite |
 | E2E smoke | `scripts/e2e-smoke.sh` | 60+ checks against the full docker-compose stack: health, auth, favorites, inquiries, reviews, jobs, admin moderation, CSRF, search browse-parity + geo, and authed page-render (SSR-crash) guards | Yes (PRs only) — a dedicated `e2e` job boots the compose stack; also run locally |
-| Coverage | per-package `npm run coverage` | v8 coverage for the web app and every service, with a low ratchet-floor threshold so coverage can't silently regress | Yes — a separate `coverage` job per package |
+| Browser E2E | `e2e/*.spec.ts` (Playwright) | Real Chromium rendering the conversion-critical flows against the running stack: home hero, browse → provider detail, register validation, login, the verified-email gate, and an **admin-authenticated** `/admin/providers` render (the #706 regression guard) + a mobile-viewport spot-check | Yes (PRs only) — a dedicated `playwright` job boots the same compose stack; also run locally |
+| Perf / a11y budgets | `.lighthouserc.json` (Lighthouse CI) | Lenient ratchet-floor budgets on LCP/CLS, SEO (#513/#514) and a11y (#66/#266) against the booted web container | Yes (PRs only) — a `lighthouse` job |
+| Load (on-demand) | `load/k6/*.js` (k6) | Hot read paths (#523/#372) and the gateway login limiter under concurrency; used manually to size the VPS | No — on-demand only, not a gate |
+| Coverage | per-package `npm run coverage` | v8 coverage for the web app and every service, with a low ratchet-floor threshold so coverage can't silently regress; uploaded to Codecov for per-PR diff-coverage | Yes — a separate `coverage` job per package |
 
 ## Running each layer
 
@@ -31,10 +34,33 @@ npm run coverage      # writes ./coverage + a text summary
 # E2E smoke against the compose stack (needs the stack up and seeded)
 docker compose up -d --build
 npm run e2e           # scripts/e2e-smoke.sh — expect "…, 0 failed" on success
+
+# Browser E2E (Playwright) against the running, seeded stack
+npx playwright install --with-deps chromium   # one-time (CI installs its own)
+npx playwright test                            # all specs, chromium + @mobile
+npx playwright test --project=chromium         # desktop only
+npx playwright test e2e/admin-providers.spec.ts  # a single spec
+npx playwright show-report                     # open the last HTML report
+# Point at a non-default stack with E2E_BASE_URL=http://host:port
+
+# Lighthouse budgets against the running web app (needs @lhci/cli)
+npx @lhci/cli@0.15.1 autorun   # collect → assert (.lighthouserc.json) → upload
+
+# Load testing (k6) — on-demand, needs the k6 binary (brew install k6)
+BASE_URL=http://localhost:3000 k6 run load/k6/browse.js
+BASE_URL=http://localhost:3000 k6 run load/k6/login.js
 ```
 
+Playwright specs live under `e2e/` and run with Playwright's own runner —
+completely separate from the vitest web suite (`npm test`, scoped to
+`--dir src`), so neither runner picks up the other's files. They drive a
+*running, seeded* stack (nothing is stubbed); bring the stack up first. Seeded
+demo accounts (all `password123`) back the specs: `admin@baas.lk` for the admin
+render, `dilani@example.com` for the verified-inquiry happy path, and a
+freshly-registered customer for the email-unverified gate.
+
 CI (`.github/workflows/ci.yml`) runs on pushes and PRs to `dev` and `prod`, in
-five jobs:
+these jobs:
 
 - **`web`** — a matrix of `typecheck` / `lint` / `test` / `build` for the web app.
   `lint` includes the `i18next/no-literal-string` rule (error), which fails the
@@ -47,12 +73,30 @@ five jobs:
 - **`coverage`** — `npm run coverage` for the web app and each service (eleven
   packages), enforcing the low baseline thresholds in each package's vitest
   config and uploading the reports as artifacts. A ratchet, not a gate: it
-  passes today and only trips if coverage regresses below the floor (#262).
-- **`e2e`** — pull requests only: boots the whole compose stack, seeds the
-  databases with `SEED_DEMO_DATA=true` (the prod images run as
-  `NODE_ENV=production`, where seeding is otherwise refused), and runs
-  `scripts/e2e-smoke.sh` against it (#241). Kept separate so booting the full
-  stack never blocks the fast per-package matrix.
+  passes today and only trips if coverage regresses below the floor (#262). Each
+  package's coverage is also uploaded to **Codecov** (per-package `flags`) so PRs
+  get diff-coverage comments (#671). Public repos don't strictly need a token;
+  set the `CODECOV_TOKEN` repo secret for more reliable uploads. The upload never
+  fails the build (`fail_ci_if_error: false`) — it is visibility, not a gate.
+- **`e2e`** — pull requests only: boots the whole compose stack (via the
+  `./.github/actions/boot-stack` composite action, which bakes + boots + seeds
+  with `SEED_DEMO_DATA=true` — the prod images run as `NODE_ENV=production`,
+  where seeding is otherwise refused), and runs `scripts/e2e-smoke.sh` against it
+  (#241). Kept separate so booting the full stack never blocks the fast
+  per-package matrix.
+- **`playwright`** — pull requests only: boots the same stack (same composite
+  action) and runs the browser E2E specs (`e2e/*.spec.ts`) in Chromium against
+  it (#671). Complements — does not replace — the curl smoke: a real browser
+  catches the client-side navigation, hydration and full SSR-crash regressions
+  (the #706 `/admin/providers` error boundary) that the API-only smoke missed.
+  Uploads the HTML report + traces/screenshots/video as the `playwright-report`
+  artifact for triage.
+- **`lighthouse`** — pull requests only: boots the same stack and runs Lighthouse
+  CI (`@lhci/cli`) against the web container, asserting the lenient ratchet-floor
+  budgets in `.lighthouserc.json` (LCP/CLS + SEO + a11y). Budgets start lenient
+  and should be ratcheted up over time — treat every bump as one-way. Reports
+  upload to Lighthouse temporary public storage (a link is printed in the log);
+  no secret required.
 - **`prod-compose`** — validates `docker-compose.prod.yml` (`docker compose
   config`) and `deploy/Caddyfile` (`caddy validate`) with dummy secrets, so the
   file that actually ships fails CI instead of the live deploy (#512; see
@@ -139,16 +183,18 @@ What's automated and what still needs a human (#66):
 
 ## Deliberate gaps
 
-- **No browser-automation layer.** There is no Playwright/Cypress tier;
-  the smoke suite exercises pages over HTTP (`curl` + content assertions) but
-  nothing drives a real browser, so client-side navigation, hydration and
-  visual regressions are unverified. Playwright is the obvious candidate once
-  there's a product reason (e.g. a checkout-like multi-step flow whose
-  breakage wouldn't be caught by component tests + smoke checks).
-- **The e2e smoke suite runs on PRs and locally, not on every push.** The `e2e`
-  job boots the stack only for pull requests (booting + building the whole stack
-  is heavy), and the suite still needs a running, seeded stack when run locally.
-  Run it before merging anything that touches more than one service.
+- **Browser E2E is a thin, high-value slice — not exhaustive.** The Playwright
+  tier (`e2e/*.spec.ts`) covers the conversion-critical + regression-prone flows
+  (home, browse → detail, register validation, login, the verified-email gate,
+  the `/admin/providers` render) and one mobile spot-check, in Chromium only.
+  It deliberately does not attempt full cross-browser, visual-regression or
+  every-page coverage — add specs when a flow is both high-value and not already
+  guarded by component tests + the curl smoke.
+- **The e2e smoke, Playwright and Lighthouse suites run on PRs and locally, not
+  on every push.** The `e2e`, `playwright` and `lighthouse`
+  jobs boot the stack only for pull requests (booting + building the whole stack
+  is heavy), and the suites still need a running, seeded stack when run locally.
+  Run them before merging anything that touches more than one service.
 - **Exact `Intl` strings aren't pinned.** Locale formatting tests assert the
   parts that matter (grouping, Sinhala month names, locale divergence) rather
   than full formatted strings, because ICU output can shift between Node

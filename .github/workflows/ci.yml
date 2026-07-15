@@ -171,6 +171,21 @@ jobs:
           name: coverage-${{ matrix.package }}
           path: ${{ matrix.package == 'web' && 'coverage' || format('services/{0}/coverage', matrix.package) }}
           if-no-files-found: ignore
+      - name: Upload to Codecov
+        # Ingests the per-package lcov (#262 already emits coverage/) so Codecov
+        # can post per-PR diff-coverage comments across all 11 packages (#671).
+        # `flags` keep each package's coverage a separate component in Codecov.
+        # Public repos don't strictly need a token, but uploads are more
+        # reliable with one — set the `CODECOV_TOKEN` repo secret and it's used
+        # automatically. fail_ci_if_error stays false: a Codecov outage must
+        # never fail the build (this is visibility, not a gate).
+        if: always()
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
+        with:
+          flags: ${{ matrix.package }}
+          directory: ${{ matrix.package == 'web' && 'coverage' || format('services/{0}/coverage', matrix.package) }}
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   # Integration / e2e (#241): boot the whole compose stack and run the
   # cross-service smoke script against it. PRs only (booting + building the full
@@ -183,59 +198,9 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
-      - name: Build images (warm layer cache)
-        # Pre-build the eleven compose images with bake so the slowest required
-        # gate reuses deploy.yml's per-image GHA layer cache instead of
-        # cold-building every PR (#573). READ-ONLY like trivy-image in
-        # security-scan.yml: deliberately no cache-to, so a feature branch can
-        # never write the shared cache. `load` imports the images into the
-        # daemon under the exact names compose expects (service-hub-<name>),
-        # so the boot below runs with --no-build.
-        uses: docker/bake-action@d3418bd7d0e9324001bca92fa8ba175ea7e6dc9b # v7.3.0
-        with:
-          source: .
-          files: docker-compose.yml
-          load: true
-          set: |
-            web.tags=service-hub-web
-            web.cache-from=type=gha,scope=web
-            identity-service.tags=service-hub-identity-service
-            identity-service.cache-from=type=gha,scope=identity-service
-            provider-service.tags=service-hub-provider-service
-            provider-service.cache-from=type=gha,scope=provider-service
-            review-service.tags=service-hub-review-service
-            review-service.cache-from=type=gha,scope=review-service
-            job-service.tags=service-hub-job-service
-            job-service.cache-from=type=gha,scope=job-service
-            notification-service.tags=service-hub-notification-service
-            notification-service.cache-from=type=gha,scope=notification-service
-            media-service.tags=service-hub-media-service
-            media-service.cache-from=type=gha,scope=media-service
-            chat-service.tags=service-hub-chat-service
-            chat-service.cache-from=type=gha,scope=chat-service
-            search-service.tags=service-hub-search-service
-            search-service.cache-from=type=gha,scope=search-service
-            trust-safety-service.tags=service-hub-trust-safety-service
-            trust-safety-service.cache-from=type=gha,scope=trust-safety-service
-            api-gateway.tags=service-hub-api-gateway
-            api-gateway.cache-from=type=gha,scope=api-gateway
-      - name: Boot the stack
-        run: docker compose up -d --no-build --wait --wait-timeout 300
-      - name: Wait for web
-        run: |
-          for i in $(seq 1 30); do
-            if curl -fsS http://localhost:3000/ >/dev/null 2>&1; then echo "web ready"; exit 0; fi
-            sleep 2
-          done
-          echo "web did not become ready"; docker compose ps; exit 1
-      - name: Seed databases
-        # The prod images run with NODE_ENV=production, where the seed script
-        # refuses to create demo data unless explicitly overridden. Opt in here.
-        run: |
-          for s in identity-service provider-service review-service job-service notification-service trust-safety-service; do
-            docker compose exec -T -e SEED_DEMO_DATA=true "$s" npm run db:seed
-          done
+      # Bake + boot + seed the stack (shared with the playwright/lighthouse
+      # jobs via the composite action, so all three boot identically, #671).
+      - uses: ./.github/actions/boot-stack
       - name: Run e2e smoke
         env:
           INTERNAL_API_SECRET: dev-internal-secret
@@ -250,6 +215,82 @@ jobs:
         run: |
           COMPOSE_FILE=docker-compose.yml ./scripts/backup-dbs.sh
           ./scripts/verify-backup.sh
+      - name: Dump service logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail=120
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  # Browser E2E (#671): the flagship tier that renders each page in a real
+  # Chromium and drives the conversion-critical flows — the check that would
+  # have caught the #706 /admin/providers SSR crash the curl smoke missed. PRs
+  # only (booting the full stack is heavy) and a separate job so it never blocks
+  # the fast per-package matrix; complements — does not replace — the curl smoke.
+  playwright:
+    name: playwright
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+      - uses: ./.github/actions/boot-stack
+      - name: Run Playwright specs
+        env:
+          E2E_BASE_URL: http://localhost:3000
+        run: npx playwright test
+      - name: Upload Playwright report
+        # HTML report + traces/screenshots/video for any failure (trace is
+        # captured on first retry). The primary triage artifact.
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+      - name: Dump service logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail=120
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  # Lighthouse CI (#671): runs against the web container the stack boots and
+  # enforces lenient ratchet-FLOOR budgets (.lighthouserc.json) on LCP/CLS, SEO
+  # (#513/#514) and a11y (#66/#266) — turning one-off perf/SEO/a11y tickets into
+  # an enforced budget. PRs only; separate job. The reports upload to Lighthouse
+  # temporary public storage (a link is printed in the log); no secret required.
+  lighthouse:
+    name: lighthouse
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version: 24
+      - uses: ./.github/actions/boot-stack
+      - name: Run Lighthouse CI
+        # Version-pinned lhci (no extra pinned action to maintain). collect →
+        # assert (budgets) → upload to temporary-public-storage.
+        run: npx --yes @lhci/cli@0.15.1 autorun
+      - name: Upload Lighthouse results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: lighthouse-results
+          path: .lighthouseci/
+          if-no-files-found: ignore
       - name: Dump service logs on failure
         if: failure()
         run: docker compose logs --no-color --tail=120

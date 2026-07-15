@@ -20,6 +20,10 @@ const eslintConfig = defineConfig([
     // Local tooling state (agent worktrees, settings) — never lint targets.
     ".claude/**",
     "backups/**",
+    // k6 load scripts (#671) run in the k6 runtime (its own globals/imports),
+    // not Node/Next — linting them with the web config only yields noise. They
+    // are on-demand, never shipped in the web bundle.
+    "load/**",
   ]),
   // Guard against hardcoded, untranslated user-facing strings (#672) so the
   // #566-class regressions don't creep back as Tamil (locale #2) lands. Scoped
