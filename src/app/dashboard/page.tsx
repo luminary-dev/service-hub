@@ -137,7 +137,7 @@ export default async function DashboardPage({
             {t.dashboard.viewPublic}
             <FaArrowUpRightFromSquare className="h-3 w-3" />
           </a>
-          <StatReadout stats={stats} />
+          <StatReadout stats={stats} wrap />
         </div>
       </PageHeader>
 

@@ -96,8 +96,10 @@ export default function DashboardTabs({
   return (
     <div>
       {/* Blueprint tab strip: mono uppercase labels with a numeric spec code
-          and a brand underline on the active section. */}
-      <div className="mt-8 flex gap-1 overflow-x-auto border-b border-ink-200">
+          and a brand underline on the active section. Wraps on mobile so every
+          tab (incl. Inquiries) stays reachable in the ~390px viewport; falls
+          back to a single horizontally-scrollable row from `sm` up (#708). */}
+      <div className="mt-8 flex flex-wrap gap-1 border-b border-ink-200 sm:flex-nowrap sm:overflow-x-auto">
         {TABS.map((t, i) => (
           <button
             key={t}
