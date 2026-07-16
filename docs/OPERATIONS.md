@@ -389,6 +389,30 @@ restore, run the sweep immediately (see [BACKUPS.md](BACKUPS.md) — `search_db`
 itself is deliberately not backed up). On a fresh dev stack the index starts
 empty until the first reindex (`scripts/e2e-smoke.sh` runs one).
 
+## Provider rating denormalization backfill (#748)
+
+The public `/api/providers` directory filters, sorts and counts on
+`Provider.ratingAvg` / `Provider.ratingCount` — denormalized aggregates kept
+fresh by review-service's write-back to `PUT /internal/providers/:id/rating` on
+every review create/update/delete/moderation. The columns land at `0/0` from the
+migration, so **run the backfill once right after deploying the migration** to
+reconcile existing providers against review-service's real aggregates:
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T provider-service \
+  wget -qO- --header "x-internal-secret: $INTERNAL_API_SECRET" \
+  --post-data= http://localhost:4002/internal/providers/rating/backfill
+# → { "ok": true, "updated": n, "skipped": m }
+```
+
+It walks every provider in id-cursor pages and pulls summaries from
+review-service's `/internal/ratings`. A page whose rating batch fails to load is
+**skipped, not zeroed** (`skipped > 0`), so a transient review-service outage
+never wipes real aggregates — re-run it once review-service is healthy and
+`skipped` returns to 0. It is idempotent and safe to re-run any time drift is
+suspected (e.g. after a database restore, or if write-backs were dropped while
+review-service was down).
+
 ## Backups
 
 Database and upload backup/restore procedures live in
