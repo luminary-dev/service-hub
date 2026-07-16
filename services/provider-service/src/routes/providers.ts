@@ -9,10 +9,8 @@ import { moderateContent } from "../lib/auto-report";
 import { getAuth, getLocale, getOrigin } from "../lib/http";
 import {
   fetchProviderReviews,
-  fetchRatings,
   fetchReviewCount,
   isEmailVerified,
-  type RatingEntry,
 } from "../lib/clients";
 import { emitNotification } from "../lib/notify";
 import { isEffectivelyAvailable } from "../lib/availability";
@@ -20,16 +18,10 @@ import { slPhone } from "../lib/field-rules";
 import { moneyToNumber, moneyToNumberOrNull } from "../lib/money";
 import { normalizeListQuery } from "../lib/query";
 import { averageResponseMs } from "../lib/response-time";
-import { buildBrowseWhere } from "../lib/search";
+import { browseCountQuery, browseIdsQuery } from "../lib/browse-query";
 import { log } from "../lib/log";
-import { sortProviders, type Sortable } from "../lib/sort";
 
 export const providersRoutes = new Hono();
-
-// Upper bound on providers loaded for in-memory ranking of a browse query.
-// Keeps memory + the ratings fan-out bounded; well above any realistic v0.1
-// match set. If ever hit, we log and serve the newest slice (see below).
-const MAX_BROWSE_CANDIDATES = 1000;
 
 // Public category list for browse filters and forms (#135/#60). Active only —
 // deactivated categories disappear from pickers while existing providers keep
@@ -93,9 +85,14 @@ export function __resetCategoryImageCache() {
 
 export function toCardDTO(
   p: CardRow,
-  r: RatingEntry | undefined,
   categoryImages?: Map<string, string | null>
 ) {
+  // Rating comes from the denormalized columns (#748) — no per-request fan-out
+  // to review-service. A 0 count means "no reviews", which the card renders as a
+  // null rating (matching the old RatingEntry-absent behavior). search-service's
+  // card hydration overlays its own aggregates on top, so emitting the column
+  // value here is harmless for that path too.
+  const rating = p.ratingCount > 0 ? p.ratingAvg : null;
   return {
     id: p.id,
     name: p.contactName,
@@ -128,8 +125,8 @@ export function toCardDTO(
       .map((s) => ({ id: s.id, title: s.title, price: moneyToNumber(s.price), priceType: s.priceType })),
     fromPrice: moneyToNumberOrNull(p.services[0]?.price),
     fromPriceType: p.services[0]?.priceType ?? null,
-    rating: r?.rating ?? null,
-    reviewCount: r?.count ?? 0,
+    rating,
+    reviewCount: p.ratingCount,
     // Map pin (#48), included only when set — the same already-public
     // coordinates the profile payloads carry, so the map view (search RFC
     // phase 3) can place card markers without another fetch. Real pins only;
@@ -201,9 +198,8 @@ providersRoutes.get("/api/providers", async (c) => {
       : [];
     const byId = new Map(rows.map((p) => [p.id, p]));
     const ordered = ids.flatMap((id) => byId.get(id) ?? []);
-    const ratings = await fetchRatings(ordered.map((p) => p.id));
     const catImages = await categoryImageMap();
-    const providers = ordered.map((p) => toCardDTO(p, ratings[p.id], catImages));
+    const providers = ordered.map((p) => toCardDTO(p, catImages));
     return c.json({
       providers,
       total: providers.length,
@@ -230,9 +226,18 @@ providersRoutes.get("/api/providers", async (c) => {
       ).map((r) => r.slug)
     : [];
 
-  // The ILIKE search inside is backed by pg_trgm GIN indexes (see migration
-  // 20260704210000_search_trgm) so it scales past a sequential scan.
-  const where: Prisma.ProviderWhereInput = buildBrowseWhere({
+  // Filter, sort, paginate and count all run DB-side now (#748). Rating is no
+  // longer derived per-request: ratingAvg/ratingCount are denormalized onto
+  // Provider (kept fresh by review-service's write-back), so the ratingMin
+  // filter and the rating/reviews/recommended sorts are column predicates. The
+  // two sorts Prisma orderBy can't express (`price` = MIN over a to-many
+  // relation, `recommended` = a computed Bayesian score) live in the raw-SQL
+  // builder; the ILIKE search is still backed by the pg_trgm GIN indexes (see
+  // migration 20260704210000_search_trgm). We select the ordered, paginated id
+  // slice + the real `total` in Postgres, then hydrate the card DTOs for that
+  // slice with a single findMany so the card shape stays single-sourced. No
+  // candidate cap, no rating fan-out.
+  const filters = {
     q,
     categorySlugs,
     category,
@@ -240,70 +245,69 @@ providersRoutes.get("/api/providers", async (c) => {
     priceMin,
     priceMax,
     availableOnly,
-  });
+    ratingMin,
+  };
+  const now = new Date();
+  const offset = (page - 1) * pageSize;
+  const [idRows, countRows] = await Promise.all([
+    db.$queryRaw<{ id: string }[]>(
+      browseIdsQuery(filters, sort, pageSize, offset, now)
+    ),
+    db.$queryRaw<{ count: number }[]>(browseCountQuery(filters, now)),
+  ]);
+  const total = Number(countRows[0]?.count ?? 0);
+  const ids = idRows.map((r) => r.id);
 
-  // Rating and starting price are derived data (starting price is joined,
-  // rating is owned by review-service), so ranking happens in memory across the
-  // match set. To keep that bounded we load at most MAX_BROWSE_CANDIDATES rows
-  // (newest first) instead of the whole table; the ratings fan-out is chunked
-  // in fetchRatings. Full DB-side ranking would need rating denormalized onto
-  // Provider — tracked as a follow-up. At current scale the cap is never hit.
-  const rows = await db.provider.findMany({
-    where,
-    include: cardInclude,
-    orderBy: { createdAt: "desc" },
-    take: MAX_BROWSE_CANDIDATES + 1,
-  });
-  if (rows.length > MAX_BROWSE_CANDIDATES) {
-    rows.length = MAX_BROWSE_CANDIDATES;
-    log.warn("provider browse hit candidate cap — results may be incomplete", {
-      cap: MAX_BROWSE_CANDIDATES,
-    });
-  }
-  const ratings = await fetchRatings(rows.map((p) => p.id));
+  const rows = ids.length
+    ? await db.provider.findMany({
+        where: { id: { in: ids } },
+        include: cardInclude,
+      })
+    : [];
+  const byId = new Map(rows.map((p) => [p.id, p]));
   const catImages = await categoryImageMap();
-
-  const enriched: (Sortable & { dto: ReturnType<typeof toCardDTO> })[] = rows.map((p) => {
-    const r = ratings[p.id];
-    const rating = r?.rating ?? null;
-    const count = r?.count ?? 0;
-    return {
-      rating,
-      ratingSum: rating !== null ? rating * count : 0,
-      reviewCount: count,
-      fromPrice: moneyToNumberOrNull(p.services[0]?.price),
-      experience: p.experience,
-      createdAt: p.createdAt,
-      verified: p.verificationStatus === "VERIFIED",
-      dto: toCardDTO(p, r, catImages),
-    };
+  // Re-order the hydrated rows back into the DB-ranked id order (findMany does
+  // not preserve the IN (...) order).
+  const results = ids.flatMap((id) => {
+    const p = byId.get(id);
+    return p ? [toCardDTO(p, catImages)] : [];
   });
-
-  // ratingMin (#47) is applied here, after S2S rating hydration — ratings are
-  // derived data owned by review-service, so filtering (like ranking) happens
-  // in memory across the match set, before sort + pagination. Providers with
-  // no reviews are excluded by any minimum.
-  const filtered =
-    ratingMin !== null
-      ? enriched.filter((e) => e.rating !== null && e.rating >= ratingMin)
-      : enriched;
-
-  const total = filtered.length;
-  const results = sortProviders(filtered, sort)
-    .slice((page - 1) * pageSize, page * pageSize)
-    .map((e) => e.dto);
 
   return c.json({ providers: results, total, page, pageSize });
 });
 
-// Sitemap feed: every non-suspended provider id + updatedAt.
+// Sitemap feed: non-suspended provider ids + updatedAt, id-cursor paginated
+// (#766). This is an anonymous, unthrottled route (the gateway only GET-rate-
+// limits /api/search/*), so it used to load the entire provider table in one
+// statement on every render — a cheap externally-triggerable load lever that
+// grows linearly with provider count. It now returns a bounded page ordered by
+// the stable `id` cursor (updatedAt is not unique, so it can't page reliably)
+// plus a `nextCursor`; a sitemap-index consumer walks the pages until
+// nextCursor is null. `?cursor=` continues after the last id seen; `?take=`
+// (default SITEMAP_DEFAULT_TAKE, max SITEMAP_MAX_TAKE) sizes the page.
+const SITEMAP_DEFAULT_TAKE = 1000;
+const SITEMAP_MAX_TAKE = 5000;
+
 providersRoutes.get("/api/providers/ids", async (c) => {
-  const providers = await db.provider.findMany({
+  const rawTake = Math.floor(Number(c.req.query("take")));
+  const take =
+    Number.isFinite(rawTake) && rawTake >= 1
+      ? Math.min(rawTake, SITEMAP_MAX_TAKE)
+      : SITEMAP_DEFAULT_TAKE;
+  const cursor = c.req.query("cursor") || undefined;
+  const rows = await db.provider.findMany({
     where: { suspended: false },
     select: { id: true, updatedAt: true },
-    orderBy: { updatedAt: "desc" },
+    orderBy: { id: "asc" },
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    take: take + 1,
   });
-  return c.json({ providers });
+  const hasMore = rows.length > take;
+  if (hasMore) rows.length = take;
+  return c.json({
+    providers: rows,
+    nextCursor: hasMore ? rows[rows.length - 1]!.id : null,
+  });
 });
 
 providersRoutes.get("/api/stats", async (c) => {
@@ -494,21 +498,22 @@ providersRoutes.get("/api/providers/:id/card", async (c) => {
       district: true,
       suspended: true,
       verificationStatus: true,
+      // Denormalized aggregates (#748) — no rating fan-out for the OG card.
+      ratingAvg: true,
+      ratingCount: true,
     },
   });
   if (!provider) {
     return c.json({ error: "Provider not found" }, 404);
   }
-  const ratings = await fetchRatings([id]);
-  const r = ratings[id];
   return c.json({
     name: provider.contactName,
     category: provider.category,
     city: provider.city,
     district: provider.district,
     suspended: provider.suspended,
-    rating: r?.rating ?? null,
-    reviewCount: r?.count ?? 0,
+    rating: provider.ratingCount > 0 ? provider.ratingAvg : null,
+    reviewCount: provider.ratingCount,
     verificationStatus: provider.verificationStatus,
   });
 });

@@ -2,6 +2,10 @@ import { normalizeSort, type SortKey } from "./sort";
 
 export const DEFAULT_PAGE_SIZE = 12;
 export const MAX_PAGE_SIZE = 24;
+// Upper bound on the page number. Without it a caller could ask for an
+// arbitrarily deep page, forcing Postgres to compute a huge OFFSET on the hot
+// browse path; 500 pages × 24/page is far past any realistic directory depth.
+export const MAX_PAGE = 500;
 export const MIN_RATING = 1;
 export const MAX_RATING = 5;
 
@@ -38,8 +42,9 @@ function toRatingMin(raw: string | null | undefined): number | null {
 }
 
 // Pure normalization of the /api/providers listing query params so it can be
-// unit-tested without a request: page >= 1, pageSize defaults to 12 and is
-// capped at 24 (`take` is an alias for pageSize used by the home page), sort
+// unit-tested without a request: page is clamped to 1..MAX_PAGE (500), pageSize
+// defaults to 12 and is capped at 24 (`take` is an alias for pageSize used by
+// the home page), sort
 // falls back to "recommended". Advanced filters (#47): priceMin/priceMax are
 // optional non-negative integer rupees (swapped when min > max), ratingMin is
 // clamped into 1..5, availableOnly is set only by "1"/"true".
@@ -53,7 +58,7 @@ export function normalizeListQuery(params: {
   ratingMin?: string | null;
   availableOnly?: string | null;
 }): ListQuery {
-  const page = toPositiveInt(params.page, 1);
+  const page = Math.min(MAX_PAGE, toPositiveInt(params.page, 1));
   const pageSize = Math.min(
     MAX_PAGE_SIZE,
     toPositiveInt(params.pageSize ?? params.take, DEFAULT_PAGE_SIZE)

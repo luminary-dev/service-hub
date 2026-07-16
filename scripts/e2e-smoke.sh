@@ -67,6 +67,14 @@ for port in 4000 4001 4002 4003 4004 4005 4006 4007 4008 4009; do
   check "healthz :$port" "$(curl -sS "http://localhost:$port/healthz")" '"ok":true'
 done
 
+# The public browse (#748) filters/sorts/counts off the denormalized
+# Provider.ratingAvg/ratingCount columns; they start at 0 and are reconciled
+# from review-service's aggregates — the same one-shot backfill the deploy runs
+# after the rating-column migration. Run it before any rating-dependent check.
+echo "== Denormalized rating backfill (#748) =="
+check "provider rating backfill" "$(curl -sS -X POST "http://localhost:4002/internal/providers/rating/backfill" \
+  -H "x-internal-secret: ${INTERNAL_API_SECRET:-dev-internal-secret}" | jq -r '.ok')" "true"
+
 echo "== Public pages =="
 check "home page renders" "$(curl -sS "$WEB/")" "Baas"
 check "providers page renders" "$(curl -sS "$WEB/providers")" "Baas"

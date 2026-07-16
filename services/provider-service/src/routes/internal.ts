@@ -13,6 +13,7 @@ import {
   optionalWebUrl,
   serviceDistrictsField,
 } from "../lib/field-rules";
+import { fetchRatingsResult } from "../lib/clients";
 import { getOrigin } from "../lib/http";
 import { notifySavedSearchMatches } from "../lib/saved-search-alerts";
 import {
@@ -435,7 +436,7 @@ internalRoutes.get("/internal/providers/cards", async (c) => {
       })
     : [];
   const catImages = await categoryImageMap();
-  const cards = rows.map((p) => toCardDTO(p, undefined, catImages));
+  const cards = rows.map((p) => toCardDTO(p, catImages));
   return c.json({ cards });
 });
 
@@ -638,4 +639,80 @@ internalRoutes.get("/internal/providers/:id/summary", async (c) => {
     select: { id: true, userId: true, suspended: true, contactEmail: true },
   });
   return c.json({ provider: provider ?? null });
+});
+
+// Denormalized rating write-back (#748). review-service is the source of truth
+// for reviews and PUTs the recomputed aggregate here on every review
+// create/update/delete/moderation, so the public directory can filter/sort/count
+// on ratingAvg/ratingCount DB-side without a per-request fan-out. `ratingAvg` is
+// tolerant of null (a zero-review provider) and stored as 0 — the schema column
+// is a non-null Float defaulting to 0, and the browse card maps a 0 count back to
+// a null rating. updateMany so an unknown/since-erased provider is an idempotent
+// no-op 200 (a moderation write-back racing an account erase must not 500).
+const ratingUpdateSchema = z.object({
+  ratingAvg: z.number().min(0).max(5).nullish(),
+  ratingCount: z.number().int().min(0),
+});
+
+internalRoutes.put("/internal/providers/:id/rating", async (c) => {
+  const id = c.req.param("id");
+  const parsed = ratingUpdateSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    return c.json({ error: "Invalid input" }, 400);
+  }
+  await db.provider.updateMany({
+    where: { id },
+    data: {
+      ratingAvg: parsed.data.ratingAvg ?? 0,
+      ratingCount: parsed.data.ratingCount,
+    },
+  });
+  return c.json({ ok: true });
+});
+
+// Deploy-time / self-healing backfill for the denormalized aggregates (#748):
+// walks every provider in id-cursor pages, pulls the authoritative summaries from
+// review-service's /internal/ratings, and writes ratingAvg/ratingCount. Run once
+// after the column migration ships, and any time drift is suspected (the daily
+// operator can re-run it). A review-service outage degrades per-batch: a batch
+// that failed to load (fetchRatingsResult `ok:false`) is SKIPPED rather than
+// zeroed, so a transient outage never wipes real aggregates. Reports what it did.
+const RATING_BACKFILL_PAGE_SIZE = 200;
+
+internalRoutes.post("/internal/providers/rating/backfill", async (c) => {
+  let cursor: string | undefined;
+  let updated = 0;
+  let skipped = 0;
+  for (;;) {
+    const rows = await db.provider.findMany({
+      select: { id: true },
+      orderBy: { id: "asc" },
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      take: RATING_BACKFILL_PAGE_SIZE,
+    });
+    if (rows.length === 0) break;
+    const { ok, ratings } = await fetchRatingsResult(rows.map((r) => r.id));
+    if (ok) {
+      // Every batch answered, so a provider absent from the map truly has no
+      // reviews → 0/0. Safe to write the whole page.
+      for (const r of rows) {
+        const entry = ratings[r.id];
+        await db.provider.update({
+          where: { id: r.id },
+          data: {
+            ratingAvg: entry?.rating ?? 0,
+            ratingCount: entry?.count ?? 0,
+          },
+        });
+      }
+      updated += rows.length;
+    } else {
+      // A batch failed — don't risk zeroing real aggregates; leave this page and
+      // let a re-run reconcile it.
+      skipped += rows.length;
+    }
+    if (rows.length < RATING_BACKFILL_PAGE_SIZE) break;
+    cursor = rows[rows.length - 1]!.id;
+  }
+  return c.json({ ok: true, updated, skipped });
 });

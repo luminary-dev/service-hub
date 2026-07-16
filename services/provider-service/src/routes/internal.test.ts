@@ -47,9 +47,14 @@ vi.mock("../lib/storage", () => storageMock);
 vi.mock("../lib/saved-search-alerts", () => ({
   notifySavedSearchMatches: vi.fn(() => Promise.resolve()),
 }));
+// Rating backfill (#748) pulls authoritative summaries from review-service.
+vi.mock("../lib/clients", () => ({
+  fetchRatingsResult: vi.fn().mockResolvedValue({ ok: true, ratings: {} }),
+}));
 
 import { app } from "../app";
 import { notifySavedSearchMatches } from "../lib/saved-search-alerts";
+import { fetchRatingsResult } from "../lib/clients";
 
 const SECRET = "dev-internal-secret";
 
@@ -63,6 +68,14 @@ function post(path: string, body?: unknown) {
 
 function get(path: string) {
   return app.request(path, { headers: { "x-internal-secret": SECRET } });
+}
+
+function put(path: string, body?: unknown) {
+  return app.request(path, {
+    method: "PUT",
+    headers: { "content-type": "application/json", "x-internal-secret": SECRET },
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  });
 }
 
 beforeEach(() => {
@@ -696,6 +709,9 @@ describe("GET /internal/providers/cards", () => {
     coverPhoto: null,
     latitude: 6.9271,
     longitude: 79.8612,
+    // Denormalized aggregates (#748); search-service overlays its own on top.
+    ratingAvg: 0,
+    ratingCount: 0,
     photos: [],
     services: [{ id: "s1", title: "Brake inspection", price: 2500, priceType: "VISIT" }],
   };
@@ -794,5 +810,98 @@ describe("GET /internal/providers/export", () => {
     expect(dbMock.provider.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ cursor: { id: "z" }, skip: 1 })
     );
+  });
+});
+
+describe("PUT /internal/providers/:id/rating — rating write-back (#748)", () => {
+  it("writes the denormalized aggregates from review-service", async () => {
+    dbMock.provider.updateMany.mockResolvedValue({ count: 1 });
+    const res = await put("/internal/providers/prov1/rating", {
+      ratingAvg: 4.25,
+      ratingCount: 12,
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(dbMock.provider.updateMany).toHaveBeenCalledWith({
+      where: { id: "prov1" },
+      data: { ratingAvg: 4.25, ratingCount: 12 },
+    });
+  });
+
+  it("coerces a null average (zero-review provider) to 0", async () => {
+    dbMock.provider.updateMany.mockResolvedValue({ count: 1 });
+    const res = await put("/internal/providers/prov1/rating", {
+      ratingAvg: null,
+      ratingCount: 0,
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.provider.updateMany).toHaveBeenCalledWith({
+      where: { id: "prov1" },
+      data: { ratingAvg: 0, ratingCount: 0 },
+    });
+  });
+
+  it("is an idempotent no-op 200 for an unknown/since-erased provider", async () => {
+    dbMock.provider.updateMany.mockResolvedValue({ count: 0 });
+    const res = await put("/internal/providers/gone/rating", {
+      ratingAvg: 5,
+      ratingCount: 1,
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+  });
+
+  it("rejects an out-of-range or malformed body with 400", async () => {
+    const bad = await put("/internal/providers/prov1/rating", {
+      ratingAvg: 9,
+      ratingCount: 1,
+    });
+    expect(bad.status).toBe(400);
+    const missing = await put("/internal/providers/prov1/rating", { ratingCount: 1 });
+    expect(missing.status).toBe(200); // ratingAvg is optional (null → 0)
+    const noCount = await put("/internal/providers/prov1/rating", { ratingAvg: 4 });
+    expect(noCount.status).toBe(400);
+  });
+
+  it("requires the internal secret", async () => {
+    const res = await app.request("/internal/providers/prov1/rating", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ratingAvg: 4, ratingCount: 1 }),
+    });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("POST /internal/providers/rating/backfill (#748)", () => {
+  it("walks providers and writes real aggregates, defaulting no-review rows to 0/0", async () => {
+    dbMock.provider.findMany.mockResolvedValueOnce([{ id: "a" }, { id: "b" }]);
+    vi.mocked(fetchRatingsResult).mockResolvedValueOnce({
+      ok: true,
+      ratings: { a: { rating: 4.5, count: 6 } },
+    });
+    dbMock.provider.update.mockResolvedValue({});
+
+    const res = await post("/internal/providers/rating/backfill");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, updated: 2, skipped: 0 });
+    expect(dbMock.provider.update).toHaveBeenCalledWith({
+      where: { id: "a" },
+      data: { ratingAvg: 4.5, ratingCount: 6 },
+    });
+    expect(dbMock.provider.update).toHaveBeenCalledWith({
+      where: { id: "b" },
+      data: { ratingAvg: 0, ratingCount: 0 },
+    });
+  });
+
+  it("skips a page whose rating batch failed rather than zeroing it", async () => {
+    dbMock.provider.findMany.mockResolvedValueOnce([{ id: "a" }]);
+    vi.mocked(fetchRatingsResult).mockResolvedValueOnce({ ok: false, ratings: {} });
+
+    const res = await post("/internal/providers/rating/backfill");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, updated: 0, skipped: 1 });
+    expect(dbMock.provider.update).not.toHaveBeenCalled();
   });
 });
