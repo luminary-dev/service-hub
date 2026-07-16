@@ -32,3 +32,20 @@ scrape_configs:
           - "chat-service:4007"
           - "search-service:4008"
           - "trust-safety-service:4009"
+
+  # Infrastructure exporters (#746) — the host, Postgres and Redis were all
+  # invisible to alerting before these. Each ships in both compose files on the
+  # backend network; a scrape target is just <service>:<port>. node-exporter
+  # surfaces host disk / CPU / memory (disk>85% alert); postgres-exporter the
+  # DB up/connection state; redis-exporter Redis memory + persistence.
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  - job_name: redis
+    static_configs:
+      - targets: ["redis-exporter:9121"]
