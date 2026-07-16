@@ -10,6 +10,13 @@ Lists every managed category (including inactive) via
 category has a `slug`, English label (`labelEn`), Sinhala label (`labelSi`),
 `icon`, an optional cover image (`imageUrl`), `active` flag, and `sortOrder`.
 
+The initial 16-trade taxonomy is seeded once, on the first production deploy,
+by the provider-service seed's category upsert (it runs before the seed's
+demo-data guard, so it is prod-safe) — see [DEPLOYMENT.md](../DEPLOYMENT.md).
+Re-running that seed re-applies the default label/icon/cover for those 16
+slugs, so after go-live change categories here in the manager rather than
+re-seeding.
+
 - **Add** — slug (pattern `^[a-z0-9-]{2,40}$`), icon, EN/SI labels, sort order →
   `POST /api/admin/categories` (409 on duplicate slug).
 - **Edit** — inline edit of EN/SI labels, icon, sort order →
