@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { csrfMiddleware } from "./lib/csrf";
 import { captureException } from "./lib/errors";
-import { requireInternalSecret } from "./lib/internal-secret";
 import { log } from "./lib/log";
 import { getRequestId } from "./lib/logging";
 import { metricsHandler, metricsMiddleware } from "./lib/metrics";
@@ -28,10 +27,10 @@ app.use(metricsMiddleware());
 // Public entry — no global internal-secret check here; the gateway ADDS the
 // secret to upstream requests instead. /healthz stays open for compose probes.
 app.get("/healthz", (c) => c.json({ ok: true, service: "api-gateway" }));
-// /metrics is internal RED telemetry and must not be world-readable (#742), so
-// it is guarded explicitly with the internal secret (the gateway has no global
-// gate). The Prometheus scrape must send the x-internal-secret header.
-app.get("/metrics", requireInternalSecret, metricsHandler);
+// /metrics is RED telemetry scraped by Prometheus over the internal network.
+// The gateway never routes /metrics to the public edge and its port isn't
+// exposed, so no secret is required (Prometheus can't send a custom header).
+app.get("/metrics", metricsHandler);
 
 app.use("/api/*", csrfMiddleware);
 app.use("/api/*", rateLimitMiddleware);

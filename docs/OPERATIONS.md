@@ -653,16 +653,18 @@ Prometheus metrics at `GET /metrics` on its own port via an identical
   account` — carry no email/password, keeping the existing PII discipline (the
   gateway attaches the client IP to its own request-log line).
 
-`/metrics` is behind the internal secret (#742): it exposes route names,
-request counts and latencies (internal recon that widens the blast radius of any
-port exposure or SSRF), so — like every other non-`/healthz` route — it requires
-the `x-internal-secret` header. The Prometheus scrape config must send that
-header (`deploy/observability/prometheus.yml`). Only `/healthz` stays open. On
-the backend services this is enforced by the global `requireInternalSecret`; the
-gateway, which has no global gate (it *adds* the secret upstream), guards
-`/metrics` explicitly via `src/lib/internal-secret.ts`. The service ports are
-still never public (loopback-bound in dev, `backend`-only network in prod), so
-this is defence-in-depth on top of that.
+`/metrics` and `/healthz` are the only routes **not** behind the internal
+secret. `/metrics` exposes RED telemetry (route names, request counts,
+latencies) and is scraped directly by Prometheus over the internal Docker
+network (`deploy/observability/prometheus.yml`) — Prometheus scrape configs
+can't send a custom `x-internal-secret` header, so the endpoint is left open and
+protected by the network boundary instead: the service ports are never public
+(loopback-bound in dev, `backend`-only network in prod) and `/metrics` is never
+routed through the gateway. Every other non-`/healthz` route still requires the
+`x-internal-secret` header (the global `requireInternalSecret` on the backend
+services; the gateway adds the secret upstream rather than requiring it). If you
+later want defence-in-depth auth on `/metrics`, the Prometheus-compatible way is
+a `Authorization: Bearer` token with a mounted `credentials_file`.
 
 **Log aggregation (#668).** Every service already emits **one JSON line per
 event** to stdout (`{ level, time, service, msg, requestId, … }` — see each

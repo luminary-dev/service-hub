@@ -5,6 +5,7 @@ apiVersion: 1
 providers:
   - name: service-hub
     orgId: 1
+    folder: service-hub
     type: file
     disableDeletion: false
     editable: true
