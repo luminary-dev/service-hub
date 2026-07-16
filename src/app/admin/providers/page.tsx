@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { FaUsers } from "@/components/icons";
 import { apiJson } from "@/lib/api";
@@ -23,6 +24,11 @@ import AdminProvidersList, {
 // Caching (#57): admin-only moderation view; edits must be visible on the
 // next request — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return { title: dict[locale].titles.adminProviders };
+}
 
 const PAGE_SIZE = 20;
 

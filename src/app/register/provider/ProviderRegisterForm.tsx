@@ -14,6 +14,7 @@ import {
 import { categoryOptionLabel, type CategoryOption } from "@/lib/categories";
 import { districtLabelLoc, priceTypeLabelLoc } from "@/lib/i18n";
 import { localizedHref } from "@/lib/links";
+import { errorMessage } from "@/lib/error-codes";
 import { useLocale, useT } from "@/components/I18nProvider";
 import { ConsentCheckbox } from "@/components/LegalConsent";
 import PasswordInput from "@/components/PasswordInput";
@@ -122,6 +123,98 @@ export default function ProviderRegisterForm({
   const [captchaToken, setCaptchaToken] = useState("");
   const [captchaReset, setCaptchaReset] = useState(0);
   const showCaptcha = !authed && Boolean(turnstileSiteKey);
+
+  // Unsaved-changes protection (#763). The wizard holds everything in memory, so
+  // an accidental back/close/tab-switch several steps in (bio, districts,
+  // services, photos) silently discarded everything — a high-abandonment moment
+  // in the core acquisition funnel. We persist step state to sessionStorage
+  // (rehydrated on mount) and register a beforeunload prompt while the form is
+  // dirty. The password is deliberately never persisted (only kept in memory).
+  const DRAFT_KEY = authed
+    ? "baaslk:provider-register:authed"
+    : "baaslk:provider-register";
+  const rehydratedRef = useRef(false);
+
+  // Rehydrate a saved draft once, on mount (sessionStorage is client-only, so
+  // this can't run in a useState initializer during SSR). Setting state from a
+  // one-shot mount effect is the intended pattern here — the cascade is a single
+  // extra render on load, not a loop.
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
+    try {
+      const raw = sessionStorage.getItem(DRAFT_KEY);
+      if (raw) {
+        const d = JSON.parse(raw) as {
+          step?: number;
+          form?: Record<string, string>;
+          services?: ServiceInput[];
+          serviceDistricts?: string[];
+          location?: GeoPoint | null;
+          agree?: boolean;
+        };
+        if (d.form) setForm((f) => ({ ...f, ...d.form, password: "" }));
+        if (Array.isArray(d.services) && d.services.length > 0)
+          setServices(d.services);
+        if (Array.isArray(d.serviceDistricts))
+          setServiceDistricts(d.serviceDistricts);
+        if (d.location) setLocation(d.location);
+        if (typeof d.agree === "boolean") setAgree(d.agree);
+        if (typeof d.step === "number")
+          setStep(Math.max(minStep, Math.min(d.step, STEPS.length - 1)));
+      }
+    } catch {
+      // A corrupt/foreign draft must never wedge the form — start fresh.
+    }
+    rehydratedRef.current = true;
+    /* eslint-enable react-hooks/set-state-in-effect */
+    // Run once; the identity of the setters is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist the draft on every change (never the password).
+  useEffect(() => {
+    if (!rehydratedRef.current) return; // don't clobber before we've rehydrated
+    const formToPersist: Record<string, string> = {};
+    for (const [k, v] of Object.entries(form))
+      if (k !== "password") formToPersist[k] = v;
+    try {
+      sessionStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({
+          step,
+          form: formToPersist,
+          services,
+          serviceDistricts,
+          location,
+          agree,
+        })
+      );
+    } catch {
+      // Storage full/blocked (private mode) — persistence is best-effort.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, form, services, serviceDistricts, location, agree]);
+
+  const isDirty =
+    step !== minStep ||
+    Object.entries(form).some(([, v]) => v !== "") ||
+    services.some(
+      (s) => s.title || s.description || s.price || s.priceType !== "FIXED"
+    ) ||
+    serviceDistricts.length > 0 ||
+    location !== null ||
+    agree;
+
+  // Native beforeunload prompt while dirty (close tab / reload / external nav).
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty]);
 
   function set(field: string, value: string) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -251,11 +344,18 @@ export default function ProviderRegisterForm({
         },
       );
       if (res.ok) {
+        // Draft consumed (#763): clear it so a later visit starts clean, and
+        // the beforeunload guard won't fire on this successful navigation.
+        try {
+          sessionStorage.removeItem(DRAFT_KEY);
+        } catch {
+          /* best-effort */
+        }
         router.push(localizedHref("/dashboard?welcome=1", locale));
         router.refresh();
       } else {
         const data = await res.json().catch(() => ({}));
-        setError(data.error ?? r.createFailed);
+        setError(errorMessage(data, r.createFailed, t.errorCodes));
         // The single-use token is spent — fetch a fresh one for the retry.
         if (showCaptcha) setCaptchaReset((n) => n + 1);
       }

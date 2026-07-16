@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useLocale, useT } from "@/components/I18nProvider";
 import { ConsentCheckbox } from "@/components/LegalConsent";
 import { localizedHref } from "@/lib/links";
+import { errorMessage } from "@/lib/error-codes";
 import PasswordInput from "@/components/PasswordInput";
 import TurnstileWidget from "@/components/TurnstileWidget";
 import { Field } from "@/components/ui/Field";
@@ -81,7 +82,7 @@ export default function CustomerRegisterForm({
         router.refresh();
       } else {
         const data = await res.json().catch(() => ({}));
-        setError(data.error ?? t.custReg.failed);
+        setError(errorMessage(data, t.custReg.failed, t.errorCodes));
         // The single-use token is spent — fetch a fresh one for the retry.
         setCaptchaReset((n) => n + 1);
       }

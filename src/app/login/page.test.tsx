@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { dict } from "@/lib/i18n";
-import LoginPage from "./page";
+import LoginPage from "./LoginForm";
 
 const push = vi.fn();
 vi.mock("next/navigation", () => ({

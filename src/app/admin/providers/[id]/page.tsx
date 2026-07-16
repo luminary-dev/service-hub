@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -20,6 +21,11 @@ import AdminRestoreButton from "@/components/admin/AdminRestoreButton";
 // Caching (#57): admin-only moderation view; edits must be visible on the
 // next request — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return { title: dict[locale].titles.adminProviderDetail };
+}
 
 // Moderation payload as served by `GET /api/admin/providers/:id` on the
 // gateway (contact email plus reviews with hydrated reviewer names).

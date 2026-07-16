@@ -121,6 +121,9 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   fetchMock.mockReset();
+  // The provider wizard persists a draft to sessionStorage (#763); clear it so
+  // one test's draft can't rehydrate into the next render.
+  sessionStorage.clear();
   navState.search = "";
 });
 
@@ -507,7 +510,13 @@ describe("axe: forms", () => {
 
   it("inquiry form has no violations and links inline validation errors (#378)", async () => {
     const { container } = render(
-      <InquiryForm providerId="prov_1" providerName="Sunil Perera" defaultName="" />
+      <ToastProvider>
+        <InquiryForm
+          providerId="prov_1"
+          providerName="Sunil Perera"
+          defaultName=""
+        />
+      </ToastProvider>
     );
     await expectNoAxeViolations(container);
 

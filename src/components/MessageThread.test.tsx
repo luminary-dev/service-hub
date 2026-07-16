@@ -11,6 +11,12 @@ import { dict } from "@/lib/i18n";
 import { ToastProvider } from "./ToastProvider";
 import MessageThread from "./MessageThread";
 
+// The session guard (#774) reads useRouter/usePathname.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+  usePathname: () => "/account/inquiries/inq_1",
+}));
+
 const t = dict.en.messages;
 const tr = dict.en.report;
 

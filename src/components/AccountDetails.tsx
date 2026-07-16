@@ -8,6 +8,7 @@ import { useToast } from "@/components/ToastProvider";
 import { Field } from "@/components/ui/Field";
 import Avatar from "@/components/Avatar";
 import { validateUpload } from "@/lib/upload";
+import { errorMessage } from "@/lib/error-codes";
 
 // Account self-service (#396): edit name/phone and start a change-email flow.
 // Backed by identity-service via the gateway (PUT /api/account/profile,
@@ -28,7 +29,9 @@ export default function AccountDetails({
     hasPassword: boolean;
   };
 }) {
-  const t = useT().account;
+  const full = useT();
+  const t = full.account;
+  const codes = full.errorCodes;
   const toast = useToast();
   const router = useRouter();
 
@@ -59,7 +62,7 @@ export default function AccountDetails({
         router.refresh();
       } else {
         const d = await res.json().catch(() => ({}));
-        toast.error(d.error ?? t.genericError);
+        toast.error(errorMessage(d, t.genericError, codes));
       }
     } catch {
       toast.error(t.genericError);
@@ -107,7 +110,7 @@ export default function AccountDetails({
         router.refresh();
       } else {
         const data = await res.json().catch(() => ({}));
-        setProfileError(data.error ?? t.genericError);
+        setProfileError(errorMessage(data, t.genericError, codes));
       }
     } catch {
       setProfileError(t.genericError);
@@ -137,7 +140,7 @@ export default function AccountDetails({
         setEmailPassword("");
       } else {
         const data = await res.json().catch(() => ({}));
-        setEmailError(data.error ?? t.genericError);
+        setEmailError(errorMessage(data, t.genericError, codes));
       }
     } catch {
       setEmailError(t.genericError);

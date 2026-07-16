@@ -1,199 +1,22 @@
-"use client";
+import type { Metadata } from "next";
+import { Suspense } from "react";
+import { getLocale } from "@/lib/locale";
+import { dict } from "@/lib/i18n";
+import LoginForm from "./LoginForm";
 
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
-import { useLocale, useT } from "@/components/I18nProvider";
-import { localizedHref, sanitizeNext } from "@/lib/links";
-import PasswordInput from "@/components/PasswordInput";
-import GoogleSignInButton from "@/components/GoogleSignInButton";
-import FacebookSignInButton from "@/components/FacebookSignInButton";
-import { ConsentNotice } from "@/components/LegalConsent";
-import { Field } from "@/components/ui/Field";
-import {
-  FormError,
-  isValidEmail,
-  useFieldErrors,
-  type FieldErrors,
-} from "@/components/ui/FormError";
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return { title: dict[locale].titles.login };
+}
 
+// Thin server wrapper so the page can export a localized <title> (#762); the
+// form itself is a client component. It reads ?next/?error via
+// useSearchParams, which Next 16 requires to sit under a Suspense boundary in
+// a server-rendered subtree.
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const t = useT();
-  const locale = useLocale();
-  // OAuth failures redirect back here as ?error=<code>; map it to a message.
-  const searchParams = useSearchParams();
-  // Post-login return-to (#560): "sign in to continue" entry points arrive as
-  // /login?next=<locale-prefixed path>. Validated same-origin paths win over
-  // the role default below; anything else is dropped (no open redirects).
-  const next = sanitizeNext(searchParams.get("next"));
-  const oauthError = searchParams.get("error");
-  const initialError =
-    oauthError === "oauth_email"
-      ? t.oauth.errEmail
-      : oauthError === "oauth_unavailable"
-        ? t.oauth.errUnavailable
-        : oauthError === "oauth_locked"
-          ? t.oauth.errLocked
-          : oauthError === "oauth"
-            ? t.oauth.errGeneric
-            : "";
-  const [error, setError] = useState(initialError);
-  const { fieldErrors, show, errorProps } = useFieldErrors();
-  const router = useRouter();
-
-  function validate(): FieldErrors {
-    const errs: FieldErrors = {};
-    if (!isValidEmail(email)) errs["login-email"] = t.fieldErrors.email;
-    if (!password) errs["login-password"] = t.fieldErrors.passwordRequired;
-    return errs;
-  }
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    if (show(validate())) return;
-    setLoading(true);
-    try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        router.push(
-          next ??
-            localizedHref(
-              data.user.role === "PROVIDER" ? "/dashboard" : "/providers",
-              locale,
-            ),
-        );
-        router.refresh();
-      } else {
-        const data = await res.json().catch(() => ({}));
-        setError(data.error ?? t.login.failed);
-      }
-    } catch {
-      // Network failure (offline, dropped connection) — recover instead of
-      // leaving the button disabled forever (#431).
-      setError(t.login.failed);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   return (
-    <div className="blueprint-grid">
-      <div className="mx-auto flex max-w-md flex-col px-4 py-16 sm:px-6">
-        <div className="flex items-center gap-2.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em]">
-          <span className="rounded-sm bg-brand-700 px-1.5 py-0.5 text-white dark:text-ink-50">
-            AUTH
-          </span>
-          <span className="text-ink-500">SIGN-IN</span>
-        </div>
-        <h1 className="mt-3 text-3xl font-bold tracking-tight text-ink-900">
-          {t.login.title}
-        </h1>
-        <p className="mt-2 text-sm text-ink-600">{t.login.sub}</p>
-
-        <div className="tech-corners mt-8 overflow-hidden rounded-lg border border-ink-300 bg-surface">
-          <div className="flex items-center justify-between border-b border-ink-200 bg-ink-100 px-5 py-3 font-mono text-[11px] uppercase tracking-[0.12em]">
-            <span className="font-bold tabular-nums text-ink-700">AUTH-01</span>
-            <span className="flex items-center gap-2 text-brand-700">
-              <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-brand-600" />
-              SESSION
-            </span>
-          </div>
-          {/* noValidate: validation happens in JS so errors are localized,
-              inline and linked to their fields (#378), not browser bubbles. */}
-          <form onSubmit={submit} noValidate className="space-y-4 p-6">
-            <Field
-              label={t.login.email}
-              htmlFor="login-email"
-              error={fieldErrors["login-email"]}
-            >
-              <input
-                id="login-email"
-                className="input"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoComplete="email"
-              />
-            </Field>
-            <div>
-              <div className="mb-1.5 flex items-center justify-between">
-                <label className="label mb-0" htmlFor="login-password">
-                  {t.login.password}
-                </label>
-                <Link
-                  href={localizedHref("/forgot-password", locale)}
-                  className="text-xs font-medium text-brand-600 hover:text-brand-700"
-                >
-                  {t.login.forgot}
-                </Link>
-              </div>
-              <PasswordInput
-                id="login-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoComplete="current-password"
-                {...errorProps("login-password")}
-              />
-              {fieldErrors["login-password"] && (
-                <p
-                  id="login-password-error"
-                  role="alert"
-                  className="mt-1 text-xs text-red-600"
-                >
-                  {fieldErrors["login-password"]}
-                </p>
-              )}
-            </div>
-            <FormError>{error}</FormError>
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn-primary w-full"
-            >
-              {loading ? t.login.signingIn : t.login.signIn}
-            </button>
-          </form>
-        </div>
-
-        <div className="mt-6 flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-400">
-          <span className="h-px flex-1 bg-ink-200" />
-          {t.oauth.divider}
-          <span className="h-px flex-1 bg-ink-200" />
-        </div>
-        <div className="mt-6 space-y-3">
-          <GoogleSignInButton
-            label={t.oauth.continueWithGoogle}
-            next={next ?? undefined}
-          />
-          <FacebookSignInButton
-            label={t.oauth.continueWithFacebook}
-            next={next ?? undefined}
-          />
-        </div>
-        <p className="mt-3 text-center text-xs text-ink-500">{t.oauth.dataUse}</p>
-        <ConsentNotice />
-
-        <p className="mt-6 text-center text-sm text-ink-500">
-          {t.login.newTo}{" "}
-          <Link
-            href={localizedHref("/register", locale)}
-            className="font-semibold text-brand-600 hover:text-brand-700"
-          >
-            {t.login.create}
-          </Link>
-        </p>
-      </div>
-    </div>
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }

@@ -88,7 +88,7 @@ describe("SecuritySettings — change password", () => {
   it("shows the server error via role=alert on a failed change", async () => {
     fetchMock.mockResolvedValue({
       ok: false,
-      json: async () => ({ error: "Current password is wrong" }),
+      json: async () => ({ errorCode: "current_password_incorrect" }),
     });
     renderSettings();
     fireEvent.change(screen.getByLabelText(t.current), {
@@ -103,7 +103,9 @@ describe("SecuritySettings — change password", () => {
     fireEvent.submit(findChangeForm());
 
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("Current password is wrong");
+    expect(alert.textContent).toContain(
+      dict.en.errorCodes.current_password_incorrect
+    );
   });
 });
 
@@ -154,7 +156,7 @@ describe("SecuritySettings — delete account", () => {
   it("shows the server error via role=alert when deletion fails", async () => {
     fetchMock.mockResolvedValue({
       ok: false,
-      json: async () => ({ error: "Password incorrect" }),
+      json: async () => ({ errorCode: "current_password_incorrect" }),
     });
     renderSettings();
     fireEvent.change(screen.getByLabelText(t.deletePassword), {
@@ -163,7 +165,7 @@ describe("SecuritySettings — delete account", () => {
     fireEvent.click(screen.getByRole("button", { name: t.delete }));
 
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("Password incorrect");
+    expect(alert.textContent).toContain(dict.en.errorCodes.current_password_incorrect);
     expect(push).not.toHaveBeenCalled();
   });
 });

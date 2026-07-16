@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DISTRICTS } from "@/lib/constants";
 import {
   categoryOptionLabel,
@@ -9,6 +9,7 @@ import {
   type CategoryOption,
 } from "@/lib/categories";
 import { districtLabelLoc } from "@/lib/i18n";
+import { errorMessage } from "@/lib/error-codes";
 import type { GeoPoint } from "@/lib/geo";
 import { Field, FormRow } from "@/components/ui/Field";
 import LocationPicker from "@/components/LocationPicker";
@@ -78,6 +79,27 @@ export default function ProfileForm({
   const toast = useToast();
   const router = useRouter();
 
+  // Unsaved-changes guard (#763). The profile form holds all edits in useState
+  // with no navigation guard, so an accidental back/close discards them. We
+  // snapshot the initial values once (useRef captures the first render's state
+  // on both server and client) and warn via beforeunload while the current
+  // values differ. The baseline is reset after a successful save.
+  const snapshot = JSON.stringify({ form, serviceDistricts, location });
+  // The initializer captures the first render's snapshot (the saved values) once;
+  // it's reset to the current snapshot after a successful save.
+  const [baseline, setBaseline] = useState(snapshot);
+  const isDirty = snapshot !== baseline;
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty]);
+
   function set(field: string, value: string | boolean) {
     setForm((f) => ({ ...f, [field]: value }));
   }
@@ -107,11 +129,13 @@ export default function ProfileForm({
         }),
       });
       if (res.ok) {
+        // Saved changes become the new baseline so the dirty guard resets.
+        setBaseline(snapshot);
         toast.success(p.saved);
         router.refresh();
       } else {
         const d = await res.json().catch(() => ({}));
-        setError(d.error ?? p.saveError);
+        setError(errorMessage(d, p.saveError, tx.errorCodes));
       }
     } catch {
       // Network failure — recover instead of wedging the button (#363).

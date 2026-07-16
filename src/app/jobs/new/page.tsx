@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { fetchCategoryOptions } from "@/lib/categories-server";
@@ -10,6 +11,11 @@ import JobPostForm from "@/components/jobs/JobPostForm";
 // Caching (#57): session-gated and must reflect the user's own writes
 // immediately — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return { title: dict[locale].titles.jobsNew };
+}
 
 export default async function NewJobPage() {
   const session = await getSession();

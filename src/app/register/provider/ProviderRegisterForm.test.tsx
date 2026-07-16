@@ -55,6 +55,9 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   fetchMock.mockReset();
+  // The wizard persists a draft to sessionStorage (#763); clear it between
+  // tests so a saved draft can't rehydrate into the next render.
+  sessionStorage.clear();
 });
 
 describe("ProviderRegisterForm (authed mode, #552)", () => {

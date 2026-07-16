@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { FaShieldHalved } from "@/components/icons";
 import { apiJson } from "@/lib/api";
@@ -17,6 +18,11 @@ import MarkQueueViewed from "@/components/admin/MarkQueueViewed";
 // Caching (#57): admin-only moderation view; edits must be visible on the
 // next request — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return { title: dict[locale].titles.adminVerifications };
+}
 
 const PAGE_SIZE = 20;
 

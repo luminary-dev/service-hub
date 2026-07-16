@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { apiJson } from "@/lib/api";
@@ -11,6 +12,11 @@ import EmptyState from "@/components/ui/EmptyState";
 // Caching (#57): admin-only moderation view; edits must be visible on the
 // next request — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return { title: dict[locale].titles.adminAuditLog };
+}
 
 // The audit trail (#227) merges three sources — provider-service owns the
 // log for actions it takes (provider verify/suspend, photo delete, report

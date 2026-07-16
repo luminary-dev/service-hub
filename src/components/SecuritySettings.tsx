@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useLocale, useT } from "@/components/I18nProvider";
 import { localizedHref } from "@/lib/links";
+import { errorMessage } from "@/lib/error-codes";
 import PasswordInput from "@/components/PasswordInput";
 import { useToast } from "@/components/ToastProvider";
 import { Field } from "@/components/ui/Field";
@@ -56,7 +57,7 @@ export default function SecuritySettings() {
         toast.success(t.security.changed);
       } else {
         const data = await res.json().catch(() => ({}));
-        setChangeError(data.error ?? t.security.genericError);
+        setChangeError(errorMessage(data, t.security.genericError, t.errorCodes));
       }
     } catch {
       // Network failure — recover instead of wedging the button (#363).
@@ -75,7 +76,7 @@ export default function SecuritySettings() {
         toast.success(t.security.logoutAllDone);
       } else {
         const data = await res.json().catch(() => ({}));
-        setLogoutError(data.error ?? t.security.genericError);
+        setLogoutError(errorMessage(data, t.security.genericError, t.errorCodes));
       }
     } catch {
       setLogoutError(t.security.genericError);
@@ -101,7 +102,7 @@ export default function SecuritySettings() {
         return;
       }
       const data = await res.json().catch(() => ({}));
-      setDeleteError(data.error ?? t.security.genericError);
+      setDeleteError(errorMessage(data, t.security.genericError, t.errorCodes));
     } catch {
       setDeleteError(t.security.genericError);
     }
