@@ -162,9 +162,33 @@ Repo variable: `DEPLOY_ENABLED` (`true` un-gates the `deploy` job).
 See [`.env.prod.example`](../.env.prod.example) for the full annotated list of
 runtime variables and how each degrades when unset.
 
+## Host sizing (#758)
+
+The prod stack runs ~29 containers on one Docker host. Every service carries a
+**`mem_limit`**, and these now sum to **~12 GB** — that is a hard cap, not a
+reservation, so the host must have enough RAM to satisfy concurrent peaks plus
+the kernel and page cache. **Provision at least 16 GB RAM** (the ~12 GB of caps
++ headroom); below that, concurrent pressure invites the host OOM-killer to pick
+victims arbitrarily (possibly Postgres), outside the per-container limits.
+
+Additional guardrails added with the sizing work:
+
+- **`cpus` limits** on the CPU-heavy / bursty services — `media-service` and
+  `search-service` (sharp re-encoding, PostGIS), `prometheus`, `loki`,
+  `glitchtip-web`, `glitchtip-worker` (1.0 each), and `postgres` (2.0) — so a
+  runaway there can't starve Caddy / web / gateway. Budget **≥ 8 vCPU**; the
+  caps assume the heavy services don't all peak simultaneously.
+- **`mem_reservation`** (a soft floor) on the critical path — `postgres`,
+  `redis`, `api-gateway`, `web`, `caddy` — so `docker compose` surfaces
+  oversubscription instead of silently overcommitting.
+
+Recommended baseline: **8 vCPU / 16 GB RAM / 80 GB SSD**. Scale RAM first if you
+raise any `mem_limit`.
+
 ## One-time server setup (#110)
 
-1. A Linux host with Docker + Compose v2. Open ports 80 and 443.
+1. A Linux host with Docker + Compose v2 (see [Host sizing](#host-sizing-758) —
+   **≥ 8 vCPU / 16 GB RAM** baseline). Open ports 80 and 443.
 2. Point the domain's DNS **A record** at the host (Caddy needs this to issue TLS).
 3. Clone the repo and check out `prod`:
    ```bash
@@ -339,19 +363,30 @@ of `postgres:16-alpine`. What that means operationally:
 ## Edge access logs (#527)
 
 `deploy/Caddyfile`'s `{$DOMAIN}` site block emits per-request access logs as JSON
-to **stdout** (`log { output stdout; format json }`). Caddy writes none by
-default; sending them to stdout lands them in the container's `json-file` log
-driver, which is already size-capped and rotated (`max-size: 10m`, `max-file: 3`)
-in `docker-compose.prod.yml`. Tail them with
+to **stdout**. Caddy writes none by default; sending them to stdout lands them in
+the container's `json-file` log driver, which is already size-capped and rotated
+(`max-size: 10m`, `max-file: 3`) in `docker-compose.prod.yml`. Tail them with
 `docker compose -f docker-compose.prod.yml logs -f caddy`.
+
+**Token redaction (#743).** The access log records the full request URI incl. its
+query string, and password-reset / email-verify / email-change links carry a
+live single-use token in `?token=…` — which would otherwise land in the log and
+be shipped to Loki (7d), harvestable for account takeover. The log now uses
+Caddy's `filter` encoder (`format filter { wrap json; request>uri query { replace
+token REDACTED } }`) to rewrite just that one query parameter to `REDACTED`,
+leaving every other field intact. The site block also caps request bodies
+(`request_body { max_size 25MB }`) and the global options set connection
+`timeouts` (`read_header` / `read_body` / `idle`), bounding slow-client attacks
+on the only public entry (`write` is left unset so it can't cut off chat SSE
+streaming).
 
 ## Edge intrusion prevention — CrowdSec (#670)
 
 CrowdSec adds a behavioural **ban** layer at the edge, above the gateway's Redis
 rate-limiter (which only *throttles*). The `crowdsec` container reads Caddy's
-#527 JSON access logs off the Docker socket, scores them with the `caddy` +
-`base-http-scenarios` collections, and hands ban decisions to a **CrowdSec
-bouncer plugin compiled into Caddy**. It is **prod-only** — Caddy (the edge)
+#527 JSON access logs off the Docker API **via the read-only `docker-socket-proxy`
+(#744)**, scores them with the `caddy` + `base-http-scenarios` collections, and
+hands ban decisions to a **CrowdSec bouncer plugin compiled into Caddy**. It is **prod-only** — Caddy (the edge)
 exists only in `docker-compose.prod.yml`; the dev stack has no edge and is
 untouched. See [OPERATIONS.md](OPERATIONS.md) → Edge intrusion prevention for
 day-to-day operation (`cscli`, unbanning, tuning).
@@ -386,7 +421,9 @@ day-to-day operation (`cscli`, unbanning, tuning).
 - **Isolation.** The LAPI is reachable only over a dedicated internal `crowdsec`
   docker network shared with Caddy (not `edge`, so the web app can't reach it);
   its `8080` host port is published **loopback-only** for `cscli`. CrowdSec
-  reaches the hub + the free community blocklist (CAPI) over `egress`.
+  reaches the hub + the free community blocklist (CAPI) over `egress`, and reads
+  Caddy's logs over the internal `dockerproxy` network to the read-only socket
+  proxy (#744) — it no longer bind-mounts the raw Docker socket.
 - **Deploy-validated, not local.** Behaviour (real bans on real abuse) can only
   be validated on the live edge with real traffic — there is no edge in dev/CI.
   What CI *does* prove is config validity: the custom Caddy image builds and
@@ -420,6 +457,18 @@ monorepo's `prod` branch so the mirrors reflect production.
   (see the CD pipeline); no action needed unless the job log says `ROLLBACK
   FAILED`, in which case the stack may be down — SSH in and recover manually
   (the two manual paths below).
+- **Pre-deploy DB snapshot (#745).** The DB services run `prisma migrate deploy`
+  on boot, so a rollout can forward-migrate the schema *before* the health gate
+  fails — and auto-rollback then runs the **old** images against the **new**
+  schema. To bound that, the deploy `pg_dump`s the 6 stateful DBs from the
+  running Postgres **just before** `compose up`, into
+  `backups/pre-deploy/<UTC>-<sha>/` on the host (newest 10 kept). If a rollback
+  crashes or corrupts data against a non-backward-compatible migration, restore
+  the matching snapshot with `scripts/restore-db.sh` as a **last resort**. The
+  real fix is to keep migrations **expand/contract** (backward-compatible) — see
+  the PR template checklist — so the previous image keeps working against the new
+  schema and rollback is a no-op for data. This snapshot is separate from the
+  nightly offsite backups (#389, [BACKUPS.md](BACKUPS.md)).
 - **Manual, fast** — set `IMAGE_TAG=<previous-sha>` in the host `.env` and
   `docker compose -f docker-compose.prod.yml up -d`. The previous deploy's
   images are still on disk (post-deploy pruning keeps the current and previous
@@ -430,9 +479,12 @@ monorepo's `prod` branch so the mirrors reflect production.
 ## Still required before a public launch
 
 - **#147 / #72** — verified email domain + `RESEND_API_KEY`.
-- **#113** — uptime monitoring. (**#34** error monitoring now ships: self-hosted
-  GlitchTip — set `SENTRY_DSN` to activate; see `docs/OPERATIONS.md` → Error
-  capture.) **#61 / #389** — DB backups: the
+- **#113** — **external** uptime monitoring (a blackbox probe from *outside* the
+  VPS). (**#746** in-VPS alerting now ships: Grafana unified alerting with a
+  webhook contact point + 6 rules — set `ALERT_WEBHOOK_URL`; see
+  `docs/OPERATIONS.md` → Alerting. **#34** error monitoring ships: self-hosted
+  GlitchTip — set `SENTRY_DSN` to activate; wire SMTP via `GLITCHTIP_EMAIL_URL`.)
+  **#61 / #389** — DB backups: the
   tooling + nightly automation ship in the repo; run
   `sudo ./scripts/install-backup-cron.sh` on the host once and fill in
   `.backup.env` (`docs/BACKUPS.md`).
