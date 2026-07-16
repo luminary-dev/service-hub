@@ -31,6 +31,10 @@ const { upsert, createMany, reviewFindUnique, reportFindFirst, reportCreate, rep
 vi.mock("../lib/search-index", () => ({
   pushRatingsToSearchIndex: vi.fn(() => Promise.resolve()),
 }));
+// Provider rating write-back (#748) is fired (not awaited) on the create path.
+vi.mock("../lib/provider-rating", () => ({
+  pushRatingToProvider: vi.fn(() => Promise.resolve()),
+}));
 vi.mock("../db", () => ({
   db: {
     // The write runs in an interactive transaction that first takes a
@@ -167,7 +171,7 @@ describe("POST /api/providers/:id/reviews — interaction gate (#25)", () => {
     wireS2s({ interaction: "fail-status" });
     const res = await postReview();
     expect(res.status).toBe(502);
-    expect(await res.json()).toEqual({ error: "Upstream service unavailable" });
+    expect(await res.json()).toEqual({ error: "Upstream service unavailable", code: "UPSTREAM_UNAVAILABLE" });
     expect(upsert).not.toHaveBeenCalled();
   });
 
@@ -175,7 +179,7 @@ describe("POST /api/providers/:id/reviews — interaction gate (#25)", () => {
     wireS2s({ interaction: "fail-throw" });
     const res = await postReview();
     expect(res.status).toBe(502);
-    expect(await res.json()).toEqual({ error: "Upstream service unavailable" });
+    expect(await res.json()).toEqual({ error: "Upstream service unavailable", code: "UPSTREAM_UNAVAILABLE" });
     expect(upsert).not.toHaveBeenCalled();
   });
 
@@ -239,7 +243,7 @@ describe("POST /api/providers/:id/reviews — verified-email gate (#115)", () =>
     wireS2s({ interaction: "exists", email: "fail-status" });
     const res = await postReview();
     expect(res.status).toBe(502);
-    expect(await res.json()).toEqual({ error: "Upstream service unavailable" });
+    expect(await res.json()).toEqual({ error: "Upstream service unavailable", code: "UPSTREAM_UNAVAILABLE" });
     expect(upsert).not.toHaveBeenCalled();
   });
 
@@ -247,7 +251,7 @@ describe("POST /api/providers/:id/reviews — verified-email gate (#115)", () =>
     wireS2s({ interaction: "exists", email: "fail-throw" });
     const res = await postReview();
     expect(res.status).toBe(502);
-    expect(await res.json()).toEqual({ error: "Upstream service unavailable" });
+    expect(await res.json()).toEqual({ error: "Upstream service unavailable", code: "UPSTREAM_UNAVAILABLE" });
     expect(upsert).not.toHaveBeenCalled();
   });
 

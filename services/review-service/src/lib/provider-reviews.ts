@@ -31,14 +31,20 @@ export type ReviewDTO = {
   deletedAt: Date | null;
   createdAt: Date;
   user: { name: string };
-  photos: { id: string; url: string; createdAt: Date }[];
+  // `deletedAt` (#756) is a moderation soft-delete on the photo, present only on
+  // the internal (admin) path — the public projection drops it, and public
+  // queries never fetch soft-deleted photos in the first place.
+  photos: { id: string; url: string; createdAt: Date; deletedAt: Date | null }[];
   // Provider's public reply (#395) — at most one per review, null when none.
   response: { text: string; createdAt: Date; updatedAt: Date } | null;
 };
 
 // PUBLIC-safe shape: only the fields the public review UI renders. `userId` and
-// `deletedAt` are deliberately absent — see toPublicReview.
-export type PublicReviewDTO = Omit<ReviewDTO, "userId" | "deletedAt">;
+// `deletedAt` (including the per-photo `deletedAt` moderation flag, #756) are
+// deliberately absent — see toPublicReview.
+export type PublicReviewDTO = Omit<ReviewDTO, "userId" | "deletedAt" | "photos"> & {
+  photos: { id: string; url: string; createdAt: Date }[];
+};
 
 // Project a review down to its PUBLIC shape (security audit L6). The internal
 // ReviewDTO carries `userId` and `deletedAt` for owner/admin paths that run
@@ -80,7 +86,15 @@ export async function listProviderReviews(
   // several reviews share a timestamp (seed data does).
   const rows = await db.review.findMany({
     where: { providerId, ...(opts.includeDeleted ? {} : { deletedAt: null }) },
-    include: { photos: { orderBy: { createdAt: "asc" } }, response: true },
+    include: {
+      // Public queries hide moderation-removed photos (#756); admin moderation
+      // views (includeDeleted) see them so a takedown can be reviewed/restored.
+      photos: {
+        where: opts.includeDeleted ? {} : { deletedAt: null },
+        orderBy: { createdAt: "asc" },
+      },
+      response: true,
+    },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: take + 1,
     ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
@@ -116,7 +130,12 @@ export async function listProviderReviews(
       deletedAt: r.deletedAt,
       createdAt: r.createdAt,
       user: { name: names.get(r.userId) ?? "Unknown" },
-      photos: r.photos.map((p) => ({ id: p.id, url: p.url, createdAt: p.createdAt })),
+      photos: r.photos.map((p) => ({
+        id: p.id,
+        url: p.url,
+        createdAt: p.createdAt,
+        deletedAt: p.deletedAt,
+      })),
       response: r.response
         ? {
             text: r.response.text,

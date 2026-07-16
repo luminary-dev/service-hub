@@ -3,6 +3,7 @@
 // hidden from their author too — the admin's removal stands until restored.
 import { Hono } from "hono";
 import { db } from "../db";
+import { jsonError } from "../lib/api-error";
 import { getAuth, s2s } from "../lib/http";
 
 const PROVIDER_SERVICE_URL =
@@ -15,16 +16,19 @@ export const account = new Hono();
 account.get("/api/account/reviews", async (c) => {
   const auth = getAuth(c);
   if (!auth) {
-    return c.json({ error: "Unauthorized" }, 401);
+    return jsonError(c, 401, "AUTH_REQUIRED", "Unauthorized");
   }
 
   // (createdAt desc, id desc) keeps the order stable when timestamps collide
-  // (seed data does).
+  // (seed data does). Moderation-removed photos (#756) are hidden from the
+  // author too — the admin's takedown stands until restored.
   const rows = await db.review.findMany({
     where: { userId: auth.userId, deletedAt: null },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: MAX_ACCOUNT_REVIEWS,
-    include: { photos: { orderBy: { createdAt: "asc" } } },
+    include: {
+      photos: { where: { deletedAt: null }, orderBy: { createdAt: "asc" } },
+    },
   });
 
   // One batch call hydrates every provider name; a provider-service outage

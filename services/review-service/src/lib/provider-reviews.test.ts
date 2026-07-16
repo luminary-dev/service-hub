@@ -42,7 +42,12 @@ describe("toPublicReview", () => {
     createdAt: new Date("2026-01-01T00:00:00Z"),
     user: { name: "Nimal" },
     photos: [
-      { id: "ph1", url: "reviews/ph1.jpg", createdAt: new Date("2026-01-01T00:00:00Z") },
+      {
+        id: "ph1",
+        url: "reviews/ph1.jpg",
+        createdAt: new Date("2026-01-01T00:00:00Z"),
+        deletedAt: null,
+      },
     ],
     response: {
       text: "Thank you!",

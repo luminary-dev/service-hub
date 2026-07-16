@@ -118,6 +118,12 @@ model ReviewPhoto {
   review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
   url       String
   createdAt DateTime @default(now())
+  // Moderation soft delete (#756): set by admin removal, cleared by restore —
+  // the row and the stored file survive so the takedown is reversible and the
+  // reports queue can still show what was removed. Public review queries filter
+  // it; the owner's own delete and account erasure stay hard deletes. Mirrors
+  // provider-service's WorkPhoto.deletedAt.
+  deletedAt DateTime?
 
   @@index([reviewId])
 }

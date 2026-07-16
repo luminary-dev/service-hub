@@ -86,6 +86,14 @@ echo "== Search service (index + browse parity) =="
 check "search reindex" "$(curl -sS -X POST "http://localhost:4008/internal/search/reindex" \
   -H "x-internal-secret: ${INTERNAL_API_SECRET:-dev-internal-secret}" | jq -r '.indexed >= 6')" "true"
 
+# The public browse (#748) filters/sorts/counts off the denormalized
+# Provider.ratingAvg/ratingCount columns; like the search index they start at 0
+# and are reconciled from review-service's aggregates — the same one-shot
+# backfill the deploy runs after the rating-column migration. Run it before the
+# parity checks so browse ratings match the search index.
+check "provider rating backfill" "$(curl -sS -X POST "http://localhost:4002/internal/providers/rating/backfill" \
+  -H "x-internal-secret: ${INTERNAL_API_SECRET:-dev-internal-secret}" | jq -r '.ok')" "true"
+
 # Shadow-compare /api/search/providers against /api/providers (search RFC
 # phase 2 parity): same filters must select the same providers. Ordered
 # comparison only where the sort is fully deterministic on the seed data
