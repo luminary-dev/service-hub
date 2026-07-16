@@ -65,6 +65,13 @@ model ProviderIndex {
   createdAt DateTime
   updatedAt DateTime
 
+  // Reindex sweep generation (#752): each sweep run stamps every row it upserts
+  // with its own unique id, then prunes only rows it did NOT touch (a different
+  // or absent sweepId) that also predate the sweep (updatedAt < sweepStartedAt).
+  // A provider registered mid-sweep carries a fresh updatedAt and survives, and
+  // the prune no longer depends on an unbounded NOT IN (…) of every seen id.
+  sweepId String?
+
   // GENERATED columns (see the 0_init migration): the PostGIS point for
   // ST_DWithin/KNN and the per-language tsvectors. Unsupported = excluded from
   // every Prisma read/write; the query plane reaches them via raw SQL.
@@ -78,4 +85,21 @@ model ProviderIndex {
   @@index([serviceDistricts(ops: ArrayOps)], type: Gin)
   @@index([createdAt])
   @@index([ratingAvg])
+  // Backs the sweep-generation prune (#752).
+  @@index([sweepId])
+}
+
+// Delete tombstone (#752): the DELETE handler records when a provider left the
+// index so upsertDocument's create branch can refuse a stale full-document push
+// (built before the delete, delivered after it — provider-service pushes are
+// fire-and-forget with retry) from resurrecting an erased/suspended provider.
+// A genuinely newer document (re-activation, updatedAt > deletedAt) supersedes
+// the tombstone and clears it; the daily reindex sweep purges tombstones once
+// they predate the sweep, by which point the sweep itself has removed any row a
+// stale push may have resurrected.
+model ProviderTombstone {
+  providerId String   @id
+  deletedAt  DateTime @default(now())
+
+  @@index([deletedAt])
 }

@@ -108,7 +108,7 @@ npm run test:watch                               # watch mode
 
 ## Database & migrations
 
-- Prisma migrations are **hand-written** (not generated); the 4 DB services auto-apply them on start via `start:migrate` (`prisma migrate deploy`).
+- Prisma migrations are **hand-written** (not generated); the 7 DB services (identity, provider, review, job, notification, search, trust-safety) auto-apply them on start via `start:migrate` (`prisma migrate deploy`).
 - **Never edit a migration that has already been applied** — add a new one. Prisma rejects checksum drift and the service won't boot.
 - Make DDL idempotent-safe where possible (`DROP … IF EXISTS`, guarded `CREATE`).
 

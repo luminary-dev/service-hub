@@ -10,11 +10,24 @@ import {
 import { config, proxy } from "./proxy";
 
 const ORIGINAL_GATEWAY_URL = process.env.GATEWAY_URL;
+const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
 
 afterEach(() => {
   if (ORIGINAL_GATEWAY_URL === undefined) delete process.env.GATEWAY_URL;
   else process.env.GATEWAY_URL = ORIGINAL_GATEWAY_URL;
+  // NODE_ENV is read-only in the Next types but writable at runtime; some tests
+  // flip it to "production" to exercise the hardened CSP.
+  (process.env as { NODE_ENV?: string }).NODE_ENV = ORIGINAL_NODE_ENV;
 });
+
+// Extract the script-src directive from a Content-Security-Policy header value.
+function scriptSrc(csp: string | null): string {
+  const directive = (csp ?? "")
+    .split(";")
+    .map((d) => d.trim())
+    .find((d) => d.startsWith("script-src"));
+  return directive ?? "";
+}
 
 describe("proxy", () => {
   it("rewrites /api/* to GATEWAY_URL read at request time", () => {
@@ -159,6 +172,67 @@ describe("proxy", () => {
       expect(getRewrittenUrl(response)).toBe(
         "http://localhost:3000/providers/123",
       );
+    });
+  });
+
+  describe("CSP nonce (#770)", () => {
+    it("emits a nonce + strict-dynamic CSP without 'unsafe-inline' in production", () => {
+      (process.env as { NODE_ENV?: string }).NODE_ENV = "production";
+      const response = proxy(new NextRequest("http://localhost:3000/providers"));
+      const csp = response.headers.get("content-security-policy");
+      expect(csp).toBeTruthy();
+      const directive = scriptSrc(csp);
+      expect(directive).toMatch(/'nonce-[A-Za-z0-9+/=]+'/);
+      expect(directive).toContain("'strict-dynamic'");
+      expect(directive).not.toContain("'unsafe-inline'");
+      expect(directive).not.toContain("'unsafe-eval'");
+    });
+
+    it("forwards the nonce to the app as the x-nonce request header", () => {
+      (process.env as { NODE_ENV?: string }).NODE_ENV = "production";
+      const response = proxy(new NextRequest("http://localhost:3000/providers"));
+      const nonce = response.headers.get("x-middleware-request-x-nonce");
+      expect(nonce).toMatch(/^[A-Za-z0-9+/=]+$/);
+      // The same nonce must appear in the emitted CSP so Next stamps matching
+      // scripts.
+      expect(scriptSrc(response.headers.get("content-security-policy"))).toContain(
+        `'nonce-${nonce}'`,
+      );
+    });
+
+    it("generates a fresh nonce per request", () => {
+      (process.env as { NODE_ENV?: string }).NODE_ENV = "production";
+      const first = proxy(new NextRequest("http://localhost:3000/providers"));
+      const second = proxy(new NextRequest("http://localhost:3000/providers"));
+      expect(first.headers.get("x-middleware-request-x-nonce")).not.toBe(
+        second.headers.get("x-middleware-request-x-nonce"),
+      );
+    });
+
+    it("sets the CSP on /si page routes too", () => {
+      (process.env as { NODE_ENV?: string }).NODE_ENV = "production";
+      const response = proxy(
+        new NextRequest("http://localhost:3000/si/providers"),
+      );
+      expect(scriptSrc(response.headers.get("content-security-policy"))).toContain(
+        "'strict-dynamic'",
+      );
+    });
+
+    it("keeps 'unsafe-inline' + 'unsafe-eval' in development for HMR", () => {
+      (process.env as { NODE_ENV?: string }).NODE_ENV = "development";
+      const response = proxy(new NextRequest("http://localhost:3000/providers"));
+      const directive = scriptSrc(response.headers.get("content-security-policy"));
+      expect(directive).toContain("'unsafe-inline'");
+      expect(directive).toContain("'unsafe-eval'");
+      expect(directive).not.toContain("'strict-dynamic'");
+    });
+
+    it("does not attach a CSP to the /api proxy branch", () => {
+      const response = proxy(
+        new NextRequest("http://localhost:3000/api/providers"),
+      );
+      expect(response.headers.get("content-security-policy")).toBeNull();
     });
   });
 });

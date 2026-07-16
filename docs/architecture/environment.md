@@ -7,7 +7,7 @@
 | `DATABASE_URL` | identity, provider, review, job, notification, search, trust-safety — the **runtime** connection (read by the `PrismaPg` adapter in `src/db.ts`). In Docker this points at the **PgBouncer** transaction pooler (`pgbouncer:6432/<db>?pgbouncer=true`, #674); host `dev:all`/CI point it straight at Postgres |
 | `DIRECT_URL` | same seven DB services (#674) — a **direct**-to-Postgres connection (`postgres:5432/<db>`) used only by the Prisma **CLI** (`prisma migrate deploy`, via `prisma.config.ts` → `DIRECT_URL ?? DATABASE_URL`), because a transaction pooler can't carry migrate's advisory locks/prepared statements. Set in Docker; unset (falls back to `DATABASE_URL`) with no pooler |
 | `AUTH_SECRET` | identity (sign), gateway + web (verify) |
-| `INTERNAL_API_SECRET` | all services + gateway + web (web calls chat-service and identity directly) |
+| `INTERNAL_API_SECRET` | all services + gateway + web (web calls chat-service and identity directly). Like every service and the gateway, the web runtime **fail-fasts in production** if unset (`src/lib/internal-secret.ts`) — it refuses to boot rather than fall back to the public `dev-internal-secret` constant; dev/test still falls back |
 | `REDIS_URL` | gateway (distributed rate-limit window; unset → per-instance in-memory fallback — see [RATE_LIMITING.md](../RATE_LIMITING.md)) + identity (session-revocation publish, #374) + notification (email delivery queue; unset → degraded one-attempt direct sends). In prod the URL carries the Redis password (`redis://default:${REDIS_PASSWORD}@redis:6379`, #387) |
 | `TRUSTED_PROXY_HOPS` | gateway (trusted reverse-proxy hop count for rate-limit client-IP resolution, #201; default `2` in prod, `0` disables `X-Forwarded-For` trust — see [RATE_LIMITING.md](../RATE_LIMITING.md)) |
 | `IDENTITY_SERVICE_URL` | gateway + provider + review + job (S2S peer) **and web** (`src/lib/session-version.ts` page-gating revocation check — reaches identity directly with the internal secret; fails open if unset) |
@@ -16,6 +16,7 @@
 | `TRUST_SAFETY_SERVICE_URL` | gateway (wired but **dark** — no routes resolve to it until the trust & safety cutover, see [the RFC](../rfcs/trust-safety-service.md)) |
 | `CHAT_SERVICE_URL` | web (proxies `/agent/chat` → `${CHAT_SERVICE_URL}/internal/chat/marketplace/stream`) |
 | `RESEND_API_KEY`, `EMAIL_FROM` | notification (console fallback when `RESEND_API_KEY` unset) |
+| `SMTP_URL` | notification (dev SMTP transport → Mailpit, #673; read in `src/lib/email.ts`). Set → mail is sent over SMTP (e.g. `smtp://localhost:1025`) instead of Resend; unset → falls back to `RESEND_API_KEY`, then to logging the message to the console. Production leaves it unset and keeps using Resend |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | identity (Google social login, #398; both unset → "Continue with Google" disabled, password auth unaffected) |
 | `FACEBOOK_CLIENT_ID`, `FACEBOOK_CLIENT_SECRET` | identity (Facebook social login, #398; both unset → "Continue with Facebook" disabled, password auth unaffected) |
 | `TURNSTILE_SECRET_KEY` | identity (registration bot protection, #633; server-side Cloudflare siteverify — unset → verification skipped, registration behaves as before) |
@@ -23,6 +24,8 @@
 | `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | media (uploads → Cloudflare R2; all four unset → local disk under `$MEDIA_DIR`) |
 | `MEDIA_DIR` | media (local upload root, default `./data`; per-namespace subdirs; compose sets `/app/data`) |
 | `ANTHROPIC_API_KEY` | **chat-service** (LLM assistant; unset → chat-service returns 503 and the widget degrades). NOT on the web app — the key is isolated from the web runtime. |
+| `SENTRY_DSN` | every backend service + gateway (error capture → self-hosted GlitchTip, #34; read in each service's `src/lib/errors.ts`). **Activation switch and OPTIONAL**: unset (the default in dev/CI) → `errors.ts` is a no-op (no SDK init, no network) and behavior is unchanged. In prod, set to the DSN a GlitchTip project issues (e.g. `http://<publicKey>@glitchtip-web:8000/<projectId>`). See [OPERATIONS.md](../OPERATIONS.md) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | every backend service + gateway (distributed tracing, #668; read in each service's `src/tracing.ts`). **OPTIONAL, OFF by default**: unset → `tracing.js` is a no-op. Set → the service exports OTLP spans to the collector at this endpoint (e.g. `http://otel-collector:4318`; prod sets it in compose, dev via the `tracing` profile). Paired with `NODE_OPTIONS`/`OTEL_NODE_OPTIONS` (`--require ./dist/tracing.js`) to load the bootstrap, and `OTEL_TRACES_SAMPLER_ARG` for the sample rate. See [OPERATIONS.md](../OPERATIONS.md) |
 | `WEB_ORIGIN` | gateway (authoritative `x-origin`), prod compose (email links + CSRF) |
 | `GATEWAY_URL` | web (runtime `/api/*` proxy target in `src/proxy.ts` + `src/lib/api.ts` server fetches + `sitemap.ts`; read per request, never baked into the build), chat-service (its tools call the gateway) |
 | `NEXT_PUBLIC_SITE_URL` | web (sitemap/robots/OG canonical origin, optional) |

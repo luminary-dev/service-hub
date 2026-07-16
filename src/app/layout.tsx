@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import {
   IBM_Plex_Sans,
   IBM_Plex_Mono,
@@ -92,12 +93,20 @@ export default async function RootLayout({
   // the assistant renders exactly as it does today; an operator can dark-launch
   // it off from the Unleash admin UI without a redeploy. Evaluated in parallel
   // with the other server reads so it adds no serial latency.
-  const [locale, theme, session, assistantFlag] = await Promise.all([
-    getLocale(),
-    getTheme(),
-    getSession(),
-    isFlagEnabled("chat-assistant", true),
-  ]);
+  const [locale, theme, session, assistantFlag, requestHeaders] =
+    await Promise.all([
+      getLocale(),
+      getTheme(),
+      getSession(),
+      isFlagEnabled("chat-assistant", true),
+      headers(),
+    ]);
+  // Per-request CSP nonce set by src/proxy.ts (#770). Next stamps it onto its
+  // own framework/hydration scripts automatically, but a manual
+  // dangerouslySetInnerHTML <script> does not get one — so pass it explicitly,
+  // or 'strict-dynamic' would block THEME_SCRIPT in production (theme flash +
+  // console error). Undefined in dev, where the CSP allows 'unsafe-inline'.
+  const nonce = requestHeaders.get("x-nonce") ?? undefined;
   const t = dict[locale];
   const impersonating = Boolean(session?.impersonatedBy);
   // The chat assistant is a customer-facing concierge (#11) — it only helps
@@ -120,6 +129,7 @@ export default async function RootLayout({
             for an extension src) before React hydrates, which would otherwise
             log a spurious mismatch here. */}
         <script
+          nonce={nonce}
           suppressHydrationWarning
           dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }}
         />

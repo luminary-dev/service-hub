@@ -2,14 +2,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { dict } from "@/lib/i18n";
+import { ToastProvider } from "./ToastProvider";
 import InquiryForm from "./InquiryForm";
+
+// The session guard (#774) reads useRouter/usePathname.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+  usePathname: () => "/providers/prov_1",
+}));
 
 const t = dict.en.inquiry;
 const fetchMock = vi.fn();
 
 function renderForm() {
   return render(
-    <InquiryForm providerId="prov_1" providerName="Sunil Perera" defaultName="Kasun" />
+    <ToastProvider>
+      <InquiryForm
+        providerId="prov_1"
+        providerName="Sunil Perera"
+        defaultName="Kasun"
+      />
+    </ToastProvider>
   );
 }
 
@@ -124,14 +137,14 @@ describe("InquiryForm", () => {
   it("surfaces the server error via role=alert and keeps the form mounted", async () => {
     fetchMock.mockResolvedValue({
       ok: false,
-      json: async () => ({ error: "Phone number looks invalid" }),
+      json: async () => ({ errorCode: "validation_error" }),
     });
     const { container } = renderForm();
     fillRequired();
     submit(container);
 
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("Phone number looks invalid");
+    expect(alert.textContent).toContain(dict.en.errorCodes.validation_error);
     expect(screen.getByRole("button", { name: t.send })).toBeTruthy();
   });
 
@@ -165,12 +178,14 @@ describe("InquiryForm", () => {
   // verify prompt and cannot submit into a backend 403.
   it("shows the verify-email prompt and disables submit when emailUnverified", () => {
     render(
-      <InquiryForm
-        providerId="prov_1"
-        providerName="Sunil Perera"
-        defaultName="Kasun"
-        emailUnverified
-      />
+      <ToastProvider>
+        <InquiryForm
+          providerId="prov_1"
+          providerName="Sunil Perera"
+          defaultName="Kasun"
+          emailUnverified
+        />
+      </ToastProvider>
     );
     expect(screen.getByText(dict.en.verify.inquiryPrompt)).toBeTruthy();
     expect(

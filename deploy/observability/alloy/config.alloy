@@ -5,13 +5,23 @@
 // Why Alloy (not Promtail): Promtail reached end-of-life in early 2026 and is
 // no longer maintained; Alloy is Grafana's supported successor and ships logs
 // to Loki with the same model. It discovers every running container via the
-// Docker daemon socket (mounted read-only), tails stdout/stderr, parses the one
-// JSON line per event the services emit (see each service's src/lib/logging.ts:
+// Docker API, tails stdout/stderr, parses the one JSON line per event the
+// services emit (see each service's src/lib/logging.ts:
 // { level, time, service, msg, requestId, ... }), and pushes to Loki.
+//
+// Socket access (#744): Alloy reaches the Docker API through the read-only
+// filtering docker-socket-proxy (tecnativa/docker-socket-proxy) on the isolated
+// `dockerproxy` network, NOT the raw /var/run/docker.sock. A read-only bind of
+// the socket does NOT restrict the API (connect() is exempt from the RO inode
+// check), so a compromised Alloy could otherwise drive the full write API —
+// root-equivalent on the host. The proxy allows only the GET endpoints Alloy
+// needs (containers/events/logs) and blocks every write (POST=0). The endpoint
+// is inlined into each component's `host` (River has no bare top-level
+// attributes); override with the ALLOY_DOCKER_HOST env var if needed.
 
-// Discover running Docker containers from the daemon socket.
+// Discover running Docker containers via the filtered Docker API.
 discovery.docker "containers" {
-	host = "unix:///var/run/docker.sock"
+	host = coalesce(sys.env("ALLOY_DOCKER_HOST"), "tcp://docker-socket-proxy:2375")
 }
 
 // Derive stable labels from Docker metadata: the container name and the compose
@@ -34,7 +44,7 @@ discovery.relabel "containers" {
 
 // Tail the discovered containers' logs and forward to the JSON-parsing pipeline.
 loki.source.docker "containers" {
-	host          = "unix:///var/run/docker.sock"
+	host          = coalesce(sys.env("ALLOY_DOCKER_HOST"), "tcp://docker-socket-proxy:2375")
 	targets       = discovery.relabel.containers.output
 	forward_to    = [loki.process.parse.receiver]
 	relabel_rules = discovery.relabel.containers.rules

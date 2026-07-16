@@ -1,8 +1,9 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
-import { FaBell, FaIdCard, FaInbox, FaMagnifyingGlass, FaRegHeart, FaRegStar, type IconType } from "@/components/icons";
-import { apiJson } from "@/lib/api";
+import { FaBell, FaIdCard, FaInbox, FaMagnifyingGlass, FaRegHeart, FaRegStar, FaTriangleExclamation, type IconType } from "@/components/icons";
+import { apiJsonSafe, apiResult } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { loginNext } from "@/lib/login";
@@ -25,6 +26,11 @@ import type { NotificationPreferenceDTO } from "@/lib/notifications";
 // Caching (#57): session-gated and must reflect the user's own writes
 // immediately — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return { title: dict[locale].titles.account };
+}
 
 type AccountInquiry = {
   id: string;
@@ -96,20 +102,25 @@ export default async function AccountPage() {
   const [session, locale] = await Promise.all([getSession(), getLocale()]);
   if (!session) redirect(await loginNext("/account"));
 
-  const [favorites, savedSearchData, notifPrefData, inquiriesData, reviewsData, meData] =
+  // Discriminated results (#747) for the three user-owned lists so a backend
+  // 5xx renders an explicit "temporarily unavailable" panel instead of a
+  // false-empty state ("no saved professionals" / "no inquiries"). The details
+  // (me), saved searches and notification prefs stay best-effort — they simply
+  // hide/degrade on a blip rather than block the whole account page.
+  const [favRes, savedSearchData, notifPrefData, inquiriesRes, reviewsRes, meData] =
     await Promise.all([
-      apiJson<{ providerIds: string[] }>("/api/favorites"),
+      apiResult<{ providerIds: string[] }>("/api/favorites"),
       // Saved searches (#516) are customer-only; other roles get a 403.
       session.role === "CUSTOMER"
-        ? apiJson<{ savedSearches: SavedSearchDTO[] }>("/api/saved-searches")
+        ? apiJsonSafe<{ savedSearches: SavedSearchDTO[] }>("/api/saved-searches")
         : null,
       // Notification preferences (#394) — the full catalog × channel matrix.
-      apiJson<{ preferences: NotificationPreferenceDTO[] }>(
+      apiJsonSafe<{ preferences: NotificationPreferenceDTO[] }>(
         "/api/notification-preferences"
       ),
-      apiJson<{ inquiries: AccountInquiry[] }>("/api/account/inquiries"),
-      apiJson<{ reviews: AccountReview[] }>("/api/account/reviews"),
-      apiJson<{
+      apiResult<{ inquiries: AccountInquiry[] }>("/api/account/inquiries"),
+      apiResult<{ reviews: AccountReview[] }>("/api/account/reviews"),
+      apiJsonSafe<{
         user: {
           name: string;
           email: string;
@@ -121,24 +132,30 @@ export default async function AccountPage() {
       }>("/api/auth/me"),
     ]);
   const t = dict[locale];
+  const terr = dict[locale].errors;
   const me = meData?.user ?? null;
 
   // Saved ids come newest-first from identity-service; the card lookup
   // excludes suspended profiles, and we keep the favorites order.
-  const ids = favorites?.providerIds ?? [];
+  const ids = favRes.ok ? favRes.data.providerIds : [];
+  let savedUnavailable = !favRes.ok;
   let results: ProviderCardDTO[] = [];
   if (ids.length > 0) {
-    const listing = await apiJson<{ providers: ProviderCardDTO[] }>(
+    const listingRes = await apiResult<{ providers: ProviderCardDTO[] }>(
       `/api/providers?ids=${ids.map(encodeURIComponent).join(",")}`
     );
-    const order = new Map(ids.map((id, i) => [id, i]));
-    results = (listing?.providers ?? [])
-      .slice()
-      .sort(
-        (a, b) =>
-          (order.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
-          (order.get(b.id) ?? Number.MAX_SAFE_INTEGER)
-      );
+    if (!listingRes.ok) {
+      savedUnavailable = true;
+    } else {
+      const order = new Map(ids.map((id, i) => [id, i]));
+      results = listingRes.data.providers
+        .slice()
+        .sort(
+          (a, b) =>
+            (order.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+            (order.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+        );
+    }
   }
 
   // Saved searches (#516): pre-localize the re-run URL and a filter summary so
@@ -164,8 +181,10 @@ export default async function AccountPage() {
     };
   });
 
-  const inquiries = inquiriesData?.inquiries ?? [];
-  const reviews = reviewsData?.reviews ?? [];
+  const inquiriesUnavailable = !inquiriesRes.ok;
+  const reviewsUnavailable = !reviewsRes.ok;
+  const inquiries = inquiriesRes.ok ? inquiriesRes.data.inquiries : [];
+  const reviews = reviewsRes.ok ? reviewsRes.data.reviews : [];
   const statusLabel: Record<string, string> = {
     NEW: t.account.statusNew,
     RESPONDED: t.account.statusResponded,
@@ -254,7 +273,14 @@ export default async function AccountPage() {
             "Saved" entry (/account#saved). */}
         <section id="saved" className="scroll-mt-24">
           <SectionHeading code="SAV" icon={FaRegHeart} title={t.account.savedTitle} />
-          {results.length === 0 ? (
+          {savedUnavailable ? (
+            <EmptyState
+              className="mt-6"
+              icon={FaTriangleExclamation}
+              title={terr.unavailableTitle}
+              body={terr.unavailableBody}
+            />
+          ) : results.length === 0 ? (
             <EmptyState
               className="mt-6"
               icon={FaRegHeart}
@@ -326,7 +352,14 @@ export default async function AccountPage() {
               icon={FaInbox}
               title={t.account.inquiriesTitle}
             />
-            {inquiries.length === 0 ? (
+            {inquiriesUnavailable ? (
+              <EmptyState
+                className="mt-6"
+                icon={FaTriangleExclamation}
+                title={terr.unavailableTitle}
+                body={terr.unavailableBody}
+              />
+            ) : inquiries.length === 0 ? (
               <EmptyState
                 className="mt-6"
                 icon={FaInbox}
@@ -402,7 +435,14 @@ export default async function AccountPage() {
               icon={FaRegStar}
               title={t.account.reviewsTitle}
             />
-            {reviews.length === 0 ? (
+            {reviewsUnavailable ? (
+              <EmptyState
+                className="mt-6"
+                icon={FaTriangleExclamation}
+                title={terr.unavailableTitle}
+                body={terr.unavailableBody}
+              />
+            ) : reviews.length === 0 ? (
               <EmptyState
                 className="mt-6"
                 icon={FaRegStar}

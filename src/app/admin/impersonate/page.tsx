@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
@@ -6,6 +7,11 @@ import ImpersonateForm from "@/components/admin/ImpersonateForm";
 
 // Caching (#57): admin-only, session-gated — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return { title: dict[locale].titles.adminImpersonate };
+}
 
 // Standalone "view as" entry point (#234). This is a stopgap: once #220
 // (admin user management, "View as" trigger point) merges, this should

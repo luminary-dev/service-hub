@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { FaLocationDot } from "@/components/icons";
-import { apiJson } from "@/lib/api";
+import { apiJson, apiJsonSafe } from "@/lib/api";
 import { isSvg } from "@/lib/image";
 import { getSession, type SessionPayload } from "@/lib/auth";
 import { formatDate, formatLKR } from "@/lib/format";
@@ -171,9 +171,11 @@ type ReviewSummary = {
 
 function fetchReviewSummary(id: string, session: SessionPayload | null) {
   const path = `/api/providers/${encodeURIComponent(id)}/reviews?take=1`;
+  // Best-effort (#747): a review-service blip must not error the whole profile —
+  // the breakdown just hides, and the header falls back to the first-page avg.
   return session
-    ? apiJson<{ summary: ReviewSummary }>(path)
-    : apiJson<{ summary: ReviewSummary }>(path, { revalidate: 60 });
+    ? apiJsonSafe<{ summary: ReviewSummary }>(path)
+    : apiJsonSafe<{ summary: ReviewSummary }>(path, { revalidate: 60 });
 }
 
 export async function generateMetadata({
@@ -250,7 +252,7 @@ export default async function ProviderProfilePage({
   const canFavorite = !!session && !isOwner;
   let favorited = false;
   if (canFavorite) {
-    const favorites = await apiJson<{ providerIds: string[] }>(
+    const favorites = await apiJsonSafe<{ providerIds: string[] }>(
       "/api/favorites"
     );
     favorited = favorites?.providerIds.includes(provider.id) ?? false;
@@ -264,9 +266,9 @@ export default async function ProviderProfilePage({
   // stays authoritative either way.
   let emailUnverified = false;
   if (session && !isOwner) {
-    const me = await apiJson<{ user: { emailVerified: string | null } | null }>(
-      "/api/auth/me"
-    );
+    const me = await apiJsonSafe<{
+      user: { emailVerified: string | null } | null;
+    }>("/api/auth/me");
     emailUnverified = me?.user ? me.user.emailVerified == null : false;
   }
 

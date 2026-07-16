@@ -33,15 +33,50 @@
 		# through instead of blocking it. A CrowdSec problem must NEVER take the
 		# site down. DO NOT add `enable_hard_fails` here.
 	}
+
+	# Connection timeouts (#743): with none set Caddy waits indefinitely for a
+	# client to finish sending headers/body, so a Slowloris-style client can pin
+	# every connection on the only public entry. These bound the wait. `write` is
+	# deliberately left UNSET (defaults to no limit) — the chat agent streams
+	# server-sent events through Caddy → web → chat-service and a write deadline
+	# would cut long LLM responses off mid-stream. `idle` only governs
+	# keep-alives between requests, never an in-flight stream, so it's safe.
+	servers {
+		timeouts {
+			read_header 15s
+			read_body 60s
+			idle 5m
+		}
+	}
 }
 
 {$DOMAIN} {
 	# Per-request access logs (#527): Caddy emits none by default. Write them as
 	# JSON to stdout so they land in the container's json-file log driver, which
 	# is already size-capped + rotated in docker-compose.prod.yml.
+	#
+	# Token redaction (#743): password-reset / email-verify / email-change links
+	# carry a live, single-use account-takeover token in `?token=…`, and the JSON
+	# access log records the full request URI including its query string — so the
+	# raw token would land in the json-file log and be shipped to Loki (7d
+	# retention), harvestable by anyone with Grafana/host access. The `filter`
+	# encoder wraps `json` and rewrites just that one query parameter to
+	# REDACTED, leaving every other field intact.
 	log {
 		output stdout
-		format json
+		format filter {
+			wrap json
+			request>uri query {
+				replace token REDACTED
+			}
+		}
+	}
+	# Cap request body size (#743): bound how many bytes any client can push
+	# through the only public entry so an oversized body can't exhaust memory
+	# upstream. 25MB comfortably covers media-service's 5MB image uploads
+	# (multipart overhead + a few files per request) while rejecting abuse.
+	request_body {
+		max_size 25MB
 	}
 	encode zstd gzip
 	# HSTS: force HTTPS for two years on this host + subdomains. `preload` makes

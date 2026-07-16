@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
@@ -17,7 +18,7 @@ import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
 import NotificationBadge from "@/components/admin/NotificationBadge";
 import type { NotificationQueue } from "@/lib/adminNotifications";
-import { apiJson } from "@/lib/api";
+import { apiJsonSafe } from "@/lib/api";
 import { formatNumber } from "@/lib/format";
 import PageHeader from "@/components/ui/PageHeader";
 import StatReadout from "@/components/ui/StatReadout";
@@ -31,6 +32,11 @@ import type {
 // Caching (#57): admin-only moderation view; edits must be visible on the
 // next request — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return { title: dict[locale].titles.adminOverview };
+}
 
 type Card = {
   href: string;
@@ -75,10 +81,12 @@ export default async function AdminHomePage() {
   const [locale, providerStats, reviewStats, jobReportStats, signupStats] =
     await Promise.all([
       getLocale(),
-      apiJson<ProviderStats>("/api/admin/stats"),
-      apiJson<ReviewStats>("/api/admin/review-stats"),
-      apiJson<ReviewStats>("/api/admin/job-reports/count"),
-      apiJson<SignupStats>("/api/admin/signups"),
+      // Best-effort dashboard tiles (#747): a single stats source blip
+      // degrades that tile to zero rather than erroring the whole overview.
+      apiJsonSafe<ProviderStats>("/api/admin/stats"),
+      apiJsonSafe<ReviewStats>("/api/admin/review-stats"),
+      apiJsonSafe<ReviewStats>("/api/admin/job-reports/count"),
+      apiJsonSafe<SignupStats>("/api/admin/signups"),
     ]);
   const t = dict[locale].admin;
 

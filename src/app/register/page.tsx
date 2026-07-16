@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { FaHouse, FaScrewdriverWrench } from "@/components/icons";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
@@ -7,7 +8,10 @@ import { dict } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
 import { localizedHref } from "@/lib/links";
 
-export const metadata = { title: "Join Baas.lk" };
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return { title: dict[locale].titles.register };
+}
 
 export default async function RegisterChoicePage() {
   const locale = await getLocale();

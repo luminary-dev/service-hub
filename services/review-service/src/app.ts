@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { db } from "./db";
+import { jsonError } from "./lib/api-error";
 import { requireInternalSecret } from "./lib/http";
 import { captureException } from "./lib/errors";
 import { log } from "./lib/log";
@@ -30,20 +31,24 @@ app.get("/healthz", async (c) => {
     return c.json({ ok: false, service: "review-service", db: "down" }, 503);
   }
 });
-app.get("/metrics", metricsHandler);
 app.use("*", requireInternalSecret);
+// /metrics is behind the internal secret (#742): the Prometheus scrape must
+// send the x-internal-secret header. The service port is never exposed
+// publicly, so this stays internal-only either way.
+app.get("/metrics", metricsHandler);
 
 app.route("/", reviews);
 app.route("/", reports);
 app.route("/", account);
 app.route("/internal", internal);
 
-// Fallbacks mirror the monolith's Next.js behavior.
-app.notFound((c) => c.json({ error: "Not found" }, 404));
+// Fallbacks mirror the monolith's Next.js behavior. Carry a stable `code` too
+// (#761) so the web client can localize even these generic errors.
+app.notFound((c) => jsonError(c, 404, "NOT_FOUND", "Not found"));
 app.onError((err, c) => {
   const requestId = getRequestId(c);
   log.error("unhandled error", { requestId, err });
   // Report to the error backend (no-op if SENTRY_DSN unset).
   captureException(err, { requestId, path: c.req.path, method: c.req.method });
-  return c.json({ error: "Internal server error" }, 500);
+  return jsonError(c, 500, "INTERNAL", "Internal server error");
 });

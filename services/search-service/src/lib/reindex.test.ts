@@ -4,7 +4,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { dbMock, clientsMock, documentsMock } = vi.hoisted(() => ({
-  dbMock: { providerIndex: { deleteMany: vi.fn() } },
+  dbMock: {
+    providerIndex: { deleteMany: vi.fn() },
+    providerTombstone: { deleteMany: vi.fn() },
+  },
   clientsMock: { fetchExportPage: vi.fn(), fetchRatings: vi.fn() },
   documentsMock: {
     upsertDocument: vi.fn(async () => {}),
@@ -47,10 +50,11 @@ const doc = {
 beforeEach(() => {
   vi.clearAllMocks();
   dbMock.providerIndex.deleteMany.mockResolvedValue({ count: 0 });
+  dbMock.providerTombstone.deleteMany.mockResolvedValue({ count: 0 });
 });
 
 describe("runReindex", () => {
-  it("walks all pages, patches ratings and prunes rows absent from the export", async () => {
+  it("walks all pages, patches ratings and prunes by sweep generation", async () => {
     clientsMock.fetchExportPage
       .mockResolvedValueOnce({
         providers: [{ id: "p1", ...doc }],
@@ -64,10 +68,16 @@ describe("runReindex", () => {
       p1: { rating: 4.5, count: 2 },
     });
     dbMock.providerIndex.deleteMany.mockResolvedValue({ count: 3 });
+    dbMock.providerTombstone.deleteMany.mockResolvedValue({ count: 1 });
 
     const result = await runReindex();
-    expect(result).toEqual({ indexed: 2, skipped: 0, deleted: 3 });
+    expect(result).toEqual({ indexed: 2, skipped: 0, deleted: 3, purged: 1 });
     expect(documentsMock.upsertDocument).toHaveBeenCalledTimes(2);
+    // Every upsert is stamped with the same sweepId (a uuid string).
+    const sweepId = (documentsMock.upsertDocument.mock.calls[0] as unknown[])[2] as string;
+    expect(typeof sweepId).toBe("string");
+    expect(documentsMock.upsertDocument).toHaveBeenCalledWith("p1", expect.anything(), sweepId);
+    expect(documentsMock.upsertDocument).toHaveBeenCalledWith("p2", expect.anything(), sweepId);
     // p1 has reviews; p2 is genuinely unreviewed → null/0.
     expect(documentsMock.patchRatings).toHaveBeenCalledWith({
       providerId: "p1",
@@ -79,8 +89,17 @@ describe("runReindex", () => {
       ratingAvg: null,
       ratingCount: 0,
     });
+    // Prune targets rows this sweep did not stamp that also predate it — never
+    // an unbounded notIn(seen). Mid-sweep registrations (fresh updatedAt) survive.
     expect(dbMock.providerIndex.deleteMany).toHaveBeenCalledWith({
-      where: { providerId: { notIn: ["p1", "p2"] } },
+      where: {
+        updatedAt: { lt: expect.any(Date) },
+        OR: [{ sweepId: { not: sweepId } }, { sweepId: null }],
+      },
+    });
+    // Redundant tombstones (predating the sweep) are purged.
+    expect(dbMock.providerTombstone.deleteMany).toHaveBeenCalledWith({
+      where: { deletedAt: { lt: expect.any(Date) } },
     });
   });
 

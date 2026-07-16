@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { apiJson } from "@/lib/api";
@@ -13,6 +14,11 @@ import Pagination from "@/components/ui/Pagination";
 // Caching (#57): admin-only view; edits must be visible on the next
 // request — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return { title: dict[locale].titles.adminUsers };
+}
 
 // Listing as served by `GET /api/admin/users` on the gateway.
 type AdminUserRow = {

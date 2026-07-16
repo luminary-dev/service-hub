@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { FaBriefcase } from "@/components/icons";
@@ -14,6 +15,11 @@ import Pagination from "@/components/ui/Pagination";
 // Caching (#57): admin-only moderation view; edits (new job posts/responses)
 // must be visible on the next request — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return { title: dict[locale].titles.adminJobs };
+}
 
 const PAGE_SIZE = 20;
 

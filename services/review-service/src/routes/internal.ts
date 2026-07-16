@@ -1,13 +1,9 @@
 import { Hono } from "hono";
 import { db } from "../db";
-import { s2s } from "../lib/http";
 import { listProviderReviews, normalizeTake } from "../lib/provider-reviews";
 import { fetchRatingSummaries } from "../lib/rating-summary";
 import { pushRatingsToSearchIndex } from "../lib/search-index";
 import { removeStoredFile, sweepMedia } from "../lib/storage";
-
-const PROVIDER_SERVICE_URL =
-  process.env.PROVIDER_SERVICE_URL ?? "http://localhost:4002";
 
 // Bound on how many ids a batch lookup will accept, so a caller (or attacker)
 // can't force a single giant IN (...) clause. Matches the peer internal
@@ -52,12 +48,33 @@ internal.get("/count", async (c) => {
   return c.json({ count });
 });
 
+// Page size for the orphan-sweep table walk (#766, matching provider-service's
+// #639 pattern).
+const SWEEP_PAGE_SIZE = 500;
+
 // Periodic maintenance (#36): remove stored review-photo files no database
 // row references any more. Grace window protects in-flight uploads; run it
 // from ops tooling (cron/curl with the internal secret).
+//
+// The keep-list is streamed in id-ordered pages (#766) so no single findMany
+// loads the whole reviewPhoto table at once; the referenced Set is still the
+// full keep-list (unavoidable — sweepMedia deletes any stored object absent
+// from it), but the DB round-trips now page by page.
 internal.post("/maintenance/sweep-orphans", async (c) => {
-  const photos = await db.reviewPhoto.findMany({ select: { url: true } });
-  const result = await sweepMedia("review", photos.map((p) => p.url));
+  const referenced: string[] = [];
+  let cursor: string | undefined;
+  for (;;) {
+    const rows = await db.reviewPhoto.findMany({
+      select: { id: true, url: true },
+      orderBy: { id: "asc" },
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      take: SWEEP_PAGE_SIZE,
+    });
+    for (const r of rows) referenced.push(r.url);
+    if (rows.length < SWEEP_PAGE_SIZE) break;
+    cursor = rows[rows.length - 1]!.id;
+  }
+  const result = await sweepMedia("review", referenced);
   return c.json(result);
 });
 
@@ -69,28 +86,23 @@ internal.post("/maintenance/sweep-orphans", async (c) => {
 // RECEIVED are keyed by their providerId, not their userId, so deleting only
 // their authored reviews leaves both behind (#645). Their provider profile is
 // being fully deleted by provider-service's erase, so those rows are orphaned
-// PII: resolve the providerId over S2S and hard-delete the received reviews
-// (their ReviewResponse replies + photo rows cascade). identity erases review
-// BEFORE provider (#551), so the Provider row still exists here to resolve
-// against. Degrades open on a peer blip — the fan-out is idempotent and
-// retried, so a later pass re-resolves and finishes the cleanup.
-// Idempotent: erasing an unknown user is a no-op 200.
+// PII: hard-delete the received reviews (their ReviewResponse replies + photo
+// rows cascade).
+//
+// The providerId is supplied by the orchestrator in the request body — exactly
+// as it does for the job erase — because only identity can resolve it (from the
+// Provider row provider-service's erase later deletes). We no longer re-resolve
+// it here over S2S: a transient provider blip used to make this endpoint
+// degrade-open and return 200, so the orchestrator hard-deleted the Provider
+// row and the received reviews were stranded forever with no retry (#749).
+// A missing providerId now simply means "not a provider" — authored-only
+// cleanup. Idempotent: erasing an unknown user is a no-op 200.
 internal.post("/users/:id/erase", async (c) => {
   const userId = c.req.param("id");
-
-  let providerId: string | null = null;
-  try {
-    const res = await s2s(
-      PROVIDER_SERVICE_URL,
-      `/internal/providers/by-user/${encodeURIComponent(userId)}`
-    );
-    if (res.ok) {
-      const data = (await res.json()) as { provider: { id: string } | null };
-      providerId = data.provider?.id ?? null;
-    }
-  } catch {
-    // degrade open — a retry of the erase fan-out re-resolves and finishes
-  }
+  const body = (await c.req.json().catch(() => null)) as {
+    providerId?: string;
+  } | null;
+  const providerId = body?.providerId ?? null;
 
   // Photo files to remove: authored reviews always, received reviews too when
   // the user owned a provider profile.

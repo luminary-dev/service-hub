@@ -1,5 +1,6 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { apiJson } from "@/lib/api";
+import { apiJson, apiJsonSafe } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { isAdminRole } from "@/lib/roles";
 import { getLocale } from "@/lib/locale";
@@ -20,6 +21,11 @@ import ReportsFilterBar, {
 // Caching (#57): admin-only moderation view; edits must be visible on the
 // next request — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return { title: dict[locale].titles.adminReports };
+}
 
 // The moderation queue (#50) merges three sources — provider-service owns
 // reports on providers, work photos, inquiry threads and thread messages
@@ -101,11 +107,13 @@ export default async function AdminReportsPage({
     // Accurate open totals for the badge + stat readout — a single page no
     // longer sees the whole queue, so the counts come from the dedicated
     // count endpoints (#233) that back the admin hub badge.
-    apiJson<{ pendingVerifications: number; openReports: number }>(
+    // Best-effort count badges (#747): degrade to zero rather than error the
+    // whole queue when a single count endpoint blips.
+    apiJsonSafe<{ pendingVerifications: number; openReports: number }>(
       "/api/admin/notifications/counts"
     ),
-    apiJson<{ openReports: number }>("/api/admin/review-reports/count"),
-    apiJson<{ openReports: number }>("/api/admin/job-reports/count"),
+    apiJsonSafe<{ openReports: number }>("/api/admin/review-reports/count"),
+    apiJsonSafe<{ openReports: number }>("/api/admin/job-reports/count"),
   ]);
   const t = dict[locale].admin;
 

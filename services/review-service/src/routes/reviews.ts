@@ -1,10 +1,12 @@
 import { Hono } from "hono";
 import { db } from "../db";
+import { jsonError, type ApiErrorCode } from "../lib/api-error";
 import { logAudit } from "../lib/audit";
 import { moderateContent } from "../lib/auto-report";
 import { getAuth, getLocale, getOrigin, s2s } from "../lib/http";
 import { advisoryXactLock } from "../lib/locks";
 import { emitNotification } from "../lib/notify";
+import { pushRatingToProvider } from "../lib/provider-rating";
 import {
   listProviderReviews,
   normalizeTake,
@@ -114,7 +116,7 @@ reviews.get("/api/providers/:id/reviews", async (c) => {
     if (res.ok) {
       const data = (await res.json()) as { provider: ProviderSummary | null };
       if (!data.provider || data.provider.suspended) {
-        return c.json({ error: "Provider not found" }, 404);
+        return jsonError(c, 404, "PROVIDER_NOT_FOUND", "Provider not found");
       }
     }
   } catch {
@@ -145,7 +147,7 @@ reviews.get("/api/providers/:id/reviews", async (c) => {
 reviews.post("/api/providers/:id/reviews", async (c) => {
   const auth = getAuth(c);
   if (!auth) {
-    return c.json({ error: "Sign in to leave a review" }, 401);
+    return jsonError(c, 401, "AUTH_REQUIRED", "Sign in to leave a review");
   }
 
   const id = c.req.param("id");
@@ -155,25 +157,30 @@ reviews.post("/api/providers/:id/reviews", async (c) => {
     if (res.status === 404) {
       provider = null;
     } else if (!res.ok) {
-      return c.json({ error: "Upstream service unavailable" }, 502);
+      return jsonError(c, 502, "UPSTREAM_UNAVAILABLE", "Upstream service unavailable");
     } else {
       const data = (await res.json()) as { provider: ProviderSummary | null };
       provider = data.provider ?? null;
     }
   } catch {
-    return c.json({ error: "Upstream service unavailable" }, 502);
+    return jsonError(c, 502, "UPSTREAM_UNAVAILABLE", "Upstream service unavailable");
   }
   if (!provider) {
-    return c.json({ error: "Provider not found" }, 404);
+    return jsonError(c, 404, "PROVIDER_NOT_FOUND", "Provider not found");
   }
   // A suspended provider's profile 404s (see the GET path); reviews must not be
   // creatable against it either — otherwise ratings keep accruing on a removed
   // provider and can even earn a `verified` badge.
   if (provider.suspended) {
-    return c.json({ error: "Provider not found" }, 404);
+    return jsonError(c, 404, "PROVIDER_NOT_FOUND", "Provider not found");
   }
   if (provider.userId === auth.userId) {
-    return c.json({ error: "You cannot review your own profile" }, 400);
+    return jsonError(
+      c,
+      400,
+      "CANNOT_REVIEW_OWN_PROFILE",
+      "You cannot review your own profile"
+    );
   }
 
   // Verified-email gate (#115): checked before any form parsing / photo upload
@@ -183,12 +190,14 @@ reviews.post("/api/providers/:id/reviews", async (c) => {
   try {
     verified = await isEmailVerified(auth.userId);
   } catch {
-    return c.json({ error: "Upstream service unavailable" }, 502);
+    return jsonError(c, 502, "UPSTREAM_UNAVAILABLE", "Upstream service unavailable");
   }
   if (!verified) {
-    return c.json(
-      { error: "Verify your email address to leave a review" },
-      403
+    return jsonError(
+      c,
+      403,
+      "EMAIL_NOT_VERIFIED",
+      "Verify your email address to leave a review"
     );
   }
 
@@ -201,21 +210,20 @@ reviews.post("/api/providers/:id/reviews", async (c) => {
   try {
     interacted = await hasPriorInteraction(id, auth.userId);
   } catch {
-    return c.json({ error: "Upstream service unavailable" }, 502);
+    return jsonError(c, 502, "UPSTREAM_UNAVAILABLE", "Upstream service unavailable");
   }
   if (!interacted) {
-    return c.json(
-      {
-        error:
-          "You can only review a provider you've contacted. Send them an inquiry first.",
-      },
-      403
+    return jsonError(
+      c,
+      403,
+      "INTERACTION_REQUIRED",
+      "You can only review a provider you've contacted. Send them an inquiry first."
     );
   }
 
   const form = await c.req.formData().catch(() => null);
   if (!form) {
-    return c.json({ error: "Invalid input" }, 400);
+    return jsonError(c, 400, "INVALID_INPUT", "Invalid input");
   }
   // Optional per-dimension sub-ratings (#528): only read a dimension when the
   // form actually carries a value. A blank field becomes `undefined` (omitted)
@@ -233,7 +241,7 @@ reviews.post("/api/providers/:id/reviews", async (c) => {
     ...dimensions,
   });
   if (!parsed.success) {
-    return c.json({ error: "Invalid input" }, 400);
+    return jsonError(c, 400, "INVALID_INPUT", "Invalid input");
   }
 
   const files = form
@@ -251,22 +259,25 @@ reviews.post("/api/providers/:id/reviews", async (c) => {
     });
     const remaining = MAX_REVIEW_PHOTOS - (existing?._count.photos ?? 0);
     if (files.length > remaining) {
-      return c.json(
-        { error: `A review can have at most ${MAX_REVIEW_PHOTOS} photos.` },
-        400
+      return jsonError(
+        c,
+        400,
+        "PHOTO_LIMIT",
+        `A review can have at most ${MAX_REVIEW_PHOTOS} photos.`
       );
     }
     for (const file of files) {
       const check = validateImage(file);
       if (check) {
-        return c.json({ error: check }, 400);
+        return jsonError(c, 400, "INVALID_IMAGE", check);
       }
     }
     for (const file of files) {
       try {
         photoUrls.push(await storeImage("review", file, "reviews"));
       } catch (e) {
-        if (e instanceof InvalidImageError) return c.json({ error: e.message }, 400);
+        if (e instanceof InvalidImageError)
+          return jsonError(c, 400, "INVALID_IMAGE", e.message);
         throw e;
       }
     }
@@ -320,9 +331,11 @@ reviews.post("/api/providers/:id/reviews", async (c) => {
       // The rolled-back transaction left no photo rows; clean up the files we
       // already stored so a rejected batch doesn't orphan media.
       await Promise.all(photoUrls.map((url) => removeStoredFile(url)));
-      return c.json(
-        { error: `A review can have at most ${MAX_REVIEW_PHOTOS} photos.` },
-        400
+      return jsonError(
+        c,
+        400,
+        "PHOTO_LIMIT",
+        `A review can have at most ${MAX_REVIEW_PHOTOS} photos.`
       );
     }
     throw e;
@@ -332,8 +345,12 @@ reviews.post("/api/providers/:id/reviews", async (c) => {
   // visible and a filter hit only queues a SYSTEM report for admin triage.
   await moderateContent("REVIEW", reviewId, { comment: parsed.data.comment });
 
-  // Search-index rating push (search RFC §4.2) — fire-and-forget, best-effort.
+  // Rating aggregates changed — recompute and fan the new avg+count out to the
+  // read paths, both fire-and-forget/best-effort: the search-index (search RFC
+  // §4.2) and the provider-service write-back (#748) that denormalizes
+  // ratingAvg/ratingCount onto Provider so the public browse ranks DB-side.
   void pushRatingsToSearchIndex([id]);
+  void pushRatingToProvider(id);
 
   // Tell the provider a review was published on their profile (#393): in-app
   // + email via the notification event — best-effort, never fails the review.
@@ -364,7 +381,7 @@ async function gateReviewResponse(
   userId: string
 ): Promise<
   | { ok: true; review: { id: string; userId: string; providerId: string } }
-  | { ok: false; status: 403 | 404 | 502; error: string }
+  | { ok: false; status: 403 | 404 | 502; code: ApiErrorCode; error: string }
 > {
   const review = await db.review.findUnique({
     where: { id: reviewId },
@@ -373,7 +390,7 @@ async function gateReviewResponse(
   // Soft-deleted reviews 404 like missing ones — the public page hides them,
   // and a response to a moderated review would be invisible anyway.
   if (!review || review.deletedAt) {
-    return { ok: false, status: 404, error: "Review not found" };
+    return { ok: false, status: 404, code: "REVIEW_NOT_FOUND", error: "Review not found" };
   }
 
   let provider: ProviderSummary | null = null;
@@ -385,13 +402,23 @@ async function gateReviewResponse(
     if (res.status === 404) {
       provider = null;
     } else if (!res.ok) {
-      return { ok: false, status: 502, error: "Upstream service unavailable" };
+      return {
+        ok: false,
+        status: 502,
+        code: "UPSTREAM_UNAVAILABLE",
+        error: "Upstream service unavailable",
+      };
     } else {
       const data = (await res.json()) as { provider: ProviderSummary | null };
       provider = data.provider ?? null;
     }
   } catch {
-    return { ok: false, status: 502, error: "Upstream service unavailable" };
+    return {
+      ok: false,
+      status: 502,
+      code: "UPSTREAM_UNAVAILABLE",
+      error: "Upstream service unavailable",
+    };
   }
   // A suspended provider's profile (and its reviews) 404s publicly; it must
   // not keep posting replies either.
@@ -399,6 +426,7 @@ async function gateReviewResponse(
     return {
       ok: false,
       status: 403,
+      code: "NOT_REVIEW_OWNER",
       error: "Only the reviewed provider can respond",
     };
   }
@@ -413,18 +441,18 @@ async function gateReviewResponse(
 reviews.post("/api/reviews/:id/response", async (c) => {
   const auth = getAuth(c);
   if (!auth) {
-    return c.json({ error: "Sign in to respond" }, 401);
+    return jsonError(c, 401, "AUTH_REQUIRED", "Sign in to respond");
   }
 
   const gate = await gateReviewResponse(c.req.param("id"), auth.userId);
   if (!gate.ok) {
-    return c.json({ error: gate.error }, gate.status);
+    return jsonError(c, gate.status, gate.code, gate.error);
   }
 
   const body = await c.req.json().catch(() => null);
   const parsed = reviewResponseSchema.safeParse(body);
   if (!parsed.success) {
-    return c.json({ error: "Invalid input" }, 400);
+    return jsonError(c, 400, "INVALID_INPUT", "Invalid input");
   }
 
   // Checked before the upsert so only a FIRST response notifies the reviewer —
@@ -478,12 +506,12 @@ reviews.post("/api/reviews/:id/response", async (c) => {
 reviews.delete("/api/reviews/:id/response", async (c) => {
   const auth = getAuth(c);
   if (!auth) {
-    return c.json({ error: "Unauthorized" }, 401);
+    return jsonError(c, 401, "AUTH_REQUIRED", "Unauthorized");
   }
 
   const gate = await gateReviewResponse(c.req.param("id"), auth.userId);
   if (!gate.ok) {
-    return c.json({ error: gate.error }, gate.status);
+    return jsonError(c, gate.status, gate.code, gate.error);
   }
 
   await db.reviewResponse.deleteMany({ where: { reviewId: gate.review.id } });
@@ -494,7 +522,7 @@ reviews.delete("/api/reviews/:id/response", async (c) => {
 reviews.delete("/api/reviews/photos/:id", async (c) => {
   const auth = getAuth(c);
   if (!auth) {
-    return c.json({ error: "Unauthorized" }, 401);
+    return jsonError(c, 401, "AUTH_REQUIRED", "Unauthorized");
   }
 
   const id = c.req.param("id");
@@ -503,19 +531,56 @@ reviews.delete("/api/reviews/photos/:id", async (c) => {
     include: { review: { select: { userId: true } } },
   });
   if (!photo) {
-    return c.json({ error: "Photo not found" }, 404);
+    return jsonError(c, 404, "PHOTO_NOT_FOUND", "Photo not found");
   }
 
   // The review's author can remove their own photo; admins can moderate any.
   const isOwner = photo.review.userId === auth.userId;
   const isAdmin = auth.role === "ADMIN";
   if (!isOwner && !isAdmin) {
-    return c.json({ error: "Forbidden" }, 403);
+    return jsonError(c, 403, "FORBIDDEN", "Forbidden");
   }
 
-  await db.reviewPhoto.delete({ where: { id } });
-  await removeStoredFile(photo.url); // best-effort (errors swallowed inside)
+  // #756: an admin takedown is a reversible SOFT delete — the row and the
+  // stored file survive (kept until a later purge sweep) so the removal can be
+  // restored and the reports queue can still show what was removed — and it is
+  // audit-logged, matching every other moderated content type (Review, and
+  // provider-service's WorkPhoto). The owner deleting their OWN photo stays a
+  // hard delete (immediate row + file removal): it's their content, not
+  // moderation, so there's nothing to reverse or audit.
+  if (isOwner) {
+    await db.reviewPhoto.delete({ where: { id } });
+    await removeStoredFile(photo.url); // best-effort (errors swallowed inside)
+  } else {
+    await db.reviewPhoto.update({ where: { id }, data: { deletedAt: new Date() } });
+    await logAudit(c, "delete-photo", "REVIEW_PHOTO", id);
+  }
 
+  return c.json({ ok: true });
+});
+
+// Restore an admin-removed review photo (#756) — clears the moderation
+// soft-delete set above so the photo is public again. Reversible half of the
+// takedown, mirroring provider-service's PATCH /api/admin/photos/:id/restore.
+// Full ADMIN only; audit-logged. Routed here via the gateway's
+// /api/admin/reviews/ prefix.
+reviews.patch("/api/admin/reviews/photos/:id/restore", async (c) => {
+  const auth = getAuth(c);
+  if (auth?.role !== "ADMIN") {
+    return jsonError(c, 403, "FORBIDDEN", "Forbidden");
+  }
+  const id = c.req.param("id");
+  // updateMany returns count 0 when the id doesn't exist; report a 404 rather
+  // than a misleading 200, and write no fabricated audit entry — matches the
+  // review restore route and provider admin.ts photo restore.
+  const { count } = await db.reviewPhoto.updateMany({
+    where: { id },
+    data: { deletedAt: null },
+  });
+  if (count === 0) {
+    return jsonError(c, 404, "PHOTO_NOT_FOUND", "Photo not found");
+  }
+  await logAudit(c, "restore-photo", "REVIEW_PHOTO", id);
   return c.json({ ok: true });
 });
 
@@ -525,11 +590,11 @@ reviews.delete("/api/reviews/photos/:id", async (c) => {
 reviews.delete("/api/admin/reviews/:id", async (c) => {
   const auth = getAuth(c);
   if (auth?.role !== "ADMIN") {
-    return c.json({ error: "Forbidden" }, 403);
+    return jsonError(c, 403, "FORBIDDEN", "Forbidden");
   }
   const id = c.req.param("id");
-  // Resolve the provider before the write so the search-index rating push
-  // below has its target even though updateMany itself returns no rows.
+  // Resolve the provider before the write so the rating pushes below have their
+  // target even though updateMany itself returns no rows.
   const review = await db.review.findUnique({
     where: { id },
     select: { providerId: true },
@@ -542,19 +607,22 @@ reviews.delete("/api/admin/reviews/:id", async (c) => {
     data: { deletedAt: new Date() },
   });
   if (count === 0) {
-    return c.json({ error: "Review not found" }, 404);
+    return jsonError(c, 404, "REVIEW_NOT_FOUND", "Review not found");
   }
   await logAudit(c, "delete-review", "REVIEW", id);
-  // A soft-deleted review leaves the aggregates — push the recount (search
-  // RFC §4.2, fire-and-forget).
-  if (review) void pushRatingsToSearchIndex([review.providerId]);
+  // A soft-deleted review drops out of the aggregates — push the recount to the
+  // search index (search RFC §4.2) and provider-service (#748), fire-and-forget.
+  if (review) {
+    void pushRatingsToSearchIndex([review.providerId]);
+    void pushRatingToProvider(review.providerId);
+  }
   return c.json({ ok: true });
 });
 
 reviews.patch("/api/admin/reviews/:id/restore", async (c) => {
   const auth = getAuth(c);
   if (auth?.role !== "ADMIN") {
-    return c.json({ error: "Forbidden" }, 403);
+    return jsonError(c, 403, "FORBIDDEN", "Forbidden");
   }
   const id = c.req.param("id");
   const review = await db.review.findUnique({
@@ -568,10 +636,14 @@ reviews.patch("/api/admin/reviews/:id/restore", async (c) => {
     data: { deletedAt: null },
   });
   if (count === 0) {
-    return c.json({ error: "Review not found" }, 404);
+    return jsonError(c, 404, "REVIEW_NOT_FOUND", "Review not found");
   }
   await logAudit(c, "restore-review", "REVIEW", id);
-  // Restoring re-enters the aggregates — push the recount (search RFC §4.2).
-  if (review) void pushRatingsToSearchIndex([review.providerId]);
+  // Restoring re-enters the aggregates — push the recount to the search index
+  // (search RFC §4.2) and provider-service (#748), fire-and-forget.
+  if (review) {
+    void pushRatingsToSearchIndex([review.providerId]);
+    void pushRatingToProvider(review.providerId);
+  }
   return c.json({ ok: true });
 });

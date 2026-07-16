@@ -150,9 +150,15 @@ export async function buildUpstreamHeaders(
 // browser never navigated to Google and never received the state/PKCE cookies.
 // Manual keeps the Location + Set-Cookie intact for the client.
 export async function proxyRequest(c: Context) {
+  // Echo the correlation id on every gateway response (#760) — the same id we
+  // stamp upstream in buildUpstreamHeaders — so a user-visible failure can be
+  // tied to the exact gateway→service log chain by "Error ID: <x-request-id>".
+  const requestId = getRequestId(c) ?? randomUUID();
   const url = new URL(c.req.url);
   const route = resolveRoute(url.pathname);
-  if (!route) return c.json({ error: "Not found" }, 404);
+  if (!route) {
+    return c.json({ error: "Not found" }, 404, { "x-request-id": requestId });
+  }
 
   const base = serviceUrl(route.service);
   const target = `${base}${route.path}${url.search}`;
@@ -172,7 +178,8 @@ export async function proxyRequest(c: Context) {
         error:
           "This action is disabled while viewing as another user. End impersonation to perform it.",
       },
-      403
+      403,
+      { "x-request-id": requestId }
     );
   }
   const body =
@@ -181,24 +188,29 @@ export async function proxyRequest(c: Context) {
       : await c.req.raw.arrayBuffer();
 
   try {
-    return await proxy(target, {
+    const response = await proxy(target, {
       method,
       headers,
       body,
       redirect: "manual",
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
+    // proxy() returns a freshly constructed Response (mutable headers), so this
+    // is safe and leaves the upstream status + Set-Cookie untouched.
+    response.headers.set("x-request-id", requestId);
+    return response;
   } catch (err) {
     const timedOut = err instanceof Error && err.name === "TimeoutError";
     log.error("upstream request failed", {
       upstream: route.service,
-      requestId: getRequestId(c),
+      requestId,
       timedOut,
       err,
     });
     return c.json(
       { error: "Upstream service unavailable" },
-      timedOut ? 504 : 502
+      timedOut ? 504 : 502,
+      { "x-request-id": requestId }
     );
   }
 }

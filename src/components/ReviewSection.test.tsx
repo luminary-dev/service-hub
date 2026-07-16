@@ -119,7 +119,7 @@ describe("ReviewSection", () => {
   it("surfaces the server error via role=alert", async () => {
     fetchMock.mockResolvedValue({
       ok: false,
-      json: async () => ({ error: "You already reviewed this provider" }),
+      json: async () => ({ errorCode: "conflict" }),
     });
     const { container } = renderSection();
     openForm();
@@ -129,7 +129,7 @@ describe("ReviewSection", () => {
     fireEvent.submit(container.querySelector("form")!);
 
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("You already reviewed this provider");
+    expect(alert.textContent).toContain(dict.en.errorCodes.conflict);
     expect(refresh).not.toHaveBeenCalled();
   });
 
@@ -279,7 +279,7 @@ describe("ReviewSection", () => {
   it("surfaces a response error via role=alert", async () => {
     fetchMock.mockResolvedValue({
       ok: false,
-      json: async () => ({ error: "Only the reviewed provider can respond" }),
+      json: async () => ({ errorCode: "forbidden" }),
     });
     renderSection({ canReview: false, canRespond: true, reviews: [REVIEW] });
 
@@ -290,7 +290,7 @@ describe("ReviewSection", () => {
     fireEvent.click(screen.getByRole("button", { name: t.postResponse }));
 
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("Only the reviewed provider can respond");
+    expect(alert.textContent).toContain(dict.en.errorCodes.forbidden);
     expect(refresh).not.toHaveBeenCalled();
   });
 

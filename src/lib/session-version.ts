@@ -9,6 +9,7 @@
 // and it FAILS OPEN: if identity-service is unreachable, sessions keep working —
 // an identity outage must not sign every user out of the UI.
 import "server-only";
+import { INTERNAL_API_SECRET } from "./internal-secret";
 
 const TTL_MS = 60_000;
 
@@ -30,8 +31,6 @@ function sweep(now: number) {
 
 const IDENTITY_SERVICE_URL =
   process.env.IDENTITY_SERVICE_URL ?? "http://localhost:4001";
-const INTERNAL_API_SECRET =
-  process.env.INTERNAL_API_SECRET ?? "dev-internal-secret";
 
 // number = current version; null = user no longer exists; undefined = lookup
 // unavailable (bad response shape counts too — fail open).

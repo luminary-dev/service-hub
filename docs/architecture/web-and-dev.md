@@ -15,6 +15,19 @@
   Root metadata files (`sitemap.xml`, `robots.txt`, `manifest.webmanifest`)
   exist only at the English root — under `/si` the proxy skips the rewrite so
   they 404 instead of serving duplicates (#379).
+- The proxy also owns the **Content-Security-Policy** (#770). It mints a fresh
+  per-request nonce (Web Crypto, base64 of 16 bytes), forwards it to the app as
+  the `x-nonce` request header — plus the CSP itself as a request header so Next
+  stamps `nonce=` onto its own framework/hydration scripts — and emits the
+  matching CSP as a response header on every page route (never on the `/api`
+  proxy branch). Production `script-src` is `'self' 'nonce-<value>'
+  'strict-dynamic'` (+ the Turnstile origin when `NEXT_PUBLIC_TURNSTILE_SITE_KEY`
+  is set), so `'unsafe-inline'` is gone from prod script-src. Development keeps
+  `'unsafe-inline'` + `'unsafe-eval'` for Turbopack/React HMR. The root layout
+  reads `x-nonce` and passes it to its manual inline theme `<script>` (Next only
+  auto-nonces its own tags). `next.config.ts` still sets the other static
+  security headers (X-Frame-Options, X-Content-Type-Options, Referrer-Policy,
+  Permissions-Policy, HSTS in prod) but no longer the CSP.
 - Server components fetch the gateway directly (`src/lib/api.ts`: `GATEWAY_URL` +
   forwarded `cookie`, `cache: "no-store"`); `src/app/sitemap.ts` fetches
   `/api/providers/ids` and the active category list (`fetchCategoryOptions`,

@@ -1,7 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { FaBriefcase, FaInbox, FaPhone, FaPlus } from "@/components/icons";
-import { apiJson } from "@/lib/api";
+import {
+  FaBriefcase,
+  FaInbox,
+  FaPhone,
+  FaPlus,
+  FaTriangleExclamation,
+} from "@/components/icons";
+import type { Metadata } from "next";
+import { apiJsonSafe, apiResult, type ApiResult } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { getLocale } from "@/lib/locale";
 import { loginNext } from "@/lib/login";
@@ -20,6 +27,11 @@ import ReportButton from "@/components/ReportButton";
 // Caching (#57): session-gated and must reflect the user's own writes
 // immediately — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return { title: dict[locale].titles.jobs };
+}
 
 // Job payloads as served by the gateway. Board jobs come with the customer
 // name and a precomputed `responded` flag; own jobs carry hydrated responses.
@@ -75,8 +87,10 @@ export default async function JobsPage({
   // exists — role alone isn't enough, matching the old getCurrentProvider()).
   const [locale, dashboard] = await Promise.all([
     getLocale(),
+    // Best-effort (#747): the provider category/district only drives the board
+    // header/subtitle; a blip degrades to the customer view rather than erroring.
     session.role === "PROVIDER"
-      ? apiJson<{
+      ? apiJsonSafe<{
           provider: {
             category: string;
             district: string;
@@ -89,14 +103,22 @@ export default async function JobsPage({
   const t = dict[locale].jobs;
   const nav = dict[locale].nav;
   const tr = dict[locale].report;
+  const terr = dict[locale].errors;
   const provider = dashboard?.provider ?? null;
 
-  const [boardData, mineData] = await Promise.all([
+  // Discriminated results (#747): a job-service 5xx must show an explicit
+  // "temporarily unavailable" panel, never render as "you haven't posted any
+  // jobs yet" (which could push a user to re-post) or an empty board.
+  const [boardRes, mineRes] = await Promise.all([
     provider
-      ? apiJson<Page<BoardJob>>(`/api/jobs/board?page=${boardPage}`)
-      : Promise.resolve(null),
-    apiJson<Page<MyJob>>(`/api/jobs/mine?page=${minePage}`),
+      ? apiResult<Page<BoardJob>>(`/api/jobs/board?page=${boardPage}`)
+      : Promise.resolve<ApiResult<Page<BoardJob>> | null>(null),
+    apiResult<Page<MyJob>>(`/api/jobs/mine?page=${minePage}`),
   ]);
+  const boardData = boardRes?.ok ? boardRes.data : null;
+  const mineData = mineRes.ok ? mineRes.data : null;
+  const boardUnavailable = !!boardRes && !boardRes.ok;
+  const mineUnavailable = !mineRes.ok;
   const board = boardData?.jobs ?? [];
   const myJobs = mineData?.jobs ?? [];
   const openCount = myJobs.filter((j) => j.status === "OPEN").length;
@@ -185,7 +207,13 @@ export default async function JobsPage({
         {/* Provider board: matching open jobs */}
         {provider && (
           <section>
-            {board.length === 0 ? (
+            {boardUnavailable ? (
+              <EmptyState
+                icon={FaTriangleExclamation}
+                title={terr.unavailableTitle}
+                body={terr.unavailableBody}
+              />
+            ) : board.length === 0 ? (
               <EmptyState icon={FaInbox} title={t.boardEmpty} />
             ) : (
               <InView as="ul" stagger className="space-y-4">
@@ -238,12 +266,12 @@ export default async function JobsPage({
                 ))}
               </InView>
             )}
-            {pager("boardPage", boardPage, boardTotalPages)}
+            {!boardUnavailable && pager("boardPage", boardPage, boardTotalPages)}
           </section>
         )}
 
         {/* Customer's own posted jobs */}
-        {(!provider || myJobs.length > 0) && (
+        {(!provider || myJobs.length > 0 || mineUnavailable) && (
           <section className={provider ? "mt-12" : ""}>
             {provider && (
               <div className="mb-6">
@@ -256,7 +284,13 @@ export default async function JobsPage({
               </div>
             )}
 
-            {myJobs.length === 0 ? (
+            {mineUnavailable ? (
+              <EmptyState
+                icon={FaTriangleExclamation}
+                title={terr.unavailableTitle}
+                body={terr.unavailableBody}
+              />
+            ) : myJobs.length === 0 ? (
               <EmptyState
                 icon={FaBriefcase}
                 title={t.myEmpty}
@@ -341,7 +375,7 @@ export default async function JobsPage({
                 ))}
               </InView>
             )}
-            {pager("minePage", minePage, mineTotalPages)}
+            {!mineUnavailable && pager("minePage", minePage, mineTotalPages)}
           </section>
         )}
       </div>

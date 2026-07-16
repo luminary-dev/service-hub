@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { FaHouse, FaScrewdriverWrench } from "@/components/icons";
@@ -6,7 +7,10 @@ import { getLocale } from "@/lib/locale";
 import { dict } from "@/lib/i18n";
 import { localizedHref } from "@/lib/links";
 
-export const metadata = { title: "Welcome to Baas.lk" };
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return { title: dict[locale].titles.welcome };
+}
 
 // Role chooser shown after a first social signup (#398). New OAuth users land
 // here as CUSTOMER; they either continue as a customer or set up a provider

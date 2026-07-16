@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { FaArrowRight, FaBriefcase } from "@/components/icons";
@@ -11,6 +12,11 @@ import AdminJobTakedownButton from "@/components/admin/AdminJobTakedownButton";
 // Caching (#57): admin-only moderation view; edits must be visible on the
 // next request — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return { title: dict[locale].titles.adminJobDetail };
+}
 
 // Detail payload as served by `GET /api/admin/jobs/:id` on the gateway:
 // job info plus its responses, with customer and provider contact info

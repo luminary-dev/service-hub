@@ -7,7 +7,8 @@ import FavoriteButton from "./FavoriteButton";
 
 const refresh = vi.fn();
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh }),
+  useRouter: () => ({ refresh, push: vi.fn() }),
+  usePathname: () => "/providers/prov_1",
 }));
 
 const fetchMock = vi.fn();

@@ -10,6 +10,7 @@ import Stars from "./Stars";
 import Avatar from "./Avatar";
 import { isSvg } from "@/lib/image";
 import { loginNextHref, localizedHref } from "@/lib/links";
+import { errorMessage } from "@/lib/error-codes";
 import { useLocale, useT } from "./I18nProvider";
 import { useToast } from "./ToastProvider";
 import { formatDate } from "@/lib/format";
@@ -128,7 +129,7 @@ export default function ReviewSection({
         router.refresh();
       } else {
         const data = await res.json().catch(() => ({}));
-        setError(data.error ?? t.reviews.error);
+        setError(errorMessage(data, t.reviews.error, t.errorCodes));
       }
     } catch {
       // Network failure — recover instead of wedging the button (#363).
@@ -160,7 +161,7 @@ export default function ReviewSection({
       router.refresh();
     } else {
       const data = res ? await res.json().catch(() => ({})) : {};
-      setResponseError(data.error ?? t.reviews.responseError);
+      setResponseError(errorMessage(data, t.reviews.responseError, t.errorCodes));
     }
   }
 
@@ -174,7 +175,7 @@ export default function ReviewSection({
       router.refresh();
     } else {
       const data = res ? await res.json().catch(() => ({})) : {};
-      setResponseError(data.error ?? t.reviews.responseError);
+      setResponseError(errorMessage(data, t.reviews.responseError, t.errorCodes));
     }
   }
 
@@ -187,7 +188,7 @@ export default function ReviewSection({
       router.refresh();
     } else {
       const data = res ? await res.json().catch(() => ({})) : {};
-      setError(data.error ?? t.reviews.error);
+      setError(errorMessage(data, t.reviews.error, t.errorCodes));
     }
   }
 

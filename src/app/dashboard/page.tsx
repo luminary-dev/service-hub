@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { FaArrowUpRightFromSquare, FaCircleCheck } from "@/components/icons";
 import { apiJson } from "@/lib/api";
@@ -18,6 +19,11 @@ import StatReadout, { type Stat } from "@/components/ui/StatReadout";
 // Caching (#57): session-gated and must reflect the user's own writes
 // immediately — stays fully dynamic (no-store).
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return { title: dict[locale].titles.dashboard };
+}
 
 // Dashboard payload as served by `GET /api/provider/dashboard` on the
 // gateway. Contact details live on identity-service and arrive hydrated

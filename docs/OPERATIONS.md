@@ -363,7 +363,8 @@ staleness ≤ the sweep interval):
 docker compose -f docker-compose.prod.yml exec -T search-service \
   wget -qO- --header "x-internal-secret: $INTERNAL_API_SECRET" \
   --post-data= http://localhost:4008/internal/search/reindex
-# → { "indexed": n, "skipped": 0, "deleted": m }
+# → { "indexed": n, "skipped": 0, "deleted": m, "purged": t }
+# (`purged` = expired delete tombstones cleared this run, #752)
 
 # Drift metric — compare `indexed` against provider-service's non-suspended
 # count; a growing gap between sweeps means pushes are being dropped:
@@ -371,6 +372,15 @@ docker compose -f docker-compose.prod.yml exec -T search-service \
   wget -qO- --header "x-internal-secret: $INTERNAL_API_SECRET" \
   http://localhost:4008/internal/search/stats
 ```
+
+The sweep prunes by **generation** (#752): each run stamps every row it upserts
+with a unique `sweepId`, then deletes only rows it did not touch that also
+predate the run (`updatedAt < sweepStartedAt`) — so a provider registered while
+the multi-minute sweep is walking pages is never deleted, and the prune no
+longer builds an unbounded `NOT IN (…)` that Postgres' 65,535 bind-param cap
+would fail past ~65k providers. It also purges **delete tombstones** (written by
+the index DELETE so a stale push can't resurrect an erased/suspended provider)
+once they predate the run.
 
 The sweep fails loudly (502, `{ "error": "Reindex failed" }`) when
 provider-service or review-service is unreachable — an outage is never
@@ -545,13 +555,43 @@ docker compose logs --no-log-prefix | grep '"requestId":"<id>"'
 ```
 
 **A self-hosted metrics stack now ships with the compose stack** — see
-[Observability](#observability) below. **Uptime probing, alerting, and an
-error-monitoring backend are still pending** — tracked by **#113 / #34** and
-listed among the pre-launch requirements in DEPLOYMENT.md. There is still no
-external uptime probe or alerting on top of the metrics (the one exception:
-backup freshness has a dead-man's-switch heartbeat, see
-[BACKUPS.md](BACKUPS.md)); log inspection is manual (`docker compose logs`)
-until those land.
+[Observability](#observability) below — **and alerting now reaches a human**
+(#746): Grafana unified alerting is provisioned with a webhook contact point and
+six rules (see [Alerting](#alerting) below). The remaining gap is **external
+uptime probing** (tracked by **#113** — a blackbox probe from *outside* the VPS,
+so a total host/network outage still surfaces), which the in-VPS Grafana alerts
+cannot cover on their own. Error capture (GlitchTip, #34) has shipped. Log
+inspection can still be done manually (`docker compose logs`) alongside the
+Loki-backed queries below.
+
+### Alerting
+
+Grafana's built-in unified alerting is provisioned from
+`deploy/observability/grafana/provisioning/alerting/` (loaded on startup, no
+Alertmanager) (#746):
+
+- **Contact point** — one **webhook** (`default-webhook`). It reads the
+  **`ALERT_WEBHOOK_URL`** env var (passed through by both compose files); point
+  it at a Slack / Telegram / ntfy / Discord incoming webhook. **Optional**: unset
+  → it falls back to a non-routable placeholder so provisioning still loads and
+  the rules are visible in the UI, but nothing is delivered until you set it. In
+  prod it's a GitHub secret rendered into the server `.env`.
+- **Notification policy** — routes every alert to `default-webhook`, grouped by
+  folder + alertname (a storm collapses to a few messages).
+- **Six rules** (folder `service-hub`), all threshold-on-query:
+  1. **Service 5xx error rate elevated** — per-service `rate(http_requests_total{status=~"5.."})` > 0.1/s for 5m.
+  2. **Scrape target down** — `up == 0` for any service/exporter target, 2m.
+  3. **Service p95 latency high** — p95 of `http_request_duration_seconds` > 1.5s for 10m.
+  4. **Host disk usage above 85%** — from `node-exporter`, 5m.
+  5. **Error-log burst** — > 25 `level=error` lines across the platform in 5m (Loki).
+  6. **Session-revocation lookup degraded** — the gateway's edge-triggered
+     "session-revocation Redis lookup failed" warning (Loki); any occurrence in
+     10m pages, because revocations may fail open until Redis recovers
+     (`session-version.ts` literally says "alert on this").
+
+Tune thresholds by editing the rule files and redeploying. The rules depend on
+the three infra exporters below; alerts 4–6 also need `node-exporter` /
+Loki data present.
 
 ## Observability
 
@@ -569,10 +609,36 @@ Prometheus metrics at `GET /metrics` on its own port via an identical
 - **Node/process defaults** (`collectDefaultMetrics`): event-loop lag, heap, GC,
   fds, cpu. Every series carries a `service="<name>"` label stamped by
   `initMetrics()` (called once in each `src/index.ts`).
+- **`notification_emit_failures_total`** (#750) — a counter on the shared
+  `emitNotification` helper (provider/review/job), labelled `type` (the event
+  type) and `reason` (`status` for a non-2xx ack from notification-service,
+  `transport` for a network error/timeout). Notification sends are best-effort
+  and swallowed by contract, so a sustained rise here — together with the paired
+  `notification rejected` / `notification failed` log lines — is how ops detects
+  that in-app rows and emails are being dropped (e.g. notification-service's DB
+  is down). Worth an alert on a non-zero sustained rate.
+- **`login_failures_total`** (identity-service, #759) — a counter of rejected
+  `POST /api/auth/login` attempts, labelled `reason`
+  (`unknown_user` / `no_password` / `locked_out` / `bad_password`) so a
+  credential-stuffing run is countable in Grafana. No per-user/email/IP labels
+  (that would explode cardinality and re-introduce PII). Registered on the same
+  default registry as the RED metrics, so it needs no extra wiring; it lives in
+  `src/lib/auth-metrics.ts` rather than the byte-identical shared `metrics.ts`.
+  The matching structured log lines — `login failed` (`{ userId, failedLogins }`),
+  `account locked` (`{ userId, lockedUntil }`) and `login attempt on locked
+  account` — carry no email/password, keeping the existing PII discipline (the
+  gateway attaches the client IP to its own request-log line).
 
-`/metrics` is deliberately **not** behind the internal secret — Prometheus
-scrapes it directly — and that is safe because the service ports are never
-public (loopback-bound in dev, `backend`-only network in prod).
+`/metrics` is behind the internal secret (#742): it exposes route names,
+request counts and latencies (internal recon that widens the blast radius of any
+port exposure or SSRF), so — like every other non-`/healthz` route — it requires
+the `x-internal-secret` header. The Prometheus scrape config must send that
+header (`deploy/observability/prometheus.yml`). Only `/healthz` stays open. On
+the backend services this is enforced by the global `requireInternalSecret`; the
+gateway, which has no global gate (it *adds* the secret upstream), guards
+`/metrics` explicitly via `src/lib/internal-secret.ts`. The service ports are
+still never public (loopback-bound in dev, `backend`-only network in prod), so
+this is defence-in-depth on top of that.
 
 **Log aggregation (#668).** Every service already emits **one JSON line per
 event** to stdout (`{ level, time, service, msg, requestId, … }` — see each
@@ -592,18 +658,35 @@ services:
   retention). Prod pins the image by digest.
 - **Grafana Alloy** — the log shipper (config at
   `deploy/observability/alloy/config.alloy`). It discovers every container via
-  the Docker daemon socket (mounted **read-only**), tails stdout, parses the
-  JSON, and pushes to Loki. `service` and `level` become stream labels;
-  `requestId` is stored as **structured metadata** (a label would explode
-  cardinality). We use Alloy rather than Promtail because Promtail reached
-  end-of-life in early 2026; Alloy is Grafana's supported successor and ships to
-  Loki with the same model. Prod pins the image by digest.
-- **Grafana** — auto-provisions **Prometheus + Loki** datasources and starter
-  dashboards from `deploy/observability/grafana/`: **RED** (request rate / error
-  rate / p50-p95-p99 latency, templated by service) and **Logs** (log volume by
-  level + a live log panel, filterable by service, level, and requestId).
+  the **Docker API through the read-only `docker-socket-proxy`** (#744 — see
+  below), tails stdout, parses the JSON, and pushes to Loki. `service` and
+  `level` become stream labels; `requestId` is stored as **structured metadata**
+  (a label would explode cardinality). We use Alloy rather than Promtail because
+  Promtail reached end-of-life in early 2026; Alloy is Grafana's supported
+  successor and ships to Loki with the same model. Prod pins the image by digest.
+- **docker-socket-proxy** (#744) — a `tecnativa/docker-socket-proxy` (HAProxy
+  ACL) that is the **only** container mounting `/var/run/docker.sock`. It exposes
+  a **read-only** GET subset of the Docker API over TCP `:2375` on a dedicated
+  `dockerproxy` internal network; Alloy (and, in prod, CrowdSec) reach the API
+  through it instead of a raw socket bind. A read-only *bind* of the socket does
+  **not** restrict the API (`connect()` is exempt from the RO inode check), so a
+  compromise of Alloy/CrowdSec with a raw mount is root-equivalent on the VPS;
+  the proxy blocks every write (`POST=0`) and all sections except
+  containers/events/version/ping. Prod pins the image by digest.
+- **node-exporter / postgres-exporter / redis-exporter** (#746) — three small
+  exporters that make the host (disk/CPU/memory), Postgres, and Redis visible to
+  Prometheus (scrape jobs in `deploy/observability/prometheus.yml`). They are the
+  targets the disk / DB / Redis alert rules evaluate. Internal-only; prod pins
+  each by digest.
+- **Grafana** — auto-provisions **Prometheus + Loki + Tempo** datasources,
+  **unified alerting** (contact point + rules, see [Alerting](#alerting)), and
+  starter dashboards from `deploy/observability/grafana/`: **RED** (request rate
+  / error rate / p50-p95-p99 latency, templated by service) and **Logs** (log
+  volume by level + a live log panel, filterable by service, level, and
+  requestId).
 
-Loki and Alloy need **no new secret**.
+Loki, Alloy and the socket-proxy need **no new secret**; the exporters reuse the
+existing `POSTGRES_PASSWORD` / `REDIS_PASSWORD`.
 
 **Reaching Grafana.**
 
@@ -657,16 +740,36 @@ until an operator provisions a DSN.
 
 **The stack** (in both compose files): **GlitchTip web** (ingest API + UI) +
 **worker** (celery) + a one-shot **migrate** + GlitchTip's **OWN** Postgres and
-Redis — never the app cluster's. Prod pins all images by digest (#238). Like
-Grafana/Unleash it is **internal-only**: `backend` network, **no Caddy route**,
-host port published to **loopback** (#387). In dev it sits behind the **`errors`
-compose profile**, so a plain `docker compose up` (and the CI e2e) don't start
-this heavy stack.
+Redis — never the app cluster's. Prod pins all images by digest (#238).
+Internal-only: **no Caddy route**, host port published to **loopback** (#387). In
+dev it sits behind the **`errors` compose profile**, so a plain
+`docker compose up` (and the CI e2e) don't start this heavy stack.
+
+**Network isolation + broker auth (#764).** In prod, GlitchTip's datastores +
+worker + migrate sit on a **dedicated `glitchtip` internal network**, off the
+shared `backend` that carries every app service; only `glitchtip-web` also joins
+`backend`, purely so app services can post errors to it via `SENTRY_DSN`. On top
+of that, **`glitchtip-redis` now runs with `requirepass`** (previously
+unauthenticated) — so a compromised app container can neither reach nor read/
+inject/purge the celery broker. The broker password defaults to the already-
+required `GLITCHTIP_DB_PASSWORD`; set **`GLITCHTIP_REDIS_PASSWORD`** to use a
+distinct one.
+
+**Email alerts (#746).** GlitchTip previously mailed to `consolemail://` — a
+container console nobody tails, so alerts reached no one. Email is now a knob:
+set **`GLITCHTIP_EMAIL_URL`** to a real SMTP DSN
+(e.g. `smtp://user:pass@smtp.example.com:587`) to have GlitchTip email issue
+alerts, and set **`GLITCHTIP_DOMAIN`** to a URL the recipients can reach so the
+links in those emails work (default `http://localhost:8000` only works over the
+SSH tunnel). `DEFAULT_FROM_EMAIL` reuses the app's `EMAIL_FROM` when set, or
+`GLITCHTIP_FROM_EMAIL`. Unset → it falls back to `consolemail://` (unchanged), so
+the stack still starts before SMTP is provisioned. The worker + web have `egress`
+so outbound SMTP works once configured.
 
 `GLITCHTIP_SECRET_KEY` and `GLITCHTIP_DB_PASSWORD` are **required** prod secrets
 (the stack refuses to start without them, like `GRAFANA_ADMIN_PASSWORD` /
-`UNLEASH_DB_PASSWORD`); `SENTRY_DSN` is **optional** (the activation switch). See
-`.env.prod.example`.
+`UNLEASH_DB_PASSWORD`); `SENTRY_DSN`, `GLITCHTIP_EMAIL_URL`, `GLITCHTIP_DOMAIN`,
+and `GLITCHTIP_REDIS_PASSWORD` are **optional**. See `.env.prod.example`.
 
 **Wiring a DSN.**
 

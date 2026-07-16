@@ -330,46 +330,57 @@ describe("checkProxyConfig", () => {
 // ---------------------------------------------------------------------------
 import { checkRateLimitRedis, type RedisCommands } from "./rate-limit";
 
-function fakeRedis(): RedisCommands & { sets: Map<string, Map<string, number>> } {
+// The limiter now issues ONE atomic EVAL. This fake evaluates the same
+// sliding-window logic in JS against an in-process sorted set, and records the
+// TTL the script (P)EXPIREs the key with so tests can assert it is always set —
+// the guarantee the old multi-round-trip path could lose (#768).
+function fakeRedis(): RedisCommands & {
+  sets: Map<string, Map<string, number>>;
+  ttls: Map<string, number>;
+  evalCalls: number;
+} {
   const sets = new Map<string, Map<string, number>>();
+  const ttls = new Map<string, number>();
   const setFor = (key: string) => {
     if (!sets.has(key)) sets.set(key, new Map());
     return sets.get(key)!;
   };
-  return {
+  const state = {
     sets,
-    async zremrangebyscore(key, _min, max) {
+    ttls,
+    evalCalls: 0,
+    async eval(_script: string, _numKeys: number, ...args: (string | number)[]) {
+      state.evalCalls++;
+      const [key, now, windowMs, windowStart, member, limit] = args as [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ];
       const s = setFor(key);
-      let removed = 0;
-      for (const [member, score] of s) {
-        if (score <= Number(max)) {
-          s.delete(member);
-          removed++;
-        }
+      for (const [m, score] of s) {
+        if (score <= Number(windowStart)) s.delete(m);
       }
-      return removed;
-    },
-    async zadd(key, score, member) {
-      setFor(key).set(member, score);
-      return 1;
-    },
-    async zcard(key) {
-      return setFor(key).size;
-    },
-    async zrem(key, member) {
-      return setFor(key).delete(member) ? 1 : 0;
-    },
-    async zrange(key, start, stop, _withScores) {
-      const sorted = [...setFor(key)].sort((a, b) => a[1] - b[1]);
-      return sorted.slice(start, stop + 1).flatMap(([m, s]) => [m, String(s)]);
-    },
-    async pexpire() {
-      return 1;
+      s.set(member, Number(now));
+      // The script PEXPIREs on every call, so the key always carries a TTL.
+      ttls.set(key, Number(windowMs));
+      const count = s.size;
+      if (count <= Number(limit)) {
+        return [1, Number(limit) - count, 0];
+      }
+      s.delete(member);
+      const sorted = [...s].sort((a, b) => a[1] - b[1]);
+      const oldestScore = sorted.length > 0 ? sorted[0][1] : Number(now);
+      const retry = Math.max(0, oldestScore + Number(windowMs) - Number(now));
+      return [0, 0, retry];
     },
     async get() {
       return null;
     },
   };
+  return state;
 }
 
 describe("checkRateLimitRedis", () => {
@@ -412,6 +423,22 @@ describe("checkRateLimitRedis", () => {
     // Oldest hit at t0 leaves the window at t0 + 60000 → 55000ms from t0+5000.
     expect(blocked.retryAfterMs).toBe(55_000);
   });
+
+  it("runs the whole window as a single atomic round trip (#768)", async () => {
+    const redis = fakeRedis();
+    await checkRateLimitRedis(redis, "rl:atomic", rule, 1_000_000);
+    // One EVAL, not the old 4-6 separate awaited commands.
+    expect(redis.evalCalls).toBe(1);
+  });
+
+  it("always sets a TTL on the key, even for a blocked request (#768)", async () => {
+    const redis = fakeRedis();
+    const t0 = 1_000_000;
+    // Exhaust the limit and then get blocked; the TTL must be present every time
+    // (the old path could drop it on a mid-sequence connection failure).
+    for (let i = 0; i < 4; i++) await checkRateLimitRedis(redis, "rl:ttl", rule, t0 + i);
+    expect(redis.ttls.get("rl:ttl")).toBe(rule.windowMs);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -423,18 +450,16 @@ describe("checkRateLimitRedis", () => {
 import { resolveRateLimit, resetRedisDegradedState } from "./rate-limit";
 import { log } from "./log";
 
-// A RedisCommands whose first op always throws, forcing the fallback path.
+// A RedisCommands whose EVAL always throws, forcing the fallback path — models
+// an unreachable Redis (offline queue disabled: the command never leaves the
+// client, so nothing is committed).
 function throwingRedis(): RedisCommands {
   const boom = () => {
     throw new Error("ECONNREFUSED");
   };
   return {
-    zremrangebyscore: boom,
-    zadd: boom,
-    zcard: boom,
-    zrem: boom,
-    zrange: boom,
-    pexpire: boom,
+    eval: boom,
+    get: boom,
   } as unknown as RedisCommands;
 }
 

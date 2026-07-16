@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useT } from "../I18nProvider";
 import { useToast } from "../ToastProvider";
+import { errorMessage } from "@/lib/error-codes";
 
 type Role = "CUSTOMER" | "PROVIDER" | "ADMIN" | "SUPPORT";
 
@@ -44,7 +45,7 @@ export default function AdminUserActions({
       // Surface the server's message when it sends one (e.g. 400 "Cannot
       // modify your own account here"); fall back to the generic string.
       const data = res ? await res.json().catch(() => ({})) : {};
-      toast.error(data.error ?? messages.error);
+      toast.error(errorMessage(data, messages.error, t.errorCodes));
     }
   }
 
@@ -59,7 +60,7 @@ export default function AdminUserActions({
       router.refresh();
     } else {
       const data = res ? await res.json().catch(() => ({})) : {};
-      toast.error(data.error ?? t.toast.adminForceLogoutError);
+      toast.error(errorMessage(data, t.toast.adminForceLogoutError, t.errorCodes));
     }
   }
 

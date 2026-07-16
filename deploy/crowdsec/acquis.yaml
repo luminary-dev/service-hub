@@ -3,12 +3,18 @@
 # /api/auth, form spam, scraping) and hand bans to the Caddy bouncer.
 #
 # The #527 logs go to Caddy's stdout (JSON) → the container's json-file driver.
-# The `docker` source reads exactly those lines straight off the Docker daemon
-# via the read-only socket mounted into this container — the SAME pattern the
-# observability stack already uses (Grafana Alloy tails every container's stdout
-# over docker.sock:ro). No second copy, no shared log file, no change to how
-# Caddy logs.
+# The `docker` source reads exactly those lines from the Docker API — the SAME
+# pattern the observability stack uses (Grafana Alloy). No second copy, no
+# shared log file, no change to how Caddy logs.
+#
+# Socket access (#744): CrowdSec reaches the Docker API through the read-only
+# filtering docker-socket-proxy on the isolated `dockerproxy` network, NOT the
+# raw /var/run/docker.sock. A read-only bind of the socket does NOT restrict the
+# write API, so a log-parse bug in CrowdSec (fed attacker-controlled Caddy
+# request lines) would otherwise be root-equivalent on the single VPS. The proxy
+# exposes only the GET endpoints acquisition needs and blocks every write.
 source: docker
+docker_host: tcp://docker-socket-proxy:2375
 # Match the Caddy container regardless of the compose project prefix
 # (<project>-caddy-<n>); this stack's is service-hub-prod-caddy-1.
 container_name_regexp:

@@ -132,13 +132,13 @@ describe("ProfileForm", () => {
   it("surfaces the server error via role=alert", async () => {
     fetchMock.mockResolvedValue({
       ok: false,
-      json: async () => ({ error: "Headline is too short" }),
+      json: async () => ({ errorCode: "validation_error" }),
     });
     const { container } = renderForm();
     fireEvent.submit(container.querySelector("form")!);
 
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("Headline is too short");
+    expect(alert.textContent).toContain(dict.en.errorCodes.validation_error);
     expect(refresh).not.toHaveBeenCalled();
   });
 });
