@@ -131,6 +131,91 @@ const RESPONSES = [
   { jobRequestId: "job_040", providerId: "prov_p046", message: "Sure, I can help with this. Let me know a good time for a site visit." },
 ];
 
+// ---------------------------------------------------------------------------
+// #632 seed-data expansion — batch 2 ("demo everything" scale). GENERATED jobs
+// job_041..job_080 continue the job_NNN scheme, spanning every category and
+// district and BOTH statuses the schema supports (OPEN | CLOSED) plus the
+// hidden (admin-takedown) state. Each carries a realistic number of provider
+// responses, unique per (jobRequestId, providerId). customerId/providerId
+// reference the identity/provider seeds directly.
+// ---------------------------------------------------------------------------
+const pad3 = (n) => String(n).padStart(3, "0");
+const GEN_CATEGORIES = [
+  "mechanic", "electrician", "plumber", "carpenter", "mason", "painter",
+  "garden-designer", "ac-repair", "appliance-repair", "welder", "roofer",
+  "tile-layer", "cctv-security", "pest-control", "cleaning", "movers",
+];
+const GEN_DISTRICTS = [
+  "Colombo", "Gampaha", "Kalutara", "Kandy", "Matale", "Nuwara Eliya", "Galle",
+  "Matara", "Hambantota", "Jaffna", "Kilinochchi", "Mannar", "Vavuniya",
+  "Mullaitivu", "Batticaloa", "Ampara", "Trincomalee", "Kurunegala", "Puttalam",
+  "Anuradhapura", "Polonnaruwa", "Badulla", "Monaragala", "Ratnapura", "Kegalle",
+];
+const JOB_TEMPLATES = {
+  mechanic: ["Need a mechanic to look at a strange engine noise", "My car makes a grinding noise when I brake. Would like someone experienced to take a look and give an honest quote."],
+  electrician: ["Looking for an electrician to fix a tripping circuit", "One of the circuits in my house keeps tripping the breaker. Needs someone licensed to diagnose and fix it safely."],
+  plumber: ["Need a plumber for a leaking kitchen pipe", "There's a slow leak under my kitchen sink that's starting to damage the cabinet. Need it fixed properly, not a quick patch."],
+  carpenter: ["Want a custom bookshelf built for the living room", "Looking for a carpenter to build a custom bookshelf to fit an alcove in my living room. Can provide rough measurements."],
+  mason: ["Need masonry work for a small boundary wall", "Small section of my boundary wall collapsed after the rains. Need it rebuilt to match the existing wall."],
+  painter: ["Looking for a painter for a 3-bedroom house", "Need the interior of a 3-bedroom house repainted. Walls are in decent condition, just need a fresh coat."],
+  "garden-designer": ["Want to redesign a small overgrown backyard", "My backyard is overgrown and I'd like a simple, low-maintenance tropical garden redesign."],
+  "ac-repair": ["AC not cooling properly, need a technician", "My split AC unit is running but not cooling the room anymore. Might need a gas refill or could be something else."],
+  "appliance-repair": ["Washing machine stopped spinning, needs repair", "My washing machine fills with water but the drum doesn't spin. Would like a diagnosis and repair quote."],
+  welder: ["Need a metal gate fabricated and installed", "Need a metal gate fabricated for my driveway entrance, roughly 3m wide, plus installation."],
+  roofer: ["Roof leaking during rain, need urgent repair", "Noticed water coming through the ceiling during the last heavy rain. Need someone to find and fix the leak."],
+  "tile-layer": ["Need bathroom floor retiled", "Bathroom floor tiles are cracked in a few places and I'd like the whole floor redone."],
+  "cctv-security": ["Want to install CCTV cameras at home", "Want a basic 4-camera CCTV setup covering the front gate, garden and back entrance."],
+  "pest-control": ["Need pest control for a termite problem", "Found termite damage on a wooden door frame and want a full inspection and treatment."],
+  cleaning: ["Looking for a deep clean before moving in", "Moving into a new house next month and want a full deep clean done before we move furniture in."],
+  movers: ["Need help moving house within the same city", "Moving from a 2-bedroom apartment to a house across town, need help with furniture and boxes."],
+};
+const RESPONSE_TEMPLATES = [
+  "I can take this on. Available this week — happy to give a firm quote after seeing photos.",
+  "This sounds like a job I can help with. I've done similar work recently in the area.",
+  "I'm based nearby and can come take a look within the next couple of days.",
+  "Sure, I can help with this. Let me know a good time for a site visit.",
+];
+const ALL_CUSTOMER_IDS = [
+  "user_dilani", "user_ashan", "user_tharindu",
+  ...Array.from({ length: 27 }, (_, k) => `user_c${pad3(k + 4)}`),
+  ...Array.from({ length: 70 }, (_, k) => `user_c${pad3(k + 31)}`),
+];
+// Suspended providers (2 existing + 4 generated) never respond to jobs.
+const SUSPENDED_PROVIDERS = new Set(["prov_p044", "prov_p045", "prov_p058", "prov_p088", "prov_p118", "prov_p148"]);
+const RESPONDER_IDS = [
+  "prov_nuwan", "prov_sampath", "prov_kumari", "prov_roshan", "prov_rizwan", "prov_chaminda",
+  ...Array.from({ length: 144 }, (_, k) => `prov_p${pad3(k + 7)}`),
+].filter((id) => !SUSPENDED_PROVIDERS.has(id));
+
+const GEN_JOBS = [];
+const GEN_RESPONSES = [];
+for (let j = 41; j <= 80; j++) {
+  const category = GEN_CATEGORIES[j % GEN_CATEGORIES.length];
+  const [title, description] = JOB_TEMPLATES[category];
+  const status = j % 5 === 0 ? "CLOSED" : "OPEN"; // ~1/5 closed
+  const hidden = j % 13 === 0; // a couple admin-hidden
+  GEN_JOBS.push({
+    id: `job_${pad3(j)}`,
+    customerId: ALL_CUSTOMER_IDS[(j * 3) % ALL_CUSTOMER_IDS.length],
+    category,
+    district: GEN_DISTRICTS[j % GEN_DISTRICTS.length],
+    title,
+    description,
+    budget: j % 3 === 0 ? null : 5000 + ((j * 1300) % 45000),
+    status,
+    hidden,
+  });
+  // 0–3 responses per job, unique responders.
+  const respCount = j % 4;
+  for (let r = 0; r < respCount; r++) {
+    GEN_RESPONSES.push({
+      jobRequestId: `job_${pad3(j)}`,
+      providerId: RESPONDER_IDS[(j * 5 + r * 37) % RESPONDER_IDS.length],
+      message: RESPONSE_TEMPLATES[(j + r) % RESPONSE_TEMPLATES.length],
+    });
+  }
+}
+
 async function main() {
   // This is DUMMY demo data (fake job requests and responses) — it must
   // never reach a production database. Same guard as identity-service.
@@ -146,18 +231,20 @@ async function main() {
   await db.jobResponse.deleteMany();
   await db.jobRequest.deleteMany();
 
-  for (const j of JOBS) {
+  for (const j of [...JOBS, ...GEN_JOBS]) {
     const { hidden, ...jobData } = j;
     await db.jobRequest.create({
       data: { ...jobData, hiddenAt: hidden ? new Date("2026-05-01T12:00:00Z") : null },
     });
   }
 
-  for (const r of RESPONSES) {
+  for (const r of [...RESPONSES, ...GEN_RESPONSES]) {
     await db.jobResponse.create({ data: r });
   }
 
-  console.log(`Seeded ${JOBS.length} job requests and ${RESPONSES.length} responses.`);
+  const totalJobs = JOBS.length + GEN_JOBS.length;
+  const totalResponses = RESPONSES.length + GEN_RESPONSES.length;
+  console.log(`Seeded ${totalJobs} job requests and ${totalResponses} responses.`);
 }
 
 main()

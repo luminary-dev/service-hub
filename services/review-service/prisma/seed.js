@@ -225,6 +225,91 @@ const RESPONSES = [
   { reviewId: "rev_4", text: "It was a pleasure working on your garden. Water the ferns twice a week during the dry months!" },
 ];
 
+// ---------------------------------------------------------------------------
+// #632 seed-data expansion — batch 2 ("demo everything" scale). GENERATED
+// reviews rev_151..rev_500 continue the rev_N scheme, spread realistically
+// across all 150 seeded providers by the full 100-customer set. Sub-dimensions
+// (#528) on ~2/3, photos on ~1/3 (cycling the review-pool), and provider
+// responses (#395) on ~40%. Every (providerId,userId) pair is unique (schema
+// @@unique) — collisions with the hard-coded reviews above are skipped.
+// ---------------------------------------------------------------------------
+const pad3 = (n) => String(n).padStart(3, "0");
+const ALL_PROVIDER_IDS = [
+  "prov_nuwan", "prov_sampath", "prov_kumari", "prov_roshan", "prov_rizwan", "prov_chaminda",
+  ...Array.from({ length: 144 }, (_, k) => `prov_p${pad3(k + 7)}`),
+];
+const ALL_CUSTOMER_IDS = [
+  "user_dilani", "user_ashan", "user_tharindu",
+  ...Array.from({ length: 27 }, (_, k) => `user_c${pad3(k + 4)}`),
+  ...Array.from({ length: 70 }, (_, k) => `user_c${pad3(k + 31)}`),
+];
+const RATING_PATTERN = [5, 5, 4, 5, 4, 3, 5, 4, 5, 2, 5, 4, 3, 5, 4, 1, 5, 4, 5, 3];
+const REVIEW_COMMENTS = [
+  "Excellent work — showed up on time and everything was done properly. Would hire again.",
+  "Very professional. Explained the job clearly before starting and stuck to the quoted price.",
+  "Best in the area I've worked with. Highly recommend for anyone nearby.",
+  "Quick response and tidy work. It has held up well since.",
+  "Reasonable pricing and honest advice — didn't try to upsell anything I didn't need.",
+  "Solved a problem two other people couldn't figure out. Great communication throughout.",
+  "Solid job, communication could've been a little faster but the end result was fine.",
+  "Did the work well. Price was a touch higher than I expected but quality justified it.",
+  "Good work overall, just took a bit longer than expected to schedule.",
+  "Had to call back once about a small issue but it was sorted quickly.",
+];
+const RESPONSE_TEXTS = [
+  "Thank you for the kind words — really appreciate you taking the time to review!",
+  "Glad it worked out well. Feel free to reach out again if you need anything else.",
+  "Thanks for choosing me for this job, and for the honest feedback.",
+];
+const clamp = (n) => Math.max(1, Math.min(5, n));
+const usedPairs = new Set([...REVIEWS, ...NEW_REVIEWS].map((r) => `${r.providerId}|${r.userId}`));
+const GEN_REVIEWS = [];
+const GEN_RESPONSES = [];
+{
+  let rid = 151;
+  let k = 0;
+  while (GEN_REVIEWS.length < 350 && k < 100000) {
+    const providerId = ALL_PROVIDER_IDS[k % ALL_PROVIDER_IDS.length];
+    let placed = null;
+    for (let off = 0; off < ALL_CUSTOMER_IDS.length; off++) {
+      const userId = ALL_CUSTOMER_IDS[(k * 13 + off) % ALL_CUSTOMER_IDS.length];
+      const key = `${providerId}|${userId}`;
+      if (!usedPairs.has(key)) { usedPairs.add(key); placed = userId; break; }
+    }
+    k++;
+    if (!placed) continue;
+    const id = `rev_${rid++}`;
+    const idx = GEN_REVIEWS.length;
+    const rating = RATING_PATTERN[idx % RATING_PATTERN.length];
+    const withDims = idx % 3 !== 0;
+    const withPhotos = idx % 3 === 0;
+    const review = {
+      id,
+      providerId,
+      userId: placed,
+      rating,
+      comment: REVIEW_COMMENTS[idx % REVIEW_COMMENTS.length],
+      photos: withPhotos
+        ? [
+            `/uploads/seed/review-pool/review-${String((idx % 24) + 1).padStart(2, "0")}.jpg`,
+            ...(idx % 6 === 0 ? [`/uploads/seed/review-pool/review-${String(((idx + 11) % 24) + 1).padStart(2, "0")}.jpg`] : []),
+          ]
+        : [],
+    };
+    if (withDims) {
+      review.quality = clamp(rating + ((idx % 3) - 1));
+      review.punctuality = clamp(rating - (idx % 2));
+      review.value = clamp(rating + ((idx % 2) === 0 ? 0 : -1));
+      review.communication = clamp(rating - ((idx % 3) - 1));
+    }
+    GEN_REVIEWS.push(review);
+    // Provider responses (#395) on ~40% of the generated reviews.
+    if (idx % 5 < 2) {
+      GEN_RESPONSES.push({ reviewId: id, text: RESPONSE_TEXTS[idx % RESPONSE_TEXTS.length] });
+    }
+  }
+}
+
 async function main() {
   // This is DUMMY demo data (fake reviews, photos, responses) — it must
   // never reach a production database. Same guard as identity-service.
@@ -243,9 +328,10 @@ async function main() {
     await db.review.create({ data: r });
   }
 
-  // NEW_REVIEWS (#632 seed-data expansion) carry a `photos` array of URLs —
-  // strip it before the scalar create, then insert as ReviewPhoto rows.
-  for (const r of NEW_REVIEWS) {
+  // NEW_REVIEWS + GEN_REVIEWS (#632 seed-data expansion) carry a `photos`
+  // array of URLs — strip it before the scalar create, then insert as
+  // ReviewPhoto rows.
+  for (const r of [...NEW_REVIEWS, ...GEN_REVIEWS]) {
     const { photos, ...reviewData } = r;
     await db.review.create({ data: reviewData });
     for (const url of photos) {
@@ -253,13 +339,13 @@ async function main() {
     }
   }
 
-  for (const resp of [...RESPONSES, ...NEW_RESPONSES]) {
+  for (const resp of [...RESPONSES, ...NEW_RESPONSES, ...GEN_RESPONSES]) {
     await db.reviewResponse.create({ data: resp });
   }
 
-  const totalReviews = REVIEWS.length + NEW_REVIEWS.length;
-  const totalResponses = RESPONSES.length + NEW_RESPONSES.length;
-  const totalPhotos = NEW_REVIEWS.reduce((n, r) => n + r.photos.length, 0);
+  const totalReviews = REVIEWS.length + NEW_REVIEWS.length + GEN_REVIEWS.length;
+  const totalResponses = RESPONSES.length + NEW_RESPONSES.length + GEN_RESPONSES.length;
+  const totalPhotos = [...NEW_REVIEWS, ...GEN_REVIEWS].reduce((n, r) => n + r.photos.length, 0);
   console.log(
     `Seeded ${totalReviews} reviews, ${totalResponses} responses, ${totalPhotos} review photos.`
   );
