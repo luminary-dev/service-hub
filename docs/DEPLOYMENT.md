@@ -204,15 +204,30 @@ raise any `mem_limit`.
    ```bash
    echo "$GHCR_TOKEN" | docker login ghcr.io -u <user> --password-stdin
    ```
-5. Bring it up, then bootstrap a real admin:
+5. Bring it up, seed the category taxonomy, then bootstrap a real admin:
    ```bash
    docker compose -f docker-compose.prod.yml up -d
+
+   # Real provider categories (mechanic, electrician, …). One-time bootstrap for
+   # a fresh prod DB — categories are NOT auto-seeded on deploy. The provider
+   # seed upserts the 16-category taxonomy BEFORE its demo-data guard, so this is
+   # the supported way to populate them in prod; it then refuses to seed demo
+   # providers and exits non-zero — that exit 1 is EXPECTED (the categories are
+   # already committed), hence the `|| true`.
+   docker compose -f docker-compose.prod.yml exec provider-service npm run db:seed || true
+
+   # A real admin — never the demo admin@baas.lk:
    docker compose -f docker-compose.prod.yml exec identity-service \
      npm run create-admin -- --email you@baas.lk --password '...'
    ```
    (`ADMIN_EMAIL`/`ADMIN_PASSWORD` env vars work too; pass `--support` for a
    SUPPORT-tier account — see
    [admin/notifications-and-bootstrap.md](admin/notifications-and-bootstrap.md).)
+   Each category's default cover photo is a static `/images/categories/<slug>.jpg`
+   asset baked into the web image, so covers render as soon as categories exist.
+   The upsert re-applies the default label/icon/cover for each of the 16 seed
+   slugs, so run it on a fresh DB only — after go-live, manage categories in the
+   admin category manager rather than re-seeding.
 
 Migrations **auto-apply on start**: each DB-owning service runs `start:migrate`
 (`prisma migrate deploy && node dist/index.js`) as its container command, so a
