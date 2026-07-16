@@ -214,6 +214,31 @@ NEW_PROV_ID=$(echo "$PREG" | jq -r '.providerId')
 check "provider register returns providerId" "$(test -n "$NEW_PROV_ID" && test "$NEW_PROV_ID" != "null" && echo yes)" "yes"
 check "new provider searchable" "$(req anon GET "/api/providers?q=$RUN_TAG" | jq -r '.total')" "1"
 
+echo "== File upload + verification-doc privacy (#500, #771) =="
+# newprov (registered above) is still unverified, so it may submit a
+# verification document — an authenticated upload → fetch journey that also
+# exercises the (otherwise untested) gateway proxy on a multipart POST. A valid
+# 1x1 PNG; media re-encodes it with sharp on store.
+VERIF_IMG="$JAR_DIR/verif.png"
+base64 -d > "$VERIF_IMG" <<'PNG_B64'
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC
+PNG_B64
+check "verification upload accepted (PENDING)" "$(req newprov POST "/api/provider/verification" \
+  -F "nic=@$VERIF_IMG;type=image/png" | jq -r '.status')" "PENDING"
+# The stored document's URL is visible to admins on the verification queue.
+VERIF_URL=$(req admin GET "/api/admin/verifications" \
+  | jq -r --arg id "$NEW_PROV_ID" '.providers[]? | select(.id==$id) | .verificationDocs[0].url // empty')
+check "admin sees the verification doc url" "$(test -n "$VERIF_URL" && echo yes)" "yes"
+# The document is PII (NIC / business-registration scan): only ADMIN/SUPPORT may
+# fetch the bytes (200), and it must NEVER be served on the public media path —
+# anon and a plain (non-admin) customer are both refused (403).
+check "admin can fetch the verification doc" \
+  "$(req admin GET "$VERIF_URL" -o /dev/null -w '%{http_code}')" "200"
+check "verification doc not public (anon)" \
+  "$(req anon GET "$VERIF_URL" -o /dev/null -w '%{http_code}')" "403"
+check "verification doc not public (non-admin customer)" \
+  "$(req cust GET "$VERIF_URL" -o /dev/null -w '%{http_code}')" "403"
+
 echo "== Admin =="
 check "admin providers list" "$(req admin GET "/api/admin/providers" | jq -r '.total >= 51')" "true"
 check "admin suspend" "$(req admin PATCH "/api/admin/providers/$NEW_PROV_ID" -H 'content-type: application/json' \

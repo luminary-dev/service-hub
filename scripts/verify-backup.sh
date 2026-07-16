@@ -71,6 +71,21 @@ for pair in identity_db:User provider_db:Provider review_db:Review job_db:JobReq
   fi
 done
 
+# Redis snapshot (#757): a present redis.rdb must at least carry the RDB magic
+# header ("REDIS…"), so a truncated or corrupt dump is caught tonight instead of
+# during a real restore. Absence is fine (a dev run or a Redis-less stack skips
+# it), mirroring the media-tar handling below.
+if [ -f "$SNAPSHOT/redis.rdb" ]; then
+  if [ "$(head -c 5 "$SNAPSHOT/redis.rdb" 2>/dev/null || true)" = "REDIS" ]; then
+    echo "    redis.rdb: header OK"
+  else
+    echo "ERROR: redis.rdb is missing the RDB magic header — the snapshot is corrupt." >&2
+    exit 1
+  fi
+else
+  echo "    (no redis.rdb — dev run or Redis dump skipped)"
+fi
+
 # Upload-volume tars (#663) sit alongside the dumps in local-disk media mode and
 # are absent when media is on R2 — so absence is fine (no assumption about the
 # storage mode here). A present tar, though, must be a valid gzip stream: a

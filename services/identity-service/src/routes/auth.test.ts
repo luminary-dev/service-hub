@@ -384,7 +384,10 @@ describe("POST /api/auth/login (lockout counter)", () => {
       password: "wrong-password",
     });
     expect(res.status).toBe(401);
-    expect(await res.json()).toEqual({ error: "Invalid email or password" });
+    expect(await res.json()).toEqual({
+      error: "Invalid email or password",
+      code: "invalid_credentials",
+    });
 
     // The failure is recorded as an atomic increment, not an overwrite.
     expect(db.user.update).toHaveBeenCalledWith({
@@ -440,7 +443,10 @@ describe("POST /api/auth/login (lockout counter)", () => {
       password: CURRENT_PASSWORD,
     });
     expect(res.status).toBe(401);
-    expect(await res.json()).toEqual({ error: "Invalid email or password" });
+    expect(await res.json()).toEqual({
+      error: "Invalid email or password",
+      code: "invalid_credentials",
+    });
     // Locked branch does not increment or reset the counter.
     expect(db.user.update).not.toHaveBeenCalled();
   });

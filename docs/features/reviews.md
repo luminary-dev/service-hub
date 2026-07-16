@@ -42,8 +42,14 @@ review-service.
   [API reference](../api/public.md).
 - **Review photos** — up to **3** per review (JPEG/PNG/WebP), submitted
   multipart to `POST /api/providers/{providerId}/reviews`. Authors can remove
-  their own photos (`DELETE /api/reviews/photos/{id}`, a hard delete; admins
-  can remove any).
+  their own photos (`DELETE /api/reviews/photos/{id}`, a **hard** delete — row
+  and file gone immediately). Admins can remove any, but an admin takedown of a
+  reported photo is a **reversible soft delete** (#756): it sets `deletedAt`,
+  audit-logs the action and keeps the stored file (until a later purge sweep),
+  so the removal can be undone via `PATCH /api/admin/reviews/photos/{id}/restore`
+  and the reports queue can still show what was removed. Public review queries
+  (and the author's own account history) hide soft-deleted photos; account
+  erasure still hard-deletes. Mirrors provider-service's `WorkPhoto`.
 - **Provider responses (#395).** The reviewed profile's owner can keep **one
   public reply per review** — add, edit (posting again replaces the text,
   3–1000 chars) or delete it, via `POST`/`DELETE

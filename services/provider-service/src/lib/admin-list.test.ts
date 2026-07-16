@@ -6,6 +6,7 @@ import {
   buildAdminProvidersWhere,
   ADMIN_DEFAULT_PAGE_SIZE,
   ADMIN_MAX_PAGE_SIZE,
+  MAX_PAGE,
 } from "./admin-list";
 
 describe("normalizeAdminListQuery", () => {
@@ -30,6 +31,12 @@ describe("normalizeAdminListQuery", () => {
 
   it("floors fractional pages", () => {
     expect(normalizeAdminListQuery({ page: "3.9" }).page).toBe(3);
+  });
+
+  // #753: page feeds the SQL OFFSET, so it is also clamped to MAX_PAGE.
+  it("clamps page at MAX_PAGE", () => {
+    expect(normalizeAdminListQuery({ page: "999999" }).page).toBe(MAX_PAGE);
+    expect(normalizeAdminListQuery({ page: "1e300" }).page).toBe(MAX_PAGE);
   });
 
   it("caps pageSize at 100 and falls back to 20 for junk", () => {
@@ -96,6 +103,14 @@ describe("normalizePagination", () => {
     expect(normalizePagination({ page: "-3" }).page).toBe(1);
     expect(normalizePagination({ page: "abc" }).page).toBe(1);
     expect(normalizePagination({ page: "4.9" }).page).toBe(4);
+  });
+
+  // #753: page also has a ceiling — it feeds the SQL OFFSET, so clamp it to
+  // MAX_PAGE to keep skip int-safe and block deep-pagination DoS.
+  it("clamps page at MAX_PAGE to bound the OFFSET", () => {
+    expect(normalizePagination({ page: "5" }).page).toBe(5);
+    expect(normalizePagination({ page: "999999" }).page).toBe(MAX_PAGE);
+    expect(normalizePagination({ page: "1e300" }).page).toBe(MAX_PAGE);
   });
 
   it("caps pageSize at the max and falls back for junk", () => {

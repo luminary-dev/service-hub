@@ -1,8 +1,11 @@
 import { defineConfig } from "vitest/config";
 
 // Per-service coverage config for CI visibility (#262). The `thresholds` below
-// are a deliberately low baseline that currently passes — a ratchet floor so
-// coverage can never silently regress; raise them as the suite grows.
+// are a ratchet floor so coverage can never silently regress; raise them as the
+// suite grows. Ratcheted from the original 5% baseline toward actual once the
+// chat route tests (internal-secret / persona 404 / 503 / SSE framing) landed
+// (#771) — kept a few points under measured coverage (~58% lines / 47% branches
+// / 54% functions) so normal churn doesn't trip CI.
 export default defineConfig({
   test: {
     coverage: {
@@ -11,10 +14,10 @@ export default defineConfig({
       reportsDirectory: "./coverage",
       include: ["src/**/*.ts"],
       thresholds: {
-        lines: 5,
-        functions: 5,
-        branches: 5,
-        statements: 5,
+        lines: 55,
+        functions: 50,
+        branches: 45,
+        statements: 52,
       },
     },
   },

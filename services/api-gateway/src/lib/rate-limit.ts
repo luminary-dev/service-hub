@@ -175,23 +175,56 @@ function socketPeer(c: Context): string | undefined {
 // per-instance limiting beats returning errors or no limiting at all.
 // ---------------------------------------------------------------------------
 
-// Minimal command surface so tests can inject a fake. `get` is used by the
-// session-revocation check (session-version.ts, #374), which shares this same
-// Redis connection rather than opening a second one.
+// Minimal command surface so tests can inject a fake. `eval` runs the atomic
+// sliding-window script below; `get` is used by the session-revocation check
+// (session-version.ts, #374), which shares this same Redis connection rather
+// than opening its own.
 export type RedisCommands = {
-  zremrangebyscore(key: string, min: number | string, max: number | string): Promise<number>;
-  zadd(key: string, score: number, member: string): Promise<unknown>;
-  zcard(key: string): Promise<number>;
-  zrem(key: string, member: string): Promise<number>;
-  zrange(key: string, start: number, stop: number, withScores: "WITHSCORES"): Promise<string[]>;
-  pexpire(key: string, ms: number): Promise<number>;
+  eval(
+    script: string,
+    numKeys: number,
+    ...args: (string | number)[]
+  ): Promise<unknown>;
   get(key: string): Promise<string | null>;
 };
 
-// Sliding window over a sorted set: drop expired hits, optimistically add
-// this one, then count. Over the limit → remove our member again and report
-// when the oldest hit leaves the window. The add-then-count order keeps
-// concurrent requests from double-spending the last slot.
+// The whole sliding window as ONE atomic server-side script (#768): expire old
+// hits, add this one, count, (re)set the key TTL, and — when over the limit —
+// remove our own member again and read when the oldest survivor leaves the
+// window. Running it as a single EVAL replaces the previous 4-6 separate awaited
+// round trips, which had two failure modes: a connection drop between ZADD and
+// PEXPIRE left the key with NO TTL (a slow leak across the unbounded per-IP
+// keyspace), and a failure after ZADD double-charged the caller (the member
+// persisted in Redis AND the in-memory fallback recorded a hit). A script is
+// all-or-nothing, so neither partial state can occur.
+//
+// Returns [success (1|0), remaining, retryAfterMs].
+const SLIDING_WINDOW_LUA = `
+local now = tonumber(ARGV[1])
+local windowMs = tonumber(ARGV[2])
+local windowStart = tonumber(ARGV[3])
+local member = ARGV[4]
+local limit = tonumber(ARGV[5])
+redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, windowStart)
+redis.call('ZADD', KEYS[1], now, member)
+local count = redis.call('ZCARD', KEYS[1])
+redis.call('PEXPIRE', KEYS[1], windowMs)
+if count <= limit then
+  return {1, limit - count, 0}
+end
+redis.call('ZREM', KEYS[1], member)
+local oldest = redis.call('ZRANGE', KEYS[1], 0, 0, 'WITHSCORES')
+local oldestScore = now
+if oldest[2] then oldestScore = tonumber(oldest[2]) end
+local retry = oldestScore + windowMs - now
+if retry < 0 then retry = 0 end
+return {0, 0, retry}
+`;
+
+// Sliding window over a sorted set, executed atomically (see SLIDING_WINDOW_LUA).
+// The add-then-count order keeps concurrent requests from double-spending the
+// last slot; over the limit we remove our own member and report when the oldest
+// remaining hit leaves the window.
 export async function checkRateLimitRedis(
   redis: RedisCommands,
   key: string,
@@ -200,22 +233,21 @@ export async function checkRateLimitRedis(
 ) {
   const windowStart = now - rule.windowMs;
   const member = `${now}:${randomUUID()}`;
-  await redis.zremrangebyscore(key, 0, windowStart);
-  await redis.zadd(key, now, member);
-  const count = await redis.zcard(key);
-  await redis.pexpire(key, rule.windowMs);
-
-  if (count <= rule.limit) {
-    return { success: true, remaining: rule.limit - count, retryAfterMs: 0 };
-  }
-
-  await redis.zrem(key, member);
-  const oldest = await redis.zrange(key, 0, 0, "WITHSCORES");
-  const oldestScore = oldest.length >= 2 ? Number(oldest[1]) : now;
+  const res = (await redis.eval(
+    SLIDING_WINDOW_LUA,
+    1,
+    key,
+    String(now),
+    String(rule.windowMs),
+    String(windowStart),
+    member,
+    String(rule.limit)
+  )) as [number, number, number];
+  const [success, remaining, retryAfterMs] = res;
   return {
-    success: false,
-    remaining: 0,
-    retryAfterMs: Math.max(0, oldestScore + rule.windowMs - now),
+    success: success === 1,
+    remaining: Number(remaining),
+    retryAfterMs: Number(retryAfterMs),
   };
 }
 
@@ -297,6 +329,13 @@ export async function closeRedis(): Promise<void> {
 // intentionally preserved) and flips the edge-triggered degraded flag so the
 // fallback is observable without logging on every request. Injecting `redis`
 // keeps this unit-testable without a live connection.
+//
+// No double-charge (#768): the window is now a single atomic EVAL, so a failure
+// is all-or-nothing. When it throws the script did not commit — the dominant
+// case is Redis unreachable (offline queue disabled → the EVAL never leaves the
+// client), so the in-memory fallback records exactly one hit, never a second one
+// on top of a persisted Redis member. The old multi-command path could leave a
+// member in Redis AND charge in memory; that partial state is gone.
 export async function resolveRateLimit(
   redis: RedisCommands | null,
   key: string,

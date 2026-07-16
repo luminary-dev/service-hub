@@ -10,6 +10,18 @@ inputs are validated as integers, and although the columns are stored as
 `DECIMAL(12,2)` (#371) every service converts back to a plain number at the
 JSON edge, so consumers never see a string-typed amount.
 
+**Error responses** are `{ error }` (a human string) and — where a service has
+been migrated (review-service so far, #761, refs #566/#508) — an additive,
+stable machine-readable `{ code }`. The web client maps `code` to a localized
+dictionary entry and falls back to a generic **localized** string when the code
+is unknown, instead of rendering the English `error` verbatim inside the
+otherwise-Sinhala `/si` UI. `code` is additive: existing clients that read only
+`error` keep working. review-service codes: `AUTH_REQUIRED`, `FORBIDDEN`,
+`INVALID_INPUT`, `INVALID_IMAGE`, `PHOTO_LIMIT`, `PROVIDER_NOT_FOUND`,
+`REVIEW_NOT_FOUND`, `REPORT_NOT_FOUND`, `PHOTO_NOT_FOUND`,
+`CANNOT_REVIEW_OWN_PROFILE`, `EMAIL_NOT_VERIFIED`, `INTERACTION_REQUIRED`,
+`NOT_REVIEW_OWNER`, `UPSTREAM_UNAVAILABLE`.
+
 ### Auth & session — identity-service
 
 | Method + path | Auth | Summary |
@@ -183,7 +195,8 @@ Reasons enum: `spam`, `scam`, `offensive`, `fake`, `other`.
 | `GET /api/jobs/board` | authenticated (PROVIDER) | OPEN jobs matching the provider's category and **any of their served districts** (`serviceDistricts`, #502), excluding own and admin-hidden (#376), with customer names + `responded`. A **suspended** provider is 403'd (#642) — a hidden profile keeps its role but loses board access. Paginated → `{ jobs, total, page, pageSize }`. |
 | `GET /api/jobs/mine` | authenticated | Own jobs with responses hydrated with provider `{ name, phone }`. A **suspended** responder's contact details are withheld (name → `Unknown`, phone → `null`), matching the public listings it's already dropped from (#642). Paginated → `{ jobs, total, page, pageSize }`. |
 
-Board/mine pagination: `page` ≥ 1, `pageSize`/`take` default 20, capped **50**.
+Board/mine pagination: `page` ≥ 1 and ≤ **500** (#753, clamps the SQL OFFSET),
+`pageSize`/`take` default 20, capped **50**.
 
 ### Media / files — media-service
 

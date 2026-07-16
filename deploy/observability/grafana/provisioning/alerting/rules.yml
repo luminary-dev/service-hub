@@ -1,0 +1,324 @@
+# Grafana unified alerting — rules (#746). Six rules turn the collected
+# telemetry (Prometheus metrics + the new node/postgres/redis exporters + Loki
+# logs) into pages a human actually receives via the default-webhook contact
+# point. Grafana auto-creates the `service-hub` folder on first provisioning.
+#
+# Each rule follows the same shape: query A pulls the signal, expression C is a
+# threshold on A, and C is the alert condition. Prometheus queries use the
+# provisioned `prometheus` datasource uid; Loki queries use `loki`; the
+# threshold step uses the built-in `__expr__` datasource.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: service-hub-alerts
+    folder: service-hub
+    interval: 1m
+    rules:
+      # 1) Per-service 5xx rate — a service returning server errors above a low
+      #    floor for 5m. Grouped by the app-level `service` label.
+      - uid: sh-5xx-rate
+        title: Service 5xx error rate elevated
+        condition: C
+        for: 5m
+        noDataState: NoData
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service }} is serving 5xx responses"
+          description: "5xx rate for {{ $labels.service }} is {{ printf \"%.3f\" $values.C.Value }} req/s (>0.1) over the last 5m."
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: 'sum by (service) (rate(http_requests_total{status=~"5.."}[5m]))'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              range: false
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              refId: C
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.1]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                  type: query
+
+      # 2) Target down — any Prometheus scrape target (service or exporter)
+      #    reporting up==0 for 2m. Catches crash-loops and dead containers.
+      - uid: sh-target-down
+        title: Scrape target down
+        condition: C
+        for: 2m
+        noDataState: NoData
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} target {{ $labels.instance }} is down"
+          description: "Prometheus cannot scrape {{ $labels.instance }} (job {{ $labels.job }}); up==0 for 2m."
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: 'max by (job, instance) (up)'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              range: false
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              refId: C
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                  type: query
+
+      # 3) p95 request latency — 95th-percentile handler latency above 1.5s for
+      #    10m, per service. Surfaces a slow dependency before users complain.
+      - uid: sh-p95-latency
+        title: Service p95 latency high
+        condition: C
+        for: 10m
+        noDataState: NoData
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }} p95 latency is high"
+          description: "p95 latency for {{ $labels.service }} is {{ printf \"%.2f\" $values.C.Value }}s (>1.5s) over the last 5m, sustained 10m."
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: 'histogram_quantile(0.95, sum by (service, le) (rate(http_request_duration_seconds_bucket[5m])))'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              range: false
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              refId: C
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [1.5]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                  type: query
+
+      # 4) Host disk usage — any real (non-virtual) filesystem on the VPS above
+      #    85% full for 5m. node-exporter (#746) makes this visible; a full disk
+      #    takes down Postgres, Loki and Prometheus at once.
+      - uid: sh-disk-usage
+        title: Host disk usage above 85%
+        condition: C
+        for: 5m
+        noDataState: NoData
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: "Host disk usage above 85%"
+          description: "A host filesystem is {{ printf \"%.1f\" $values.C.Value }}% full (>85%). Free space or prune volumes/images."
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: 'max(100 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|ramfs"} * 100 / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs|ramfs"}))'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              range: false
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              refId: C
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [85]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                  type: query
+
+      # 5) Loki error-log burst — more than 25 error-level lines across the
+      #    platform in 5m. Complements the metric alerts with a log signal.
+      - uid: sh-loki-error-burst
+        title: Error-log burst
+        condition: C
+        for: 5m
+        noDataState: NoData
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "Error-log burst across the platform"
+          description: "{{ printf \"%.0f\" $values.C.Value }} error-level log lines in the last 5m (>25). Check Grafana Explore (Loki) for the source."
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: loki
+            model:
+              datasource:
+                type: loki
+                uid: loki
+              editorMode: code
+              expr: 'sum(count_over_time({level="error"}[5m]))'
+              queryType: instant
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              refId: C
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [25]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                  type: query
+
+      # 6) Session-revocation degraded — the gateway logs this edge-triggered
+      #    warning once when its Redis revocation lookup starts failing and it
+      #    falls back to the identity check (revocations may fail open). This is
+      #    a security-relevant degradation, so any occurrence in 10m pages.
+      #    (session-version.ts:50 literally says "alert on this".)
+      - uid: sh-session-revocation-degraded
+        title: Session-revocation lookup degraded
+        condition: C
+        for: 0m
+        noDataState: NoData
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: "Gateway session-revocation Redis lookup is degraded"
+          description: "api-gateway logged a session-revocation Redis failure; revocations may fail open until Redis recovers. Check redis + the app Redis password."
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: loki
+            model:
+              datasource:
+                type: loki
+                uid: loki
+              editorMode: code
+              expr: 'sum(count_over_time({service="api-gateway"} |= "session-revocation Redis lookup failed" [10m]))'
+              queryType: instant
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              refId: C
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                  type: query

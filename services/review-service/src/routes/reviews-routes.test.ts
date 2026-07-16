@@ -42,6 +42,8 @@ const { dbMock } = vi.hoisted(() => ({
     reviewPhoto: {
       findUnique: vi.fn(),
       delete: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn(),
       createMany: vi.fn(),
     },
     reviewResponse: {
@@ -71,6 +73,11 @@ const { dbMock } = vi.hoisted(() => ({
 // review write/moderation paths.
 vi.mock("../lib/search-index", () => ({
   pushRatingsToSearchIndex: vi.fn(() => Promise.resolve()),
+}));
+// Provider rating write-back (#748) is fired (not awaited) from the same
+// write/moderation paths as the search-index push.
+vi.mock("../lib/provider-rating", () => ({
+  pushRatingToProvider: vi.fn(() => Promise.resolve()),
 }));
 vi.mock("../db", () => ({ db: dbMock }));
 vi.mock("../lib/notify", () => ({
@@ -301,7 +308,7 @@ describe("POST /api/providers/:id/reviews (summary + photo branches)", () => {
     wireS2s({ summary: "502" });
     const res = await postReview({});
     expect(res.status).toBe(502);
-    expect(await res.json()).toEqual({ error: "Upstream service unavailable" });
+    expect(await res.json()).toEqual({ error: "Upstream service unavailable", code: "UPSTREAM_UNAVAILABLE" });
   });
 
   it("400s when the photo batch exceeds the per-review cap", async () => {
@@ -519,7 +526,7 @@ describe("DELETE /api/reviews/photos/:id", () => {
     expect(dbMock.reviewPhoto.delete).not.toHaveBeenCalled();
   });
 
-  it("lets the author delete their own photo", async () => {
+  it("lets the author HARD-delete their own photo (row + file removed)", async () => {
     dbMock.reviewPhoto.findUnique.mockResolvedValue({
       id: "ph1",
       url: "reviews/ph1.jpg",
@@ -529,11 +536,18 @@ describe("DELETE /api/reviews/photos/:id", () => {
       "x-user-id": REVIEWER_ID,
     });
     expect(res.status).toBe(200);
+    // Owner delete stays a hard delete: row gone, file removed, no soft-delete
+    // and no audit entry (it's their own content, not moderation).
     expect(dbMock.reviewPhoto.delete).toHaveBeenCalledWith({ where: { id: "ph1" } });
     expect(vi.mocked(removeStoredFile)).toHaveBeenCalledWith("reviews/ph1.jpg");
+    expect(dbMock.reviewPhoto.update).not.toHaveBeenCalled();
+    expect(dbMock.adminAuditLog.create).not.toHaveBeenCalled();
   });
 
-  it("lets an admin moderate any photo", async () => {
+  // #756: an admin takedown is a reversible SOFT delete + audit entry, mirroring
+  // Review moderation and provider-service's WorkPhoto — the row and the stored
+  // file survive (kept until a later purge) so the removal can be restored.
+  it("SOFT-deletes + audits an admin takedown, keeping the file", async () => {
     dbMock.reviewPhoto.findUnique.mockResolvedValue({
       id: "ph1",
       url: "u",
@@ -544,6 +558,49 @@ describe("DELETE /api/reviews/photos/:id", () => {
       "x-user-role": "ADMIN",
     });
     expect(res.status).toBe(200);
+    expect(dbMock.reviewPhoto.update).toHaveBeenCalledWith({
+      where: { id: "ph1" },
+      data: { deletedAt: expect.any(Date) },
+    });
+    expect(dbMock.adminAuditLog.create).toHaveBeenCalled();
+    // The row is not hard-deleted and the file is preserved for a later purge.
+    expect(dbMock.reviewPhoto.delete).not.toHaveBeenCalled();
+    expect(vi.mocked(removeStoredFile)).not.toHaveBeenCalled();
+  });
+});
+
+describe("PATCH /api/admin/reviews/photos/:id/restore (#756)", () => {
+  it("403s a non-admin (SUPPORT cannot restore)", async () => {
+    const res = await req("/api/admin/reviews/photos/ph1/restore", { method: "PATCH" }, {
+      "x-user-id": "sup_1",
+      "x-user-role": "SUPPORT",
+    });
+    expect(res.status).toBe(403);
+    expect(dbMock.reviewPhoto.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("clears the soft-delete and audits for an ADMIN", async () => {
+    dbMock.reviewPhoto.updateMany.mockResolvedValue({ count: 1 });
+    const res = await req("/api/admin/reviews/photos/ph1/restore", { method: "PATCH" }, {
+      "x-user-id": "admin_1",
+      "x-user-role": "ADMIN",
+    });
+    expect(res.status).toBe(200);
+    expect(dbMock.reviewPhoto.updateMany).toHaveBeenCalledWith({
+      where: { id: "ph1" },
+      data: { deletedAt: null },
+    });
+    expect(dbMock.adminAuditLog.create).toHaveBeenCalled();
+  });
+
+  it("404s (no audit) when the photo id doesn't exist", async () => {
+    dbMock.reviewPhoto.updateMany.mockResolvedValue({ count: 0 });
+    const res = await req("/api/admin/reviews/photos/nope/restore", { method: "PATCH" }, {
+      "x-user-id": "admin_1",
+      "x-user-role": "ADMIN",
+    });
+    expect(res.status).toBe(404);
+    expect(dbMock.adminAuditLog.create).not.toHaveBeenCalled();
   });
 });
 

@@ -1,0 +1,16 @@
+# Grafana unified alerting — notification policy (#746). Routes every alert to
+# the single `default-webhook` contact point (contactpoints.yml). No
+# Alertmanager: Grafana's built-in alerting is enough for a single-VPS,
+# small-team deployment. Grouping keeps a storm (e.g. all services 5xx-ing at
+# once) to a few messages instead of one per series.
+apiVersion: 1
+
+policies:
+  - orgId: 1
+    receiver: default-webhook
+    group_by:
+      - grafana_folder
+      - alertname
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h

@@ -44,6 +44,8 @@ model NotificationPreference {
   type         String           // one of NOTIFICATION_TYPES — enforced by CHECK (#648)
   emailEnabled Boolean          @default(true)
   inAppEnabled Boolean          @default(true)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt // #769: date mute/unmute toggles
 
   @@unique([userId, type])
 }
