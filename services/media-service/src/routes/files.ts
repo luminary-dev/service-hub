@@ -8,10 +8,12 @@ import {
   isKnownNamespace,
   isVariantName,
   isVerificationSubpath,
+  normalizeSubpath,
   resolveFilePath,
   variantName,
 } from "../lib/media";
 import { r2Enabled, r2Get } from "../lib/r2";
+import { log } from "../lib/log";
 
 export const filesRoutes = new Hono();
 
@@ -28,8 +30,12 @@ const CACHE_CONTROL = "public, max-age=31536000, immutable";
 // /files/<namespace>/<subpath>
 filesRoutes.get("/files/:namespace/*", async (c) => {
   const namespace = c.req.param("namespace");
-  const rest = decodeURIComponent(
-    c.req.path.slice(`/files/${namespace}/`.length)
+  // Normalize the decoded subpath up front (#741): every downstream decision —
+  // the PII gate, the R2 key, and the disk resolver — must see the collapsed
+  // path, so a traversal like `uploads/../verification/<uuid>.jpg` can't slip
+  // past the verification gate while still resolving into the reserved prefix.
+  const rest = normalizeSubpath(
+    decodeURIComponent(c.req.path.slice(`/files/${namespace}/`.length))
   );
   const ext = path.extname(rest).slice(1).toLowerCase();
   const contentType = CONTENT_TYPES[ext];
@@ -67,16 +73,25 @@ filesRoutes.get("/files/:namespace/*", async (c) => {
     if (!isKnownNamespace(namespace)) {
       return c.json({ error: "Not found" }, 404);
     }
-    for (const candidate of candidates) {
-      const obj = await r2Get(`${namespace}/${candidate}`);
-      if (obj) {
-        return c.body(new Uint8Array(obj.body), 200, {
-          ...headers,
-          "content-type": obj.contentType ?? contentType,
-        });
+    try {
+      for (const candidate of candidates) {
+        const obj = await r2Get(`${namespace}/${candidate}`);
+        if (obj) {
+          return c.body(new Uint8Array(obj.body), 200, {
+            ...headers,
+            "content-type": obj.contentType ?? contentType,
+          });
+        }
       }
+      return c.json({ error: "Not found" }, 404);
+    } catch (err) {
+      // r2Get returns null only for a genuinely missing object; any other S3
+      // error (endpoint unreachable, expired keys, bucket misconfig) is
+      // rethrown (#765). Surface it as 503 — NOT 404 — so an R2 outage is
+      // observable in monitoring and the negative is not cached as "missing".
+      log.error("r2 read failed serving /files", { namespace, err });
+      return c.json({ error: "Storage unavailable" }, 503);
     }
-    return c.json({ error: "Not found" }, 404);
   }
 
   // Local disk (traversal-guarded).

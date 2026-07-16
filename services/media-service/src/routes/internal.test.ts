@@ -182,6 +182,31 @@ describe("POST /internal/media/store", () => {
     expect(((await res.json()) as { url: string }).url).toMatch(/\.jpg$/);
   });
 
+  it("413s an oversized chunked upload with no Content-Length (streaming cap, #773)", async () => {
+    // A chunked/absent-Content-Length body skips the early cut-off, so the hard
+    // streaming cap is the only thing standing between a hostile peer and an
+    // OOM. Stream ~8MB with no Content-Length and expect a mid-stream 413.
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const chunk = new Uint8Array(1024 * 1024); // 1MB
+        for (let i = 0; i < 8; i++) controller.enqueue(chunk); // 8MB > cap
+        controller.close();
+      },
+    });
+    const res = await app.request("/internal/media/store", {
+      method: "POST",
+      headers: {
+        "x-internal-secret": SECRET,
+        "content-type": "multipart/form-data; boundary=streamtest",
+      },
+      body: stream,
+      // Node/undici requires duplex for a streaming request body.
+      duplex: "half",
+    } as RequestInit & { duplex: "half" });
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: "File too large" });
+  });
+
   it("400s an invalid prefix (multi-segment / traversal)", async () => {
     const res = await postStore(
       storeForm({ namespace: "provider", prefix: "a/b", file: new File([await jpeg()], "x.jpg", { type: "image/jpeg" }) })
@@ -222,7 +247,14 @@ describe("POST /internal/media/store", () => {
 });
 
 describe("GET /internal/media/raw", () => {
-  function getRaw(url: string, headers: Record<string, string> = { "x-internal-secret": SECRET }) {
+  // The raw PII endpoint now needs the internal secret AND a forwarded
+  // ADMIN/SUPPORT identity (#773); default to an ADMIN caller.
+  const ADMIN = {
+    "x-internal-secret": SECRET,
+    "x-user-id": "admin-1",
+    "x-user-role": "ADMIN",
+  };
+  function getRaw(url: string, headers: Record<string, string> = ADMIN) {
     return app.request(`/internal/media/raw?url=${encodeURIComponent(url)}`, { headers });
   }
 
@@ -230,6 +262,34 @@ describe("GET /internal/media/raw", () => {
     const res = await getRaw("/api/files/provider/verification/x.jpg", {});
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "Forbidden" });
+  });
+
+  it("403s with a valid secret but no forwarded identity (#773)", async () => {
+    const res = await getRaw("/api/files/provider/verification/x.jpg", {
+      "x-internal-secret": SECRET,
+    });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "Forbidden" });
+  });
+
+  it("403s with a valid secret but a non-admin forwarded role (#773)", async () => {
+    const res = await getRaw("/api/files/provider/verification/x.jpg", {
+      "x-internal-secret": SECRET,
+      "x-user-id": "cust-1",
+      "x-user-role": "CUSTOMER",
+    });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "Forbidden" });
+  });
+
+  it("allows a forwarded SUPPORT identity (#773)", async () => {
+    const url = await storeFile("provider", "verification", Buffer.from(await jpeg()));
+    const res = await getRaw(url, {
+      "x-internal-secret": SECRET,
+      "x-user-id": "sup-1",
+      "x-user-role": "SUPPORT",
+    });
+    expect(res.status).toBe(200);
   });
 
   it("streams a stored verification document's bytes as private/no-store PII", async () => {
@@ -243,7 +303,7 @@ describe("GET /internal/media/raw", () => {
   });
 
   it("400s without a url", async () => {
-    const res = await app.request("/internal/media/raw", { headers: { "x-internal-secret": SECRET } });
+    const res = await app.request("/internal/media/raw", { headers: ADMIN });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "Invalid input" });
   });

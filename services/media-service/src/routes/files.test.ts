@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Local-disk mode (no R2 vars in tests): isolate MEDIA_DIR to a throwaway temp
 // dir. media.ts reads MEDIA_DIR at module load, so set it before importing.
@@ -12,6 +12,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import sharp from "sharp";
 import { app } from "../app";
 import { storeFile } from "../lib/media";
+import * as r2 from "../lib/r2";
 
 const SECRET = "dev-internal-secret";
 
@@ -100,6 +101,45 @@ describe("GET /files/:namespace/*", () => {
     // existing on disk.
     const url = await storeFile("provider", "verification", await jpeg());
     const res = await get(url.replace("/api/files/", "/files/"));
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "Not found" });
+  });
+
+  it("404s a verification document reached via an encoded-traversal subpath (#741)", async () => {
+    // The PII gate must key off the NORMALIZED path: a raw first-segment check
+    // is bypassed by `uploads/../verification/...`, whose first segment is the
+    // innocent `uploads` but which resolves into the reserved prefix on disk.
+    const url = await storeFile("provider", "verification", await jpeg());
+    const file = url.split("/").pop(); // <uuid>.jpg
+    const res = await get(
+      `/files/provider/uploads%2F..%2Fverification%2F${file}`
+    );
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "Not found" });
+  });
+});
+
+// R2 backend failure handling (#765). These stub the r2 module so the route
+// takes the R2 branch without any real bucket/credentials.
+describe("GET /files/:namespace/* — R2 backend errors (#765)", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("503s (not 404s) when an R2 read fails with a non-missing error", async () => {
+    vi.spyOn(r2, "r2Enabled").mockReturnValue(true);
+    // A real outage: endpoint unreachable / expired keys / throttling — r2Get
+    // rethrows, so the route must surface it as a 5xx, not mask it as 404.
+    vi.spyOn(r2, "r2Get").mockRejectedValue(
+      Object.assign(new Error("connect ECONNREFUSED"), { name: "TimeoutError" })
+    );
+    const res = await get("/files/provider/uploads/anything.jpg");
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "Storage unavailable" });
+  });
+
+  it("still 404s a genuinely missing object (r2Get returns null)", async () => {
+    vi.spyOn(r2, "r2Enabled").mockReturnValue(true);
+    vi.spyOn(r2, "r2Get").mockResolvedValue(null);
+    const res = await get("/files/provider/uploads/missing.jpg");
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "Not found" });
   });

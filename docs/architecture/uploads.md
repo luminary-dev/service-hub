@@ -22,7 +22,16 @@ routes `/api/files/{provider,review,category,user}/*` → media `/files/*` and
 supplies the internal secret). R2 objects are **streamed from the private
 bucket** through the `/files` route, so stored URLs stay same-origin and match
 the local-disk shape (no public bucket/domain needed). **No Vercel Blob.**
-Limits: 5MB, jpeg/png/webp.
+Limits: 5MB, jpeg/png/webp — the `/internal/media/store` handler enforces this
+with a hard **streaming byte cap** as the multipart body arrives (#773), so a
+chunked or spoofed-`Content-Length` request can't buffer an unbounded body
+before the authoritative `file.size` check.
+
+Only a **genuinely missing** R2 object (`NoSuchKey`/`NotFound`/404) maps to a
+`404` (#765); any other S3 error — endpoint unreachable, expired/rotated keys,
+bucket misconfig — is logged and rethrown, and the `/files` route surfaces it as
+a **`503`** instead of masking an R2 outage as a not-found (which would 404 every
+image and hide the incident from monitoring).
 
 ## Verification documents are PII — admin-gated, never public (#500)
 
@@ -37,11 +46,19 @@ never be served on the public `/files` path. Two layers enforce this:
   to media unchanged.
 - **provider-service** answers that path with an **ADMIN/SUPPORT-gated** route
   (`isSupportOrAdmin`; a non-admin gets `403`). It fetches the bytes from media
-  over S2S via `GET /internal/media/raw?url=<stored /api/files url>` and streams
-  them back with `Cache-Control: private, no-store` (PII is never shared-cached).
+  over S2S via `GET /internal/media/raw?url=<stored /api/files url>` — forwarding
+  the caller's `x-user-id` / `x-user-role` identity headers — and streams them
+  back with `Cache-Control: private, no-store` (PII is never shared-cached).
 - **media** refuses the `verification` prefix on its public `/files` route as
-  defence-in-depth (`isVerificationSubpath`), and only hands the bytes out
-  through the internal-secret-gated `/internal/media/raw` endpoint.
+  defence-in-depth (`isVerificationSubpath`). The gate keys off the **normalized**
+  subpath (#741): a raw first-segment check was bypassable by an encoded
+  traversal (`uploads/../verification/<uuid>.jpg`) that `path.normalize` collapses
+  back into the reserved prefix on the local-disk store, so the decoded subpath is
+  normalized before the PII gate runs and before any R2 key is built.
+- The raw endpoint (`/internal/media/raw`) requires a forwarded **ADMIN/SUPPORT
+  identity in addition to the internal secret** (#773) — media does not fully
+  trust the calling service, so a leaked secret alone cannot pull verification
+  PII by key.
 
 The document's stored URL is unchanged (`/api/files/provider/verification/...`),
 so the orphan sweep, account-erasure delete, and any pre-existing documents keep
