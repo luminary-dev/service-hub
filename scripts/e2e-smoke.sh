@@ -235,7 +235,11 @@ PNG_B64
 check "verification upload accepted (PENDING)" "$(req newprov POST "/api/provider/verification" \
   -F "nic=@$VERIF_IMG;type=image/png" | jq -r '.status')" "PENDING"
 # The stored document's URL is visible to admins on the verification queue.
-VERIF_URL=$(req admin GET "/api/admin/verifications" \
+# The queue is oldest-first and paginated (#255); the seed now carries a batch
+# of PENDING providers, so fetch a full page (pageSize=100 is the cap, well
+# above the seeded pending count) to reliably include the just-registered
+# newest provider rather than assuming it lands on the default page 1.
+VERIF_URL=$(req admin GET "/api/admin/verifications?pageSize=100" \
   | jq -r --arg id "$NEW_PROV_ID" '.providers[]? | select(.id==$id) | .verificationDocs[0].url // empty')
 check "admin sees the verification doc url" "$(test -n "$VERIF_URL" && echo yes)" "yes"
 # The document is PII (NIC / business-registration scan): only ADMIN/SUPPORT may
