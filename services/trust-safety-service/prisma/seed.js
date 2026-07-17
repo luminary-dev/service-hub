@@ -64,6 +64,86 @@ const AUDIT_LOGS = [
   { id: "audit_015", adminId: "user_admin", action: "resolve_report", targetType: "PROVIDER", targetId: "prov_rizwan", reason: "Repeated user reports over the past week.", service: "trust-safety" },
 ];
 
+// ---------------------------------------------------------------------------
+// #632 seed-data expansion — batch 2 ("demo everything" scale). GENERATED
+// reports report_032..report_073 continue the report_NNN scheme, cycling all 7
+// targetTypes, all 3 statuses and both sources, referencing the newly seeded
+// providers/reviews/jobs (prov_p051+/rev_151+/job_041+) and synthetic ids for
+// the cross-DB target types (continuing the seed-photo-/seed-inquiry-/seed-
+// message-/seed-job-response- placeholder scheme). GENERATED audit logs
+// continue audit_NNN. Each OPEN+reporter row uses a unique (targetType,
+// targetId) so the partial-unique dedup index is never tripped.
+// ---------------------------------------------------------------------------
+const gPad3 = (n) => String(n).padStart(3, "0");
+const TARGET_TYPES = ["PROVIDER", "WORK_PHOTO", "INQUIRY", "MESSAGE", "REVIEW", "JOB", "JOB_RESPONSE"];
+const OWNER_OF = { PROVIDER: "provider", WORK_PHOTO: "provider", INQUIRY: "provider", MESSAGE: "provider", REVIEW: "review", JOB: "job", JOB_RESPONSE: "job" };
+const STATUSES = ["OPEN", "RESOLVED", "DISMISSED"];
+const USER_REASONS = ["spam", "scam", "offensive", "fake", "other"];
+const SYS_REASONS = ["auto-flag: content filter match", "auto-flag: suspicious contact info pattern", "auto-flag: high report count in 24h"];
+const REPORTERS = ["user_ashan", "user_c008", "user_c015", "user_c022", "user_c035", "user_c048", "user_c060", "user_c072"];
+const RESOLVERS = ["user_admin", "user_support_01"];
+function genTargetId(type, m) {
+  switch (type) {
+    case "PROVIDER": return `prov_p${gPad3(51 + (m % 100))}`;
+    case "REVIEW": return `rev_${151 + (m % 350)}`;
+    case "JOB": return `job_${gPad3(41 + (m % 40))}`;
+    case "WORK_PHOTO": return `seed-photo-${4 + m}`;
+    case "INQUIRY": return `seed-inquiry-${4 + m}`;
+    case "MESSAGE": return `seed-message-${3 + m}`;
+    case "JOB_RESPONSE": return `seed-job-response-${3 + m}`;
+    default: return `seed-${m}`;
+  }
+}
+const GEN_REPORTS = Array.from({ length: 42 }, (_, m) => {
+  const targetType = TARGET_TYPES[m % TARGET_TYPES.length];
+  const source = m % 4 === 0 ? "SYSTEM" : "USER";
+  const status = STATUSES[m % STATUSES.length];
+  const resolved = status !== "OPEN";
+  return {
+    id: `report_${gPad3(32 + m)}`,
+    targetType,
+    targetId: genTargetId(targetType, m),
+    ownerService: OWNER_OF[targetType],
+    reporterId: source === "SYSTEM" ? null : REPORTERS[m % REPORTERS.length],
+    reason: source === "SYSTEM" ? SYS_REASONS[m % SYS_REASONS.length] : USER_REASONS[m % USER_REASONS.length],
+    details: source === "SYSTEM" ? null : "Flagged this because it looked off — please take a look.",
+    status,
+    source,
+    resolvedBy: resolved ? RESOLVERS[m % RESOLVERS.length] : null,
+    resolvedAt: resolved ? new Date(`2026-0${(m % 6) + 1}-1${m % 9}T14:00:00Z`) : null,
+  };
+});
+
+const GEN_AUDIT_ACTIONS = [
+  ["resolve_report", "PROVIDER", "trust-safety"],
+  ["dismiss_report", "REVIEW", "trust-safety"],
+  ["suspend_provider", "PROVIDER", "provider"],
+  ["restore_provider", "PROVIDER", "provider"],
+  ["takedown_review", "REVIEW", "review"],
+  ["restore_review", "REVIEW", "review"],
+  ["hide_job", "JOB", "job"],
+  ["unhide_job", "JOB", "job"],
+  ["delete_photo", "WORK_PHOTO", "provider"],
+  ["restore_photo", "WORK_PHOTO", "provider"],
+];
+const GEN_AUDIT_LOGS = Array.from({ length: 15 }, (_, m) => {
+  const [action, targetType, service] = GEN_AUDIT_ACTIONS[m % GEN_AUDIT_ACTIONS.length];
+  let targetId;
+  if (targetType === "PROVIDER") targetId = `prov_p${gPad3(51 + (m % 100))}`;
+  else if (targetType === "REVIEW") targetId = `rev_${151 + (m % 350)}`;
+  else if (targetType === "JOB") targetId = `job_${gPad3(41 + (m % 40))}`;
+  else targetId = `seed-photo-${50 + m}`;
+  return {
+    id: `audit_${gPad3(16 + m)}`,
+    adminId: RESOLVERS[m % RESOLVERS.length],
+    action,
+    targetType,
+    targetId,
+    reason: m % 2 === 0 ? "Repeated user reports over the past week." : null,
+    service,
+  };
+});
+
 async function main() {
   if (process.env.NODE_ENV === "production" && process.env.SEED_DEMO_DATA !== "true") {
     console.error(
@@ -76,14 +156,16 @@ async function main() {
   await db.report.deleteMany();
   await db.adminAuditLog.deleteMany();
 
-  for (const r of REPORTS) {
+  for (const r of [...REPORTS, ...GEN_REPORTS]) {
     await db.report.create({ data: r });
   }
-  for (const a of AUDIT_LOGS) {
+  for (const a of [...AUDIT_LOGS, ...GEN_AUDIT_LOGS]) {
     await db.adminAuditLog.create({ data: a });
   }
 
-  console.log(`Seeded ${REPORTS.length} reports and ${AUDIT_LOGS.length} audit log entries.`);
+  const totalReports = REPORTS.length + GEN_REPORTS.length;
+  const totalAudit = AUDIT_LOGS.length + GEN_AUDIT_LOGS.length;
+  console.log(`Seeded ${totalReports} reports and ${totalAudit} audit log entries.`);
 }
 
 main()

@@ -81,12 +81,12 @@ check "providers page renders" "$(curl -sS "$WEB/providers")" "Baas"
 
 echo "== Public API through web rewrite =="
 LIST=$(req anon GET "/api/providers?sort=rating")
-check "providers list total=48" "$(echo "$LIST" | jq -r .total)" "48"
+check "providers list total=144" "$(echo "$LIST" | jq -r .total)" "144"
 check "providers have ratings" "$(echo "$LIST" | jq -r '.providers[0].rating != null')" "true"
 PROV_ID=$(echo "$LIST" | jq -r '.providers[0].id')
 check "provider detail page" "$(curl -sS "$WEB/providers/$PROV_ID")" "Baas"
-# 50 seeded providers, 2 of them suspended (excluded from this non-suspended count).
-check "stats endpoint" "$(req anon GET "/api/stats" | jq -r '.providerCount')" "48"
+# 150 seeded providers, 6 of them suspended (excluded from this non-suspended count).
+check "stats endpoint" "$(req anon GET "/api/stats" | jq -r '.providerCount')" "144"
 
 echo "== Search service (index + browse parity) =="
 # The index is derived and starts empty — populate it from the seeded source
@@ -122,10 +122,11 @@ parity_ordered "price sort" "sort=price&pageSize=24"
 check "parity: totals" "$(req anon GET "/api/search/providers" | jq -r '.total')" \
   "$(req anon GET "/api/providers" | jq -r '.total')"
 
-# Geo (RFC §5.1): the seed pins two Colombo-area providers; a 25 km radius
-# from Colombo Fort finds both, nearest first with a distance on each card.
+# Geo (RFC §5.1): the seed pins five Colombo-area providers (the 2 original demo
+# providers plus 3 from the #632 expansion); a 25 km radius from Colombo Fort
+# finds all five, nearest first with a distance on each card.
 NEARBY=$(req anon GET "/api/search/providers/nearby?lat=6.9271&lng=79.8612&radiusKm=25")
-check "nearby finds pinned providers" "$(echo "$NEARBY" | jq -r '.total')" "2"
+check "nearby finds pinned providers" "$(echo "$NEARBY" | jq -r '.total')" "5"
 check "nearby carries distanceKm" "$(echo "$NEARBY" | jq -r '.providers[0].distanceKm != null')" "true"
 check "nearby requires coordinates" "$(req anon GET "/api/search/providers/nearby" | jq -r '.error')" "lat and lng are required"
 
@@ -234,7 +235,11 @@ PNG_B64
 check "verification upload accepted (PENDING)" "$(req newprov POST "/api/provider/verification" \
   -F "nic=@$VERIF_IMG;type=image/png" | jq -r '.status')" "PENDING"
 # The stored document's URL is visible to admins on the verification queue.
-VERIF_URL=$(req admin GET "/api/admin/verifications" \
+# The queue is oldest-first and paginated (#255); the seed now carries a batch
+# of PENDING providers, so fetch a full page (pageSize=100 is the cap, well
+# above the seeded pending count) to reliably include the just-registered
+# newest provider rather than assuming it lands on the default page 1.
+VERIF_URL=$(req admin GET "/api/admin/verifications?pageSize=100" \
   | jq -r --arg id "$NEW_PROV_ID" '.providers[]? | select(.id==$id) | .verificationDocs[0].url // empty')
 check "admin sees the verification doc url" "$(test -n "$VERIF_URL" && echo yes)" "yes"
 # The document is PII (NIC / business-registration scan): only ADMIN/SUPPORT may

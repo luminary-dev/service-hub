@@ -1034,6 +1034,232 @@ const NEW_PROVIDERS = [
 ];
 
 
+// ---------------------------------------------------------------------------
+// #632 seed-data expansion — batch 2 ("demo everything" scale). GENERATED_
+// PROVIDERS continue the scheme with prov_p051..prov_p150 (userId user_p051..
+// user_p150, matching identity-service's GENERATED_PROVIDER_USERS 1:1). Name/
+// email/phone/avatar use the IDENTICAL deterministic formulas as the identity
+// seed so the two line up without cross-DB lookups. All 6 original + 44 p007..
+// p050 providers above stay exactly as-is.
+//
+// This batch adds the states the goal calls for: most VERIFIED/active, some
+// PENDING/NONE (unverified), a few admin-suspended, a couple self-deactivated
+// (available:false), several away (awayUntil), a per-category coverPhoto (#435,
+// covers/<slug>-{a,b}.jpg alternating), and map pins (#48) — three more
+// Colombo-area providers for geo search plus scattered far-district pins.
+// ---------------------------------------------------------------------------
+const FIRST_NAMES = [
+  "Nadeeka", "Dinesh", "Chathura", "Nimali", "Saman", "Ruwan", "Yasodha",
+  "Lasantha", "Damith", "Selvarani", "Malith", "Tharaka", "Farhana", "Gayan",
+  "Dilshan", "Hasini", "Buddhika", "Prasanna", "Menaka", "Wasantha", "Champika",
+  "Anushka", "Kumaran", "Sivalingam", "Chathurika", "Sathiyaseelan", "Kannan",
+  "Nirmala", "Fazil", "Naseer", "Rajeswari", "Suresh", "Dilani", "Kasun",
+  "Sewwandi", "Priyantha", "Shanika", "Chamara", "Sanduni", "Isuru", "Amila",
+  "Vasanthi", "Ranjan", "Kavindya", "Nalin",
+];
+const LAST_NAMES = [
+  "Jayawardena", "Amarasinghe", "Hameed", "Dissanayake", "Abeysekera",
+  "Fernando", "Herath", "Ismail", "Bandara", "Mendis", "Silva", "Senanayake",
+  "Nadesan", "Rajapaksa", "Wijesinghe", "Perera", "Weerasinghe", "Thevar",
+  "Gunasekara", "Kularatne", "Aziz", "Karunaratne", "Selvam", "Wickramasinghe",
+  "Rathnayake", "Rasheed", "Ratnayake", "Kumar", "Gunawardena",
+];
+const pad3 = (n) => String(n).padStart(3, "0");
+const gName = (i) => `${FIRST_NAMES[i % FIRST_NAMES.length]} ${LAST_NAMES[(i * 7) % LAST_NAMES.length]}`;
+const gEmail = (i) => {
+  const [f, l] = gName(i).toLowerCase().split(" ");
+  return `${f}.${l}.pv${i}@example.com`;
+};
+const gPhone = (i) => `07${(i % 9) + 1}${String(2000000 + i).slice(-7)}`;
+const AVATAR_FILES = [
+  "prov_nuwan.jpg", "prov_sampath.jpg", "prov_kumari.jpg", "prov_roshan.jpg",
+  "prov_rizwan.jpg", "prov_chaminda.jpg",
+  ...Array.from({ length: 44 }, (_, k) => `prov_p${pad3(k + 7)}.jpg`),
+  ...Array.from({ length: 10 }, (_, k) => `customer-pool-${String(k + 1).padStart(2, "0")}.jpg`),
+];
+const gAvatar = (i) => `/uploads/seed/avatars/${AVATAR_FILES[i % AVATAR_FILES.length]}`;
+
+const GEN_CATEGORIES = [
+  "mechanic", "electrician", "plumber", "carpenter", "mason", "painter",
+  "garden-designer", "ac-repair", "appliance-repair", "welder", "roofer",
+  "tile-layer", "cctv-security", "pest-control", "cleaning", "movers",
+];
+const GEN_HEADLINES = {
+  mechanic: "Reliable vehicle repairs and servicing",
+  electrician: "Licensed electrical work, wiring and repairs",
+  plumber: "Fast, tidy plumbing repairs and installations",
+  carpenter: "Custom furniture and woodwork, built to last",
+  mason: "Quality masonry and construction work",
+  painter: "Neat interior and exterior painting",
+  "garden-designer": "Tropical garden design that thrives in our climate",
+  "ac-repair": "AC installation, servicing and repair",
+  "appliance-repair": "Home appliance repairs, done right",
+  welder: "Custom metal fabrication and welding",
+  roofer: "Roofing repairs and installation specialist",
+  "tile-layer": "Precise tiling for floors, walls and bathrooms",
+  "cctv-security": "CCTV and home security system installation",
+  "pest-control": "Safe, effective pest control for home and office",
+  cleaning: "Thorough home and office cleaning services",
+  movers: "Careful, on-time moving and relocation",
+};
+const GEN_SERVICES = {
+  mechanic: [["Full oil change service", "VISIT", 4800], ["Brake pad replacement", "FIXED", 7400], ["Engine diagnostics", "VISIT", 3200], ["AC gas refill", "FIXED", 5800], ["Battery replacement", "FIXED", 8900]],
+  electrician: [["Emergency callout", "VISIT", 2600], ["House rewiring (per room)", "FIXED", 9300], ["Circuit breaker installation", "FIXED", 8600], ["Inverter/solar wiring", "FIXED", 12000], ["Ceiling fan installation", "FIXED", 3800]],
+  plumber: [["Leak repair", "VISIT", 3400], ["Blocked drain clearing", "FIXED", 3100], ["Bathroom fitting installation", "FIXED", 10900], ["Water tank cleaning", "FIXED", 7300], ["Pipe replacement (per meter)", "HOURLY", 1400]],
+  carpenter: [["Custom wardrobe build", "FIXED", 41500], ["Door/window frame repair", "VISIT", 6700], ["Furniture polishing", "FIXED", 9300], ["Kitchen cabinet installation", "FIXED", 87600], ["Carpentry day rate", "DAILY", 6000]],
+  mason: [["Wall construction (per sq ft)", "FIXED", 850], ["Plastering", "DAILY", 4200], ["Boundary wall repair", "VISIT", 6100], ["Concrete flooring", "DAILY", 5500], ["Tiling foundation work", "FIXED", 24400]],
+  painter: [["Interior painting (per room)", "FIXED", 10200], ["Exterior house painting", "VISIT", 38500], ["Wood varnishing", "FIXED", 8900], ["Waterproof coating", "VISIT", 27300], ["Ceiling touch-up", "HOURLY", 1800]],
+  "garden-designer": [["Garden design consultation", "VISIT", 5000], ["Full garden landscaping", "FIXED", 48900], ["Lawn maintenance (monthly)", "FIXED", 9200], ["Tree pruning", "VISIT", 7800], ["Irrigation system setup", "FIXED", 32300]],
+  "ac-repair": [["AC gas refill + service", "FIXED", 5400], ["New AC installation", "VISIT", 17200], ["AC deep cleaning", "FIXED", 6100], ["Compressor repair", "FIXED", 14700], ["Duct cleaning", "DAILY", 12600]],
+  "appliance-repair": [["Washing machine repair", "VISIT", 7800], ["Refrigerator repair", "VISIT", 4800], ["Microwave repair", "FIXED", 3000], ["Water heater repair", "FIXED", 4600], ["Mixer/blender repair", "FIXED", 2400]],
+  welder: [["Gate fabrication", "FIXED", 15900], ["Window grill fabrication", "VISIT", 9400], ["Staircase railing", "FIXED", 34800], ["Structural steel welding", "FIXED", 11600], ["Repair welding (per job)", "VISIT", 5000]],
+  roofer: [["Roof leak repair", "VISIT", 14500], ["Roof sheet replacement", "FIXED", 17800], ["Gutter installation", "FIXED", 10500], ["Full re-roofing (per sq ft)", "FIXED", 1000], ["Roof inspection", "VISIT", 3600]],
+  "tile-layer": [["Floor tiling (per sq ft)", "HOURLY", 450], ["Bathroom tiling", "FIXED", 15000], ["Kitchen backsplash tiling", "FIXED", 12100], ["Tile regrouting", "VISIT", 5600], ["Outdoor tiling", "FIXED", 6200]],
+  "cctv-security": [["4-camera CCTV installation", "FIXED", 61600], ["CCTV system maintenance", "VISIT", 5400], ["Alarm system installation", "FIXED", 23900], ["Remote monitoring setup", "VISIT", 12700], ["Camera repair/replacement", "FIXED", 6500]],
+  "pest-control": [["Full house pest treatment", "FIXED", 11400], ["Termite treatment", "FIXED", 32500], ["Mosquito fogging", "VISIT", 3700], ["Rodent control", "FIXED", 6400], ["Bed bug treatment", "FIXED", 8200]],
+  cleaning: [["Full house deep cleaning", "FIXED", 12400], ["Sofa/carpet shampooing", "FIXED", 8400], ["Post-construction cleaning", "VISIT", 15600], ["Office cleaning (per visit)", "VISIT", 9000], ["Window cleaning", "HOURLY", 1200]],
+  movers: [["Full house moving (van + 2 staff)", "FIXED", 34800], ["Single item delivery", "VISIT", 7300], ["Packing service", "DAILY", 6100], ["Long-distance moving", "FIXED", 56400], ["Office relocation", "FIXED", 42000]],
+};
+// City + centroid per district. Non-Colombo centroids sit well beyond 25 km of
+// Colombo Fort so only the explicit Colombo pins fall inside the geo-search
+// radius; near-Colombo districts (Gampaha/Kalutara) are never map-pinned here.
+const GEN_DISTRICTS = [
+  ["Colombo", "Colombo", 6.9271, 79.8612],
+  ["Gampaha", "Negombo", 7.2090, 79.8380],
+  ["Kalutara", "Kalutara", 6.5854, 79.9607],
+  ["Kandy", "Kandy", 7.2906, 80.6337],
+  ["Matale", "Matale", 7.4675, 80.6234],
+  ["Nuwara Eliya", "Nuwara Eliya", 6.9497, 80.7891],
+  ["Galle", "Galle", 6.0535, 80.2210],
+  ["Matara", "Matara", 5.9549, 80.5550],
+  ["Hambantota", "Tangalle", 6.1246, 81.1185],
+  ["Jaffna", "Jaffna", 9.6615, 80.0255],
+  ["Kilinochchi", "Kilinochchi", 9.3803, 80.3770],
+  ["Mannar", "Mannar", 8.9810, 79.9044],
+  ["Vavuniya", "Vavuniya", 8.7514, 80.4971],
+  ["Mullaitivu", "Mullaitivu", 9.2671, 80.8142],
+  ["Batticaloa", "Batticaloa", 7.7170, 81.7000],
+  ["Ampara", "Kalmunai", 7.2917, 81.6720],
+  ["Trincomalee", "Trincomalee", 8.5874, 81.2152],
+  ["Kurunegala", "Kurunegala", 7.4863, 80.3647],
+  ["Puttalam", "Chilaw", 8.0362, 79.8283],
+  ["Anuradhapura", "Anuradhapura", 8.3114, 80.4037],
+  ["Polonnaruwa", "Polonnaruwa", 7.9403, 81.0188],
+  ["Badulla", "Badulla", 6.9934, 81.0550],
+  ["Monaragala", "Monaragala", 6.8728, 81.3510],
+  ["Ratnapura", "Ratnapura", 6.6828, 80.3992],
+  ["Kegalle", "Kegalle", 7.2513, 80.3464],
+];
+const GEN_DISTRICT_NAMES = GEN_DISTRICTS.map((d) => d[0]);
+const NIC_DOCS = Array.from({ length: 6 }, (_, k) => `/uploads/seed/verification/nic-pool-${String(k + 1).padStart(2, "0")}.jpg`);
+const GALLERY = ["a", "b", "c", "d"];
+const SOCIAL = ["youtube", "facebook", "instagram", "tiktok"];
+
+// State sets (see block comment). Disjoint by construction.
+const SUSPEND_IS = new Set([58, 88, 118, 148]); // admin-suspended
+const DEACT_IS = new Set([63, 93]); // self-deactivated (available:false)
+// Three extra Colombo-area pins for geo search, each a distinct nearby point.
+const COLOMBO_PINS = { 51: [6.9271, 79.8612, "Colombo"], 61: [6.8905, 79.9018, "Sri Jayawardenepura Kotte"], 71: [6.8482, 79.9267, "Maharagama"] };
+// Far districts that may carry a scattered map pin (all > 25 km from Colombo).
+const FAR_PIN_DISTRICTS = new Set(["Kandy", "Galle", "Jaffna", "Matara", "Batticaloa", "Trincomalee", "Anuradhapura", "Kurunegala", "Badulla", "Ratnapura"]);
+
+const GENERATED_PROVIDERS = Array.from({ length: 100 }, (_, k) => {
+  const i = k + 51;
+  const category = GEN_CATEGORIES[i % GEN_CATEGORIES.length];
+  const categoryLabel = category.replace(/-/g, " ");
+  const suspended = SUSPEND_IS.has(i);
+  const colomboPin = COLOMBO_PINS[i];
+  const dmeta = colomboPin
+    ? ["Colombo", colomboPin[2], 6.9271, 79.8612]
+    : GEN_DISTRICTS[i % GEN_DISTRICTS.length];
+  const district = dmeta[0];
+  const city = dmeta[1];
+  const experience = (i % 20) + 1;
+
+  // Verification: most VERIFIED, some PENDING, few REJECTED, some NONE.
+  let verificationStatus;
+  if (colomboPin || suspended) {
+    verificationStatus = "VERIFIED";
+  } else {
+    const r = i % 10;
+    verificationStatus = r <= 5 ? "VERIFIED" : r <= 7 ? "PENDING" : r === 8 ? "REJECTED" : "NONE";
+  }
+  const verifiedAt = verificationStatus === "VERIFIED"
+    ? new Date(`2026-0${(i % 6) + 1}-1${(i % 9)}T09:00:00Z`)
+    : null;
+  const rejectionReason = verificationStatus === "REJECTED"
+    ? "NIC photo was blurry — please re-upload a clear photo of both sides."
+    : null;
+  const verificationDoc = verificationStatus === "NONE"
+    ? null
+    : { kind: "NIC", url: NIC_DOCS[i % NIC_DOCS.length] };
+
+  // Map pin: explicit Colombo pins, else a scattered far-district pin for
+  // non-suspended providers. Suspended/deactivated providers stay unpinned.
+  let latitude = null;
+  let longitude = null;
+  if (colomboPin) {
+    latitude = colomboPin[0];
+    longitude = colomboPin[1];
+  } else if (!suspended && FAR_PIN_DISTRICTS.has(district) && i % 4 === 0) {
+    latitude = dmeta[2];
+    longitude = dmeta[3];
+  }
+
+  const servicePool = GEN_SERVICES[category];
+  const svcCount = 2 + (i % 3); // 2–4 services
+  const services = Array.from({ length: svcCount }, (_, s) => {
+    const [title, priceType, base] = servicePool[(i + s) % servicePool.length];
+    return { title, priceType, price: base + ((i * 37 + s * 500) % 3000) };
+  });
+  const photoCount = 2 + (i % 2); // 2–3 gallery photos
+  const photos = Array.from({ length: photoCount }, (_, p) => ({
+    url: `/uploads/seed/pool/${category}-${GALLERY[(i + p) % GALLERY.length]}.jpg`,
+    caption: p === 0
+      ? `${GEN_HEADLINES[category]} — job in ${city}`
+      : `Recent ${categoryLabel} work, ${district}`,
+  }));
+
+  const social = SOCIAL[i % SOCIAL.length];
+  const dIdx = GEN_DISTRICT_NAMES.indexOf(district);
+  const serviceDistricts = [...new Set([
+    district,
+    GEN_DISTRICT_NAMES[(dIdx + 5) % GEN_DISTRICT_NAMES.length],
+    GEN_DISTRICT_NAMES[(dIdx + 10) % GEN_DISTRICT_NAMES.length],
+  ])];
+
+  return {
+    id: `prov_p${pad3(i)}`,
+    userId: `user_p${pad3(i)}`,
+    name: gName(i),
+    email: gEmail(i),
+    phone: gPhone(i),
+    category,
+    headline: GEN_HEADLINES[category],
+    bio: `Based in ${city}, I've been working in ${categoryLabel} for ${experience} ${experience === 1 ? "year" : "years"}, covering ${district} and nearby areas. From ${services[0].title.toLowerCase()} to full jobs, I keep customers informed on price and timeline before starting any work.`,
+    district,
+    serviceDistricts,
+    city,
+    latitude,
+    longitude,
+    experience,
+    whatsapp: `9471${String(2000000 + i).slice(-7)}`,
+    [social]: `${social}.com/p${i}${category.replace(/-/g, "")}`,
+    avatarUrl: gAvatar(i),
+    coverPhoto: `/uploads/seed/covers/${category}-${i % 2 === 0 ? "a" : "b"}.jpg`,
+    suspended,
+    adminSuspended: suspended,
+    available: DEACT_IS.has(i) ? false : true,
+    awayUntil: !suspended && !DEACT_IS.has(i) && i % 15 === 0 ? new Date("2026-09-15T00:00:00Z") : null,
+    verificationStatus,
+    verifiedAt,
+    rejectionReason,
+    verificationDoc,
+    services,
+    photos,
+  };
+});
+
 // Mirrors identity-service's customer users (id/name/phone/email only) so
 // this service can attribute inquiries without a cross-service lookup at
 // seed time. Keep in sync with identity-service/prisma/seed.js.
@@ -1069,6 +1295,20 @@ const CUSTOMERS_FOR_INQUIRIES = [
   { id: "user_c029", name: "Sivalingam Rajapaksa", phone: "0791019582", email: "sivalingam.rajapaksa29@example.com" },
   { id: "user_c030", name: "Yasodha Wijesinghe", phone: "0701019610", email: "yasodha.wijesinghe30@example.com" },
 ];
+
+// Generated customers user_c031..user_c100, mirroring identity-service's
+// GENERATED_CUSTOMERS (same deterministic name/email/phone formulas).
+const gcName = (n) => `${FIRST_NAMES[(n * 3) % FIRST_NAMES.length]} ${LAST_NAMES[(n * 5) % LAST_NAMES.length]}`;
+const gcEmail = (n) => {
+  const [f, l] = gcName(n).toLowerCase().split(" ");
+  return `${f}.${l}.cu${n}@example.com`;
+};
+const gcPhone = (n) => `07${(n % 9) + 1}${String(3000000 + n).slice(-7)}`;
+const GENERATED_CUSTOMERS_FOR_INQUIRIES = Array.from({ length: 70 }, (_, k) => {
+  const n = k + 31;
+  return { id: `user_c${pad3(n)}`, name: gcName(n), phone: gcPhone(n), email: gcEmail(n) };
+});
+const ALL_INQUIRY_CUSTOMERS = [...CUSTOMERS_FOR_INQUIRIES, ...GENERATED_CUSTOMERS_FOR_INQUIRIES];
 
 async function main() {
   // Categories are real taxonomy (mechanic, electrician, ...), not demo data —
@@ -1140,7 +1380,9 @@ async function main() {
 
   // NEW_PROVIDERS (#632 seed-data expansion) carries verification statuses,
   // suspensions and cover photos the original 6 demo providers don't need.
-  for (const p of NEW_PROVIDERS) {
+  // GENERATED_PROVIDERS (batch 2) extends the same shape with availability,
+  // away mode and admin-suspension states.
+  for (const p of [...NEW_PROVIDERS, ...GENERATED_PROVIDERS]) {
     await db.provider.create({
       data: {
         id: p.id,
@@ -1164,7 +1406,10 @@ async function main() {
         youtube: p.youtube ?? null,
         avatarUrl: p.avatarUrl,
         coverPhoto: p.coverPhoto ?? null,
+        available: p.available ?? true,
+        awayUntil: p.awayUntil ?? null,
         suspended: p.suspended,
+        adminSuspended: p.adminSuspended ?? false,
         verificationStatus: p.verificationStatus,
         verifiedAt: p.verifiedAt ?? null,
         rejectionReason: p.rejectionReason ?? null,
@@ -1195,7 +1440,13 @@ async function main() {
     "Happy to help, I'll send a quote once I see the job details.",
     "That's within my service area, no problem.",
   ];
-  const inquiryCustomers = CUSTOMERS_FOR_INQUIRIES;
+  const inquiryCustomers = ALL_INQUIRY_CUSTOMERS;
+  const CUSTOMER_FOLLOWUPS = [
+    "Great, thanks — this weekend works for me.",
+    "Sounds good. I'll send you the address.",
+    "Perfect, let me know what time suits you.",
+    "Thank you, looking forward to it.",
+  ];
 
   await db.inquiry.create({
     data: {
@@ -1210,11 +1461,29 @@ async function main() {
   });
 
   let inquiryCount = 1;
-  const inquiryTargets = [...PROVIDERS, ...NEW_PROVIDERS].filter((p) => p.id !== "prov_nuwan");
-  for (let i = 0; i < 24; i++) {
+  // Only unsuspended providers receive inquiries (suspended profiles are
+  // hidden). Spread inquiries across every status the schema allows
+  // (NEW | RESPONDED | CLOSED), threading the answered ones (#13).
+  const inquiryTargets = [...PROVIDERS, ...NEW_PROVIDERS, ...GENERATED_PROVIDERS].filter(
+    (p) => p.id !== "prov_nuwan" && !p.suspended
+  );
+  const INQUIRY_STATUSES = ["NEW", "RESPONDED", "CLOSED"];
+  for (let i = 0; i < 90; i++) {
     const provider = inquiryTargets[i % inquiryTargets.length];
-    const customer = inquiryCustomers[i % inquiryCustomers.length];
-    const responded = i % 3 !== 0; // ~2/3 of these get a response
+    const customer = inquiryCustomers[(i * 7) % inquiryCustomers.length];
+    const status = INQUIRY_STATUSES[i % INQUIRY_STATUSES.length];
+    const answered = status !== "NEW"; // RESPONDED + CLOSED both carry a reply
+    const respondedAt = answered
+      ? new Date(`2026-0${1 + (i % 6)}-1${(i % 9) + 1}T10:00:00Z`)
+      : null;
+    const threadMessages = [];
+    if (answered) {
+      threadMessages.push({ sender: "PROVIDER", body: RESPONSE_MESSAGES[i % RESPONSE_MESSAGES.length] });
+      // ~half of answered threads have a customer follow-up on top.
+      if (i % 2 === 0) {
+        threadMessages.push({ sender: "CUSTOMER", body: CUSTOMER_FOLLOWUPS[i % CUSTOMER_FOLLOWUPS.length] });
+      }
+    }
     await db.inquiry.create({
       data: {
         providerId: provider.id,
@@ -1223,24 +1492,16 @@ async function main() {
         phone: customer.phone,
         email: customer.email,
         message: INQUIRY_MESSAGES[i % INQUIRY_MESSAGES.length],
-        status: responded ? "RESPONDED" : "NEW",
-        respondedAt: responded ? new Date(`2026-0${1 + (i % 6)}-1${(i % 9) + 1}T10:00:00Z`) : null,
-        messages: responded
-          ? {
-              create: [
-                {
-                  sender: "PROVIDER",
-                  body: RESPONSE_MESSAGES[i % RESPONSE_MESSAGES.length],
-                },
-              ],
-            }
-          : undefined,
+        status,
+        respondedAt,
+        source: i % 5 === 0 ? "chat-agent" : "web",
+        messages: threadMessages.length ? { create: threadMessages } : undefined,
       },
     });
     inquiryCount++;
   }
 
-  const providerCount = PROVIDERS.length + NEW_PROVIDERS.length;
+  const providerCount = PROVIDERS.length + NEW_PROVIDERS.length + GENERATED_PROVIDERS.length;
   console.log(
     `Seeded ${CATEGORIES.length} categories and ${providerCount} providers with services, photos and ${inquiryCount} inquiries.`
   );

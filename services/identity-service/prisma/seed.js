@@ -106,6 +106,104 @@ const NEW_CUSTOMERS = [
   { id: "user_c030", name: "Yasodha Wijesinghe", email: "yasodha.wijesinghe30@example.com", phone: "0701019610", avatarUrl: "/uploads/seed/avatars/customer-pool-01.jpg" },
 ];
 
+// ---------------------------------------------------------------------------
+// #632 seed-data expansion — batch 2 ("demo everything" scale). Everything
+// below is GENERATED deterministically so the SAME formulas in the provider/
+// review/job/notification seeds line up 1:1 across DBs with no cross-service
+// lookup. IDs CONTINUE the existing scheme: provider users user_p051..user_p150
+// and customers user_c031..user_c100. Every hard-coded record above is left
+// exactly as-is so current tests keep working.
+// ---------------------------------------------------------------------------
+const FIRST_NAMES = [
+  "Nadeeka", "Dinesh", "Chathura", "Nimali", "Saman", "Ruwan", "Yasodha",
+  "Lasantha", "Damith", "Selvarani", "Malith", "Tharaka", "Farhana", "Gayan",
+  "Dilshan", "Hasini", "Buddhika", "Prasanna", "Menaka", "Wasantha", "Champika",
+  "Anushka", "Kumaran", "Sivalingam", "Chathurika", "Sathiyaseelan", "Kannan",
+  "Nirmala", "Fazil", "Naseer", "Rajeswari", "Suresh", "Dilani", "Kasun",
+  "Sewwandi", "Priyantha", "Shanika", "Chamara", "Sanduni", "Isuru", "Amila",
+  "Vasanthi", "Ranjan", "Kavindya", "Nalin",
+];
+const LAST_NAMES = [
+  "Jayawardena", "Amarasinghe", "Hameed", "Dissanayake", "Abeysekera",
+  "Fernando", "Herath", "Ismail", "Bandara", "Mendis", "Silva", "Senanayake",
+  "Nadesan", "Rajapaksa", "Wijesinghe", "Perera", "Weerasinghe", "Thevar",
+  "Gunasekara", "Kularatne", "Aziz", "Karunaratne", "Selvam", "Wickramasinghe",
+  "Rathnayake", "Rasheed", "Ratnayake", "Kumar", "Gunawardena",
+];
+const pad3 = (n) => String(n).padStart(3, "0");
+const provName = (i) => `${FIRST_NAMES[i % FIRST_NAMES.length]} ${LAST_NAMES[(i * 7) % LAST_NAMES.length]}`;
+const provEmail = (i) => {
+  const [f, l] = provName(i).toLowerCase().split(" ");
+  return `${f}.${l}.pv${i}@example.com`;
+};
+const provPhone = (i) => `07${(i % 9) + 1}${String(2000000 + i).slice(-7)}`;
+// Only these avatar files are committed (no per-provider images exist past
+// prov_p050) — so new providers CYCLE the existing set rather than reference
+// files that don't exist.
+const AVATAR_FILES = [
+  "prov_nuwan.jpg", "prov_sampath.jpg", "prov_kumari.jpg", "prov_roshan.jpg",
+  "prov_rizwan.jpg", "prov_chaminda.jpg",
+  ...Array.from({ length: 44 }, (_, k) => `prov_p${pad3(k + 7)}.jpg`),
+  ...Array.from({ length: 10 }, (_, k) => `customer-pool-${String(k + 1).padStart(2, "0")}.jpg`),
+];
+const provAvatar = (i) => `/uploads/seed/avatars/${AVATAR_FILES[i % AVATAR_FILES.length]}`;
+
+// Provider users user_p051..user_p150 — one per new provider row in
+// provider-service's GENERATED_PROVIDERS.
+const GENERATED_PROVIDER_USERS = Array.from({ length: 100 }, (_, k) => {
+  const i = k + 51;
+  return { id: `user_p${pad3(i)}`, name: provName(i), email: provEmail(i), phone: provPhone(i), avatarUrl: provAvatar(i) };
+});
+
+const custName = (n) => `${FIRST_NAMES[(n * 3) % FIRST_NAMES.length]} ${LAST_NAMES[(n * 5) % LAST_NAMES.length]}`;
+const custEmail = (n) => {
+  const [f, l] = custName(n).toLowerCase().split(" ");
+  return `${f}.${l}.cu${n}@example.com`;
+};
+const custPhone = (n) => `07${(n % 9) + 1}${String(3000000 + n).slice(-7)}`;
+const custAvatar = (n) => `/uploads/seed/avatars/customer-pool-${String((n % 10) + 1).padStart(2, "0")}.jpg`;
+
+// Customers user_c031..user_c100 continuing the user_c### pattern.
+const GENERATED_CUSTOMERS = Array.from({ length: 70 }, (_, k) => {
+  const n = k + 31;
+  return { id: `user_c${pad3(n)}`, name: custName(n), email: custEmail(n), phone: custPhone(n), avatarUrl: custAvatar(n) };
+});
+
+// Deterministic id lists for favorites / saved searches. Provider ids continue
+// prov_nuwan.. + prov_p007..prov_p150; customer ids are the full seeded set.
+const ALL_PROVIDER_IDS = [
+  "prov_nuwan", "prov_sampath", "prov_kumari", "prov_roshan", "prov_rizwan", "prov_chaminda",
+  ...Array.from({ length: 144 }, (_, k) => `prov_p${pad3(k + 7)}`),
+];
+const ALL_CUSTOMER_IDS = [
+  "user_dilani", "user_ashan", "user_tharindu",
+  ...Array.from({ length: 27 }, (_, k) => `user_c${pad3(k + 4)}`),
+  ...GENERATED_CUSTOMERS.map((c) => c.id),
+];
+
+// Favorites (#): many customers favouriting providers, two each, unique on
+// (userId, providerId).
+const FAVORITES = [];
+ALL_CUSTOMER_IDS.forEach((uid, ci) => {
+  const a = ALL_PROVIDER_IDS[(ci * 2) % ALL_PROVIDER_IDS.length];
+  const b = ALL_PROVIDER_IDS[(ci * 2 + 1) % ALL_PROVIDER_IDS.length];
+  FAVORITES.push({ userId: uid, providerId: a });
+  if (b !== a) FAVORITES.push({ userId: uid, providerId: b });
+});
+
+// Saved searches (#516): a sample of named browse-filter snapshots so the
+// saved-search list and new-match alert flow are demoable.
+const SS_CATS = ["mechanic", "electrician", "plumber", "cleaning", "ac-repair", "carpenter"];
+const SS_DISTRICTS = ["Colombo", "Kandy", "Galle", "Gampaha", "Kalutara", "Matara"];
+const SAVED_SEARCHES = Array.from({ length: 20 }, (_, k) => ({
+  userId: ALL_CUSTOMER_IDS[(k * 3) % ALL_CUSTOMER_IDS.length],
+  name: `${SS_CATS[k % SS_CATS.length]} in ${SS_DISTRICTS[k % SS_DISTRICTS.length]}`,
+  query: k % 3 === 0 ? null : "reliable",
+  category: k % 2 === 0 ? SS_CATS[k % SS_CATS.length] : null,
+  district: SS_DISTRICTS[k % SS_DISTRICTS.length],
+  locale: k % 4 === 0 ? "si" : "en",
+}));
+
 const ADMIN = {
   id: "user_admin",
   name: "Baas Admin",
@@ -137,6 +235,7 @@ async function main() {
 
   await db.passwordResetToken.deleteMany();
   await db.emailVerificationToken.deleteMany();
+  await db.savedSearch.deleteMany();
   await db.favorite.deleteMany();
   await db.user.deleteMany();
 
@@ -145,13 +244,13 @@ async function main() {
   // work out of the box — there is no real inbox to click a link from.
   const emailVerified = new Date();
 
-  for (const u of [...PROVIDER_USERS, ...NEW_PROVIDER_USERS]) {
+  for (const u of [...PROVIDER_USERS, ...NEW_PROVIDER_USERS, ...GENERATED_PROVIDER_USERS]) {
     await db.user.create({
       data: { ...u, passwordHash, emailVerified, role: "PROVIDER" },
     });
   }
 
-  for (const c of [...CUSTOMERS, ...NEW_CUSTOMERS]) {
+  for (const c of [...CUSTOMERS, ...NEW_CUSTOMERS, ...GENERATED_CUSTOMERS]) {
     await db.user.create({
       data: { ...c, passwordHash, emailVerified, role: "CUSTOMER" },
     });
@@ -165,11 +264,19 @@ async function main() {
     data: { ...SUPPORT_USER, passwordHash, emailVerified, role: "SUPPORT" },
   });
 
-  const providerCount = PROVIDER_USERS.length + NEW_PROVIDER_USERS.length;
-  const customerCount = CUSTOMERS.length + NEW_CUSTOMERS.length;
+  for (const f of FAVORITES) {
+    await db.favorite.create({ data: f });
+  }
+  for (const s of SAVED_SEARCHES) {
+    await db.savedSearch.create({ data: s });
+  }
+
+  const providerCount = PROVIDER_USERS.length + NEW_PROVIDER_USERS.length + GENERATED_PROVIDER_USERS.length;
+  const customerCount = CUSTOMERS.length + NEW_CUSTOMERS.length + GENERATED_CUSTOMERS.length;
   console.log(
     `Seeded ${providerCount} provider users, ${customerCount} customers, 1 admin (admin@baas.lk), 1 support (support@baas.lk).`
   );
+  console.log(`Seeded ${FAVORITES.length} favorites and ${SAVED_SEARCHES.length} saved searches.`);
   console.log("All accounts use password: password123");
 }
 

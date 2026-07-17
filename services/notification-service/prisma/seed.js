@@ -99,6 +99,80 @@ const PREFERENCES = [
   { userId: "user_c013", type: "NEW_REVIEW", emailEnabled: false, inAppEnabled: true },
 ];
 
+// ---------------------------------------------------------------------------
+// #632 seed-data expansion — batch 2 ("demo everything" scale). The hard-coded
+// NOTIFICATIONS above already cover all 10 catalog types; this block fans the
+// same 10 types out across the new provider users (user_p051..user_p150) and
+// customers (user_c031..user_c100), mixing read/unread, so the feed is rich for
+// every seeded account. Recipient IDs / prov_* links continue the scheme.
+// ---------------------------------------------------------------------------
+const pad3 = (n) => String(n).padStart(3, "0");
+const NG_FIRST = ["Nadeeka", "Dinesh", "Chathura", "Nimali", "Saman", "Ruwan", "Yasodha", "Lasantha", "Gayan", "Hasini", "Menaka", "Kumaran", "Fazil", "Suresh", "Kasun", "Amila"];
+const NG_LAST = ["Perera", "Fernando", "Silva", "Bandara", "Herath", "Mendis", "Rajapaksa", "Wijesinghe", "Kumar", "Selvam", "Rathnayake", "Gunasekara"];
+const ngName = (k) => `${NG_FIRST[k % NG_FIRST.length]} ${NG_LAST[(k * 7) % NG_LAST.length]}`;
+const NG_DISTRICTS = ["Colombo", "Gampaha", "Kalutara", "Kandy", "Galle", "Matara", "Jaffna", "Kurunegala", "Anuradhapura", "Batticaloa"];
+const NG_JOB_TITLES = [
+  "Need a mechanic to look at a strange engine noise",
+  "Looking for an electrician to fix a tripping circuit",
+  "Need a plumber for a leaking kitchen pipe",
+  "Want a custom bookshelf built for the living room",
+  "AC not cooling properly, need a technician",
+];
+const NG_REJECTIONS = [
+  "NIC photo was blurry — please re-upload a clear photo of both sides.",
+  "Document did not match the name on the account.",
+];
+const PROVIDER_USER_IDS = Array.from({ length: 100 }, (_, k) => `user_p${pad3(k + 51)}`);
+const CUSTOMER_USER_IDS = Array.from({ length: 70 }, (_, k) => `user_c${pad3(k + 31)}`);
+const READ_AT = new Date("2026-06-15T09:00:00Z");
+
+// Build one notification of `type` for recipient index k.
+function providerNote(userId, k, type) {
+  const provId = userId.replace("user_p", "prov_p");
+  const base = { userId, type, readAt: k % 2 === 0 ? READ_AT : undefined };
+  switch (type) {
+    case "NEW_INQUIRY": return { ...base, payload: { customerName: ngName(k) }, link: "/dashboard" };
+    case "THREAD_REPLY": return { ...base, payload: { senderName: ngName(k + 1) }, link: "/dashboard" };
+    case "NEW_REVIEW": return { ...base, payload: { reviewerName: ngName(k + 2), rating: (k % 5) + 1 }, link: `/providers/${provId}` };
+    case "VERIFICATION_APPROVED": return { ...base, payload: {}, link: "/dashboard" };
+    case "VERIFICATION_REJECTED": return { ...base, payload: { reason: NG_REJECTIONS[k % NG_REJECTIONS.length] }, link: "/dashboard" };
+    case "NEW_JOB_MATCH": return { ...base, payload: { district: NG_DISTRICTS[k % NG_DISTRICTS.length], jobTitle: NG_JOB_TITLES[k % NG_JOB_TITLES.length] }, link: "/jobs" };
+    default: return { ...base, payload: {}, link: "/dashboard" };
+  }
+}
+function customerNote(userId, k, type) {
+  const provId = `prov_p${pad3((k % 100) + 51)}`;
+  const base = { userId, type, readAt: k % 2 === 1 ? READ_AT : undefined };
+  switch (type) {
+    case "REVIEW_RESPONSE": return { ...base, payload: { providerName: ngName(k) }, link: `/providers/${provId}` };
+    case "JOB_RESPONSE": return { ...base, payload: { providerName: ngName(k + 1), jobTitle: NG_JOB_TITLES[k % NG_JOB_TITLES.length] }, link: "/jobs" };
+    case "SAVED_SEARCH_MATCH": return { ...base, payload: { providerName: ngName(k + 2), district: NG_DISTRICTS[k % NG_DISTRICTS.length] }, link: `/providers/${provId}` };
+    case "REPORT_RESOLVED": return { ...base, payload: { status: k % 2 === 0 ? "RESOLVED" : "DISMISSED" }, link: "/account/notifications" };
+    case "THREAD_REPLY": return { ...base, payload: { senderName: ngName(k + 3) }, link: "/account/notifications" };
+    default: return { ...base, payload: {}, link: "/account/notifications" };
+  }
+}
+const PROVIDER_TYPES = ["NEW_INQUIRY", "THREAD_REPLY", "NEW_REVIEW", "VERIFICATION_APPROVED", "VERIFICATION_REJECTED", "NEW_JOB_MATCH"];
+const CUSTOMER_TYPES = ["REVIEW_RESPONSE", "JOB_RESPONSE", "SAVED_SEARCH_MATCH", "REPORT_RESOLVED", "THREAD_REPLY"];
+const GEN_NOTIFICATIONS = [];
+PROVIDER_USER_IDS.forEach((uid, k) => {
+  GEN_NOTIFICATIONS.push(providerNote(uid, k, PROVIDER_TYPES[k % PROVIDER_TYPES.length]));
+  GEN_NOTIFICATIONS.push(providerNote(uid, k + 3, PROVIDER_TYPES[(k + 2) % PROVIDER_TYPES.length]));
+});
+CUSTOMER_USER_IDS.forEach((uid, k) => {
+  GEN_NOTIFICATIONS.push(customerNote(uid, k, CUSTOMER_TYPES[k % CUSTOMER_TYPES.length]));
+  GEN_NOTIFICATIONS.push(customerNote(uid, k + 2, CUSTOMER_TYPES[(k + 1) % CUSTOMER_TYPES.length]));
+});
+
+// Preferences for a sample of the new users — one per user, unique (userId,type).
+const GEN_PREFERENCES = [];
+PROVIDER_USER_IDS.filter((_, k) => k % 5 === 0).forEach((uid, k) => {
+  GEN_PREFERENCES.push({ userId: uid, type: PROVIDER_TYPES[k % PROVIDER_TYPES.length], emailEnabled: k % 2 === 0, inAppEnabled: true });
+});
+CUSTOMER_USER_IDS.filter((_, k) => k % 5 === 0).forEach((uid, k) => {
+  GEN_PREFERENCES.push({ userId: uid, type: CUSTOMER_TYPES[k % CUSTOMER_TYPES.length], emailEnabled: k % 2 === 1, inAppEnabled: true });
+});
+
 async function main() {
   // Demo rows reference the PUBLIC demo accounts — they must never reach a
   // production database (same guard as the identity seed).
@@ -113,14 +187,16 @@ async function main() {
   await db.notificationPreference.deleteMany();
   await db.notification.deleteMany();
 
-  for (const n of NOTIFICATIONS) {
+  for (const n of [...NOTIFICATIONS, ...GEN_NOTIFICATIONS]) {
     await db.notification.create({ data: n });
   }
-  for (const p of PREFERENCES) {
+  for (const p of [...PREFERENCES, ...GEN_PREFERENCES]) {
     await db.notificationPreference.create({ data: p });
   }
 
-  console.log(`Seeded ${NOTIFICATIONS.length} notifications and ${PREFERENCES.length} preferences.`);
+  const totalNotifications = NOTIFICATIONS.length + GEN_NOTIFICATIONS.length;
+  const totalPreferences = PREFERENCES.length + GEN_PREFERENCES.length;
+  console.log(`Seeded ${totalNotifications} notifications and ${totalPreferences} preferences.`);
 }
 
 main()
