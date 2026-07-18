@@ -20,7 +20,7 @@
     "@opentelemetry/auto-instrumentations-node": "^0.78.0",
     "@opentelemetry/exporter-trace-otlp-http": "^0.220.0",
     "@opentelemetry/sdk-node": "^0.220.0",
-    "@sentry/node": "^10.65.0",
+    "@sentry/node": "^10.66.0",
     "hono": "^4.12.30",
     "ioredis": "^5.11.1",
     "jose": "^6.2.3",
