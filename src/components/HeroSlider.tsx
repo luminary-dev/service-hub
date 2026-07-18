@@ -133,8 +133,8 @@ export default function HeroSlider() {
         {SLIDES.map((s, i) => (
           <div
             key={s.slug}
-            className={`absolute inset-0 transition-[opacity,transform] duration-700 ease-snap ${
-              i === active ? "opacity-100 scale-100" : "opacity-0 scale-[1.05]"
+            className={`absolute inset-0 transition-[opacity,transform] duration-1000 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+              i === active ? "opacity-100 scale-100" : "opacity-0 scale-[1.03]"
             }`}
             aria-hidden={i !== active}
           >
