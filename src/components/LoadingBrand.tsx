@@ -22,7 +22,7 @@ export default function LoadingBrand({
         <span>REF / BAAS.LK</span>
         <span className="flex items-center gap-1.5 text-brand-700">
           <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-brand-600" />
-          Online
+          ONLINE
         </span>
       </div>
 
@@ -84,7 +84,7 @@ export default function LoadingBrand({
 
       {/* Mono footer: system status + staggered activity dots. */}
       <div className="mt-3 flex items-center justify-between font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-400">
-        <span>SYS · Loading</span>
+        <span>SYS · LOADING</span>
         <span aria-hidden className="flex items-center gap-1">
           {[0, 200, 400].map((delay) => (
             <span
