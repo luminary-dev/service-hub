@@ -12,6 +12,7 @@ import { I18nProvider } from "@/components/I18nProvider";
 import { ToastProvider } from "@/components/ToastProvider";
 import ChatAssistant from "@/components/ChatAssistant";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
+import SplashScreen from "@/components/SplashScreen";
 import { getSession } from "@/lib/auth";
 import { isFlagEnabled } from "@/lib/flags";
 import { getLocale, getUrlLocale } from "@/lib/locale";
@@ -137,6 +138,11 @@ export default async function RootLayout({
       <body
         className={`flex min-h-screen flex-col${impersonating ? " pt-10" : ""}`}
       >
+        {/* Guaranteed first-load splash (#793): covers the viewport from first
+            paint on every hard load, then self-dismisses via CSS (see
+            .splash-screen in globals.css). Kept first so it overlays the whole
+            document; skipped under prefers-reduced-motion. */}
+        <SplashScreen />
         {/* Site-wide "view as" indicator (#234) — fixed, so it stays above
             the sticky navbar for the whole impersonation session. The pt-10
             above reserves its height so it never overlaps page content. */}

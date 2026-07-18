@@ -182,11 +182,20 @@ components:
   `bg-ink-100`; shape via `className`); the nearest container carries
   `animate-pulse` so card borders shimmer too. `SkeletonList` is the standard
   card-row list (avatar, two lines, trailing pill).
-- **`LoadingScreen`** — the branded full-screen splash (logomark, `Baas.lk`
-  wordmark, localized tagline, staggered `.pulse-dot` dots) rendered as the
-  root `loading.tsx` fallback. Server component: reads the locale so copy
-  matches EN / `/si`; wrapped in a `role="status"` region with an `sr-only`
-  label; reuses `.floaty`/`.pulse-dot` so it's frozen under reduced motion.
+- **`LoadingBrand`** — the shared brand loading visual (logomark, `Baas.lk`
+  wordmark, localized tagline, staggered `.pulse-dot` dots, `sr-only` label).
+  Used by both `LoadingScreen` and `SplashScreen` so they stay identical.
+- **`LoadingScreen`** — the branded full-screen fallback rendered as the root
+  `loading.tsx`, shown while a top-level route is suspended. Server component:
+  reads the locale so copy matches EN / `/si`; wrapped in a `role="status"`
+  region; reuses `.floaty`/`.pulse-dot` so it's frozen under reduced motion.
+- **`SplashScreen`** — the guaranteed first-load splash mounted once in the
+  root layout. A Suspense fallback only shows while something is pending
+  (imperceptible when data is fast), so this overlay covers the viewport from
+  first paint on every hard load, holds a beat, then self-dismisses via the
+  `.splash-screen` CSS animation (works before hydration / with JS off, so it
+  can never get stuck; skipped under reduced motion). It shares `LoadingBrand`
+  with `LoadingScreen` and does not replay on client-side navigation.
 - **`Pagination`** — the prev/next pager under paginated listings: a labelled
   `<nav>` landmark, `.btn-secondary` links around a "Page X of Y" readout,
   hidden on single-page results. Callers build hrefs (`hrefFor`) so filters

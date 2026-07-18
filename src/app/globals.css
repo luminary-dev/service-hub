@@ -243,6 +243,26 @@ p {
   animation: pulseDot 1.6s ease-in-out infinite;
 }
 
+/* First-load splash (#793): the SplashScreen overlay in the root layout holds
+   full-cover for a beat so it's actually seen, then fades out and takes itself
+   out of the layer (visibility + pointer-events) so it never blocks the app.
+   CSS-driven on purpose — it dismisses before hydration and even with JS off,
+   so it can't get stuck; it runs once on the initial document render. */
+@keyframes splashOut {
+  0%,
+  55% {
+    opacity: 1;
+    visibility: visible;
+  }
+  100% {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+.splash-screen {
+  animation: splashOut 1.3s var(--ease-snap) forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
