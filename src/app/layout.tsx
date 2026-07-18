@@ -28,6 +28,19 @@ import { SITE_NAME, SITE_URL } from "@/lib/site";
 // a belt-and-suspenders against a stale cached document.
 const THEME_SCRIPT = `(function(){try{var d=document.documentElement,dark=/(?:^|; )theme=dark(?:;|$)/.test(document.cookie);if(d.classList.contains("dark")!==dark)d.classList.toggle("dark",dark)}catch(e){}})()`;
 
+// Runs synchronously in <head>, before first paint. The first-load SplashScreen
+// (#793) covers the viewport for ~1.3s; without this, the browser's scroll
+// *restoration* on a reload (notably iOS Safari) would leave the page scrolled
+// — e.g. at the footer — hidden behind the splash, so it "starts from the
+// footer" when the splash lifts. While the splash is up we pin to the top and
+// lock scroll, releasing once it has dismissed. Skipped under reduced motion,
+// where the splash is not shown and the user's restored position must stand.
+// `overflow:hidden` would NOT help here — it blocks user scrolling but not the
+// programmatic scroll that restoration uses — so instead we actively pin the
+// page to the top every frame for the splash's lifetime, then stop. That
+// overrides the browser's restored scroll no matter when it lands.
+const SPLASH_SCROLL_SCRIPT = `(function(){try{var m=window.matchMedia;if(m&&m("(prefers-reduced-motion: reduce)").matches)return;var active=true;var tick=function(){if(!active)return;window.scrollTo(0,0);requestAnimationFrame(tick)};requestAnimationFrame(tick);var stop=function(){active=false;window.scrollTo(0,0)};var hook=function(){var el=document.querySelector(".splash-screen");if(el)el.addEventListener("animationend",function(e){if(e.target===el)stop()},{once:true})};if(document.body)hook();else document.addEventListener("DOMContentLoaded",hook,{once:true});setTimeout(stop,2000)}catch(e){}})()`;
+
 // Body / UI + headings: IBM Plex Sans, the engineering-drawing sans that
 // anchors the blueprint/technical look.
 const plexSans = IBM_Plex_Sans({
@@ -133,6 +146,14 @@ export default async function RootLayout({
           nonce={nonce}
           suppressHydrationWarning
           dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }}
+        />
+        {/* Pins to top + locks scroll while the first-load splash is up, so a
+            reload's restored scroll position doesn't leave the page at the
+            footer behind it (#793). */}
+        <script
+          nonce={nonce}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: SPLASH_SCROLL_SCRIPT }}
         />
       </head>
       <body
