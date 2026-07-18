@@ -182,6 +182,23 @@ components:
   `bg-ink-100`; shape via `className`); the nearest container carries
   `animate-pulse` so card borders shimmer too. `SkeletonList` is the standard
   card-row list (avatar, two lines, trailing pill).
+- **`LoadingBrand`** — the shared brand loading visual, styled in the site's
+  technical-drawing language: a drafting panel (`.tech-corners`) over a
+  `.blueprint-grid`, mono `REF` / `SYS` micro-labels, the logomark inside two
+  counter-rotating dial rings (`.gear-spin` / `.gear-spin-rev`), a localized
+  tagline, and a `.hazard` progress rail (plus an `sr-only` label). Used by
+  both `LoadingScreen` and `SplashScreen` so they stay identical.
+- **`LoadingScreen`** — the branded full-screen fallback rendered as the root
+  `loading.tsx`, shown while a top-level route is suspended. Server component:
+  reads the locale so copy matches EN / `/si`; wrapped in a `role="status"`
+  region; reuses `.floaty`/`.pulse-dot` so it's frozen under reduced motion.
+- **`SplashScreen`** — the guaranteed first-load splash mounted once in the
+  root layout. A Suspense fallback only shows while something is pending
+  (imperceptible when data is fast), so this overlay covers the viewport from
+  first paint on every hard load, holds a beat, then self-dismisses via the
+  `.splash-screen` CSS animation (works before hydration / with JS off, so it
+  can never get stuck; skipped under reduced motion). It shares `LoadingBrand`
+  with `LoadingScreen` and does not replay on client-side navigation.
 - **`Pagination`** — the prev/next pager under paginated listings: a labelled
   `<nav>` landmark, `.btn-secondary` links around a "Page X of Y" readout,
   hidden on single-page results. Callers build hrefs (`hrefFor`) so filters
@@ -192,10 +209,13 @@ components:
 
 ## Route states & feedback conventions
 
-- **Loading:** every data-fetching route segment has a `loading.tsx` composed
-  from `Skeleton`/`SkeletonList` that mirrors the page's real layout. Nested
-  segments with their own shape (e.g. the inquiry message threads) get their
-  own file so navigation doesn't flash the parent's skeleton.
+- **Loading:** the root `loading.tsx` renders the branded `LoadingScreen`
+  splash — the top-level fallback during initial navigation. Every deeper
+  data-fetching route segment has its own `loading.tsx` composed from
+  `Skeleton`/`SkeletonList` that mirrors the page's real layout and wins for
+  its subtree. Nested segments with their own shape (e.g. the inquiry message
+  threads) get their own file so navigation doesn't flash the parent's
+  skeleton.
 - **Errors:** `error.tsx` boundaries exist at the root and at the `account/`,
   `dashboard/`, `admin/` and `providers/[id]/` segments (all re-exporting
   `RouteError`), so a throw retries in place with the surrounding layout
