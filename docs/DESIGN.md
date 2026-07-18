@@ -182,6 +182,11 @@ components:
   `bg-ink-100`; shape via `className`); the nearest container carries
   `animate-pulse` so card borders shimmer too. `SkeletonList` is the standard
   card-row list (avatar, two lines, trailing pill).
+- **`LoadingScreen`** — the branded full-screen splash (logomark, `Baas.lk`
+  wordmark, localized tagline, staggered `.pulse-dot` dots) rendered as the
+  root `loading.tsx` fallback. Server component: reads the locale so copy
+  matches EN / `/si`; wrapped in a `role="status"` region with an `sr-only`
+  label; reuses `.floaty`/`.pulse-dot` so it's frozen under reduced motion.
 - **`Pagination`** — the prev/next pager under paginated listings: a labelled
   `<nav>` landmark, `.btn-secondary` links around a "Page X of Y" readout,
   hidden on single-page results. Callers build hrefs (`hrefFor`) so filters
@@ -192,10 +197,13 @@ components:
 
 ## Route states & feedback conventions
 
-- **Loading:** every data-fetching route segment has a `loading.tsx` composed
-  from `Skeleton`/`SkeletonList` that mirrors the page's real layout. Nested
-  segments with their own shape (e.g. the inquiry message threads) get their
-  own file so navigation doesn't flash the parent's skeleton.
+- **Loading:** the root `loading.tsx` renders the branded `LoadingScreen`
+  splash — the top-level fallback during initial navigation. Every deeper
+  data-fetching route segment has its own `loading.tsx` composed from
+  `Skeleton`/`SkeletonList` that mirrors the page's real layout and wins for
+  its subtree. Nested segments with their own shape (e.g. the inquiry message
+  threads) get their own file so navigation doesn't flash the parent's
+  skeleton.
 - **Errors:** `error.tsx` boundaries exist at the root and at the `account/`,
   `dashboard/`, `admin/` and `providers/[id]/` segments (all re-exporting
   `RouteError`), so a throw retries in place with the surrounding layout

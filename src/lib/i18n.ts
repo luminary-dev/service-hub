@@ -20,6 +20,12 @@ const en = {
     providerDesc: (name: string, category: string, city: string) =>
       `${name} — ${category} in ${city}. See rates, work photos and reviews on Baas.lk.`,
   },
+  // Branded full-screen splash (root loading fallback). `label` is the
+  // sr-only status text; `tagline` is the visible line under the wordmark.
+  loading: {
+    tagline: "Finding trusted baas near you…",
+    label: "Loading, please wait",
+  },
   nav: {
     find: "Find Professionals",
     offer: "Offer Your Services",
@@ -1463,6 +1469,10 @@ const si: Dict = {
       "ලංකාව පුරා විශ්වාසවන්ත රථ කාර්මිකයන්, විදුලි කාර්මිකයන්, උද්‍යාන නිර්මාණකරුවන් සහ තවත් අය බඳවා ගන්න. පැතිකඩ, සැබෑ වැඩ ඡායාරූප සහ ගාස්තු බලා සෘජුවම සම්බන්ධ වන්න.",
     providerDesc: (name: string, category: string, city: string) =>
       `${name} — ${city} හි ${category}. ගාස්තු, වැඩ ඡායාරූප සහ සමාලෝචන Baas.lk හි බලන්න.`,
+  },
+  loading: {
+    tagline: "ඔබ අසල විශ්වාසවන්ත බාස්වරු සොයමින්…",
+    label: "පූරණය වෙමින්, කරුණාකර රැඳී සිටින්න",
   },
   nav: {
     find: "වෘත්තිකයන් සොයන්න",
