@@ -233,6 +233,15 @@ p {
 .orbit-chip {
   animation: orbitCounter 46s linear infinite;
 }
+/* Loading dials (#793): concentric technical rings that spin around the
+   logomark on the loading/splash screen — a bearing/dial read, faster than the
+   hero's slow orbit so it feels like active machinery. */
+.gear-spin {
+  animation: orbitSpin 6s linear infinite;
+}
+.gear-spin-rev {
+  animation: orbitCounter 9s linear infinite;
+}
 .ticker-track {
   animation: ticker 36s linear infinite;
 }
@@ -275,6 +284,8 @@ p {
   .roll-word,
   .orbit-ring,
   .orbit-chip,
+  .gear-spin,
+  .gear-spin-rev,
   .ticker-track,
   .floaty,
   .pulse-dot {

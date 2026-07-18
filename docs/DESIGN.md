@@ -182,9 +182,12 @@ components:
   `bg-ink-100`; shape via `className`); the nearest container carries
   `animate-pulse` so card borders shimmer too. `SkeletonList` is the standard
   card-row list (avatar, two lines, trailing pill).
-- **`LoadingBrand`** — the shared brand loading visual (logomark, `Baas.lk`
-  wordmark, localized tagline, staggered `.pulse-dot` dots, `sr-only` label).
-  Used by both `LoadingScreen` and `SplashScreen` so they stay identical.
+- **`LoadingBrand`** — the shared brand loading visual, styled in the site's
+  technical-drawing language: a drafting panel (`.tech-corners`) over a
+  `.blueprint-grid`, mono `REF` / `SYS` micro-labels, the logomark inside two
+  counter-rotating dial rings (`.gear-spin` / `.gear-spin-rev`), a localized
+  tagline, and a `.hazard` progress rail (plus an `sr-only` label). Used by
+  both `LoadingScreen` and `SplashScreen` so they stay identical.
 - **`LoadingScreen`** — the branded full-screen fallback rendered as the root
   `loading.tsx`, shown while a top-level route is suspended. Server component:
   reads the locale so copy matches EN / `/si`; wrapped in a `role="status"`

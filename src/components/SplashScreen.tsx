@@ -22,7 +22,7 @@ export default async function SplashScreen() {
     <div
       role="status"
       aria-live="polite"
-      className="splash-screen fixed inset-0 z-[100] flex flex-col items-center justify-center gap-7 bg-ink-50 px-6 text-center"
+      className="splash-screen blueprint-grid fixed inset-0 z-[100] flex items-center justify-center bg-ink-50 px-6"
     >
       <LoadingBrand tagline={t.tagline} label={t.label} />
     </div>

@@ -23,7 +23,7 @@ export default async function LoadingScreen() {
       role="status"
       aria-live="polite"
       aria-busy="true"
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-7 bg-ink-50 px-6 text-center"
+      className="blueprint-grid fixed inset-0 z-50 flex items-center justify-center bg-ink-50 px-6"
     >
       <LoadingBrand tagline={t.tagline} label={t.label} />
     </div>
