@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../api/chat_repository.dart';
+import '../../palette.dart';
 import '../../state/providers.dart';
 
 class _Bubble {
@@ -83,8 +84,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                 ),
                                 decoration: BoxDecoration(
                                   color: isUser
-                                      ? const Color(0xFFFEF3C7)
-                                      : const Color(0xFFF1F5F9),
+                                      ? context.palette.brand.c50
+                                      : context.palette.ink.c100,
                                   borderRadius: BorderRadius.circular(14),
                                 ),
                                 child: Text(

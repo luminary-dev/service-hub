@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../models/models.dart';
+import '../../palette.dart';
 import '../../state/providers.dart';
 import '../../widgets/common.dart';
 
@@ -73,11 +74,19 @@ class _JobCard extends ConsumerWidget {
                 ),
                 Chip(
                   visualDensity: VisualDensity.compact,
+                  side: BorderSide.none,
                   label:
                       Text(open ? l10n.jobStatusOpen : l10n.jobStatusClosed),
+                  labelStyle: TextStyle(
+                    color: open
+                        ? context.palette.emerald
+                        : context.palette.ink.c600,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
                   backgroundColor: open
-                      ? const Color(0xFFDCFCE7)
-                      : const Color(0xFFF1F5F9),
+                      ? context.palette.emerald.withValues(alpha: 0.14)
+                      : context.palette.ink.c100,
                 ),
               ],
             ),
@@ -120,7 +129,7 @@ class _JobCard extends ConsumerWidget {
                 padding: const EdgeInsets.all(10),
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
+                  color: context.palette.ink.c100,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Column(

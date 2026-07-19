@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../models/models.dart';
+import '../../palette.dart';
 import '../../state/providers.dart';
 import '../../widgets/common.dart';
 
@@ -116,7 +117,7 @@ class _NotificationTile extends ConsumerWidget {
         style: item.unread ? const TextStyle(fontWeight: FontWeight.w600) : null,
       ),
       trailing: item.unread
-          ? const Icon(Icons.circle, size: 10, color: Color(0xFFB45309))
+          ? Icon(Icons.circle, size: 10, color: context.palette.brand.c700)
           : null,
       onTap: () async {
         if (item.unread) {

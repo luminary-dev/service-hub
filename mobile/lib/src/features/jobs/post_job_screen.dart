@@ -3,6 +3,7 @@ import 'package:baas_mobile/l10n/gen/app_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../palette.dart';
 import '../../state/providers.dart';
 import '../browse/browse_screen.dart' show kDistricts;
 import 'jobs_screen.dart' show myJobsProvider;
@@ -43,10 +44,12 @@ class _PostJobScreenState extends ConsumerState<PostJobScreen> {
                 margin: const EdgeInsets.only(bottom: 16),
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFEF3C7),
+                  color: context.palette.brand.c50,
                   borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: context.palette.brand.c100),
                 ),
-                child: Text(l10n.jobNeedsVerifiedEmail),
+                child: Text(l10n.jobNeedsVerifiedEmail,
+                    style: TextStyle(color: context.palette.brand.c800)),
               ),
             DropdownButtonFormField<String>(
               initialValue: _category,

@@ -3,6 +3,7 @@ import 'package:baas_mobile/l10n/gen/app_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/models.dart';
+import '../../palette.dart';
 import '../../state/providers.dart';
 import '../../widgets/common.dart';
 
@@ -57,8 +58,8 @@ class _ThreadScreenState extends ConsumerState<ThreadScreen> {
                         ),
                         decoration: BoxDecoration(
                           color: m.fromProvider
-                              ? const Color(0xFFF1F5F9)
-                              : const Color(0xFFFEF3C7),
+                              ? context.palette.ink.c100
+                              : context.palette.brand.c50,
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: Text(m.body),
