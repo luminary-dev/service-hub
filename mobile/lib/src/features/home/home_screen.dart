@@ -128,8 +128,9 @@ class _HomeBody extends ConsumerWidget {
           top: 0,
           left: 0,
           right: 0,
+          // Frosted (blurred) header — not the transparent over-photo variant —
+          // so content scrolling underneath is blurred, not overlapping text.
           child: FrostedHeader(
-            overHero: true,
             onBell: () => context.go('/notifications'),
           ),
         ),
