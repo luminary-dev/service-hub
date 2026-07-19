@@ -41,6 +41,41 @@ jobs:
       - run: npm ci
       - run: npm run ${{ matrix.check }}
 
+  # Flutter customer app (mobile/, #799). Not part of the Node matrices —
+  # different toolchain. Builds a debug APK as the smoke artifact; release
+  # signing lives outside CI.
+  mobile:
+    name: mobile / ${{ matrix.check }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [analyze, test, build]
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: 3.44.6
+          cache: true
+      - run: flutter pub get
+      - if: matrix.check == 'analyze'
+        run: flutter analyze
+      - if: matrix.check == 'test'
+        run: flutter test
+      - if: matrix.check == 'build'
+        run: flutter build apk --debug
+      - if: matrix.check == 'build'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: mobile-debug-apk
+          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 7
+
   services:
     name: ${{ matrix.package }} / ${{ matrix.check }}
     runs-on: ubuntu-latest
