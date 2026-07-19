@@ -7,6 +7,7 @@ import '../api/api_client.dart';
 import '../api/auth_repository.dart';
 import '../api/chat_repository.dart';
 import '../api/marketplace_api.dart';
+import '../api/oauth_flow.dart';
 import '../api/token_store.dart';
 import '../models/models.dart';
 import '../push/push_service.dart';
@@ -70,6 +71,15 @@ class AuthController extends AsyncNotifier<UserAccount?> {
       return null;
     }
     return result.error;
+  }
+
+  /// Social login (#398). Returns null on success, or an error code.
+  Future<String?> socialSignIn(String provider) async {
+    final error = await OAuthFlow(ref.read(apiClientProvider)).signIn(provider);
+    if (error != null) return error;
+    state = AsyncData(await ref.read(authRepositoryProvider).me());
+    ref.read(pushServiceProvider).register();
+    return null;
   }
 
   Future<void> logout() async {

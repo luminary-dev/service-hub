@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../state/providers.dart';
+import '../../widgets/social_login.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -32,6 +33,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             Text(l10n.welcomeBack,
                 style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 24),
+            const SocialLogin(),
             TextFormField(
               controller: _email,
               keyboardType: TextInputType.emailAddress,

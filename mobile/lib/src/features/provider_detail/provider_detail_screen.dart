@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../models/models.dart';
 import '../../palette.dart';
 import '../../state/providers.dart';
+import '../../widgets/brand_loader.dart';
 import '../../widgets/common.dart';
 
 final providerDetailProvider = FutureProvider.autoDispose
@@ -46,7 +47,7 @@ class ProviderDetailScreen extends ConsumerWidget {
         AsyncData() => EmptyState(message: l10n.genericError),
         AsyncError() => ErrorRetry(
             onRetry: () => ref.invalidate(providerDetailProvider(providerId))),
-        _ => const Center(child: CircularProgressIndicator()),
+        _ => const BrandLoaderCentered(),
       },
     );
   }

@@ -7,7 +7,9 @@ import 'package:geolocator/geolocator.dart';
 
 import '../../models/models.dart';
 import '../../state/providers.dart';
+import '../../widgets/brand_loader.dart';
 import '../../widgets/common.dart';
+import '../../widgets/home_hero.dart';
 
 /// Mirrors the web directory: districts from src/lib/constants.ts, sort keys
 /// from src/lib/sort-keys.ts.
@@ -134,9 +136,10 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
         onRefresh: () => _load(reset: true),
         child: CustomScrollView(
           slivers: [
+            const SliverToBoxAdapter(child: HomeHero()),
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 child: TextField(
                   controller: _searchController,
                   onChanged: _onSearchChanged,
@@ -214,9 +217,7 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
               ),
             ),
             if (_loading)
-              const SliverFillRemaining(
-                child: Center(child: CircularProgressIndicator()),
-              )
+              const SliverFillRemaining(child: BrandLoaderCentered())
             else if (_error)
               SliverFillRemaining(
                 child: ErrorRetry(onRetry: () => _load(reset: true)),
