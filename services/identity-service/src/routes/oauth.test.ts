@@ -98,6 +98,22 @@ describe("GET /api/auth/oauth/:provider/start", () => {
     expect(cookies).toContain("oauth_verifier=");
   });
 
+  it("omits Secure on the transient cookies over an http origin (dev/mobile)", async () => {
+    // Default origin is http://localhost:3000. A Secure cookie set over plain
+    // http is dropped by strict clients (the mobile web-auth session), which
+    // broke social login — so it must NOT be Secure here.
+    const res = await get("/api/auth/oauth/google/start");
+    expect(res.headers.get("set-cookie") ?? "").not.toMatch(/secure/i);
+  });
+
+  it("marks the transient cookies Secure over an https origin (prod)", async () => {
+    const res = await app.request(
+      "/api/auth/oauth/google/start",
+      { headers: { "x-origin": "https://baas.lk" } },
+    );
+    expect(res.headers.get("set-cookie") ?? "").toMatch(/secure/i);
+  });
+
   it("supports facebook", async () => {
     const res = await get("/api/auth/oauth/facebook/start");
     expect(res.headers.get("location")).toContain("oauth.example/facebook");

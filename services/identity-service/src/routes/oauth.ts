@@ -25,10 +25,6 @@ const TEN_MINUTES = 60 * 10;
 // leak the session to any app that intercepts it.
 const MOBILE_SCHEME = "baaslk://";
 
-function isProd(): boolean {
-  return process.env.NODE_ENV === "production";
-}
-
 // Only same-origin relative paths survive as a post-login destination — never a
 // scheme/host (open-redirect) or a protocol-relative "//evil.com".
 function sanitizeNext(next: string | undefined): string | null {
@@ -44,11 +40,22 @@ function sanitizeMobileRedirect(redirect: string | undefined): string | null {
   return redirect;
 }
 
-function transientCookie(c: Parameters<typeof setCookie>[0], name: string, value: string) {
+// `Secure` is keyed to the actual serving protocol, not NODE_ENV: over https
+// (prod) the transient cookies must be Secure, but a Secure cookie set over
+// plain http (local dev, and the mobile app's `http://localhost` web-auth
+// session) is dropped by strict clients — which broke mobile social login
+// because the callback then never saw the state/verifier/mobile cookies. The
+// origin already carries the protocol (getOrigin → x-origin / WEB_ORIGIN).
+function transientCookie(
+  c: Parameters<typeof setCookie>[0],
+  name: string,
+  value: string,
+  secure: boolean,
+) {
   setCookie(c, name, value, {
     httpOnly: true,
     sameSite: "Lax", // Lax so the cookie rides the top-level GET redirect back from the provider.
-    secure: isProd(),
+    secure,
     path: "/",
     maxAge: TEN_MINUTES,
   });
@@ -83,10 +90,11 @@ oauthRoutes.get("/oauth/:provider/start", (c) => {
       ? sanitizeMobileRedirect(c.req.query("redirect"))
       : null;
 
-  transientCookie(c, STATE_COOKIE, state);
-  transientCookie(c, VERIFIER_COOKIE, codeVerifier);
-  if (next) transientCookie(c, NEXT_COOKIE, next);
-  if (mobileRedirect) transientCookie(c, MOBILE_COOKIE, mobileRedirect);
+  const secure = origin.startsWith("https:");
+  transientCookie(c, STATE_COOKIE, state, secure);
+  transientCookie(c, VERIFIER_COOKIE, codeVerifier, secure);
+  if (next) transientCookie(c, NEXT_COOKIE, next, secure);
+  if (mobileRedirect) transientCookie(c, MOBILE_COOKIE, mobileRedirect, secure);
 
   const url = adapter.createAuthorizationURL(origin, state, codeVerifier);
   return c.redirect(url.toString());
