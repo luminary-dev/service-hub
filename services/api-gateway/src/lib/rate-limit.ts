@@ -10,6 +10,12 @@ export type RateRule = { limit: number; windowMs: number };
 export const RATE_LIMITS = {
   authStrict: { limit: 8, windowMs: 15 * 60_000 }, // login / forgot / reset — anti brute-force
   authSignup: { limit: 10, windowMs: 60 * 60_000 }, // register
+  // Mobile refresh-token rotation (#797): routine background traffic (every
+  // API client refreshes ~every 15 minutes per device), so the strict login
+  // budget would sign whole households out. Wide enough for many devices
+  // behind one IP, tight enough to blunt hammering the token lookup — the
+  // 32-byte token space is unguessable at any request rate anyway.
+  authRefresh: { limit: 60, windowMs: 15 * 60_000 },
   resend: { limit: 4, windowMs: 15 * 60_000 }, // resend verification email
   inquiry: { limit: 6, windowMs: 10 * 60_000 }, // inquiry creation — anti-spam
   review: { limit: 10, windowMs: 60 * 60_000 }, // review submission
@@ -383,6 +389,13 @@ export const LIMITED_ROUTES: { pattern: RegExp; name: string; rule: RateRule }[]
   { pattern: /^\/api\/auth\/change-password$/, name: "auth-change", rule: RATE_LIMITS.authStrict },
   { pattern: /^\/api\/auth\/delete-account$/, name: "auth-delete", rule: RATE_LIMITS.authStrict },
   { pattern: /^\/api\/auth\/register$/, name: "auth-register", rule: RATE_LIMITS.authSignup },
+  // Mobile token auth (#797): /token verifies credentials (the same guessing
+  // oracle as login) and /revoke accepts unauthenticated opaque tokens — both
+  // sit on the strict budget. /refresh is routine per-device churn and gets
+  // the wider authRefresh budget of its own.
+  { pattern: /^\/api\/auth\/token$/, name: "auth-token", rule: RATE_LIMITS.authStrict },
+  { pattern: /^\/api\/auth\/refresh$/, name: "auth-refresh", rule: RATE_LIMITS.authRefresh },
+  { pattern: /^\/api\/auth\/revoke$/, name: "auth-revoke", rule: RATE_LIMITS.authStrict },
   { pattern: /^\/api\/auth\/resend-verification$/, name: "auth-resend", rule: RATE_LIMITS.resend },
   // Change-email (#505) sends a confirmation email to an attacker-CHOSEN
   // address on every call, so it sits on the same email-sending budget as
@@ -414,6 +427,10 @@ export const LIMITED_ROUTES: { pattern: RegExp; name: string; rule: RateRule }[]
   // unread-count poll) stay unthrottled like every other read.
   { pattern: /^\/api\/notifications\/read$/, name: "notification-read", rule: RATE_LIMITS.message },
   { pattern: /^\/api\/notification-preferences$/, name: "notification-prefs", rule: RATE_LIMITS.review },
+  // Push device registration (#798): fires on app launch / sign-in — the
+  // conversational message budget; the DELETE (sign-out deregistration)
+  // shares it (the middleware matches on path, not method).
+  { pattern: /^\/api\/notifications\/devices$/, name: "notification-device", rule: RATE_LIMITS.message },
   // Image uploads (#520): each runs a CPU-expensive sharp re-encode, so they
   // share one per-IP "upload" bucket across the four upload POST endpoints.
   { pattern: /^\/api\/account\/avatar$/, name: "upload", rule: RATE_LIMITS.upload },

@@ -7,7 +7,7 @@
 // app), so no session cookie is forwarded into the LLM-driven service. Kept
 // outside the gateway-proxied /api/* prefix because the gateway buffers; a
 // direct web→chat stream doesn't.
-import { getSession } from "@/lib/auth";
+import { getBearerSession, getSession } from "@/lib/auth";
 import { INTERNAL_API_SECRET } from "@/lib/internal-secret";
 import { getLocale } from "@/lib/locale";
 import { rateLimited } from "./rate-limit";
@@ -23,8 +23,13 @@ const CHAT_SERVICE_URL =
 const MAX_BODY_BYTES = 256 * 1024;
 
 export async function POST(request: Request) {
-  // Require a valid session — the assistant is not a public endpoint.
-  const session = await getSession();
+  // Require a valid session — the assistant is not a public endpoint. The
+  // mobile app has no cookie jar, so a Bearer access token (#801) is accepted
+  // when there is no cookie session; chat can't go through the gateway's
+  // Bearer path because the gateway buffers and this route must stream SSE.
+  const session =
+    (await getSession()) ??
+    (await getBearerSession(request.headers.get("authorization")));
   if (!session) {
     return Response.json(
       { error: "Please sign in to use the assistant" },

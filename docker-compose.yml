@@ -232,6 +232,11 @@ services:
       SMTP_URL: ${SMTP_URL:-smtp://mailpit:1025}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM:-}
+      # Mobile push via FCM (#798). Unset by default → push delivery is a
+      # no-op in dev; set both in your root .env to test against a real
+      # Firebase project (FCM_SERVICE_ACCOUNT base64-encoded or raw JSON).
+      FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
+      FCM_SERVICE_ACCOUNT: ${FCM_SERVICE_ACCOUNT:-}
     ports:
       - "127.0.0.1:4005:4005"
     depends_on:

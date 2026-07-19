@@ -15,6 +15,15 @@
   identity-service. Endpoints marked *authenticated* require it; *public*
   endpoints work without it; *optional session* endpoints behave differently
   when it is present (e.g. de-duplicated reports, attributed inquiries).
+- **Mobile/API clients (#797)** carry the same session JWT as
+  `Authorization: Bearer <accessToken>` instead of the cookie — a short-lived
+  (15 min) token from `POST /api/auth/token`, renewed via the rotating refresh
+  token at `POST /api/auth/refresh`. The gateway consults the Bearer header
+  only when no valid session cookie is present (the cookie wins if both are
+  sent) and applies the identical checks (signature + `sessionVersion`
+  revocation). Bearer requests carry no ambient credentials, so the CSRF check
+  doesn't apply to them (non-browser requests without `Sec-Fetch-Site`/`Origin`
+  already pass it).
 - **Roles** are `CUSTOMER`, `PROVIDER`, `ADMIN`, `SUPPORT`. Admin routes gate on
   `isSupportOrAdmin` (reads + report resolve/dismiss — ADMIN **or** SUPPORT) or
   `isFullAdmin` (destructive writes — ADMIN only). See [AUTHZ.md](../AUTHZ.md).

@@ -28,6 +28,9 @@ otherwise-Sinhala `/si` UI. `code` is additive: existing clients that read only
 |---|---|---|
 | `POST /api/auth/register` | public | Register a CUSTOMER or PROVIDER (zod discriminated union). PROVIDER accepts an optional `serviceDistricts` served set (#502, ≤5 valid districts; deduped with the home `district` pinned in — union over the cap → 400). PROVIDER also accepts an optional `latitude`/`longitude` map pin (#48 — both or neither, Sri Lanka bounding box; half a pair or an off-island point → 400). PROVIDER also creates the provider profile via S2S (on failure it compensates by erasing any committed-but-unacknowledged provider row + deleting the user, then 502). A **new** email creates the account, sets the session cookie, and sends a verification email → `{ user, providerId }`. A **duplicate** email is not rejected (no 409, #373): the endpoint returns the same generic `200 { ok: true }` (no session) and instead emails the real owner an "account already exists" notice out-of-band, so registration cannot be used to enumerate accounts. |
 | `POST /api/auth/login` | public | bcrypt verify; per-account lockout (5 fails → 15 min); no email enumeration. Sets cookie → `{ user, providerId }`. 400/401 otherwise. Social-only accounts (no password) get the same uniform 401. |
+| `POST /api/auth/token` | public | Mobile/API-client login (#797): `{ email, password, deviceName? }` through the exact same credential verification as `/login` (same lockout counter, same uniform 401 `invalid_credentials`), but no cookie — returns `{ accessToken, expiresIn, refreshToken, user, providerId }`. `accessToken` is the ordinary session JWT with a **15-minute** TTL, sent back as `Authorization: Bearer` (the gateway accepts it wherever the cookie works); `refreshToken` is an opaque 32-byte token (returned raw exactly once, stored hashed) with a **60-day** expiry. |
+| `POST /api/auth/refresh` | public | `{ refreshToken }` → **rotates** it (the spent token is revoked; a replacement with a fresh 60-day window and the same `deviceName` is issued) and mints a new 15-minute access token carrying the user's **current** `sessionVersion`. Response shape identical to `/token`. Unknown / expired / already-spent token, a `sessionVersion` bumped past the token's (password change/reset, logout-all, admin force-logout), or a locked/deleted user → uniform 401 `invalid_refresh_token`. A concurrent replay of the same raw token loses the rotation race and is rejected. |
+| `POST /api/auth/revoke` | public | `{ refreshToken }` → revokes that token (per-device logout for API clients). Idempotent and oracle-free: unknown and already-revoked tokens get the same `{ ok: true }`. |
 | `GET /api/auth/oauth/:provider/start` | public | Social login (#398); `:provider` ∈ `google`, `facebook`. Sets state (+ PKCE) cookies, 302 → provider consent. Optional `?next=` (same-origin relative). Unknown/unconfigured provider → 302 `/login?error=oauth_unavailable`. |
 | `GET /api/auth/oauth/:provider/callback` | public | Validates state (+ PKCE) + code, reads the provider identity (Google: id_token; Facebook: Graph API), then: existing linked account → sign in; matching verified email → link + sign in; new verified email → create a CUSTOMER (`emailVerified` set) + link; no email (some Facebook accounts) → create a CUSTOMER keyed on the provider id with a non-deliverable placeholder email (never auto-linked). Sets cookie, 302 → `/welcome` (new) or `next`/`/` (returning). Failures → `/login?error=oauth`. |
 | `POST /api/auth/complete-provider` | authenticated | Turns the signed-in CUSTOMER into a PROVIDER: validates the provider profile (registration fields minus account fields, incl. the optional `serviceDistricts` served set #502 and the optional `latitude`/`longitude` map pin #48), creates the profile via S2S, flips role, bumps `sessionVersion`, re-issues cookie → `{ user, providerId }`. 409 if already a provider. Re-upgrading a previously closed profile reactivates it (clears `suspended`) — unless the profile is under an ADMIN suspension, which is refused with 403 and no role flip (#550; only the admin unsuspend action lifts it). |
@@ -78,13 +81,21 @@ rows; foreign/unknown ids in mark-read are silently ignored. Rows carry
 `type` + a small denormalized `payload` — the web renders the sentence at read
 time (EN↔SI re-renders the whole feed) — and a relative `link`.
 
+Mobile push (#798): the mobile app registers its FCM token via the device
+routes below; catalog events then also fan out as FCM pushes. Push **follows
+the in-app preference** — muting a type's in-app channel mutes its pushes too
+(there is no separate push toggle in v1) — and degrades to a no-op when the
+`FCM_PROJECT_ID`/`FCM_SERVICE_ACCOUNT` env is unset.
+
 | Method + path | Auth | Summary |
 |---|---|---|
 | `GET /api/notifications` | authenticated | Own feed, newest first, cursor-paginated (`?take` default 20, max 50; `?cursor`) → `{ notifications: [{ id, type, payload, link, readAt, createdAt }], nextCursor }`. |
 | `GET /api/notifications/unread-count` | authenticated | `{ count }` — the bell badge (cheap indexed count). |
 | `POST /api/notifications/read` | authenticated | `{ ids?: string[] (1–100), all?: true }` — mark-read, own rows only, idempotent → `{ ok: true, updated }`. Rate-limited (`message` budget). |
+| `POST /api/notifications/devices` | authenticated | Register this device's FCM token for push (#798): `{ token (≤4096), platform: "android" \| "ios" }` → `{ ok: true }`. Upsert by token — a device that signs into a different account **moves** its token to the caller; a repeat registration bumps `lastSeenAt`. Max 10 devices per user: beyond the cap the stalest rows are evicted, never an error. Rate-limited (`message` budget, shared with the DELETE). |
+| `DELETE /api/notifications/devices` | authenticated | Deregister on sign-out: `{ token }` → `{ ok: true }`. Own row only, idempotent — unknown/foreign tokens match nothing. |
 | `GET /api/notification-preferences` | authenticated | Full type × channel matrix — defaults (both channels on) merged over the caller's stored sparse overrides → `{ preferences: [{ type, emailEnabled, inAppEnabled }] }` (one entry per catalog type). |
-| `POST /api/notification-preferences` | authenticated | Upsert one override `{ type, emailEnabled?, inAppEnabled? }` (at least one flag) → `{ preference }`. Rate-limited (`review` budget). The transactional auth emails are not preference-gated and can never be muted. |
+| `POST /api/notification-preferences` | authenticated | Upsert one override `{ type, emailEnabled?, inAppEnabled? }` (at least one flag) → `{ preference }`. Rate-limited (`review` budget). The transactional auth emails are not preference-gated and can never be muted. `inAppEnabled` also gates mobile push (#798). |
 
 ### Providers & search — provider-service
 
@@ -212,7 +223,7 @@ resolves back through `/api/files/<namespace>/*`.
 
 | Method + path | Auth | Summary |
 |---|---|---|
-| `POST /agent/chat` | authenticated (web route) | The web app's `src/app/agent/chat/route.ts` proxies to chat-service `POST /internal/chat/marketplace/stream` with the internal secret + forwarded cookie/IP/locale. Streams SSE (`text`/`tool`/`done`/`error`). Returns 503 when the assistant is disabled (`ANTHROPIC_API_KEY` unset). |
+| `POST /agent/chat` | authenticated (web route) | The web app's `src/app/agent/chat/route.ts` proxies to chat-service `POST /internal/chat/marketplace/stream` with the internal secret + forwarded cookie/IP/locale. Streams SSE (`text`/`tool`/`done`/`error`). Returns 503 when the assistant is disabled (`ANTHROPIC_API_KEY` unset). Auth is the `sh_session` cookie, or — for the mobile app, which has no cookie jar — an `Authorization: Bearer <access-jwt>` header (#801); Bearer verification and sessionVersion revocation mirror the cookie path, and impersonation is cookie-only. |
 
 This is the one client-facing path that does **not** traverse the gateway (the
 gateway buffers responses, which would break streaming). See the internal-API

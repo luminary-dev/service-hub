@@ -65,6 +65,37 @@ effect.
 The transactional auth/security emails (verify, password reset, change-email,
 …) are **not** catalog types: they never appear here and cannot be muted.
 
+## Mobile push (#798)
+
+The mobile app registers its FCM registration token with
+`POST /api/notifications/devices` (`{ token, platform: "android" | "ios" }`)
+after sign-in and deregisters it with the `DELETE` on sign-out. Registration
+upserts **by token**: a device that signs into a different account moves its
+token to the new user, and a user keeps at most **10** devices — beyond the
+cap the stalest rows (`lastSeenAt`) are evicted, never an error.
+
+Delivery rules:
+
+- **Push follows the in-app preference.** There is no third channel toggle in
+  v1 — muting a type's in-app channel mutes its pushes too, so every catalog
+  type (including the email-less `REPORT_RESOLVED`) can push.
+- **Off the hot path, one-shot best-effort.** Event ingestion acks `202`
+  first; the device-token lookup and enqueue run afterwards, on the same
+  Redis delivery queue as email (`kind: "push"` entries). A push job gets one
+  attempt — per-token failures log and continue, and a token FCM reports gone
+  (HTTP 404 / `UNREGISTERED`) is pruned from the registry.
+- **Bilingual, compact.** `src/lib/event-push.ts` renders a short EN/SI
+  title + body per type (adapted from the email templates), honoring the
+  recipient locale the same way email does. The FCM message carries the
+  notification text plus `data.link` — the absolute URL of the same relative
+  `link` the in-app row stores.
+- **No FCM env → no-op.** Sending needs `FCM_PROJECT_ID` +
+  `FCM_SERVICE_ACCOUNT` (service-account JSON, raw or base64). Unset, push
+  paths do nothing (one startup log line); there is no firebase-admin
+  dependency — the OAuth2 token grant is a jose-signed RS256 JWT.
+- Account deletion erases the user's device tokens with the rest of their
+  notification data.
+
 ## Event catalog
 
 Ten types, mirrored in `src/lib/notifications.ts` (`NOTIFICATION_TYPES`) with

@@ -1,7 +1,8 @@
 // Route tests for the generic event-ingestion endpoint (RFC:
 // stateful-notification-service): validation, preference gating, the inline
-// in-app write + queued email split, dedupe, the 202-ack contract, and the
-// account-erasure fan-out. Prisma and the queue are mocked — no live DB/Redis.
+// in-app write + queued email split, the push fan-out (#798), dedupe, the
+// 202-ack contract, and the account-erasure fan-out. Prisma, the queue and
+// the FCM sender are mocked — no live DB/Redis/FCM.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { dbMock } = vi.hoisted(() => ({
@@ -17,20 +18,40 @@ const { dbMock } = vi.hoisted(() => ({
       findMany: vi.fn(),
       deleteMany: vi.fn(),
     },
+    deviceToken: {
+      findMany: vi.fn(),
+      deleteMany: vi.fn(),
+    },
   },
 }));
 vi.mock("../db", () => ({ db: dbMock }));
 
 vi.mock("../lib/queue", async (importActual) => {
   const actual = await importActual<typeof import("../lib/queue")>();
-  return { ...actual, enqueueEmailJobs: vi.fn().mockResolvedValue(undefined) };
+  return {
+    ...actual,
+    enqueueEmailJobs: vi.fn().mockResolvedValue(undefined),
+    enqueuePushJobs: vi.fn().mockResolvedValue(undefined),
+  };
 });
 
+vi.mock("../lib/push", () => ({
+  pushEnabled: vi.fn(() => true),
+  deliverPushJob: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { app } from "../app";
-import { enqueueEmailJobs } from "../lib/queue";
+import { pushEnabled } from "../lib/push";
+import { enqueueEmailJobs, enqueuePushJobs } from "../lib/queue";
 
 const SECRET = "dev-internal-secret";
 const enqueueMock = vi.mocked(enqueueEmailJobs);
+const enqueuePushMock = vi.mocked(enqueuePushJobs);
+const pushEnabledMock = vi.mocked(pushEnabled);
+
+// The push fan-out is fired-and-forgotten off the 202 hot path; let its
+// microtask chain (token findMany → enqueue) settle before asserting.
+const flushAsync = () => new Promise((r) => setImmediate(r));
 
 function postEvent(body: unknown, headers: Record<string, string> = {}) {
   return app.request("/internal/notifications/events", {
@@ -63,6 +84,9 @@ beforeEach(() => {
   dbMock.$executeRaw.mockResolvedValue(0);
   dbMock.notificationPreference.findMany.mockResolvedValue([]);
   dbMock.notificationPreference.deleteMany.mockResolvedValue({ count: 0 });
+  dbMock.deviceToken.findMany.mockResolvedValue([]);
+  dbMock.deviceToken.deleteMany.mockResolvedValue({ count: 0 });
+  pushEnabledMock.mockReturnValue(true);
 });
 
 describe("POST /internal/notifications/events — validation", () => {
@@ -239,8 +263,77 @@ describe("POST /internal/notifications/events — fan-out", () => {
   });
 });
 
+describe("POST /internal/notifications/events — push fan-out (#798)", () => {
+  it("enqueues one push job per in-app-enabled recipient WITH devices, tokens grouped", async () => {
+    dbMock.notificationPreference.findMany.mockResolvedValue([
+      // user_b muted in-app → excluded from the push fan-out too.
+      { userId: "user_b", type: "NEW_JOB_MATCH", emailEnabled: true, inAppEnabled: false },
+    ]);
+    dbMock.deviceToken.findMany.mockResolvedValue([
+      { userId: "user_a", token: "tok_a1" },
+      { userId: "user_a", token: "tok_a2" },
+      { userId: "user_c", token: "tok_c1" },
+    ]);
+
+    const res = await postEvent(EVENT, { "x-origin": "https://baas.lk" });
+    expect(res.status).toBe(202);
+    await flushAsync();
+
+    // Token lookup is scoped to the in-app-enabled recipients only.
+    expect(dbMock.deviceToken.findMany).toHaveBeenCalledWith({
+      where: { userId: { in: ["user_a", "user_c"] } },
+      select: { userId: true, token: true },
+    });
+    // One job per user-with-devices, tokens grouped, per-recipient locale,
+    // absolute link rebuilt from x-origin (the email convention).
+    expect(enqueuePushMock).toHaveBeenCalledTimes(1);
+    expect(enqueuePushMock.mock.calls[0][0]).toEqual([
+      {
+        kind: "push",
+        type: "NEW_JOB_MATCH",
+        tokens: ["tok_a1", "tok_a2"],
+        locale: "si",
+        payload: { jobTitle: "Fix a leaking tap", district: "Colombo" },
+        link: "https://baas.lk/jobs/job_1",
+      },
+      expect.objectContaining({ tokens: ["tok_c1"], locale: "en" }),
+    ]);
+  });
+
+  it("enqueues nothing when no recipient has a device", async () => {
+    const res = await postEvent(EVENT);
+    expect(res.status).toBe(202);
+    await flushAsync();
+    expect(dbMock.deviceToken.findMany).toHaveBeenCalledTimes(1);
+    expect(enqueuePushMock).toHaveBeenCalledWith([]);
+  });
+
+  it("is a complete no-op when FCM is not configured", async () => {
+    pushEnabledMock.mockReturnValue(false);
+    const res = await postEvent(EVENT);
+    expect(res.status).toBe(202);
+    await flushAsync();
+    expect(dbMock.deviceToken.findMany).not.toHaveBeenCalled();
+    expect(enqueuePushMock).not.toHaveBeenCalled();
+  });
+
+  it("skips the token lookup when every recipient muted in-app", async () => {
+    dbMock.notificationPreference.findMany.mockResolvedValue([
+      { userId: "user_a", type: "NEW_JOB_MATCH", emailEnabled: true, inAppEnabled: false },
+    ]);
+    const res = await postEvent({
+      ...EVENT,
+      recipients: [{ userId: "user_a", email: "a@example.com" }],
+    });
+    expect(res.status).toBe(202);
+    await flushAsync();
+    expect(dbMock.deviceToken.findMany).not.toHaveBeenCalled();
+    expect(enqueuePushMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("POST /internal/users/:id/erase", () => {
-  it("deletes the user's notifications + preference overrides (idempotent)", async () => {
+  it("deletes the user's notifications + preference overrides + device tokens (idempotent)", async () => {
     const res = await app.request("/internal/users/user_a/erase", {
       method: "POST",
       headers: { "x-internal-secret": SECRET },
@@ -251,6 +344,9 @@ describe("POST /internal/users/:id/erase", () => {
       where: { userId: "user_a" },
     });
     expect(dbMock.notificationPreference.deleteMany).toHaveBeenCalledWith({
+      where: { userId: "user_a" },
+    });
+    expect(dbMock.deviceToken.deleteMany).toHaveBeenCalledWith({
       where: { userId: "user_a" },
     });
   });

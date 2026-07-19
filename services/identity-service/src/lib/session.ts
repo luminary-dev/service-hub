@@ -28,11 +28,20 @@ export type SessionPayload = {
   avatar?: string | null;
 };
 
-export async function signSession(payload: SessionPayload): Promise<string> {
+// Default (cookie) session lifetime. Mobile Bearer access tokens (#797) carry
+// the exact same claims but live only this many seconds — short enough that a
+// leaked access token is near-useless without the refresh token that renews it.
+export const SESSION_TTL = "7d";
+export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
+
+export async function signSession(
+  payload: SessionPayload,
+  expiresIn: string = SESSION_TTL
+): Promise<string> {
   return new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime("7d")
+    .setExpirationTime(expiresIn)
     .sign(secret);
 }
 
