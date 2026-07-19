@@ -15,6 +15,7 @@ import 'features/jobs/jobs_screen.dart';
 import 'features/jobs/post_job_screen.dart';
 import 'features/notifications/notifications_screen.dart';
 import 'features/provider_detail/provider_detail_screen.dart';
+import 'palette.dart';
 import 'widgets/baas_header.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -78,7 +79,10 @@ class _TabShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Mirror the web (Navbar.tsx): a sticky top header — wordmark left, mono
     // uppercase nav links, utility toggles + notification bell + account right.
-    // The assistant is a floating button, like the web's ChatAssistant FAB.
+    // The assistant is a floating button, like the web's ChatAssistant FAB —
+    // a rounded-square brand-tinted tile with the brand-800 comment-dots icon
+    // (per the design spec, not the default circular FAB).
+    final p = context.palette;
     return Scaffold(
       appBar: BaasHeader(shell: shell),
       body: shell,
@@ -87,6 +91,12 @@ class _TabShell extends ConsumerWidget {
           : FloatingActionButton(
               heroTag: 'assistant',
               onPressed: () => shell.goBranch(_iChat),
+              backgroundColor: p.brand.c50,
+              foregroundColor: p.brand.c800,
+              elevation: 3,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
               child: const FaIcon(FontAwesomeIcons.solidCommentDots, size: 20),
             ),
     );

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:baas_mobile/l10n/gen/app_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../models/models.dart';
@@ -159,7 +160,7 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   children: [
                     FilterChip(
-                      avatar: const Icon(Icons.my_location, size: 16),
+                      avatar: const FaIcon(FontAwesomeIcons.locationCrosshairs, size: 13),
                       label: Text(l10n.nearMe),
                       selected: _position != null,
                       onSelected: (_) => _toggleNearMe(),
