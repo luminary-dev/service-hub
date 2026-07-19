@@ -6,6 +6,7 @@ import { initErrorCapture } from "./lib/errors";
 import { log } from "./lib/log";
 import { installProcessErrorHandlers } from "./lib/logging";
 import { initMetrics } from "./lib/metrics";
+import { initPush } from "./lib/push";
 import {
   closeQueueRedis,
   flushPendingRetries,
@@ -31,6 +32,10 @@ initMetrics("notification-service");
 // Email delivery worker + reclaim sweep (lib/queue.ts). No-op without
 // REDIS_URL — enqueue then degrades to direct one-attempt sends.
 startEmailWorker();
+
+// Mobile push (#798): one startup line stating whether FCM is configured.
+// Unset → every push path is a no-op (lib/push.ts).
+initPush();
 
 const server = serve({ fetch: app.fetch, port }, (info) => {
   log.info("listening", { port: info.port });

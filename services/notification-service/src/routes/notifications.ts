@@ -100,6 +100,68 @@ notifications.post("/api/notifications/read", async (c) => {
   return c.json({ ok: true, updated: result.count });
 });
 
+// Mobile push device registry (#798). A user keeps at most this many device
+// tokens; beyond the cap the stalest rows (lastSeenAt) are evicted, never an
+// error — the newest device always wins.
+export const MAX_DEVICE_TOKENS = 10;
+
+// FCM registration tokens have no documented max length; 4096 bounds hostile
+// input while leaving generous headroom over observed token sizes.
+const deviceSchema = z.object({
+  token: z.string().min(1).max(4096),
+  platform: z.enum(["android", "ios"]),
+});
+
+// POST /api/notifications/devices — register (or re-register) this device's
+// FCM token for the caller. Upsert by token: a device that signs into a
+// different account MOVES its token to the new user (one device, one owner)
+// instead of erroring; a repeat registration just bumps lastSeenAt
+// (@updatedAt) so the cap eviction stays freshness-ordered.
+notifications.post("/api/notifications/devices", async (c) => {
+  const auth = getAuth(c);
+  if (!auth) return c.json({ error: "Unauthorized" }, 401);
+  const parsed = deviceSchema.safeParse(await readBody(c));
+  if (!parsed.success) return c.json({ error: "Invalid input" }, 400);
+  const { token, platform } = parsed.data;
+
+  await db.deviceToken.upsert({
+    where: { token },
+    create: { userId: auth.userId, token, platform },
+    // lastSeenAt is @updatedAt — Prisma bumps it on this write.
+    update: { userId: auth.userId, platform },
+  });
+
+  // Enforce the per-user cap by evicting the stalest rows beyond it (id
+  // tiebreak keeps the order stable on lastSeenAt collisions).
+  const stale = await db.deviceToken.findMany({
+    where: { userId: auth.userId },
+    orderBy: [{ lastSeenAt: "desc" }, { id: "desc" }],
+    skip: MAX_DEVICE_TOKENS,
+    select: { id: true },
+  });
+  if (stale.length > 0) {
+    await db.deviceToken.deleteMany({ where: { id: { in: stale.map((r) => r.id) } } });
+  }
+  return c.json({ ok: true });
+});
+
+const deviceDeleteSchema = z.object({ token: z.string().min(1).max(4096) });
+
+// DELETE /api/notifications/devices — deregister on sign-out. Own row only,
+// idempotent: unknown tokens and tokens now owned by another account match
+// nothing (never a probe-able 403/404, like mark-read above).
+notifications.delete("/api/notifications/devices", async (c) => {
+  const auth = getAuth(c);
+  if (!auth) return c.json({ error: "Unauthorized" }, 401);
+  const parsed = deviceDeleteSchema.safeParse(await readBody(c));
+  if (!parsed.success) return c.json({ error: "Invalid input" }, 400);
+
+  await db.deviceToken.deleteMany({
+    where: { token: parsed.data.token, userId: auth.userId },
+  });
+  return c.json({ ok: true });
+});
+
 // GET /api/notification-preferences — the full type × channel matrix:
 // defaults (both channels on) merged over the caller's stored sparse
 // overrides, so the settings UI never has to know the catalog.

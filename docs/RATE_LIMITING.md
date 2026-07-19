@@ -39,6 +39,7 @@ write bucket and vice versa.
 | `POST /api/inquiries/[id]/messages` | `message` | 30 / 10 min |
 | `POST /api/notifications/read` | `message` | 30 / 10 min (own `notification-read` bucket) |
 | `POST /api/notification-preferences` | `review` | 10 / hour (own `notification-prefs` bucket) |
+| `POST`/`DELETE /api/notifications/devices` | `message` | 30 / 10 min (own `notification-device` bucket) |
 | `POST /api/providers/[id]/report`, `POST /api/photos/[id]/report`, `POST /api/reviews/[id]/report`, `POST /api/jobs/[id]/report`, `POST /api/messages/[id]/report` | `review` | 10 / hour (shared `report` bucket) |
 | `POST /api/account/avatar`, `POST /api/provider/photos`, `POST /api/provider/verification`, `POST /api/admin/categories/image` | `upload` | 20 / 15 min (shared `upload` bucket) |
 | `PUT /api/provider/profile` | `profile` | 20 / 15 min (`provider-profile` bucket) |
@@ -71,6 +72,9 @@ at conversational frequency (each bell open marks a page read) so it sits on
 the `message` rule, and the preference upsert is a settings form on the
 `review` rule; the notification GETs (feed, unread-count poll) stay
 unthrottled like every other read — the client controls polling frequency.
+The push device registration (#798) fires at app-launch/sign-in frequency, so
+it sits on the `message` rule in its own `notification-device` bucket, shared
+by the sign-out `DELETE` (the middleware matches on path, not method).
 The `/api/search/*` reads (search & discovery RFC §5) are the one exception to
 "reads are unthrottled": the search endpoints are a query engine a scraper
 could walk the whole directory through, so they carry their own per-IP
