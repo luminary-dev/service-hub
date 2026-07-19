@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../models/models.dart';
+import '../../palette.dart';
 import '../../state/providers.dart';
 import '../../widgets/common.dart';
 
@@ -32,7 +33,7 @@ class ProviderDetailScreen extends ConsumerWidget {
                         .contains(providerId)
                     ? Icons.favorite
                     : Icons.favorite_border,
-                color: const Color(0xFFDC2626),
+                color: context.palette.red,
               ),
               onPressed: () => ref
                   .read(favoritesControllerProvider.notifier)
@@ -90,10 +91,10 @@ class _DetailBody extends ConsumerWidget {
                           style: Theme.of(context).textTheme.titleLarge),
                     ),
                     if (p.verificationStatus == 'APPROVED')
-                      const Padding(
-                        padding: EdgeInsets.only(left: 6),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 6),
                         child: Icon(Icons.verified,
-                            size: 20, color: Color(0xFF0284C7)),
+                            size: 20, color: context.palette.emerald),
                       ),
                   ]),
                   Text('${p.category} · ${p.district}'),
@@ -302,7 +303,7 @@ class _ReviewTile extends StatelessWidget {
               margin: const EdgeInsets.only(top: 8, left: 16),
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: context.palette.ink.c100,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(review.responseText!),
@@ -438,7 +439,7 @@ class _ReviewSheetState extends ConsumerState<_ReviewSheet> {
                 IconButton(
                   icon: Icon(
                     i <= _rating ? Icons.star : Icons.star_border,
-                    color: const Color(0xFFF59E0B),
+                    color: context.palette.amber,
                     size: 32,
                   ),
                   onPressed: () => setState(() => _rating = i),

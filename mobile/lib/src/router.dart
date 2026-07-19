@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:baas_mobile/l10n/gen/app_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:go_router/go_router.dart';
 
 import 'features/account/account_screen.dart';
@@ -82,27 +83,27 @@ class _TabShell extends ConsumerWidget {
         onDestinationSelected: shell.goBranch,
         destinations: [
           NavigationDestination(
-            icon: const Icon(Icons.search),
+            icon: const FaIcon(FontAwesomeIcons.magnifyingGlass, size: 18),
             label: l10n.tabBrowse,
           ),
           NavigationDestination(
-            icon: const Icon(Icons.work_outline),
+            icon: const FaIcon(FontAwesomeIcons.briefcase, size: 18),
             label: l10n.tabJobs,
           ),
           NavigationDestination(
-            icon: const Icon(Icons.chat_bubble_outline),
+            icon: const FaIcon(FontAwesomeIcons.solidCommentDots, size: 18),
             label: l10n.tabChat,
           ),
           NavigationDestination(
             icon: Badge(
               isLabelVisible: unread > 0,
               label: Text('$unread'),
-              child: const Icon(Icons.notifications_none),
+              child: const FaIcon(FontAwesomeIcons.bell, size: 18),
             ),
             label: l10n.tabNotifications,
           ),
           NavigationDestination(
-            icon: const Icon(Icons.person_outline),
+            icon: const FaIcon(FontAwesomeIcons.user, size: 18),
             label: l10n.tabAccount,
           ),
         ],

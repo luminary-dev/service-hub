@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:baas_mobile/l10n/gen/app_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../models/models.dart';
+import '../../palette.dart';
 import '../../state/providers.dart';
 
 class AccountScreen extends ConsumerWidget {
@@ -70,8 +72,9 @@ class _SignedIn extends ConsumerWidget {
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFFFEF3C7),
+              color: context.palette.brand.c50,
               borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: context.palette.brand.c100),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -94,24 +97,24 @@ class _SignedIn extends ConsumerWidget {
           ),
         const Divider(),
         ListTile(
-          leading: const Icon(Icons.forum_outlined),
+          leading: const FaIcon(FontAwesomeIcons.comments, size: 18),
           title: Text(l10n.myInquiries),
           onTap: () => context.push('/inquiries'),
         ),
         ListTile(
-          leading: const Icon(Icons.favorite_border),
+          leading: const FaIcon(FontAwesomeIcons.heart, size: 18),
           title: Text(l10n.favorites),
           onTap: () => context.push('/favorites'),
         ),
         ListTile(
-          leading: const Icon(Icons.person_outline),
+          leading: const FaIcon(FontAwesomeIcons.idCard, size: 18),
           title: Text(l10n.profile),
           onTap: () => _openProfileSheet(context, ref),
         ),
         const _LanguageTile(),
         const Divider(),
         ListTile(
-          leading: const Icon(Icons.logout),
+          leading: const FaIcon(FontAwesomeIcons.arrowRightFromBracket, size: 18),
           title: Text(l10n.signOut),
           onTap: () => ref.read(authControllerProvider.notifier).logout(),
         ),
@@ -136,7 +139,7 @@ class _LanguageTile extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final locale = ref.watch(localeControllerProvider);
     return ListTile(
-      leading: const Icon(Icons.language),
+      leading: const FaIcon(FontAwesomeIcons.globe, size: 18),
       title: Text(l10n.language),
       trailing: SegmentedButton<String>(
         segments: [

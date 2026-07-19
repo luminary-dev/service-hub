@@ -84,10 +84,11 @@ void main() {
         find.descendant(of: loginScope, matching: find.byType(FilledButton)));
 
     // Bearer login succeeded → the account menu shows the sign-out action.
-    await _waitFor(tester, find.byIcon(Icons.logout), 'signed-in account menu');
+    final signOut = find.widgetWithText(ListTile, 'Sign out');
+    await _waitFor(tester, signOut, 'signed-in account menu');
     await tester.pumpAndSettle(); // finish the login→account transition
-    await tester.ensureVisible(find.byIcon(Icons.logout));
-    await tester.tap(find.byIcon(Icons.logout));
+    await tester.ensureVisible(signOut);
+    await tester.tap(signOut);
     await _waitFor(tester, find.widgetWithText(FilledButton, 'Sign in'),
         'guest account view after logout');
   });
