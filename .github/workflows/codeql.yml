@@ -1,0 +1,55 @@
+name: CodeQL
+
+# Advanced CodeQL setup (replaces the repo's default setup). We pin the
+# analyzed languages explicitly so CodeQL does NOT try to build the generated
+# Flutter platform shells under mobile/ (android → java-kotlin, ios/macos →
+# swift). Those are boilerplate, don't build standalone in CI, and hold no
+# app logic — our mobile code is Dart, which CodeQL doesn't support. We analyze
+# what actually carries our code: the TypeScript (web + services) and the
+# GitHub Actions workflows.
+
+on:
+  push:
+    branches: [dev, prod]
+  pull_request:
+    branches: [dev, prod]
+  schedule:
+    # Catch newly-disclosed query updates against unchanged code.
+    - cron: "0 6 * * 2" # Tuesdays 06:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # Only CodeQL-supported languages that hold our own code. Dart (the
+        # mobile app) is unsupported; java-kotlin/swift would only see generated
+        # Flutter shells — deliberately excluded.
+        language: [javascript-typescript, actions]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
+        with:
+          languages: ${{ matrix.language }}
+          # mobile/ is Dart + generated platform shells — nothing for the JS/TS
+          # extractor; excluding it keeps analysis focused on app code.
+          config: |
+            paths-ignore:
+              - mobile
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
+        with:
+          category: "/language:${{ matrix.language }}"
