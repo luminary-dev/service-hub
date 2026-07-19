@@ -49,15 +49,20 @@ class TokenStore {
   StoredTokens? _cached;
   bool _loaded = false;
 
+  /// The keychain can be unavailable (unsigned dev/test builds on macOS, rare
+  /// Android keystore failures). Degrade to memory-only: the session won't
+  /// survive a restart, but the app keeps working.
+  bool _memoryOnly = false;
+
   Future<StoredTokens?> read() async {
     if (_loaded) return _cached;
-    final raw = await _storage.read(key: _key);
-    if (raw != null) {
-      try {
+    try {
+      final raw = await _storage.read(key: _key);
+      if (raw != null) {
         _cached = StoredTokens.fromJson(jsonDecode(raw) as Map<String, dynamic>);
-      } catch (_) {
-        _cached = null;
       }
+    } catch (_) {
+      _memoryOnly = true;
     }
     _loaded = true;
     return _cached;
@@ -66,12 +71,22 @@ class TokenStore {
   Future<void> write(StoredTokens tokens) async {
     _cached = tokens;
     _loaded = true;
-    await _storage.write(key: _key, value: jsonEncode(tokens.toJson()));
+    if (_memoryOnly) return;
+    try {
+      await _storage.write(key: _key, value: jsonEncode(tokens.toJson()));
+    } catch (_) {
+      _memoryOnly = true;
+    }
   }
 
   Future<void> clear() async {
     _cached = null;
     _loaded = true;
-    await _storage.delete(key: _key);
+    if (_memoryOnly) return;
+    try {
+      await _storage.delete(key: _key);
+    } catch (_) {
+      _memoryOnly = true;
+    }
   }
 }
