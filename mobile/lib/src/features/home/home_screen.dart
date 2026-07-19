@@ -53,7 +53,6 @@ class _HomeBody extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final topRated = providers.take(8).toList();
 
-    void openProvider(String id) => context.push('/providers/$id');
     void openResults([String? category]) => context.push(
         Uri(path: '/results', queryParameters: {
           if (category != null) 'category': category,
@@ -96,23 +95,28 @@ class _HomeBody extends ConsumerWidget {
             ),
           ),
         ],
-        // Top rated shelf.
+        // Top rated — a downward 2-column grid (multiple rows), not a single
+        // horizontal shelf.
         ShelfHeader(
           title: l10n.shelfTopRated,
           action: 'SEE ALL',
           onAction: openResults,
         ),
-        SizedBox(
-          height: 200,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            itemCount: topRated.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 14),
-            itemBuilder: (_, i) => ProCard(
-              provider: topRated[i],
-              onTap: () => openProvider(topRated[i].id),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: EdgeInsets.zero,
+            gridDelegate:
+                const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisSpacing: 16,
+              crossAxisSpacing: 14,
+              childAspectRatio: 0.72,
             ),
+            itemCount: topRated.length,
+            itemBuilder: (_, i) => ProviderCard(provider: topRated[i]),
           ),
         ),
         // Clear the floating tab bar.
