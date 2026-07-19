@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:baas_mobile/l10n/gen/app_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +8,8 @@ import 'package:go_router/go_router.dart';
 import '../../models/models.dart';
 import '../../palette.dart';
 import '../../state/providers.dart';
+import '../../theme.dart';
+import '../../tv/glass.dart';
 import '../../widgets/brand_loader.dart';
 import '../../widgets/common.dart';
 
@@ -23,32 +26,50 @@ class ProviderDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final detail = ref.watch(providerDetailProvider(providerId));
+    final favorited =
+        (ref.watch(favoritesControllerProvider).value ?? {}).contains(providerId);
     return Scaffold(
-      appBar: AppBar(
-        title: Text(detail.value?.summary.name ?? ''),
-        actions: [
-          if (ref.watch(authControllerProvider).value != null)
-            IconButton(
-              icon: Icon(
-                (ref.watch(favoritesControllerProvider).value ?? {})
-                        .contains(providerId)
-                    ? Icons.favorite
-                    : Icons.favorite_border,
-                color: context.palette.red,
-              ),
-              onPressed: () => ref
-                  .read(favoritesControllerProvider.notifier)
-                  .toggle(providerId),
+      body: Stack(
+        children: [
+          switch (detail) {
+            AsyncData(value: final d?) => _DetailBody(detail: d),
+            AsyncData() => EmptyState(message: l10n.genericError),
+            AsyncError() => ErrorRetry(
+                onRetry: () =>
+                    ref.invalidate(providerDetailProvider(providerId))),
+            _ => const BrandLoaderCentered(),
+          },
+          // Floating glass back + heart chrome over the cover.
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 8,
+            left: 16,
+            right: 16,
+            child: Row(
+              children: [
+                GlassIconButton(
+                  onTap: () => context.pop(),
+                  child: const FaIcon(FontAwesomeIcons.arrowLeft,
+                      size: 15, color: Colors.white),
+                ),
+                const Spacer(),
+                if (ref.watch(authControllerProvider).value != null)
+                  GlassIconButton(
+                    onTap: () => ref
+                        .read(favoritesControllerProvider.notifier)
+                        .toggle(providerId),
+                    child: FaIcon(
+                      favorited
+                          ? FontAwesomeIcons.solidHeart
+                          : FontAwesomeIcons.heart,
+                      size: 16,
+                      color: context.palette.red,
+                    ),
+                  ),
+              ],
             ),
+          ),
         ],
       ),
-      body: switch (detail) {
-        AsyncData(value: final d?) => _DetailBody(detail: d),
-        AsyncData() => EmptyState(message: l10n.genericError),
-        AsyncError() => ErrorRetry(
-            onRetry: () => ref.invalidate(providerDetailProvider(providerId))),
-        _ => const BrandLoaderCentered(),
-      },
     );
   }
 }
@@ -67,93 +88,198 @@ class _DetailBody extends ConsumerWidget {
         ? detail.bioSi!
         : detail.bio;
 
+    final cp = context.palette;
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.zero,
       children: [
-        Row(
-          children: [
-            CircleAvatar(
-              radius: 32,
-              backgroundImage: p.avatarUrl != null
-                  ? CachedNetworkImageProvider(resolveMediaUrl(p.avatarUrl!))
-                  : null,
-              child: p.avatarUrl == null
-                  ? Text(p.name.isNotEmpty ? p.name[0] : '?')
-                  : null,
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(children: [
-                    Flexible(
-                      child: Text(p.name,
-                          style: Theme.of(context).textTheme.titleLarge),
+        // Full-bleed cover hero.
+        SizedBox(
+          height: 420,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (p.coverPhoto != null || p.avatarUrl != null)
+                CachedNetworkImage(
+                  imageUrl: resolveMediaUrl(p.coverPhoto ?? p.avatarUrl!),
+                  fit: BoxFit.cover,
+                  errorWidget: (_, _, _) => ColoredBox(color: cp.ink.c100),
+                )
+              else
+                ColoredBox(color: cp.ink.c100),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    stops: const [0, 0.32, 0.7, 1],
+                    colors: [
+                      Colors.black.withValues(alpha: 0.3),
+                      Colors.transparent,
+                      cp.ink.c50.withValues(alpha: 0.6),
+                      cp.ink.c50,
+                    ],
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 20,
+                right: 20,
+                bottom: 20,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                          color: cp.brand.c700,
+                          borderRadius: BorderRadius.circular(3)),
+                      child: Text(p.category.toUpperCase(),
+                          style: TextStyle(
+                            fontFamily: kFontMono,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 1.4,
+                            color: cp.onBrand,
+                          )),
                     ),
-                    if (p.verificationStatus == 'APPROVED')
-                      Padding(
-                        padding: const EdgeInsets.only(left: 6),
-                        child: Icon(Icons.verified,
-                            size: 20, color: context.palette.emerald),
-                      ),
-                  ]),
-                  Text('${p.category} · ${p.district}'),
-                  if (p.rating != null)
-                    Row(children: [
-                      RatingStars(rating: p.rating!),
-                      const SizedBox(width: 6),
-                      Text(l10n.reviewsCount(p.reviewCount)),
-                    ]),
-                ],
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(p.name,
+                              style: const TextStyle(
+                                fontFamily: kFontSans,
+                                fontSize: 30,
+                                height: 1.08,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: -0.5,
+                                color: Colors.white,
+                                shadows: [
+                                  Shadow(
+                                      blurRadius: 16, color: Color(0x73000000))
+                                ],
+                              )),
+                        ),
+                        if (p.verificationStatus == 'APPROVED')
+                          Padding(
+                            padding: const EdgeInsets.only(left: 8),
+                            child: FaIcon(FontAwesomeIcons.solidCircleCheck,
+                                size: 18, color: cp.emerald),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        FaIcon(FontAwesomeIcons.solidStar,
+                            size: 11, color: cp.amber),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            [
+                              if (p.rating != null) p.rating!.toStringAsFixed(1),
+                              '${p.reviewCount} REVIEWS',
+                              p.district.toUpperCase(),
+                              if (p.experience > 0) '${p.experience} YRS',
+                            ].join('  ·  '),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontFamily: kFontMono,
+                              fontSize: 11,
+                              letterSpacing: 1.1,
+                              color: Color(0xFFC2C6CB),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: FilledButton.icon(
-                icon: const Icon(Icons.send),
-                label: Text(l10n.sendInquiry),
-                onPressed: () => _openInquirySheet(context, ref),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  icon: const FaIcon(FontAwesomeIcons.paperPlane, size: 13),
+                  label: Text(l10n.sendInquiry),
+                  onPressed: () => _openInquirySheet(context, ref),
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: OutlinedButton.icon(
-                icon: const Icon(Icons.call),
-                label: Text(l10n.showContact),
-                onPressed: () => _revealContact(context, ref),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const FaIcon(FontAwesomeIcons.phone, size: 13),
+                  label: Text(l10n.call),
+                  onPressed: () => _revealContact(context, ref),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         if (bio.isNotEmpty) ...[
           _SectionHeader(l10n.aboutSection),
-          Text(bio),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Text(bio,
+                style: TextStyle(
+                    height: 1.55, color: cp.ink.c600, fontSize: 14.5)),
+          ),
         ],
         if (detail.services.isNotEmpty) ...[
           _SectionHeader(l10n.servicesSection),
           for (final s in detail.services)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(
-                locale == 'si' && s.titleSi?.isNotEmpty == true
-                    ? s.titleSi!
-                    : s.title,
+            Container(
+              margin: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: cp.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: cp.ink.c200),
               ),
-              subtitle: s.description != null ? Text(s.description!) : null,
-              trailing: s.price != null
-                  ? Text(
-                      'Rs. ${s.price}${s.priceType == 'HOURLY' ? '/hr' : ''}',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleSmall
-                          ?.copyWith(fontWeight: FontWeight.w600),
-                    )
-                  : null,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          locale == 'si' && s.titleSi?.isNotEmpty == true
+                              ? s.titleSi!
+                              : s.title,
+                          style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: cp.ink.c900),
+                        ),
+                        if (s.description != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(s.description!,
+                                style: TextStyle(
+                                    fontSize: 13, color: cp.ink.c500)),
+                          ),
+                      ],
+                    ),
+                  ),
+                  if (s.price != null)
+                    Text(
+                      'RS. ${s.price}${s.priceType == 'HOURLY' ? '/HR' : ''}',
+                      style: TextStyle(
+                        fontFamily: kFontMono,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: cp.brand.c800,
+                      ),
+                    ),
+                ],
+              ),
             ),
         ],
         if (detail.photos.isNotEmpty) ...[
@@ -162,13 +288,14 @@ class _DetailBody extends ConsumerWidget {
             height: 120,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               itemCount: detail.photos.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              separatorBuilder: (_, _) => const SizedBox(width: 10),
               itemBuilder: (_, i) => ClipRRect(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(14),
                 child: CachedNetworkImage(
                   imageUrl: resolveMediaUrl(detail.photos[i].url),
-                  width: 160,
+                  width: 170,
                   fit: BoxFit.cover,
                 ),
               ),
@@ -177,21 +304,30 @@ class _DetailBody extends ConsumerWidget {
         ],
         _SectionHeader(l10n.reviewsSection),
         if (ref.watch(authControllerProvider).value != null)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              icon: const Icon(Icons.rate_review_outlined),
-              label: Text(l10n.writeReview),
-              onPressed: () => _openReviewSheet(context, ref),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                icon: const FaIcon(FontAwesomeIcons.penToSquare, size: 13),
+                label: Text(l10n.writeReview),
+                onPressed: () => _openReviewSheet(context, ref),
+              ),
             ),
           ),
-        if (detail.reviews.reviews.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text(l10n.noNotifications),
-          )
-        else
-          for (final r in detail.reviews.reviews) _ReviewTile(review: r),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+          child: detail.reviews.reviews.isEmpty
+              ? Text(l10n.noNotifications,
+                  style: TextStyle(color: cp.ink.c500))
+              : Column(
+                  children: [
+                    for (final r in detail.reviews.reviews)
+                      _ReviewTile(review: r),
+                  ],
+                ),
+        ),
+        const SizedBox(height: 48),
       ],
     );
   }
@@ -268,8 +404,15 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 24, bottom: 8),
-      child: Text(title, style: Theme.of(context).textTheme.titleMedium),
+      padding: const EdgeInsets.fromLTRB(20, 26, 20, 12),
+      child: Text(title,
+          style: TextStyle(
+            fontFamily: kFontSans,
+            fontSize: 19,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.3,
+            color: context.palette.ink.c900,
+          )),
     );
   }
 }

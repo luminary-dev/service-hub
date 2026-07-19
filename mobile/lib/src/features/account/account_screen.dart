@@ -58,6 +58,7 @@ class _SignedIn extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     return ListView(
+      padding: const EdgeInsets.only(bottom: 110),
       children: [
         ListTile(
           leading: CircleAvatar(

@@ -9,7 +9,6 @@ import '../../models/models.dart';
 import '../../state/providers.dart';
 import '../../widgets/brand_loader.dart';
 import '../../widgets/common.dart';
-import '../../widgets/home_hero.dart';
 
 /// Mirrors the web directory: districts from src/lib/constants.ts, sort keys
 /// from src/lib/sort-keys.ts.
@@ -21,14 +20,17 @@ const kDistricts = [
   'Trincomalee', 'Vavuniya',
 ];
 
-class BrowseScreen extends ConsumerStatefulWidget {
-  const BrowseScreen({super.key});
+class ResultsScreen extends ConsumerStatefulWidget {
+  const ResultsScreen({super.key, this.initialCategory});
+
+  /// Preselected trade slug when opened from a Home shelf tile.
+  final String? initialCategory;
 
   @override
-  ConsumerState<BrowseScreen> createState() => _BrowseScreenState();
+  ConsumerState<ResultsScreen> createState() => _ResultsScreenState();
 }
 
-class _BrowseScreenState extends ConsumerState<BrowseScreen> {
+class _ResultsScreenState extends ConsumerState<ResultsScreen> {
   final _searchController = TextEditingController();
   Timer? _debounce;
 
@@ -47,6 +49,7 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
   @override
   void initState() {
     super.initState();
+    _category = widget.initialCategory;
     _load(reset: true);
   }
 
@@ -132,11 +135,11 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
     final categories = ref.watch(categoriesProvider).value ?? const [];
 
     return Scaffold(
+      appBar: AppBar(title: Text(l10n.navFind)),
       body: RefreshIndicator(
         onRefresh: () => _load(reset: true),
         child: CustomScrollView(
           slivers: [
-            const SliverToBoxAdapter(child: HomeHero()),
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),

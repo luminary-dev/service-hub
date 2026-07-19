@@ -44,6 +44,11 @@ class Palette {
   final Color red; // favorite heart / destructive
   final Brightness brightness;
 
+  /// Text/icon colour on a solid brand fill. In dark mode the bright brand
+  /// carries dark text (#101319); in light mode it carries white.
+  Color get onBrand =>
+      brightness == Brightness.dark ? ink.c50 : const Color(0xFFFFFFFF);
+
   static const light = Palette(
     brightness: Brightness.light,
     surface: Color(0xFFFFFFFF),

@@ -124,8 +124,8 @@ class LocaleController extends Notifier<Locale> {
 final localeControllerProvider =
     NotifierProvider<LocaleController, Locale>(LocaleController.new);
 
-/// App theme. The web **defaults to light** (its ThemeToggle stores light/dark
-/// explicitly, no system state), so we match: light unless the user flips it.
+/// App theme. The TV-style redesign is **dark-first** (the design's primary
+/// row); the header toggle flips to the light palette and the choice persists.
 class ThemeController extends Notifier<ThemeMode> {
   static const _storage = FlutterSecureStorage();
   static const _key = 'baas_theme';
@@ -136,7 +136,7 @@ class ThemeController extends Notifier<ThemeMode> {
       if (v == 'dark') state = ThemeMode.dark;
       if (v == 'light') state = ThemeMode.light;
     });
-    return ThemeMode.light;
+    return ThemeMode.dark;
   }
 
   void toggle() {

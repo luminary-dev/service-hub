@@ -39,14 +39,16 @@ void main() {
         container: ProviderContainer(), child: const BaasApp()));
     await tester.pumpAndSettle(const Duration(seconds: 2));
 
-    await _waitFor(tester, find.byType(Card), 'provider cards');
-    await tester.tap(find.byType(Card).first);
+    // The TV-style home leads with a cinematic hero; "View profile" opens the
+    // featured provider's detail (a styled tappable, not a Material button).
+    final viewProfile = find.text('View profile');
+    await _waitFor(tester, viewProfile, 'hero view-profile');
+    await tester.tap(viewProfile);
 
     final detailScope = find.byType(ProviderDetailScreen);
     await _waitFor(tester, detailScope, 'provider detail screen');
-    // Reaching the data-driven body at all means /providers/:id/full resolved
-    // (the screen shows a spinner until then). Both action buttons always
-    // render for a loaded profile, independent of which seed fields are set.
+    // Reaching the data-driven body at all means /providers/:id/full resolved.
+    // Both action buttons always render for a loaded profile.
     await _waitFor(
         tester,
         find.descendant(
@@ -55,9 +57,7 @@ void main() {
         'inquiry action');
     expect(
         find.descendant(
-            of: detailScope,
-            matching:
-                find.widgetWithText(OutlinedButton, 'Show contact details')),
+            of: detailScope, matching: find.widgetWithText(OutlinedButton, 'Call')),
         findsOneWidget);
   });
 
@@ -68,8 +68,8 @@ void main() {
         container: ProviderContainer(), child: const BaasApp()));
     await tester.pumpAndSettle(const Duration(seconds: 2));
 
-    // The account entry point is the user icon in the header (tooltip "Account").
-    await tester.tap(find.byTooltip('Account'));
+    // The account entry point is the ACCOUNT tab in the floating glass tab bar.
+    await tester.tap(find.text('ACCOUNT'));
     await tester.pumpAndSettle();
     final guestSignIn = find.widgetWithText(FilledButton, 'Sign in');
     await _waitFor(tester, guestSignIn, 'guest sign-in button');

@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../palette.dart';
 import '../../state/providers.dart';
-import '../browse/browse_screen.dart' show kDistricts;
+import '../browse/results_screen.dart' show kDistricts;
 import 'jobs_screen.dart' show myJobsProvider;
 
 class PostJobScreen extends ConsumerStatefulWidget {
