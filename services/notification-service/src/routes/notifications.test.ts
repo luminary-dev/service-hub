@@ -1,7 +1,7 @@
 // Route tests for the public notification-center endpoints: the auth gates
 // (401 without identity headers), owner scoping on every query, pagination
-// clamps + cursor, mark-read idempotency, and the preference matrix merge.
-// Prisma is mocked — no live DB.
+// clamps + cursor, mark-read idempotency, the preference matrix merge, and
+// the push device-token registry (#798). Prisma is mocked — no live DB.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { dbMock } = vi.hoisted(() => ({
@@ -16,12 +16,22 @@ const { dbMock } = vi.hoisted(() => ({
       findMany: vi.fn(),
       upsert: vi.fn(),
     },
+    deviceToken: {
+      upsert: vi.fn(),
+      findMany: vi.fn(),
+      deleteMany: vi.fn(),
+    },
   },
 }));
 vi.mock("../db", () => ({ db: dbMock }));
 
 import { app } from "../app";
-import { DEFAULT_FEED_TAKE, MAX_FEED_TAKE, normalizeTake } from "./notifications";
+import {
+  DEFAULT_FEED_TAKE,
+  MAX_DEVICE_TOKENS,
+  MAX_FEED_TAKE,
+  normalizeTake,
+} from "./notifications";
 
 const SECRET = "dev-internal-secret";
 const USER = "user_a";
@@ -55,6 +65,9 @@ beforeEach(() => {
   dbMock.notification.count.mockResolvedValue(0);
   dbMock.notification.updateMany.mockResolvedValue({ count: 0 });
   dbMock.notificationPreference.findMany.mockResolvedValue([]);
+  dbMock.deviceToken.upsert.mockResolvedValue({});
+  dbMock.deviceToken.findMany.mockResolvedValue([]);
+  dbMock.deviceToken.deleteMany.mockResolvedValue({ count: 0 });
 });
 
 describe("normalizeTake", () => {
@@ -178,6 +191,94 @@ describe("POST /api/notifications/read", () => {
     expect(dbMock.notification.updateMany.mock.calls[0][0].where).toEqual({
       userId: USER,
       readAt: null,
+    });
+  });
+});
+
+describe("POST /api/notifications/devices", () => {
+  const body = JSON.stringify({ token: "fcm_tok_1", platform: "android" });
+
+  it("401s without a session", async () => {
+    const res = await req("/api/notifications/devices", { method: "POST", body });
+    expect(res.status).toBe(401);
+    expect(dbMock.deviceToken.upsert).not.toHaveBeenCalled();
+  });
+
+  it("400s on a missing token, an unknown platform, or an oversized token", async () => {
+    for (const bad of [
+      {},
+      { token: "t" }, // no platform
+      { token: "t", platform: "web" },
+      { token: "", platform: "ios" },
+      { token: "x".repeat(4097), platform: "ios" },
+    ]) {
+      const res = await asUser("/api/notifications/devices", {
+        method: "POST",
+        body: JSON.stringify(bad),
+      });
+      expect(res.status).toBe(400);
+    }
+    expect(dbMock.deviceToken.upsert).not.toHaveBeenCalled();
+  });
+
+  it("upserts by token so a device that switches accounts moves to the caller", async () => {
+    const res = await asUser("/api/notifications/devices", { method: "POST", body });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(dbMock.deviceToken.upsert).toHaveBeenCalledWith({
+      where: { token: "fcm_tok_1" },
+      create: { userId: USER, token: "fcm_tok_1", platform: "android" },
+      update: { userId: USER, platform: "android" },
+    });
+  });
+
+  it("evicts the stalest rows beyond the per-user cap instead of erroring", async () => {
+    dbMock.deviceToken.findMany.mockResolvedValue([{ id: "d_old1" }, { id: "d_old2" }]);
+    const res = await asUser("/api/notifications/devices", { method: "POST", body });
+    expect(res.status).toBe(200);
+    // The eviction query skips the newest MAX_DEVICE_TOKENS rows…
+    expect(dbMock.deviceToken.findMany).toHaveBeenCalledWith({
+      where: { userId: USER },
+      orderBy: [{ lastSeenAt: "desc" }, { id: "desc" }],
+      skip: MAX_DEVICE_TOKENS,
+      select: { id: true },
+    });
+    // …and deletes whatever fell past the window.
+    expect(dbMock.deviceToken.deleteMany).toHaveBeenCalledWith({
+      where: { id: { in: ["d_old1", "d_old2"] } },
+    });
+  });
+
+  it("skips the delete entirely when the caller is under the cap", async () => {
+    const res = await asUser("/api/notifications/devices", { method: "POST", body });
+    expect(res.status).toBe(200);
+    expect(dbMock.deviceToken.deleteMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("DELETE /api/notifications/devices", () => {
+  const body = JSON.stringify({ token: "fcm_tok_1" });
+
+  it("401s without a session", async () => {
+    const res = await req("/api/notifications/devices", { method: "DELETE", body });
+    expect(res.status).toBe(401);
+  });
+
+  it("400s without a token", async () => {
+    const res = await asUser("/api/notifications/devices", {
+      method: "DELETE",
+      body: "{}",
+    });
+    expect(res.status).toBe(400);
+    expect(dbMock.deviceToken.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("deletes the caller's own row only, idempotent on unknown/foreign tokens", async () => {
+    const res = await asUser("/api/notifications/devices", { method: "DELETE", body });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(dbMock.deviceToken.deleteMany).toHaveBeenCalledWith({
+      where: { token: "fcm_tok_1", userId: USER },
     });
   });
 });

@@ -112,13 +112,34 @@ export async function buildUpstreamHeaders(
     // Revocation: the token's sv must still match the user's current
     // sessionVersion.
     const token = getCookie(c, SESSION_COOKIE);
-    if (token) {
-      const session = await verifySessionToken(token);
-      if (session && (await sessionVersionOk(session.userId, session.sv))) {
-        headers.set("x-user-id", session.userId);
-        headers.set("x-user-role", session.role);
-        headers.set("x-user-name", encodeURIComponent(session.name));
+    let session = token ? await verifySessionToken(token) : null;
+    if (session && !(await sessionVersionOk(session.userId, session.sv))) {
+      session = null;
+    }
+    // Mobile API clients (#797) carry the same identity JWT as a Bearer
+    // access token instead of the cookie. Consulted only when the cookie
+    // yielded no valid session — the cookie wins when both are present — and
+    // held to the identical checks (signature + sessionVersion). The
+    // Authorization header itself passes through upstream untouched either
+    // way; only the verified identity headers below grant anything.
+    if (!session) {
+      const bearer = c.req
+        .header("authorization")
+        ?.match(/^Bearer\s+(.+)$/i)?.[1];
+      if (bearer) {
+        const fromBearer = await verifySessionToken(bearer);
+        if (
+          fromBearer &&
+          (await sessionVersionOk(fromBearer.userId, fromBearer.sv))
+        ) {
+          session = fromBearer;
+        }
       }
+    }
+    if (session) {
+      headers.set("x-user-id", session.userId);
+      headers.set("x-user-role", session.role);
+      headers.set("x-user-name", encodeURIComponent(session.name));
     }
   }
 

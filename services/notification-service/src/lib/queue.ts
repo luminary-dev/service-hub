@@ -21,11 +21,18 @@
 //              background fan-out (mirrors the gateway's Redis-down rate-limit
 //              fallback). In-app rows are unaffected either way — they are
 //              written inline before the ingestion ack.
+//
+// Mobile push jobs (#798) ride the SAME list, discriminated by `kind: "push"`
+// (entries without a kind are email — in-flight jobs from an older build keep
+// working across a deploy). Push is one-shot best-effort: deliverPushJob never
+// throws (per-token failures log, dead tokens are pruned), so a push entry is
+// LREM'd after a single attempt and never enters the retry ZSET.
 import { Redis } from "ioredis";
 import { Gauge } from "prom-client";
 import { sendMail, type Locale } from "./email";
 import { renderEventEmail } from "./event-email";
 import type { NotificationType } from "./events";
+import { deliverPushJob, type PushJob } from "./push";
 import { log } from "./log";
 
 export const QUEUE_KEY = "notify:email";
@@ -47,6 +54,8 @@ const WORKER_BLOCK_SECONDS = 5;
 const WORKER_ERROR_PAUSE_MS = 5_000;
 
 export type EmailJob = {
+  // Absent on legacy entries; push jobs carry kind: "push" (lib/push.ts).
+  kind?: "email";
   type: NotificationType;
   to: string;
   locale: Locale;
@@ -56,6 +65,8 @@ export type EmailJob = {
   link: string;
   attempt: number;
 };
+
+export type QueueJob = EmailJob | PushJob;
 
 // Minimal command surface so tests can inject a fake without a live
 // connection (same pattern as the gateway's RedisCommands).
@@ -200,6 +211,39 @@ export async function enqueueEmailJobs(
   if (failed.length > 0) sendDirect(failed);
 }
 
+// Degraded mode for push (#798): one best-effort attempt in the background,
+// mirroring sendDirect above. deliverPushJob is already fail-soft.
+function sendPushDirect(jobs: PushJob[]): void {
+  void (async () => {
+    for (const job of jobs) {
+      await deliverPushJob(job);
+    }
+  })();
+}
+
+// Queue one push job per recipient-with-devices; same degraded fallback shape
+// as enqueueEmailJobs. Never throws — push is best-effort (#798).
+export async function enqueuePushJobs(
+  jobs: PushJob[],
+  redis: QueueRedis | null = getQueueRedis()
+): Promise<void> {
+  if (jobs.length === 0) return;
+  if (!redis) {
+    sendPushDirect(jobs);
+    return;
+  }
+  const failed: PushJob[] = [];
+  for (const job of jobs) {
+    try {
+      await redis.lpush(QUEUE_KEY, JSON.stringify(job));
+      redisErrorLogged = false; // recovered — allow the next error to log
+    } catch {
+      failed.push(job);
+    }
+  }
+  if (failed.length > 0) sendPushDirect(failed);
+}
+
 // ---------------------------------------------------------------------------
 // Worker
 // ---------------------------------------------------------------------------
@@ -216,11 +260,20 @@ export async function processEntry(
   entry: string,
   now: number = Date.now()
 ): Promise<void> {
-  let job: EmailJob;
+  let job: QueueJob;
   try {
-    job = JSON.parse(entry) as EmailJob;
+    job = JSON.parse(entry) as QueueJob;
   } catch {
     log.error("email queue entry is not valid JSON — dropping", { entry: entry.slice(0, 200) });
+    await redis.lrem(PROCESSING_KEY, 1, entry);
+    return;
+  }
+
+  // Push jobs (#798) are one-shot best-effort — deliverPushJob never throws
+  // (per-token errors log inside, stale tokens are pruned), so there is
+  // nothing to retry: LREM after the single attempt, never the retry ZSET.
+  if (job.kind === "push") {
+    await deliverPushJob(job);
     await redis.lrem(PROCESSING_KEY, 1, entry);
     return;
   }

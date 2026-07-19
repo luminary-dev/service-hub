@@ -52,6 +52,7 @@
   - [Impersonation](admin/impersonation.md)
   - [Notifications & bootstrapping the first admin](admin/notifications-and-bootstrap.md)
 - [Design system](DESIGN.md)
+- [Mobile app (Flutter)](MOBILE.md)
 
 ## Operations
 

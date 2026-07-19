@@ -65,3 +65,6 @@ next-env.d.ts
 
 # Local image-generation output (source for public/images/categories/*)
 /generated/
+
+# macOS SwiftPM vendored sources
+mobile/macos/**/xcshareddata/swiftpm/

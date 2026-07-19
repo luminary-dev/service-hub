@@ -33,6 +33,12 @@ Public entry. Responsibilities:
      lookup + 60s per-user cache (fail-open) only when Redis has no entry — and
      forward identity headers. Invalid/absent/revoked → forward without them
      (services decide 401s). See [AUTHZ.md](../AUTHZ.md#session-revocation-374).
+   - When the cookie yields no valid session, an `Authorization: Bearer`
+     access token (mobile/API clients, #797) is verified with the **identical**
+     checks — it's the same session JWT, minted 15-minute-short by
+     `POST /api/auth/token` — and forwards the same identity headers. The
+     cookie wins when both are present; the Authorization header itself passes
+     through upstream untouched either way.
    Always sets `x-internal-secret`, `x-locale`, `x-origin`, `x-request-id`.
 4. **Routing** (`lib/routes.ts`, streaming proxy, preserves method/headers/body
    incl. multipart; passes `Set-Cookie` back). Longest-prefix first; anything

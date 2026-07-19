@@ -14,7 +14,11 @@ and links are scheme-validated before rendering.
 Marketplace events arrive on one generic S2S ingestion endpoint that fans out
 to the in-app feed (written inline, durable) and a Redis-backed email queue
 (`notify:email`, BRPOPLPUSH worker + processing-list reclaim, 3 attempts with
-30s × 2^n backoff; Redis unavailable → degraded one-attempt direct sends). A
+30s × 2^n backoff; Redis unavailable → degraded one-attempt direct sends).
+Mobile push (#798) rides the same queue as `kind: "push"` entries — one-shot
+best-effort FCM v1 sends (no firebase-admin; a jose-signed OAuth2 JWT grant)
+to the recipient's registered device tokens, gated by the **in-app**
+preference; without `FCM_PROJECT_ID`/`FCM_SERVICE_ACCOUNT` push is a no-op. A
 failed send is parked in a durable delayed-retry ZSET (`notify:retry`, scored
 by retry-at) *before* it is removed from the processing list, and the worker
 polls that set back onto `notify:email` when each retry-at passes — so a
@@ -38,7 +42,9 @@ Public (via the api-gateway, identity-header auth — recipient-only, any role):
 | `GET` | `/api/notifications/unread-count` | — | `200 { count }` |
 | `POST` | `/api/notifications/read` | `{ ids?: string[], all?: true }` | `200 { ok: true, updated }` (own rows only, idempotent) |
 | `GET` | `/api/notification-preferences` | — | `200 { preferences }` (full type × channel matrix, defaults merged over overrides) |
-| `POST` | `/api/notification-preferences` | `{ type, emailEnabled?, inAppEnabled? }` | `200 { preference }` (upsert one override) |
+| `POST` | `/api/notification-preferences` | `{ type, emailEnabled?, inAppEnabled? }` | `200 { preference }` (upsert one override; `inAppEnabled` also gates push) |
+| `POST` | `/api/notifications/devices` | `{ token (≤4096), platform: "android" \| "ios" }` | `200 { ok: true }` (FCM token upsert — re-registration moves a token to the caller; ≤10 devices per user, stalest evicted) |
+| `DELETE` | `/api/notifications/devices` | `{ token }` | `200 { ok: true }` (own row only, idempotent) |
 
 Internal (S2S):
 
@@ -46,7 +52,7 @@ Internal (S2S):
 |---|---|---|---|
 | `GET` | `/healthz` | — | `200 { ok: true, service }` / `503` when Postgres is unreachable (readiness probe) |
 | `POST` | `/internal/notifications/events` | `{ type, recipients: [{ userId, email?, name?, locale? }] (≤200), payload, link }` | `202 { ok: true, accepted }` — writes in-app rows inline, queues emails, acks before any send |
-| `POST` | `/internal/users/:id/erase` | — | `200 { ok: true }` (account-deletion fan-out, idempotent) |
+| `POST` | `/internal/users/:id/erase` | — | `200 { ok: true }` (account-deletion fan-out: notifications + preferences + device tokens, idempotent) |
 | `POST` | `/internal/email/verify` | `{ to, url, locale? }` | `200 { ok: true, delivered: boolean }` |
 | `POST` | `/internal/email/password-reset` | `{ to, url, locale? }` | `200 { ok: true, delivered: boolean }` |
 | `POST` | `/internal/email/change-email` | `{ to, url, locale? }` | `200 { ok: true, delivered: boolean }` |
@@ -74,6 +80,8 @@ Internal (S2S):
 | `INTERNAL_API_SECRET` | `dev-internal-secret` (required in production) | shared secret for internal calls |
 | `RESEND_API_KEY` | *(empty)* | Resend API key; when unset, emails are logged to the console (`delivered: false`) |
 | `EMAIL_FROM` | `Baas.lk <onboarding@resend.dev>` | From address (must be on a verified domain for real delivery) |
+| `FCM_PROJECT_ID` | *(empty)* | Firebase project id for mobile push (#798); unset → push is a no-op |
+| `FCM_SERVICE_ACCOUNT` | *(empty)* | Firebase service-account JSON, raw or base64-encoded; unset/unusable → push is a no-op |
 
 ## Run
 

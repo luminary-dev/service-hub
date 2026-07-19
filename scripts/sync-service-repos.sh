@@ -24,4 +24,12 @@ for s in "${SERVICES[@]}"; do
   git branch -D "split/$s" >/dev/null
 done
 
+# The Flutter app lives at the top-level mobile/ (not services/ — it isn't a
+# backend service), mirrored to service-hub-mobile-app under the same
+# read-only contract.
+echo "==> Syncing mobile -> $ORG/${REPO_PREFIX}mobile-app ($BRANCH)"
+git subtree split --prefix="mobile" -b "split/mobile-app" >/dev/null
+git push "https://github.com/$ORG/${REPO_PREFIX}mobile-app.git" "split/mobile-app:$BRANCH"
+git branch -D "split/mobile-app" >/dev/null
+
 echo "All service repos synced."

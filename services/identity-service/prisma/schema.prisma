@@ -55,6 +55,7 @@ model User {
   passwordResetTokens     PasswordResetToken[]
   emailVerificationTokens EmailVerificationToken[]
   emailChangeTokens       EmailChangeToken[]
+  refreshTokens           RefreshToken[]
   accounts                Account[]
 
   // Admin hot paths (#509): the users list orders newest-first and the
@@ -194,6 +195,30 @@ model EmailVerificationToken {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
   createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// Mobile API-client refresh tokens (#797): opaque 32-byte tokens (hash-only
+// storage, same discipline as the reset/verification tokens below) exchanged
+// at /api/auth/refresh for short-lived Bearer access JWTs. Rotated on every
+// use: the spent row gets `revokedAt` and a replacement is issued, so a stolen
+// raw token is spendable at most once. `sessionVersion` snapshots
+// User.sessionVersion at mint — every existing revocation path (password
+// change/reset, logout-all, admin force-logout) outdates outstanding refresh
+// tokens with no extra bookkeeping. `deviceName` is a client-chosen label so a
+// future sessions UI can list them; `lastUsedAt` stamps the final refresh.
+model RefreshToken {
+  id             String    @id @default(cuid())
+  tokenHash      String    @unique
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionVersion Int
+  deviceName     String?
+  expiresAt      DateTime
+  createdAt      DateTime  @default(now())
+  lastUsedAt     DateTime?
+  revokedAt      DateTime?
 
   @@index([userId])
 }

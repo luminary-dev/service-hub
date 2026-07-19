@@ -3,7 +3,10 @@
 
 - **identity-service** (`identity_db`): `User`, `PasswordResetToken`,
   `EmailVerificationToken`, `EmailChangeToken` (change-email flow #396 —
-  hash-only, 1h TTL), `Favorite` (providerId is a plain string),
+  hash-only, 1h TTL), `RefreshToken` (mobile API-client auth #797 —
+  hash-only, 60-day TTL, rotated on every `/api/auth/refresh`; snapshots
+  `User.sessionVersion` at mint so the existing revocation paths cover it),
+  `Favorite` (providerId is a plain string),
   `SavedSearch` (named `/providers` filter snapshot + locale +
   `lastNotifiedAt` alert cooldown, #516 — the category is a plain
   provider-service slug validated over S2S at write time),
@@ -168,16 +171,24 @@
   list page and `[userId, readAt]` for the unread count) and
   `NotificationPreference` (sparse per-`[userId, type]` channel overrides —
   `type` same `TEXT` + `NotificationPreference_type_check`; no row = both
-  `emailEnabled`/`inAppEnabled` on). The transactional auth
-  emails (verify, password-reset, change-email, account-exists,
-  email-change-attempt) are deliberately NOT in the type set and can never be
-  muted. Retention is opportunistic: each ingestion sweeps the recipients'
-  READ rows older than 90 days beyond their newest 200 (no cron) in a single
-  batched window-function delete for the whole recipient set (#637). The service
-  also owns the en/si email templates ported from `src/lib/email.ts` and the
-  Redis-backed email delivery queue (`notify:email` / `notify:processing`,
+  `emailEnabled`/`inAppEnabled` on; `inAppEnabled` also gates mobile push,
+  #798) and `DeviceToken` (#798 — FCM push registry: `userId` plain string,
+  globally-unique `token` so re-registration moves a device to its current
+  account, `platform` `TEXT` + `DeviceToken_platform_check`
+  (`android`|`ios`), `lastSeenAt`; ≤10 rows per user, stalest evicted on
+  insert; pruned on FCM `UNREGISTERED` and on account erase). The
+  transactional auth emails (verify, password-reset, change-email,
+  account-exists, email-change-attempt) are deliberately NOT in the type set
+  and can never be muted. Retention is opportunistic: each ingestion sweeps
+  the recipients' READ rows older than 90 days beyond their newest 200 (no
+  cron) in a single batched window-function delete for the whole recipient
+  set (#637). The service also owns the en/si email templates ported from
+  `src/lib/email.ts`, the compact en/si push texts (`lib/event-push.ts`), and
+  the Redis-backed delivery queue (`notify:email` / `notify:processing`,
   BRPOPLPUSH worker with a processing-list reclaim sweep, 3 attempts at
-  30s × 2^n backoff; Redis down → one-attempt direct sends).
+  30s × 2^n backoff; Redis down → one-attempt direct sends; push jobs ride
+  the same list as `kind: "push"` entries, one-shot best-effort, never
+  retried).
 - **trust-safety-service** (`trust_safety_db`, **dark launch** — deployed and
   functional, but the owning services still write their local tables until the
   cutover PR; [RFC](../rfcs/trust-safety-service.md)): `Report` — ONE unified

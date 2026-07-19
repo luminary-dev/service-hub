@@ -17,6 +17,7 @@
 | `CHAT_SERVICE_URL` | web (proxies `/agent/chat` → `${CHAT_SERVICE_URL}/internal/chat/marketplace/stream`) |
 | `RESEND_API_KEY`, `EMAIL_FROM` | notification (console fallback when `RESEND_API_KEY` unset) |
 | `SMTP_URL` | notification (dev SMTP transport → Mailpit, #673; read in `src/lib/email.ts`). Set → mail is sent over SMTP (e.g. `smtp://localhost:1025`) instead of Resend; unset → falls back to `RESEND_API_KEY`, then to logging the message to the console. Production leaves it unset and keeps using Resend |
+| `FCM_PROJECT_ID`, `FCM_SERVICE_ACCOUNT` | notification (mobile push via FCM, #798; read in `src/lib/push.ts`). `FCM_SERVICE_ACCOUNT` is the Firebase service-account JSON, raw or **base64-encoded** (recommended — survives dotenv quoting). **Both OPTIONAL**: either unset → push is a no-op (one startup log line); device registration still works, delivery simply doesn't happen. No firebase-admin — the OAuth2 JWT grant is signed with `jose` |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | identity (Google social login, #398; both unset → "Continue with Google" disabled, password auth unaffected) |
 | `FACEBOOK_CLIENT_ID`, `FACEBOOK_CLIENT_SECRET` | identity (Facebook social login, #398; both unset → "Continue with Facebook" disabled, password auth unaffected) |
 | `TURNSTILE_SECRET_KEY` | identity (registration bot protection, #633; server-side Cloudflare siteverify — unset → verification skipped, registration behaves as before) |

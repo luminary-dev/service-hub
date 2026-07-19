@@ -4,7 +4,10 @@ Service Hub (Baas.lk) is split into **nine backend services** plus an API
 gateway (ten Hono services in all), with the Next.js 16 app as a pure frontend. This repo is the
 **canonical monorepo**; each service under `services/` is also mirrored to its
 own repository in the `luminary-dev` org via `git subtree` (see
-`scripts/sync-service-repos.sh`).
+`scripts/sync-service-repos.sh`). A **Flutter customer app** lives at
+`mobile/` under the same mirror contract (`service-hub-mobile-app`); it talks
+to the gateway with Bearer tokens instead of cookies — see
+[MOBILE.md](MOBILE.md).
 
 ```
 browser ── same-origin /api/* ──> Next.js web (:3000)
@@ -12,13 +15,14 @@ browser ── same-origin /api/* ──> Next.js web (:3000)
    │                               ^  server components fetch the gateway directly
    │  /agent/chat ──────────────────────────────> chat-service (:4007)  (direct, NOT via gateway)
    │
-   gateway (only public entry) verifies sh_session JWT, forwards identity
+   gateway (only public entry) verifies the session JWT (sh_session cookie, or
+   Authorization: Bearer for mobile/API clients #797), forwards identity
    headers (x-user-id / x-user-role / x-user-name) + x-internal-secret and routes to:
      ├── identity-service     (:4001)  identity_db      User/auth/favorites/saved-searches/admin-users/impersonation
      ├── provider-service     (:4002)  provider_db      providers/categories/inquiries/reports/admin
      ├── review-service       (:4003)  review_db        reviews/review-reports/admin
      ├── job-service          (:4004)  job_db           jobs/responses/job-reports/admin
-     ├── notification-service (:4005)  notification_db  in-app notifications/preferences + email delivery (Redis queue)
+     ├── notification-service (:4005)  notification_db  in-app notifications/preferences + email & FCM push delivery (Redis queue)
      ├── media-service        (:4006)  (no db)           upload bytes + sharp; serves /files/*
      ├── chat-service         (:4007)  (no db)           streaming Claude assistant
      ├── search-service       (:4008)  search_db        provider search + geo discovery (derived index)

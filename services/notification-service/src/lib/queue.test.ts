@@ -10,9 +10,17 @@ vi.mock("./email", async (importActual) => {
   return { ...actual, sendMail: vi.fn().mockResolvedValue({ delivered: true }) };
 });
 
+// Push delivery (#798) is a separate unit (push.test.ts); here only the
+// queue's kind-dispatch and the degraded direct fallback are under test.
+vi.mock("./push", () => ({
+  deliverPushJob: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { sendMail } from "./email";
+import { deliverPushJob, type PushJob } from "./push";
 import {
   enqueueEmailJobs,
+  enqueuePushJobs,
   flushRetries,
   MAX_ATTEMPTS,
   pollRetries,
@@ -148,7 +156,59 @@ describe("enqueueEmailJobs", () => {
   });
 });
 
+const deliverPushMock = vi.mocked(deliverPushJob);
+
+function pushJob(overrides: Partial<PushJob> = {}): PushJob {
+  return {
+    kind: "push",
+    type: "NEW_JOB_MATCH",
+    tokens: ["tok_1", "tok_2"],
+    locale: "en",
+    payload: { jobTitle: "Fix a leaking tap", district: "Colombo" },
+    link: "https://baas.lk/jobs/job_1",
+    ...overrides,
+  };
+}
+
+describe("enqueuePushJobs (#798)", () => {
+  it("LPUSHes one JSON push job per recipient onto the shared queue", async () => {
+    const redis = fakeRedis();
+    await enqueuePushJobs([pushJob(), pushJob({ tokens: ["tok_3"] })], redis);
+    const entries = redis.lists.get(QUEUE_KEY)!;
+    expect(entries).toHaveLength(2);
+    expect(JSON.parse(entries[1])).toMatchObject({ kind: "push", tokens: ["tok_1", "tok_2"] });
+    expect(deliverPushMock).not.toHaveBeenCalled(); // queued, not sent inline
+  });
+
+  it("falls back to a direct one-attempt delivery when Redis is not configured", async () => {
+    await enqueuePushJobs([pushJob()], null);
+    await vi.waitFor(() => expect(deliverPushMock).toHaveBeenCalledTimes(1));
+    expect(deliverPushMock.mock.calls[0][0].tokens).toEqual(["tok_1", "tok_2"]);
+  });
+
+  it("falls back to a direct delivery when LPUSH throws (Redis down)", async () => {
+    const redis = fakeRedis();
+    redis.lpush = vi.fn().mockRejectedValue(new Error("connection refused"));
+    await enqueuePushJobs([pushJob()], redis);
+    await vi.waitFor(() => expect(deliverPushMock).toHaveBeenCalledTimes(1));
+  });
+});
+
 describe("processEntry", () => {
+  it("dispatches a kind:'push' entry to deliverPushJob and LREMs it — one shot, no retry (#798)", async () => {
+    const redis = fakeRedis();
+    const entry = JSON.stringify(pushJob());
+    await redis.lpush(PROCESSING_KEY, entry);
+
+    await processEntry(redis, entry);
+
+    expect(deliverPushMock).toHaveBeenCalledTimes(1);
+    expect(deliverPushMock.mock.calls[0][0]).toMatchObject({ kind: "push" });
+    expect(sendMailMock).not.toHaveBeenCalled();
+    expect(redis.lists.get(PROCESSING_KEY)).toEqual([]);
+    expect(redis.zsets.get(RETRY_KEY) ?? new Map()).toEqual(new Map()); // never retried
+  });
+
   it("renders, sends and LREMs the entry on success", async () => {
     const redis = fakeRedis();
     const entry = JSON.stringify(job());
