@@ -13,17 +13,25 @@ import 'category_icon.dart';
 
 /// Resolves a media URL from the API to something loadable.
 ///
-/// Two kinds of relative paths come back:
+/// Relative paths come in three flavours:
 ///  - `/api/files/...` — real uploads, served by the gateway (media-service).
-///  - `/uploads/...`   — demo/seed static assets, served by the Next.js web
-///    app's `public/` dir (the gateway does not serve these).
-/// Absolute URLs pass through untouched.
+///  - `/uploads/...`   — demo/seed static assets (provider covers, avatars).
+///  - `/images/...`    — bundled static assets (per-category covers).
+/// The last two are served by the Next.js web app's `public/` dir, NOT the
+/// gateway. Absolute URLs pass through untouched.
 String resolveMediaUrl(String url) {
   if (url.startsWith('http://') || url.startsWith('https://')) return url;
-  if (url.startsWith('/uploads/')) return '${AppConfig.webBaseUrl}$url';
+  if (url.startsWith('/uploads/') || url.startsWith('/images/')) {
+    return '${AppConfig.webBaseUrl}$url';
+  }
   if (url.startsWith('/')) return '${AppConfig.gatewayBaseUrl}$url';
   return url;
 }
+
+/// The bundled per-category cover image (`/images/categories/<slug>.jpg`),
+/// served by the web app. Used for the "Browse by trade" tiles.
+String categoryCoverUrl(String slug) =>
+    '${AppConfig.webBaseUrl}/images/categories/$slug.jpg';
 
 class ErrorRetry extends StatelessWidget {
   const ErrorRetry({super.key, required this.onRetry});
