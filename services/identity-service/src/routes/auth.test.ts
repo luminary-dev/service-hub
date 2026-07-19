@@ -9,9 +9,11 @@
 // JWT with the dev-fallback secret and set a cookie.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import bcrypt from "bcryptjs";
+import { jwtVerify } from "jose";
 import { Prisma } from "@prisma/client";
 import { Hono } from "hono";
 import { authRoutes } from "./auth";
+import { ACCESS_TOKEN_TTL_SECONDS } from "../lib/session";
 import { hashToken } from "../lib/tokens";
 import { MAX_FAILED_LOGINS, LOCKOUT_MS } from "../lib/lockout";
 import {
@@ -53,6 +55,11 @@ const { db } = vi.hoisted(() => ({
       findUnique: vi.fn(),
       delete: vi.fn(),
       deleteMany: vi.fn(),
+    },
+    refreshToken: {
+      create: vi.fn(),
+      findUnique: vi.fn(),
+      updateMany: vi.fn(),
     },
     accountDeletion: { create: vi.fn() },
     $transaction: vi.fn(),
@@ -129,6 +136,9 @@ beforeEach(() => {
   db.emailVerificationToken.delete.mockResolvedValue({});
   db.passwordResetToken.deleteMany.mockResolvedValue({ count: 0 });
   db.passwordResetToken.delete.mockResolvedValue({});
+  db.refreshToken.create.mockResolvedValue({});
+  db.refreshToken.findUnique.mockResolvedValue(null);
+  db.refreshToken.updateMany.mockResolvedValue({ count: 1 });
   db.accountDeletion.create.mockResolvedValue({});
   db.user.delete.mockResolvedValue({});
   db.user.update.mockResolvedValue({
@@ -677,6 +687,250 @@ describe("POST /api/auth/logout-all", () => {
     });
     // A fresh session cookie keeps the requester signed in.
     expect(res.headers.get("set-cookie")).toContain("sh_session=");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Mobile API-client auth (#797): /token, /refresh, /revoke.
+// ---------------------------------------------------------------------------
+// Decode access JWTs with the same secret session.ts resolved at import time
+// (AUTH_SECRET when the environment provides one — CI does — else the shared
+// dev fallback), mirroring lib/session.test.ts.
+const JWT_SECRET = new TextEncoder().encode(
+  process.env.AUTH_SECRET ?? "dev-only-secret"
+);
+
+const MOBILE_USER = {
+  id: "u1",
+  email: "a@b.lk",
+  name: "Test User",
+  role: "CUSTOMER",
+  passwordHash: currentHash,
+  failedLogins: 0,
+  lockedUntil: null,
+  sessionVersion: 4,
+  avatarUrl: null,
+};
+
+describe("POST /api/auth/token (#797)", () => {
+  it("exchanges valid credentials for a 15-minute access JWT + refresh token, no cookie", async () => {
+    db.user.findUnique.mockResolvedValue(MOBILE_USER);
+
+    const res = await post("/api/auth/token", {
+      email: "a@b.lk",
+      password: CURRENT_PASSWORD,
+      deviceName: "Ann's Pixel",
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.user).toEqual({ id: "u1", name: "Test User", role: "CUSTOMER" });
+    expect(body.providerId).toBeNull();
+    expect(body.expiresIn).toBe(ACCESS_TOKEN_TTL_SECONDS);
+
+    // API clients hold the tokens themselves — no session cookie.
+    expect(res.headers.get("set-cookie")).toBeNull();
+
+    // The access token is the ordinary session JWT, just short-lived, with
+    // the user's current sessionVersion so gateway revocation applies.
+    const { payload } = await jwtVerify(body.accessToken, JWT_SECRET);
+    expect(payload.userId).toBe("u1");
+    expect(payload.sv).toBe(4);
+    expect(payload.exp! - payload.iat!).toBe(ACCESS_TOKEN_TTL_SECONDS);
+
+    // The refresh token is stored hashed (never raw), with the sv snapshot
+    // and the client's device label.
+    expect(db.refreshToken.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        tokenHash: hashToken(body.refreshToken),
+        userId: "u1",
+        sessionVersion: 4,
+        deviceName: "Ann's Pixel",
+        expiresAt: expect.any(Date),
+      }),
+    });
+  });
+
+  it("shares login's lockout handling: a wrong password gets the uniform 401 and advances the counter", async () => {
+    db.user.findUnique.mockResolvedValue(MOBILE_USER);
+    db.user.update.mockResolvedValueOnce({ failedLogins: 1 });
+
+    const res = await post("/api/auth/token", {
+      email: "a@b.lk",
+      password: "wrong-password",
+    });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({
+      error: "Invalid email or password",
+      code: "invalid_credentials",
+    });
+    // Same atomic increment as /login — /token is not a cheaper oracle.
+    expect(db.user.update).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      data: { failedLogins: { increment: 1 } },
+      select: { failedLogins: true },
+    });
+    expect(db.refreshToken.create).not.toHaveBeenCalled();
+  });
+
+  it("401s a locked account with the same uniform body (no enumeration)", async () => {
+    db.user.findUnique.mockResolvedValue({
+      ...MOBILE_USER,
+      lockedUntil: new Date(Date.now() + LOCKOUT_MS),
+    });
+    const res = await post("/api/auth/token", {
+      email: "a@b.lk",
+      password: CURRENT_PASSWORD,
+    });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({
+      error: "Invalid email or password",
+      code: "invalid_credentials",
+    });
+    expect(db.refreshToken.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/auth/refresh (#797)", () => {
+  const RECORD = {
+    id: "rt1",
+    tokenHash: hashToken("old-raw"),
+    userId: "u1",
+    sessionVersion: 4,
+    deviceName: "Ann's Pixel",
+    expiresAt: future(),
+    createdAt: past(),
+    lastUsedAt: null,
+    revokedAt: null,
+  };
+
+  it("rotates: revokes the spent token and issues a replacement + fresh access token", async () => {
+    db.refreshToken.findUnique.mockResolvedValue(RECORD);
+    db.user.findUnique.mockResolvedValue(MOBILE_USER);
+
+    const res = await post("/api/auth/refresh", { refreshToken: "old-raw" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    // Looked up by hash, never the raw value.
+    expect(db.refreshToken.findUnique).toHaveBeenCalledWith({
+      where: { tokenHash: hashToken("old-raw") },
+    });
+    // The spent token is revoked via a CAS on revokedAt and stamped lastUsedAt.
+    expect(db.refreshToken.updateMany).toHaveBeenCalledWith({
+      where: { id: "rt1", revokedAt: null },
+      data: { revokedAt: expect.any(Date), lastUsedAt: expect.any(Date) },
+    });
+    // The replacement is a NEW raw token carrying the device label forward.
+    expect(body.refreshToken).not.toBe("old-raw");
+    expect(db.refreshToken.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        tokenHash: hashToken(body.refreshToken),
+        userId: "u1",
+        sessionVersion: 4,
+        deviceName: "Ann's Pixel",
+      }),
+    });
+    // Fresh 15-minute access token with the user's CURRENT sessionVersion.
+    const { payload } = await jwtVerify(body.accessToken, JWT_SECRET);
+    expect(payload.sv).toBe(4);
+    expect(payload.exp! - payload.iat!).toBe(ACCESS_TOKEN_TTL_SECONDS);
+    expect(body.expiresIn).toBe(ACCESS_TOKEN_TTL_SECONDS);
+    expect(body.user).toEqual({ id: "u1", name: "Test User", role: "CUSTOMER" });
+  });
+
+  it("401s an unknown token", async () => {
+    db.refreshToken.findUnique.mockResolvedValue(null);
+    const res = await post("/api/auth/refresh", { refreshToken: "nope" });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({
+      error: "Invalid or expired refresh token",
+      code: "invalid_refresh_token",
+    });
+    expect(db.refreshToken.create).not.toHaveBeenCalled();
+  });
+
+  it("401s an expired token", async () => {
+    db.refreshToken.findUnique.mockResolvedValue({ ...RECORD, expiresAt: past() });
+    const res = await post("/api/auth/refresh", { refreshToken: "old-raw" });
+    expect(res.status).toBe(401);
+    expect(db.refreshToken.create).not.toHaveBeenCalled();
+  });
+
+  it("401s an already-revoked token (rotation is single-use)", async () => {
+    db.refreshToken.findUnique.mockResolvedValue({ ...RECORD, revokedAt: past() });
+    const res = await post("/api/auth/refresh", { refreshToken: "old-raw" });
+    expect(res.status).toBe(401);
+    expect(db.refreshToken.create).not.toHaveBeenCalled();
+  });
+
+  // The core revocation property: a sessionVersion bump (password change/
+  // reset, logout-all, admin force-logout) outdates every refresh token
+  // minted before it — same semantics as the sv claim in the JWTs.
+  it("401s when the user's sessionVersion has been bumped past the token's", async () => {
+    db.refreshToken.findUnique.mockResolvedValue(RECORD);
+    db.user.findUnique.mockResolvedValue({ ...MOBILE_USER, sessionVersion: 5 });
+    const res = await post("/api/auth/refresh", { refreshToken: "old-raw" });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({
+      error: "Invalid or expired refresh token",
+      code: "invalid_refresh_token",
+    });
+    expect(db.refreshToken.updateMany).not.toHaveBeenCalled();
+    expect(db.refreshToken.create).not.toHaveBeenCalled();
+  });
+
+  it("401s a locked account (lockout bites now, not at the next /token)", async () => {
+    db.refreshToken.findUnique.mockResolvedValue(RECORD);
+    db.user.findUnique.mockResolvedValue({
+      ...MOBILE_USER,
+      lockedUntil: new Date(Date.now() + LOCKOUT_MS),
+    });
+    const res = await post("/api/auth/refresh", { refreshToken: "old-raw" });
+    expect(res.status).toBe(401);
+    expect(db.refreshToken.create).not.toHaveBeenCalled();
+  });
+
+  it("401s when the user no longer exists", async () => {
+    db.refreshToken.findUnique.mockResolvedValue(RECORD);
+    db.user.findUnique.mockResolvedValue(null);
+    const res = await post("/api/auth/refresh", { refreshToken: "old-raw" });
+    expect(res.status).toBe(401);
+    expect(db.refreshToken.create).not.toHaveBeenCalled();
+  });
+
+  it("401s (no replacement) when a concurrent replay wins the CAS", async () => {
+    db.refreshToken.findUnique.mockResolvedValue(RECORD);
+    db.user.findUnique.mockResolvedValue(MOBILE_USER);
+    // Another request spent the token between the read and the CAS write.
+    db.refreshToken.updateMany.mockResolvedValue({ count: 0 });
+    const res = await post("/api/auth/refresh", { refreshToken: "old-raw" });
+    expect(res.status).toBe(401);
+    expect(db.refreshToken.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/auth/revoke (#797)", () => {
+  it("revokes the presented token by hash", async () => {
+    const res = await post("/api/auth/revoke", { refreshToken: "raw-token" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(db.refreshToken.updateMany).toHaveBeenCalledWith({
+      where: { tokenHash: hashToken("raw-token"), revokedAt: null },
+      data: { revokedAt: expect.any(Date) },
+    });
+  });
+
+  it("is idempotent and oracle-free: an unknown token still gets { ok: true }", async () => {
+    db.refreshToken.updateMany.mockResolvedValue({ count: 0 });
+    const res = await post("/api/auth/revoke", { refreshToken: "never-issued" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+  });
+
+  it("400s a missing token", async () => {
+    const res = await post("/api/auth/revoke", {});
+    expect(res.status).toBe(400);
+    expect(db.refreshToken.updateMany).not.toHaveBeenCalled();
   });
 });
 

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { jwtVerify } from "jose";
 import {
   signSession,
+  ACCESS_TOKEN_TTL_SECONDS,
   COOKIE_NAME,
   signImpersonationSession,
   IMPERSONATION_COOKIE_NAME,
@@ -45,6 +46,19 @@ describe("session JWT", () => {
     expect(payload.iat).toBeTypeOf("number");
     expect(payload.exp).toBeTypeOf("number");
     expect(payload.exp! - payload.iat!).toBe(60 * 60 * 24 * 7);
+  });
+
+  // Mobile access tokens (#797) reuse the same signer with a short TTL —
+  // the claims (and so the gateway's verification path) stay identical.
+  it("accepts an explicit TTL for mobile access tokens (#797)", async () => {
+    expect(ACCESS_TOKEN_TTL_SECONDS).toBe(15 * 60);
+    const token = await signSession(
+      { userId: "u", role: "CUSTOMER", name: "C", sv: 2 },
+      `${ACCESS_TOKEN_TTL_SECONDS}s`
+    );
+    const { payload } = await jwtVerify(token, secret);
+    expect(payload.exp! - payload.iat!).toBe(ACCESS_TOKEN_TTL_SECONDS);
+    expect(payload.sv).toBe(2);
   });
 
   it("rejects tokens signed with a different secret", async () => {

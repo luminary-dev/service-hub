@@ -224,6 +224,33 @@ the next successful publish.
 Impersonation tokens (#234/#358) run the **same** `sessionVersionOk` check for
 both the target and the admin, so they inherit the Redis-first behavior too.
 
+## Mobile token auth (#797)
+
+Native/API clients (the upcoming Flutter app) don't use the `sh_session`
+cookie. Instead:
+
+- **Bearer at the gateway.** `POST /api/auth/token` exchanges credentials for a
+  **15-minute access token** — the exact same session JWT (same claims, same
+  signer, same `sv`), just short-lived — sent as `Authorization: Bearer`. The
+  gateway (`lib/proxy.ts`) accepts it wherever the cookie works, consulting the
+  header only when no valid session cookie is present (the cookie wins if both
+  are sent) and applying the identical verification: signature +
+  `sessionVersionOk`. Session revocation above therefore applies to Bearer
+  requests unchanged.
+- **Rotating refresh tokens.** Alongside the access token the client gets an
+  opaque 32-byte **refresh token** (60-day expiry; hash-only storage in
+  identity's `RefreshToken` table, same discipline as the password-reset
+  tokens). `POST /api/auth/refresh` spends it — single-use, enforced with a
+  compare-and-swap so a replayed (stolen) token loses the race — and returns a
+  replacement plus a fresh access token. `POST /api/auth/revoke` is the
+  per-device logout (idempotent, no token-existence oracle).
+- **`sessionVersion` covers refresh tokens too.** Each refresh token snapshots
+  the user's `sessionVersion` at mint; `/refresh` rejects a token whose
+  snapshot is below the user's current version. Every existing revocation path
+  (password change/reset, logout-all, admin force-logout / lock / role change)
+  therefore kills a device's refresh chain with no extra bookkeeping, and the
+  ≤15-minute access token expires on its own shortly after.
+
 ## How gating works
 
 Authorization is enforced in two layers.
