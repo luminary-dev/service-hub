@@ -117,5 +117,6 @@
   "welcomeBack": "Welcome back",
   "createAccountSubtitle": "Find trusted service providers across Sri Lanka.",
   "locationDenied": "Location unavailable — showing all districts instead.",
+  "locationServiceOff": "Location Services are off. Turn them on in System Settings to use Near me.",
   "verifiedBadge": "Verified"
 }

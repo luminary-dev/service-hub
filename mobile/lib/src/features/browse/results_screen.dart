@@ -110,22 +110,33 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
       _load(reset: true);
       return;
     }
+    void fail(String message) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+    }
+
     try {
+      // Distinguish "the OS has Location Services turned off" (a system setting
+      // the user must flip — this is what fails on a Mac with location disabled)
+      // from "this app was denied permission".
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        return fail(l10n.locationServiceOff);
+      }
       var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
-        throw Exception('denied');
+        return fail(l10n.locationDenied);
       }
       final pos = await Geolocator.getCurrentPosition();
+      if (!mounted) return;
       setState(() => _position = (lat: pos.latitude, lng: pos.longitude));
       _load(reset: true);
     } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(l10n.locationDenied)));
+      fail(l10n.locationDenied);
     }
   }
 
