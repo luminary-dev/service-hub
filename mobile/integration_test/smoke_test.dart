@@ -61,14 +61,16 @@ void main() {
         findsOneWidget);
   });
 
-  // Login → signed-in account view → logout, all on the Account tab.
+  // Login → signed-in account view → logout, via the top-nav account icon.
   testWidgets('login → account → logout', (tester) async {
     _ignoreImageLoadErrors();
     await tester.pumpWidget(UncontrolledProviderScope(
         container: ProviderContainer(), child: const BaasApp()));
     await tester.pumpAndSettle(const Duration(seconds: 2));
 
-    await _tapTab(tester, 'Account');
+    // The account entry point is the user icon in the header (tooltip "Account").
+    await tester.tap(find.byTooltip('Account'));
+    await tester.pumpAndSettle();
     final guestSignIn = find.widgetWithText(FilledButton, 'Sign in');
     await _waitFor(tester, guestSignIn, 'guest sign-in button');
     await tester.tap(guestSignIn);
@@ -146,16 +148,6 @@ void _ignoreImageLoadErrors() {
     }
     previous?.call(details);
   };
-}
-
-/// Taps a bottom-nav destination by its label, scoped to the NavigationBar.
-/// The label reliably sits inside the destination's tap target (the bare icon
-/// can land just outside it), and scoping avoids identical text/icons inside
-/// offstage IndexedStack branches.
-Future<void> _tapTab(WidgetTester tester, String label) async {
-  await tester.tap(find.descendant(
-      of: find.byType(NavigationBar), matching: find.text(label)));
-  await tester.pumpAndSettle();
 }
 
 Future<void> _waitFor(WidgetTester tester, Finder finder, String what,

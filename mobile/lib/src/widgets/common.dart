@@ -240,3 +240,28 @@ class _CategoryPlaceholder extends StatelessWidget {
     );
   }
 }
+
+/// In-content page heading — the web puts section titles in the page body (the
+/// header is global), so mobile branch screens do the same instead of an
+/// app-bar title. Optional trailing action (e.g. "Mark all read").
+class PageHeading extends StatelessWidget {
+  const PageHeading({super.key, required this.title, this.trailing});
+
+  final String title;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(title, style: Theme.of(context).textTheme.headlineSmall),
+          ),
+          if (trailing != null) trailing!,
+        ],
+      ),
+    );
+  }
+}

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:baas_mobile/l10n/gen/app_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:go_router/go_router.dart';
@@ -16,7 +15,7 @@ import 'features/jobs/jobs_screen.dart';
 import 'features/jobs/post_job_screen.dart';
 import 'features/notifications/notifications_screen.dart';
 import 'features/provider_detail/provider_detail_screen.dart';
-import 'state/providers.dart';
+import 'widgets/baas_header.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
@@ -67,6 +66,9 @@ final routerProvider = Provider<GoRouter>((ref) {
   );
 });
 
+// Branch indices in the StatefulShellRoute.
+const _iChat = 2;
+
 class _TabShell extends ConsumerWidget {
   const _TabShell({required this.shell});
 
@@ -74,40 +76,19 @@ class _TabShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = AppLocalizations.of(context);
-    final unread = ref.watch(unreadCountProvider).value ?? 0;
+    // Mirror the web (Navbar.tsx): a sticky top header — wordmark left, mono
+    // uppercase nav links, utility toggles + notification bell + account right.
+    // The assistant is a floating button, like the web's ChatAssistant FAB.
     return Scaffold(
+      appBar: BaasHeader(shell: shell),
       body: shell,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: shell.currentIndex,
-        onDestinationSelected: shell.goBranch,
-        destinations: [
-          NavigationDestination(
-            icon: const FaIcon(FontAwesomeIcons.magnifyingGlass, size: 18),
-            label: l10n.tabBrowse,
-          ),
-          NavigationDestination(
-            icon: const FaIcon(FontAwesomeIcons.briefcase, size: 18),
-            label: l10n.tabJobs,
-          ),
-          NavigationDestination(
-            icon: const FaIcon(FontAwesomeIcons.solidCommentDots, size: 18),
-            label: l10n.tabChat,
-          ),
-          NavigationDestination(
-            icon: Badge(
-              isLabelVisible: unread > 0,
-              label: Text('$unread'),
-              child: const FaIcon(FontAwesomeIcons.bell, size: 18),
+      floatingActionButton: shell.currentIndex == _iChat
+          ? null
+          : FloatingActionButton(
+              heroTag: 'assistant',
+              onPressed: () => shell.goBranch(_iChat),
+              child: const FaIcon(FontAwesomeIcons.solidCommentDots, size: 20),
             ),
-            label: l10n.tabNotifications,
-          ),
-          NavigationDestination(
-            icon: const FaIcon(FontAwesomeIcons.user, size: 18),
-            label: l10n.tabAccount,
-          ),
-        ],
-      ),
     );
   }
 }

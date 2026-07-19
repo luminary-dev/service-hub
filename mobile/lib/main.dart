@@ -24,14 +24,14 @@ class BaasApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final locale = ref.watch(localeControllerProvider);
+    final themeMode = ref.watch(themeControllerProvider);
     final router = ref.watch(routerProvider);
     return MaterialApp.router(
       title: 'Baas.lk',
       theme: buildTheme(Palette.light),
       darkTheme: buildTheme(Palette.dark),
-      // Follow the OS, like the web (which honors the system preference when no
-      // explicit theme cookie is set).
-      themeMode: ThemeMode.system,
+      // Light by default, matching the web (flip via the header toggle).
+      themeMode: themeMode,
       locale: locale,
       supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: const [

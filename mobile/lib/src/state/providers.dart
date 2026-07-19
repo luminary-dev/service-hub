@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -6,6 +7,7 @@ import '../api/api_client.dart';
 import '../api/auth_repository.dart';
 import '../api/chat_repository.dart';
 import '../api/marketplace_api.dart';
+import '../api/oauth_flow.dart';
 import '../api/token_store.dart';
 import '../models/models.dart';
 import '../push/push_service.dart';
@@ -71,6 +73,15 @@ class AuthController extends AsyncNotifier<UserAccount?> {
     return result.error;
   }
 
+  /// Social login (#398). Returns null on success, or an error code.
+  Future<String?> socialSignIn(String provider) async {
+    final error = await OAuthFlow(ref.read(apiClientProvider)).signIn(provider);
+    if (error != null) return error;
+    state = AsyncData(await ref.read(authRepositoryProvider).me());
+    ref.read(pushServiceProvider).register();
+    return null;
+  }
+
   Future<void> logout() async {
     await ref.read(pushServiceProvider).unregister();
     await ref.read(authRepositoryProvider).logout();
@@ -112,6 +123,31 @@ class LocaleController extends Notifier<Locale> {
 
 final localeControllerProvider =
     NotifierProvider<LocaleController, Locale>(LocaleController.new);
+
+/// App theme. The web **defaults to light** (its ThemeToggle stores light/dark
+/// explicitly, no system state), so we match: light unless the user flips it.
+class ThemeController extends Notifier<ThemeMode> {
+  static const _storage = FlutterSecureStorage();
+  static const _key = 'baas_theme';
+
+  @override
+  ThemeMode build() {
+    _storage.read(key: _key).then((v) {
+      if (v == 'dark') state = ThemeMode.dark;
+      if (v == 'light') state = ThemeMode.light;
+    });
+    return ThemeMode.light;
+  }
+
+  void toggle() {
+    final next = state == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+    state = next;
+    _storage.write(key: _key, value: next == ThemeMode.dark ? 'dark' : 'light');
+  }
+}
+
+final themeControllerProvider =
+    NotifierProvider<ThemeController, ThemeMode>(ThemeController.new);
 
 final categoriesProvider = FutureProvider<List<CategoryOption>>(
     (ref) => ref.watch(marketplaceApiProvider).categories());

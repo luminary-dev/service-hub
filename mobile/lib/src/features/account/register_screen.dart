@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../state/providers.dart';
+import '../../widgets/social_login.dart';
 
 /// Customer registration. Provider onboarding stays on the web for v1 — the
 /// multi-step verification/photo flow isn't worth duplicating yet.
@@ -36,6 +37,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             Text(l10n.createAccountSubtitle,
                 style: Theme.of(context).textTheme.bodyLarge),
             const SizedBox(height: 24),
+            const SocialLogin(),
             TextFormField(
               controller: _name,
               autofillHints: const [AutofillHints.name],

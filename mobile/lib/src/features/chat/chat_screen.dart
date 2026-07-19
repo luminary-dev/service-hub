@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../api/chat_repository.dart';
 import '../../palette.dart';
 import '../../state/providers.dart';
+import '../../widgets/common.dart';
 
 class _Bubble {
   _Bubble(this.role, this.text);
@@ -33,26 +34,34 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final signedIn = ref.watch(authControllerProvider).value != null;
 
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.tabChat)),
       body: !signedIn
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(l10n.assistantSignInFirst, textAlign: TextAlign.center),
-                    const SizedBox(height: 16),
-                    FilledButton(
-                      onPressed: () => context.push('/login'),
-                      child: Text(l10n.signIn),
+          ? Column(
+              children: [
+                PageHeading(title: l10n.tabChat),
+                Expanded(
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(l10n.assistantSignInFirst,
+                              textAlign: TextAlign.center),
+                          const SizedBox(height: 16),
+                          FilledButton(
+                            onPressed: () => context.push('/login'),
+                            child: Text(l10n.signIn),
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
+                  ),
                 ),
-              ),
+              ],
             )
           : Column(
               children: [
+                PageHeading(title: l10n.tabChat),
                 Expanded(
                   child: _bubbles.isEmpty
                       ? Center(

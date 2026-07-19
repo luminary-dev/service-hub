@@ -20,33 +20,50 @@ class JobsScreen extends ConsumerWidget {
     final signedIn = ref.watch(authControllerProvider).value != null;
     if (!signedIn) {
       return Scaffold(
-        appBar: AppBar(title: Text(l10n.myJobs)),
-        body: _SignInPrompt(message: l10n.guestBrowsePrompt),
+        body: Column(
+          children: [
+            PageHeading(title: l10n.myJobs),
+            Expanded(child: _SignInPrompt(message: l10n.guestBrowsePrompt)),
+          ],
+        ),
       );
     }
     final jobs = ref.watch(myJobsProvider);
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.myJobs)),
-      floatingActionButton: FloatingActionButton.extended(
-        icon: const Icon(Icons.add),
-        label: Text(l10n.postJob),
-        onPressed: () => context.push('/jobs/new'),
-      ),
-      body: switch (jobs) {
-        AsyncData(:final value) when value.isEmpty =>
-          EmptyState(message: l10n.noJobs, icon: Icons.work_outline),
-        AsyncData(:final value) => RefreshIndicator(
-            onRefresh: () async => ref.refresh(myJobsProvider.future),
-            child: ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: value.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 12),
-              itemBuilder: (context, i) => _JobCard(job: value[i]),
+      body: Column(
+        children: [
+          PageHeading(
+            title: l10n.myJobs,
+            trailing: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(0, 40),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+              ),
+              icon: const Icon(Icons.add, size: 18),
+              label: Text(l10n.postJob),
+              onPressed: () => context.push('/jobs/new'),
             ),
           ),
-        AsyncError() => ErrorRetry(onRetry: () => ref.invalidate(myJobsProvider)),
-        _ => const Center(child: CircularProgressIndicator()),
-      },
+          Expanded(
+            child: switch (jobs) {
+              AsyncData(:final value) when value.isEmpty =>
+                EmptyState(message: l10n.noJobs, icon: Icons.work_outline),
+              AsyncData(:final value) => RefreshIndicator(
+                  onRefresh: () async => ref.refresh(myJobsProvider.future),
+                  child: ListView.separated(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: value.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 12),
+                    itemBuilder: (context, i) => _JobCard(job: value[i]),
+                  ),
+                ),
+              AsyncError() =>
+                ErrorRetry(onRetry: () => ref.invalidate(myJobsProvider)),
+              _ => const Center(child: CircularProgressIndicator()),
+            },
+          ),
+        ],
+      ),
     );
   }
 }
