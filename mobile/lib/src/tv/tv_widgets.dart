@@ -227,9 +227,14 @@ class TradeTile extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // The categories API exposes an icon name, not a cover photo, so
-              // the tile is the trade icon on a tinted panel (tvOS shape).
-              _iconFallback(p),
+              // Per-category cover (/images/categories/<slug>.jpg), with the
+              // trade icon on a tinted panel as the fallback.
+              CachedNetworkImage(
+                imageUrl: categoryCoverUrl(category.slug),
+                fit: BoxFit.cover,
+                errorWidget: (_, _, _) => _iconFallback(p),
+                placeholder: (_, _) => _iconFallback(p),
+              ),
               const DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
