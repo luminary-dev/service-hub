@@ -3,13 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:baas_mobile/l10n/gen/app_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../models/models.dart';
 import '../../state/providers.dart';
 import '../../widgets/brand_loader.dart';
 import '../../widgets/common.dart';
+import '../../widgets/app_icon.dart';
 
 /// Mirrors the web directory: districts from src/lib/constants.ts, sort keys
 /// from src/lib/sort-keys.ts.
@@ -161,7 +161,7 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
                   textInputAction: TextInputAction.search,
                   decoration: InputDecoration(
                     hintText: l10n.searchHint,
-                    prefixIcon: const Icon(Icons.search),
+                    prefixIcon: const AppIcon(AppIcons.magnifyingGlass),
                   ),
                 ),
               ),
@@ -174,7 +174,7 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   children: [
                     FilterChip(
-                      avatar: const FaIcon(FontAwesomeIcons.locationCrosshairs, size: 13),
+                      avatar: const AppIcon(AppIcons.locationDot, size: 13),
                       label: Text(l10n.nearMe),
                       selected: _position != null,
                       onSelected: (_) => _toggleNearMe(),
@@ -287,7 +287,7 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
       ],
       child: Chip(
         label: Text(value != null ? items[value] ?? hint : hint),
-        deleteIcon: const Icon(Icons.arrow_drop_down),
+        deleteIcon: const AppIcon(AppIcons.chevronDown),
         onDeleted: null,
       ),
     );

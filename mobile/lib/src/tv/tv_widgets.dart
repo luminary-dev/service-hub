@@ -1,6 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../models/models.dart';
 import '../palette.dart';
@@ -8,6 +7,7 @@ import '../theme.dart';
 import '../widgets/category_icon.dart';
 import '../widgets/common.dart';
 import 'glass.dart';
+import '../widgets/app_icon.dart';
 
 /// The web homepage hero, ported to mobile: a blueprint-grid panel with a
 /// `001 / FIND` spec marker, the two-part headline (second half in brand), the
@@ -95,7 +95,7 @@ class BlueprintHero extends StatelessWidget {
                         border: Border.all(color: p.ink.c300),
                       ),
                       child: Row(children: [
-                        FaIcon(FontAwesomeIcons.magnifyingGlass,
+                        AppIcon(AppIcons.magnifyingGlass,
                             size: 15, color: p.ink.c400),
                         const SizedBox(width: 12),
                         Expanded(
@@ -112,7 +112,7 @@ class BlueprintHero extends StatelessWidget {
                             color: p.brand.c700,
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          child: FaIcon(FontAwesomeIcons.arrowRight,
+                          child: AppIcon(AppIcons.arrowRight,
                               size: 13, color: p.onBrand),
                         ),
                       ]),
@@ -437,14 +437,14 @@ class ProCard extends StatelessWidget {
                       )),
                 ),
                 if (provider.verificationStatus == 'APPROVED')
-                  FaIcon(FontAwesomeIcons.solidCircleCheck,
+                  AppIcon(AppIcons.circleCheck,
                       size: 13, color: p.emerald),
               ],
             ),
             const SizedBox(height: 3),
             Row(
               children: [
-                FaIcon(FontAwesomeIcons.solidStar, size: 10, color: p.amber),
+                AppIcon(AppIcons.star, size: 10, color: p.amber),
                 const SizedBox(width: 5),
                 Flexible(
                   child: Text(

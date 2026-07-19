@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../palette.dart';
 import '../state/providers.dart';
 import '../theme.dart';
 import 'glass.dart';
+import '../widgets/app_icon.dart';
 
 /// Floating glass tab bar (the design's bottom chrome): a blurred pill with 5
 /// destinations — icon + mono uppercase label, active in brand. Sits above the
@@ -17,11 +17,11 @@ class GlassTabBar extends ConsumerWidget {
   final ValueChanged<int> onSelect;
 
   static const _items = [
-    (FontAwesomeIcons.house, 'BROWSE'),
-    (FontAwesomeIcons.briefcase, 'JOBS'),
-    (FontAwesomeIcons.solidCommentDots, 'ASSIST'),
-    (FontAwesomeIcons.bell, 'ALERTS'),
-    (FontAwesomeIcons.user, 'ACCOUNT'),
+    (AppIcons.house, 'BROWSE'),
+    (AppIcons.briefcase, 'JOBS'),
+    (AppIcons.commentDots, 'ASSIST'),
+    (AppIcons.bell, 'ALERTS'),
+    (AppIcons.user, 'ACCOUNT'),
   ];
 
   @override
@@ -68,7 +68,7 @@ class _Tab extends StatelessWidget {
     required this.onTap,
   });
 
-  final FaIconData icon;
+  final AppIcons icon;
   final String label;
   final bool active;
   final int badge;
@@ -88,7 +88,7 @@ class _Tab extends StatelessWidget {
             Badge(
               isLabelVisible: badge > 0,
               label: Text('$badge'),
-              child: FaIcon(icon, size: 17, color: color),
+              child: AppIcon(icon, size: 17, color: color),
             ),
             const SizedBox(height: 4),
             Text(
@@ -218,10 +218,10 @@ class FrostedHeader extends ConsumerWidget implements PreferredSizeWidget {
                 size: 32,
                 onTap: () =>
                     ref.read(themeControllerProvider.notifier).toggle(),
-                child: FaIcon(
+                child: AppIcon(
                   ref.watch(themeControllerProvider) == ThemeMode.dark
-                      ? FontAwesomeIcons.sun
-                      : FontAwesomeIcons.moon,
+                      ? AppIcons.sun
+                      : AppIcons.moon,
                   size: 14,
                   color: fg,
                 ),
@@ -231,7 +231,7 @@ class FrostedHeader extends ConsumerWidget implements PreferredSizeWidget {
                 GlassIconButton(
                   size: 32,
                   onTap: onBell ?? () {},
-                  child: FaIcon(FontAwesomeIcons.bell, size: 14, color: fg),
+                  child: AppIcon(AppIcons.bell, size: 14, color: fg),
                 ),
               ],
             ],
@@ -314,7 +314,7 @@ class ShelfHeader extends StatelessWidget {
                         color: p.brand.c600,
                       )),
                   const SizedBox(width: 5),
-                  FaIcon(FontAwesomeIcons.arrowRight,
+                  AppIcon(AppIcons.arrowRight,
                       size: 9, color: p.brand.c600),
                 ],
               ),
