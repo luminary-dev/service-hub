@@ -12,6 +12,7 @@ const { db } = vi.hoisted(() => ({
   db: {
     account: { findUnique: vi.fn(), create: vi.fn() },
     user: { findUnique: vi.fn(), create: vi.fn() },
+    refreshToken: { create: vi.fn() },
     $transaction: vi.fn(),
   },
 }));
@@ -72,6 +73,22 @@ beforeEach(() => {
 });
 
 describe("GET /api/auth/oauth/:provider/start", () => {
+  it("stores the mobile deep link when client=mobile with an allowed scheme", async () => {
+    const res = await get(
+      "/api/auth/oauth/google/start?client=mobile&redirect=baaslk://auth"
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get("set-cookie")).toContain("oauth_mobile=baaslk");
+  });
+
+  it("ignores a non-app redirect scheme (no token leak)", async () => {
+    const res = await get(
+      "/api/auth/oauth/google/start?client=mobile&redirect=evil://steal"
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get("set-cookie") ?? "").not.toContain("oauth_mobile");
+  });
+
   it("redirects to the provider and sets state + verifier cookies", async () => {
     const res = await get("/api/auth/oauth/google/start");
     expect(res.status).toBe(302);
@@ -110,6 +127,32 @@ describe("GET /api/auth/oauth/:provider/callback", () => {
     expect(res.status).toBe(302);
     // Back to /login with no scary error banner (#431).
     expect(res.headers.get("location")).toBe(`${ORIGIN}/login`);
+  });
+
+  it("mobile flow returns tokens to the app deep link, not a cookie", async () => {
+    db.account.findUnique.mockResolvedValue({
+      user: { id: "u1", role: "CUSTOMER", name: "Nimal", sessionVersion: 0 },
+    });
+    db.refreshToken.create.mockResolvedValue({});
+    const res = await get(cbUrl, `${goodCookie}; oauth_mobile=baaslk://auth`);
+    expect(res.status).toBe(302);
+    const loc = res.headers.get("location")!;
+    expect(loc).toMatch(/^baaslk:\/\/auth\?/);
+    expect(loc).toContain("accessToken=");
+    expect(loc).toContain("refreshToken=");
+    expect(loc).toContain("expiresIn=");
+    // No web session cookie is set for a mobile handoff.
+    expect(res.headers.get("set-cookie") ?? "").not.toContain("sh_session=");
+    expect(db.refreshToken.create).toHaveBeenCalledOnce();
+  });
+
+  it("mobile flow sends errors to the deep link too", async () => {
+    const res = await get(
+      "/api/auth/oauth/google/callback?error=access_denied&state=s1",
+      `${goodCookie}; oauth_mobile=baaslk://auth`
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("baaslk://auth?error=cancelled");
   });
 
   it("logs in a returning user via a linked account", async () => {

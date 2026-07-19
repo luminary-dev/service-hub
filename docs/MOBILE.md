@@ -25,6 +25,15 @@ optional FCM push). Provider-side management and admin stay on the web.
   platform keychain. The Dio interceptor attaches `Authorization: Bearer`,
   refreshes proactively and retries once on 401. Revocation is the same
   `sessionVersion` scheme as the web (`docs/AUTHZ.md`).
+- **Social login (#398):** the Google/Facebook buttons open the gateway's
+  `/api/auth/oauth/:provider/start?client=mobile&redirect=baaslk://auth` in a
+  system web-auth session (`flutter_web_auth_2`). When the callback sees the
+  `client=mobile` flow it mints the same Bearer token pair and redirects to the
+  app's `baaslk://` deep link with the tokens, instead of setting a web cookie —
+  so social sign-in lands the app in the same authenticated state as password
+  login. Requires the `GOOGLE_CLIENT_ID`/`FACEBOOK_CLIENT_ID` OAuth creds the
+  web already uses; without them the buttons surface "unavailable". The
+  `baaslk` URL scheme is registered on iOS/macOS/Android.
 - **Locale**: the app sends `Cookie: lang=si` under the Sinhala locale so the
   gateway's existing locale detection localizes emails and assistant replies.
 - **Verified-email gates (#115) apply unchanged**: unverified users can browse
