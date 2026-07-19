@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -112,6 +113,31 @@ class LocaleController extends Notifier<Locale> {
 
 final localeControllerProvider =
     NotifierProvider<LocaleController, Locale>(LocaleController.new);
+
+/// App theme. The web **defaults to light** (its ThemeToggle stores light/dark
+/// explicitly, no system state), so we match: light unless the user flips it.
+class ThemeController extends Notifier<ThemeMode> {
+  static const _storage = FlutterSecureStorage();
+  static const _key = 'baas_theme';
+
+  @override
+  ThemeMode build() {
+    _storage.read(key: _key).then((v) {
+      if (v == 'dark') state = ThemeMode.dark;
+      if (v == 'light') state = ThemeMode.light;
+    });
+    return ThemeMode.light;
+  }
+
+  void toggle() {
+    final next = state == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+    state = next;
+    _storage.write(key: _key, value: next == ThemeMode.dark ? 'dark' : 'light');
+  }
+}
+
+final themeControllerProvider =
+    NotifierProvider<ThemeController, ThemeMode>(ThemeController.new);
 
 final categoriesProvider = FutureProvider<List<CategoryOption>>(
     (ref) => ref.watch(marketplaceApiProvider).categories());

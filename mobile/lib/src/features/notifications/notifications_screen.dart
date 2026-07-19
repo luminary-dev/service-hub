@@ -20,57 +20,68 @@ class NotificationsScreen extends ConsumerWidget {
     final signedIn = ref.watch(authControllerProvider).value != null;
     if (!signedIn) {
       return Scaffold(
-        appBar: AppBar(title: Text(l10n.notifications)),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(l10n.guestBrowsePrompt, textAlign: TextAlign.center),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: () => context.push('/login'),
-                  child: Text(l10n.signIn),
+        body: Column(
+          children: [
+            PageHeading(title: l10n.notifications),
+            Expanded(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(l10n.guestBrowsePrompt, textAlign: TextAlign.center),
+                      const SizedBox(height: 16),
+                      FilledButton(
+                        onPressed: () => context.push('/login'),
+                        child: Text(l10n.signIn),
+                      ),
+                    ],
+                  ),
                 ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       );
     }
     final notifications = ref.watch(notificationsProvider);
     return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.notifications),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              await ref.read(marketplaceApiProvider).markRead(all: true);
-              ref.invalidate(notificationsProvider);
-              ref.invalidate(unreadCountProvider);
+      body: Column(
+        children: [
+          PageHeading(
+            title: l10n.notifications,
+            trailing: TextButton(
+              onPressed: () async {
+                await ref.read(marketplaceApiProvider).markRead(all: true);
+                ref.invalidate(notificationsProvider);
+                ref.invalidate(unreadCountProvider);
+              },
+              child: Text(l10n.markAllRead),
+            ),
+          ),
+          Expanded(
+            child: switch (notifications) {
+              AsyncData(:final value) when value.items.isEmpty => EmptyState(
+                  message: l10n.noNotifications,
+                  icon: Icons.notifications_none),
+              AsyncData(:final value) => RefreshIndicator(
+                  onRefresh: () async =>
+                      ref.refresh(notificationsProvider.future),
+                  child: ListView.separated(
+                    itemCount: value.items.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (context, i) =>
+                        _NotificationTile(item: value.items[i]),
+                  ),
+                ),
+              AsyncError() =>
+                ErrorRetry(onRetry: () => ref.invalidate(notificationsProvider)),
+              _ => const Center(child: CircularProgressIndicator()),
             },
-            child: Text(l10n.markAllRead),
           ),
         ],
       ),
-      body: switch (notifications) {
-        AsyncData(:final value) when value.items.isEmpty => EmptyState(
-            message: l10n.noNotifications,
-            icon: Icons.notifications_none),
-        AsyncData(:final value) => RefreshIndicator(
-            onRefresh: () async => ref.refresh(notificationsProvider.future),
-            child: ListView.separated(
-              itemCount: value.items.length,
-              separatorBuilder: (_, _) => const Divider(height: 1),
-              itemBuilder: (context, i) =>
-                  _NotificationTile(item: value.items[i]),
-            ),
-          ),
-        AsyncError() =>
-          ErrorRetry(onRetry: () => ref.invalidate(notificationsProvider)),
-        _ => const Center(child: CircularProgressIndicator()),
-      },
     );
   }
 }

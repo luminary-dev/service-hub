@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../models/models.dart';
-import '../../widgets/wordmark.dart';
 import '../../state/providers.dart';
 import '../../widgets/common.dart';
 
@@ -131,7 +130,6 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
     final categories = ref.watch(categoriesProvider).value ?? const [];
 
     return Scaffold(
-      appBar: AppBar(titleSpacing: 16, title: const Wordmark()),
       body: RefreshIndicator(
         onRefresh: () => _load(reset: true),
         child: CustomScrollView(

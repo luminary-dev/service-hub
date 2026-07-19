@@ -1,6 +1,7 @@
 {
   "@@locale": "en",
   "appTitle": "Baas.lk",
+  "navFind": "Find providers",
   "tabBrowse": "Browse",
   "tabJobs": "Jobs",
   "tabChat": "Assistant",
