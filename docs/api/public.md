@@ -78,13 +78,21 @@ rows; foreign/unknown ids in mark-read are silently ignored. Rows carry
 `type` + a small denormalized `payload` — the web renders the sentence at read
 time (EN↔SI re-renders the whole feed) — and a relative `link`.
 
+Mobile push (#798): the mobile app registers its FCM token via the device
+routes below; catalog events then also fan out as FCM pushes. Push **follows
+the in-app preference** — muting a type's in-app channel mutes its pushes too
+(there is no separate push toggle in v1) — and degrades to a no-op when the
+`FCM_PROJECT_ID`/`FCM_SERVICE_ACCOUNT` env is unset.
+
 | Method + path | Auth | Summary |
 |---|---|---|
 | `GET /api/notifications` | authenticated | Own feed, newest first, cursor-paginated (`?take` default 20, max 50; `?cursor`) → `{ notifications: [{ id, type, payload, link, readAt, createdAt }], nextCursor }`. |
 | `GET /api/notifications/unread-count` | authenticated | `{ count }` — the bell badge (cheap indexed count). |
 | `POST /api/notifications/read` | authenticated | `{ ids?: string[] (1–100), all?: true }` — mark-read, own rows only, idempotent → `{ ok: true, updated }`. Rate-limited (`message` budget). |
+| `POST /api/notifications/devices` | authenticated | Register this device's FCM token for push (#798): `{ token (≤4096), platform: "android" \| "ios" }` → `{ ok: true }`. Upsert by token — a device that signs into a different account **moves** its token to the caller; a repeat registration bumps `lastSeenAt`. Max 10 devices per user: beyond the cap the stalest rows are evicted, never an error. Rate-limited (`message` budget, shared with the DELETE). |
+| `DELETE /api/notifications/devices` | authenticated | Deregister on sign-out: `{ token }` → `{ ok: true }`. Own row only, idempotent — unknown/foreign tokens match nothing. |
 | `GET /api/notification-preferences` | authenticated | Full type × channel matrix — defaults (both channels on) merged over the caller's stored sparse overrides → `{ preferences: [{ type, emailEnabled, inAppEnabled }] }` (one entry per catalog type). |
-| `POST /api/notification-preferences` | authenticated | Upsert one override `{ type, emailEnabled?, inAppEnabled? }` (at least one flag) → `{ preference }`. Rate-limited (`review` budget). The transactional auth emails are not preference-gated and can never be muted. |
+| `POST /api/notification-preferences` | authenticated | Upsert one override `{ type, emailEnabled?, inAppEnabled? }` (at least one flag) → `{ preference }`. Rate-limited (`review` budget). The transactional auth emails are not preference-gated and can never be muted. `inAppEnabled` also gates mobile push (#798). |
 
 ### Providers & search — provider-service
 

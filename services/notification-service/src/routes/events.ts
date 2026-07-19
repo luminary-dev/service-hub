@@ -20,7 +20,8 @@ import {
   PAYLOAD_SCHEMAS,
 } from "../lib/events";
 import { hasEmailTemplate } from "../lib/event-email";
-import { enqueueEmailJobs, type EmailJob } from "../lib/queue";
+import { pushEnabled, type PushJob } from "../lib/push";
+import { enqueueEmailJobs, enqueuePushJobs, type EmailJob } from "../lib/queue";
 import { log } from "../lib/log";
 
 export const eventRoutes = new Hono();
@@ -119,6 +120,42 @@ eventRoutes.post("/events", async (c) => {
         }));
   await enqueueEmailJobs(jobs);
 
+  // Mobile push (#798) follows the IN-APP preference — a recipient who muted
+  // a type's in-app channel gets no push for it either; there is no separate
+  // push toggle in v1. The device-token lookup + enqueue run OFF the 202 hot
+  // path (like the retention sweep below): the ack never waits on them, and a
+  // Redis/FCM failure only logs. Without FCM config pushEnabled() is false
+  // and this whole block is a no-op.
+  if (pushEnabled() && inAppUserIds.length > 0) {
+    const localeByUser = new Map(recipients.map((r) => [r.userId, coerceLocale(r.locale)]));
+    const pushLink = `${origin}${link}`;
+    void (async () => {
+      const devices = await db.deviceToken.findMany({
+        where: { userId: { in: inAppUserIds } },
+        select: { userId: true, token: true },
+      });
+      const tokensByUser = new Map<string, string[]>();
+      for (const d of devices) {
+        const list = tokensByUser.get(d.userId);
+        if (list) list.push(d.token);
+        else tokensByUser.set(d.userId, [d.token]);
+      }
+      // One job per recipient WITH devices (most users have none — enqueue
+      // nothing for them), carrying the tokens so the worker needs no lookup.
+      const pushJobs: PushJob[] = [...tokensByUser.entries()].map(([userId, tokens]) => ({
+        kind: "push",
+        type,
+        tokens,
+        locale: localeByUser.get(userId) ?? "en",
+        payload: payload.data as Record<string, unknown>,
+        link: pushLink,
+      }));
+      await enqueuePushJobs(pushJobs);
+    })().catch((err) => {
+      log.error("push fan-out failed", { err });
+    });
+  }
+
   // Opportunistic retention, off the hot path — the ack never waits on it.
   void sweepRetention(inAppUserIds).catch((err) => {
     log.error("notification retention sweep failed", { err });
@@ -129,13 +166,14 @@ eventRoutes.post("/events", async (c) => {
 
 // POST /internal/users/:id/erase — account-deletion fan-out from
 // identity-service (same contract as provider/review/job). Deletes the user's
-// notifications and preference overrides. Idempotent: erasing an unknown user
-// is a no-op 200.
+// notifications, preference overrides and push device tokens (#798).
+// Idempotent: erasing an unknown user is a no-op 200.
 export const internalUsers = new Hono();
 
 internalUsers.post("/:id/erase", async (c) => {
   const userId = c.req.param("id");
   await db.notification.deleteMany({ where: { userId } });
   await db.notificationPreference.deleteMany({ where: { userId } });
+  await db.deviceToken.deleteMany({ where: { userId } });
   return c.json({ ok: true });
 });

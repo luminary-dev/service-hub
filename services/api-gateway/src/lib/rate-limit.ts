@@ -414,6 +414,10 @@ export const LIMITED_ROUTES: { pattern: RegExp; name: string; rule: RateRule }[]
   // unread-count poll) stay unthrottled like every other read.
   { pattern: /^\/api\/notifications\/read$/, name: "notification-read", rule: RATE_LIMITS.message },
   { pattern: /^\/api\/notification-preferences$/, name: "notification-prefs", rule: RATE_LIMITS.review },
+  // Push device registration (#798): fires on app launch / sign-in — the
+  // conversational message budget; the DELETE (sign-out deregistration)
+  // shares it (the middleware matches on path, not method).
+  { pattern: /^\/api\/notifications\/devices$/, name: "notification-device", rule: RATE_LIMITS.message },
   // Image uploads (#520): each runs a CPU-expensive sharp re-encode, so they
   // share one per-IP "upload" bucket across the four upload POST endpoints.
   { pattern: /^\/api\/account\/avatar$/, name: "upload", rule: RATE_LIMITS.upload },

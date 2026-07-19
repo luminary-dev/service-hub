@@ -36,6 +36,25 @@ model Notification {
   @@index([userId, readAt]) // unread count
 }
 
+// Mobile push (#798): FCM registration tokens, one row per device install.
+// `token` is globally unique — re-registration moves a token to the current
+// signed-in user (a device can change accounts). `platform` is a plain string
+// ("android" | "ios") enforced by a DB CHECK (`DeviceToken_platform_check`,
+// hand-written like the type CHECKs above) and zod at the API edge. Capped at
+// 10 rows per user (stalest by lastSeenAt evicted on insert, never an error).
+// Rows are pruned when FCM reports a token UNREGISTERED and on account erase.
+// userId references an identity-service User — plain string, no FK.
+model DeviceToken {
+  id         String   @id @default(cuid())
+  userId     String   // owner — identity-service User id, no FK
+  token      String   @unique // the FCM registration token
+  platform   String   // "android" | "ios" — CHECK + zod enforced
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @updatedAt // bumped on every (re-)registration
+
+  @@index([userId])
+}
+
 // Sparse overrides: no row = both channels on. Only the catalog types above
 // are preference-gated.
 model NotificationPreference {

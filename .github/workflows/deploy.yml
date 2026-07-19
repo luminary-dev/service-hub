@@ -153,6 +153,11 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          # Mobile push via FCM (#798) — OPTIONAL; both unset → push is a
+          # no-op. FCM_SERVICE_ACCOUNT is the service-account JSON, base64-
+          # encoded (the render's escaping round-trips raw JSON too).
+          FCM_PROJECT_ID: ${{ secrets.FCM_PROJECT_ID }}
+          FCM_SERVICE_ACCOUNT: ${{ secrets.FCM_SERVICE_ACCOUNT }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -224,6 +229,7 @@ jobs:
                      WEB_ORIGIN \
                      DOMAIN ACME_EMAIL CROWDSEC_BOUNCER_API_KEY \
                      ANTHROPIC_API_KEY RESEND_API_KEY EMAIL_FROM \
+                     FCM_PROJECT_ID FCM_SERVICE_ACCOUNT \
                      R2_ENDPOINT R2_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY \
                      GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET \
                      FACEBOOK_CLIENT_ID FACEBOOK_CLIENT_SECRET; do

@@ -18,7 +18,7 @@ browser ── same-origin /api/* ──> Next.js web (:3000)
      ├── provider-service     (:4002)  provider_db      providers/categories/inquiries/reports/admin
      ├── review-service       (:4003)  review_db        reviews/review-reports/admin
      ├── job-service          (:4004)  job_db           jobs/responses/job-reports/admin
-     ├── notification-service (:4005)  notification_db  in-app notifications/preferences + email delivery (Redis queue)
+     ├── notification-service (:4005)  notification_db  in-app notifications/preferences + email & FCM push delivery (Redis queue)
      ├── media-service        (:4006)  (no db)           upload bytes + sharp; serves /files/*
      ├── chat-service         (:4007)  (no db)           streaming Claude assistant
      ├── search-service       (:4008)  search_db        provider search + geo discovery (derived index)

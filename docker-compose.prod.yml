@@ -463,7 +463,12 @@ services:
       REDIS_URL: redis://default:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM:-}
-    # egress: sends transactional mail via the Resend API.
+      # Mobile push via FCM (#798). Both unset (the default) → push delivery
+      # is a no-op; device registration still works. FCM_SERVICE_ACCOUNT is
+      # the service-account JSON, base64-encoded (raw also accepted).
+      FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
+      FCM_SERVICE_ACCOUNT: ${FCM_SERVICE_ACCOUNT:-}
+    # egress: sends transactional mail via the Resend API + push via FCM.
     networks: [backend, egress]
     depends_on:
       postgres:
