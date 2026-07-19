@@ -20,6 +20,9 @@ write bucket and vice versa.
 | Route | Rule | Limit |
 | --- | --- | --- |
 | `POST /api/auth/login` | `authStrict` | 8 / 15 min |
+| `POST /api/auth/token` | `authStrict` | 8 / 15 min (`auth-token` bucket) |
+| `POST /api/auth/revoke` | `authStrict` | 8 / 15 min (`auth-revoke` bucket) |
+| `POST /api/auth/refresh` | `authRefresh` | 60 / 15 min |
 | `POST /api/auth/forgot-password` | `authStrict` | 8 / 15 min |
 | `POST /api/auth/reset-password` | `authStrict` | 8 / 15 min |
 | `POST /api/auth/change-password` | `authStrict` | 8 / 15 min |
@@ -45,7 +48,13 @@ write bucket and vice versa.
 
 `change-password` and `delete-account` sit on the strict login budget because
 each verifies the current password and is therefore a guessing oracle for a
-hijacked session. The five abuse-report endpoints (#50, #376) share a single
+hijacked session. The mobile token endpoints (#797) follow the same logic:
+`/api/auth/token` verifies credentials (the same oracle as login) and
+`/api/auth/revoke` accepts unauthenticated opaque tokens, so both are strict;
+`/api/auth/refresh` is routine background rotation (every API client refreshes
+~every 15 minutes per device), so it gets the wider `authRefresh` budget —
+many devices can share one IP without lockouts, while the 32-byte token space
+stays unguessable at any permitted rate. The five abuse-report endpoints (#50, #376) share a single
 `report` bucket keyed per IP, since (message reports excepted) anonymous
 submissions are allowed and the IP budget is the main spam control. The contact reveal (`contactReveal`, #64/#655) sits
 on its own per-IP budget: provider phone/WhatsApp numbers **and the contact email** are withheld from the

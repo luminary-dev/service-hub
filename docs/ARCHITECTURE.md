@@ -12,7 +12,8 @@ browser ── same-origin /api/* ──> Next.js web (:3000)
    │                               ^  server components fetch the gateway directly
    │  /agent/chat ──────────────────────────────> chat-service (:4007)  (direct, NOT via gateway)
    │
-   gateway (only public entry) verifies sh_session JWT, forwards identity
+   gateway (only public entry) verifies the session JWT (sh_session cookie, or
+   Authorization: Bearer for mobile/API clients #797), forwards identity
    headers (x-user-id / x-user-role / x-user-name) + x-internal-secret and routes to:
      ├── identity-service     (:4001)  identity_db      User/auth/favorites/saved-searches/admin-users/impersonation
      ├── provider-service     (:4002)  provider_db      providers/categories/inquiries/reports/admin
