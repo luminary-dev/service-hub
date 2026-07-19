@@ -252,8 +252,10 @@ class PageHeading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Clears the status bar / notch — the TV shell has no app bar.
+    final top = MediaQuery.paddingOf(context).top + 12;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
+      padding: EdgeInsets.fromLTRB(20, top, 12, 8),
       child: Row(
         children: [
           Expanded(

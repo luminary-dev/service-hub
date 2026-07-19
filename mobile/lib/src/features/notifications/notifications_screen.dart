@@ -69,6 +69,7 @@ class NotificationsScreen extends ConsumerWidget {
                   onRefresh: () async =>
                       ref.refresh(notificationsProvider.future),
                   child: ListView.separated(
+                    padding: const EdgeInsets.only(bottom: 110),
                     itemCount: value.items.length,
                     separatorBuilder: (_, _) => const Divider(height: 1),
                     itemBuilder: (context, i) =>

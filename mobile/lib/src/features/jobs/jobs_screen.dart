@@ -51,7 +51,7 @@ class JobsScreen extends ConsumerWidget {
               AsyncData(:final value) => RefreshIndicator(
                   onRefresh: () async => ref.refresh(myJobsProvider.future),
                   child: ListView.separated(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 110),
                     itemCount: value.length,
                     separatorBuilder: (_, _) => const SizedBox(height: 12),
                     itemBuilder: (context, i) => _JobCard(job: value[i]),

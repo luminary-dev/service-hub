@@ -116,7 +116,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ),
                 SafeArea(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 8, 8),
+                    padding: const EdgeInsets.fromLTRB(16, 4, 8, 90),
                     child: Row(
                       children: [
                         Expanded(
