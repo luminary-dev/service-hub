@@ -17,7 +17,11 @@ vi.mock("./session-version", () => ({
 
 import { getBearerSession } from "./auth";
 
-const secret = new TextEncoder().encode("dev-only-secret");
+// Mint with the same secret the module resolves — CI exports AUTH_SECRET
+// (ci-dummy-secret) while local test runs fall back to the dev default.
+const secret = new TextEncoder().encode(
+  process.env.AUTH_SECRET ?? "dev-only-secret"
+);
 
 async function mintToken(
   payload: Record<string, unknown>,
