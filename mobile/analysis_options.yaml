@@ -1,0 +1,15 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    # macOS builds vendor SwiftPM package sources (incl. their Dart test
+    # fixtures) under build/ — not our code.
+    - build/**
+    # Generated localizations.
+    - lib/l10n/gen/**
+
+linter:
+  rules:
+    # `if (x != null) 'k': x` reads clearer than the `?x` marker for API
+    # query/body maps, which is most of this codebase's conditional elements.
+    use_null_aware_elements: false

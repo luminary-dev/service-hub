@@ -4,7 +4,10 @@ Service Hub (Baas.lk) is split into **nine backend services** plus an API
 gateway (ten Hono services in all), with the Next.js 16 app as a pure frontend. This repo is the
 **canonical monorepo**; each service under `services/` is also mirrored to its
 own repository in the `luminary-dev` org via `git subtree` (see
-`scripts/sync-service-repos.sh`).
+`scripts/sync-service-repos.sh`). A **Flutter customer app** lives at
+`mobile/` under the same mirror contract (`service-hub-mobile-app`); it talks
+to the gateway with Bearer tokens instead of cookies — see
+[MOBILE.md](MOBILE.md).
 
 ```
 browser ── same-origin /api/* ──> Next.js web (:3000)
