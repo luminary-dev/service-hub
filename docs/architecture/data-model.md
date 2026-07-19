@@ -3,7 +3,10 @@
 
 - **identity-service** (`identity_db`): `User`, `PasswordResetToken`,
   `EmailVerificationToken`, `EmailChangeToken` (change-email flow #396 —
-  hash-only, 1h TTL), `Favorite` (providerId is a plain string),
+  hash-only, 1h TTL), `RefreshToken` (mobile API-client auth #797 —
+  hash-only, 60-day TTL, rotated on every `/api/auth/refresh`; snapshots
+  `User.sessionVersion` at mint so the existing revocation paths cover it),
+  `Favorite` (providerId is a plain string),
   `SavedSearch` (named `/providers` filter snapshot + locale +
   `lastNotifiedAt` alert cooldown, #516 — the category is a plain
   provider-service slug validated over S2S at write time),

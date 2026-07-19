@@ -90,6 +90,10 @@
   avatar change — #434), 7-day expiry, `httpOnly`,
   `sameSite=lax`, `secure` in production, `path=/`. Signed ONLY by
   identity-service; verified by the gateway and by the web app (page gating).
+  Mobile/API clients (#797) carry the same JWT as an `Authorization: Bearer`
+  access token instead (15-minute expiry, from `POST /api/auth/token`, renewed
+  via the rotating refresh token at `POST /api/auth/refresh`); the gateway
+  checks it only when no valid session cookie is present.
 - **Session revocation**: `sv` is `User.sessionVersion` at mint time. Identity
   bumps the version on password change/reset, `POST /api/auth/logout-all`, and
   admin force-logout / lock / role change; the gateway rejects tokens minted
