@@ -1,13 +1,18 @@
 import { Hono } from "hono";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
+import { Prisma, type User } from "@prisma/client";
 import { db } from "../db";
 import { getAuth, getLocale, getOrigin } from "../lib/http";
 import { log } from "../lib/log";
 import { loginFailuresTotal } from "../lib/auth-metrics";
-import { createSession, destroySession } from "../lib/session";
-import { hashToken } from "../lib/tokens";
+import {
+  ACCESS_TOKEN_TTL_SECONDS,
+  createSession,
+  destroySession,
+  signSession,
+} from "../lib/session";
+import { createToken, hashToken, REFRESH_TOKEN_TTL_MS } from "../lib/tokens";
 import { eraseUserData } from "../lib/erase";
 import { isLockedOut, lockUntilFor } from "../lib/lockout";
 import { passwordSchema, providerSchema, registerSchema } from "../lib/register-schema";
@@ -475,39 +480,39 @@ const loginSchema = z.object({
 // verification — a fast "no such user" reply would leak which emails exist.
 const DUMMY_HASH = bcrypt.hashSync("timing-equalizer", 10);
 
-authRoutes.post("/login", async (c) => {
-  const body = await c.req.json().catch(() => null);
-  const parsed = loginSchema.safeParse(body);
-  if (!parsed.success) {
-    return c.json({ error: "Invalid input", code: "invalid_input" }, 400);
-  }
+// The uniform credential-rejection reply. Every rejected attempt returns the
+// SAME body + `code` (#761) so a client can localize the message without the
+// code ever distinguishing which 401 branch fired — that would re-open the
+// account enumeration the uniform reply closes.
+const INVALID_CREDENTIALS = {
+  error: "Invalid email or password",
+  code: "invalid_credentials",
+} as const;
 
-  // Every rejected attempt returns the SAME body + `code` (#761) so a client
-  // can localize the message without the code ever distinguishing which 401
-  // branch fired — that would re-open the account enumeration the uniform reply
-  // closes. The counter's `reason` label is server-side only (never in the
-  // response), so it can safely be more specific for ops (#759).
-  const user = await db.user.findUnique({
-    where: { email: parsed.data.email },
-  });
+// Credential verification shared by cookie /login and the mobile /token
+// exchange (#797): identical lockout / failed-login handling and timing on
+// both, so neither endpoint is a cheaper enumeration or guessing oracle than
+// the other. Returns the user (counters reset) on success, or null — the
+// caller must reply with the uniform INVALID_CREDENTIALS 401. The counter's
+// `reason` label is server-side only (never in the response), so it can
+// safely be more specific for ops (#759).
+async function verifyLoginCredentials(
+  email: string,
+  password: string
+): Promise<User | null> {
+  const user = await db.user.findUnique({ where: { email } });
   if (!user) {
-    await bcrypt.compare(parsed.data.password, DUMMY_HASH);
+    await bcrypt.compare(password, DUMMY_HASH);
     loginFailuresTotal.inc({ reason: "unknown_user" });
-    return c.json(
-      { error: "Invalid email or password", code: "invalid_credentials" },
-      401
-    );
+    return null;
   }
 
   // Social-only account (#398): no password set. Same uniform 401 as a wrong
   // password, with a dummy compare so the timing doesn't reveal the difference.
   if (!user.passwordHash) {
-    await bcrypt.compare(parsed.data.password, DUMMY_HASH);
+    await bcrypt.compare(password, DUMMY_HASH);
     loginFailuresTotal.inc({ reason: "no_password" });
-    return c.json(
-      { error: "Invalid email or password", code: "invalid_credentials" },
-      401
-    );
+    return null;
   }
 
   // Locked accounts get the same 401 as a wrong password (no enumeration),
@@ -516,7 +521,7 @@ authRoutes.post("/login", async (c) => {
   // unknown-email and wrong-password branches — otherwise the faster
   // no-hash reply leaks that the account exists and is locked.
   if (isLockedOut(user.lockedUntil)) {
-    await bcrypt.compare(parsed.data.password, user.passwordHash);
+    await bcrypt.compare(password, user.passwordHash);
     loginFailuresTotal.inc({ reason: "locked_out" });
     // No email/password in the log line — keep the existing PII discipline
     // (the gateway attaches the client IP to its own request-log line, #759).
@@ -525,13 +530,10 @@ authRoutes.post("/login", async (c) => {
       userId: user.id,
       lockedUntil: user.lockedUntil,
     });
-    return c.json(
-      { error: "Invalid email or password", code: "invalid_credentials" },
-      401
-    );
+    return null;
   }
 
-  if (!(await bcrypt.compare(parsed.data.password, user.passwordHash))) {
+  if (!(await bcrypt.compare(password, user.passwordHash))) {
     // Increment atomically in the DB rather than overwriting from the pre-read
     // snapshot: concurrent wrong-password attempts must each advance the
     // counter, otherwise a parallel guesser reaches MAX_FAILED_LOGINS far more
@@ -560,10 +562,7 @@ authRoutes.post("/login", async (c) => {
         lockedUntil,
       });
     }
-    return c.json(
-      { error: "Invalid email or password", code: "invalid_credentials" },
-      401
-    );
+    return null;
   }
 
   if (user.failedLogins > 0 || user.lockedUntil) {
@@ -571,6 +570,24 @@ authRoutes.post("/login", async (c) => {
       where: { id: user.id },
       data: { failedLogins: 0, lockedUntil: null },
     });
+  }
+
+  return user;
+}
+
+authRoutes.post("/login", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = loginSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid input", code: "invalid_input" }, 400);
+  }
+
+  const user = await verifyLoginCredentials(
+    parsed.data.email,
+    parsed.data.password
+  );
+  if (!user) {
+    return c.json(INVALID_CREDENTIALS, 401);
   }
 
   const providerId = await getProviderIdByUser(user.id);
@@ -641,10 +658,182 @@ authRoutes.post("/logout-all", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// Mobile API-client auth (#797). Browsers keep the sh_session cookie; native
+// clients exchange credentials at /token for a short-lived Bearer access JWT
+// (the exact same claims/signer as the cookie session, 15-minute TTL) plus an
+// opaque refresh token (32-byte random, returned raw exactly once, hash-only
+// storage — same discipline as the reset tokens). /refresh rotates the
+// refresh token on every use; /revoke is the per-device logout. Refresh
+// tokens snapshot the user's sessionVersion at mint, so every existing
+// revocation path (password change/reset, logout-all, admin force-logout)
+// kills them with no extra bookkeeping.
+// ---------------------------------------------------------------------------
+const INVALID_REFRESH_TOKEN = {
+  error: "Invalid or expired refresh token",
+  code: "invalid_refresh_token",
+} as const;
+
+function mintAccessToken(user: User): Promise<string> {
+  return signSession(
+    {
+      userId: user.id,
+      role: user.role,
+      name: user.name,
+      sv: user.sessionVersion,
+      avatar: user.avatarUrl,
+    },
+    `${ACCESS_TOKEN_TTL_SECONDS}s`
+  );
+}
+
+// Mints and stores a refresh token for the user, returning the raw value (the
+// only time it exists outside the client). deviceName is carried through
+// rotation so a device keeps its label for the life of the chain.
+async function issueRefreshToken(
+  user: User,
+  deviceName: string | null
+): Promise<string> {
+  const { raw, hash } = createToken();
+  await db.refreshToken.create({
+    data: {
+      tokenHash: hash,
+      userId: user.id,
+      sessionVersion: user.sessionVersion,
+      deviceName,
+      expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
+    },
+  });
+  return raw;
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/token
+// ---------------------------------------------------------------------------
+const tokenSchema = loginSchema.extend({
+  deviceName: z.string().trim().min(1).max(100).optional(),
+});
+
+authRoutes.post("/token", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = tokenSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid input", code: "invalid_input" }, 400);
+  }
+
+  const user = await verifyLoginCredentials(
+    parsed.data.email,
+    parsed.data.password
+  );
+  if (!user) {
+    return c.json(INVALID_CREDENTIALS, 401);
+  }
+
+  const providerId = await getProviderIdByUser(user.id);
+  const accessToken = await mintAccessToken(user);
+  const refreshToken = await issueRefreshToken(
+    user,
+    parsed.data.deviceName ?? null
+  );
+
+  // No Set-Cookie: API clients hold the tokens themselves.
+  return c.json({
+    accessToken,
+    expiresIn: ACCESS_TOKEN_TTL_SECONDS,
+    refreshToken,
+    user: { id: user.id, name: user.name, role: user.role },
+    providerId,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/refresh
+// ---------------------------------------------------------------------------
+const refreshSchema = z.object({ refreshToken: z.string().min(1) });
+
+authRoutes.post("/refresh", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = refreshSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid input", code: "invalid_input" }, 400);
+  }
+
+  const record = await db.refreshToken.findUnique({
+    where: { tokenHash: hashToken(parsed.data.refreshToken) },
+  });
+  const now = new Date();
+  // One uniform 401 for every reject branch (unknown/expired/revoked token,
+  // sv-stale, user gone or locked) — distinguishing them would tell an
+  // attacker holding a stolen token WHY it stopped working.
+  if (!record || record.revokedAt || record.expiresAt < now) {
+    return c.json(INVALID_REFRESH_TOKEN, 401);
+  }
+
+  const user = await db.user.findUnique({ where: { id: record.userId } });
+  // Revoked-by-bump: a sessionVersion bump outdates every refresh token
+  // minted before it, exactly like the sv claim in the session JWTs. Locked
+  // accounts are refused too — the lockout must bite now, not only at the
+  // next full /token exchange.
+  if (
+    !user ||
+    user.sessionVersion > record.sessionVersion ||
+    isLockedOut(user.lockedUntil)
+  ) {
+    return c.json(INVALID_REFRESH_TOKEN, 401);
+  }
+
+  // Rotate: spend the presented token with a compare-and-swap on revokedAt so
+  // a concurrent replay of the same raw token loses the race (matches 0 rows)
+  // and is rejected — one raw token is never spendable twice.
+  const { count } = await db.refreshToken.updateMany({
+    where: { id: record.id, revokedAt: null },
+    data: { revokedAt: now, lastUsedAt: now },
+  });
+  if (count === 0) {
+    return c.json(INVALID_REFRESH_TOKEN, 401);
+  }
+
+  // The replacement carries the user's CURRENT sessionVersion (so does the
+  // access token below) and a fresh 60-day window — active devices slide,
+  // abandoned ones lapse.
+  const refreshToken = await issueRefreshToken(user, record.deviceName);
+  const providerId = await getProviderIdByUser(user.id);
+  const accessToken = await mintAccessToken(user);
+
+  return c.json({
+    accessToken,
+    expiresIn: ACCESS_TOKEN_TTL_SECONDS,
+    refreshToken,
+    user: { id: user.id, name: user.name, role: user.role },
+    providerId,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/revoke — per-device logout for API clients.
+// ---------------------------------------------------------------------------
+authRoutes.post("/revoke", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = refreshSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid input", code: "invalid_input" }, 400);
+  }
+
+  // Idempotent and oracle-free: unknown, already-revoked and live tokens all
+  // get the same { ok: true } — revoke must not confirm which raw values
+  // exist (mirrors /logout's unconditional 200).
+  await db.refreshToken.updateMany({
+    where: { tokenHash: hashToken(parsed.data.refreshToken), revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+  return c.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
 // POST /api/auth/delete-account — self-service erasure (#68). Re-auth with
 // the current password, fan out to the peers that hold the user's data, then
-// delete the local row (Favorites/tokens cascade) and record a minimal audit
-// row. Peer erases run FIRST: if one fails we return 502 and delete nothing
+// delete the local row (Favorites and every token table — including the
+// mobile RefreshTokens (#797), so a deleted account's devices can't mint new
+// access tokens — cascade on the User FK) and record a minimal audit row. Peer erases run FIRST: if one fails we return 502 and delete nothing
 // locally, so a retry can finish the job — a still-loggable-in account beats
 // an orphaned half-deleted one.
 // ---------------------------------------------------------------------------

@@ -81,6 +81,27 @@ export async function getSession(): Promise<SessionPayload | null> {
 
   const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) return null;
+  return verifySessionJwt(token);
+}
+
+// Bearer-token variant for API clients (the mobile app, #797/#801). The
+// mobile app authenticates with `Authorization: Bearer <access-jwt>` instead
+// of the sh_session cookie; the token is the same identity-signed JWT, so
+// verification and sessionVersion revocation are identical. Impersonation is
+// deliberately cookie-only — a Bearer token can never carry an impersonated
+// identity.
+export async function getBearerSession(
+  authorization: string | null
+): Promise<SessionPayload | null> {
+  if (!authorization) return null;
+  const [scheme, token] = authorization.split(" ");
+  if (scheme?.toLowerCase() !== "bearer" || !token) return null;
+  return verifySessionJwt(token);
+}
+
+async function verifySessionJwt(
+  token: string
+): Promise<SessionPayload | null> {
   try {
     const { payload } = await jwtVerify(token, secret, {
       algorithms: ["HS256"],
