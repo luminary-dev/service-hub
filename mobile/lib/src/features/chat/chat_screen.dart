@@ -7,6 +7,7 @@ import '../../api/chat_repository.dart';
 import '../../palette.dart';
 import '../../state/providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/app_icon.dart';
 
 class _Bubble {
   _Bubble(this.role, this.text);
@@ -129,7 +130,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.send),
+                          icon: const AppIcon(AppIcons.paperPlane),
                           onPressed: _streaming ? null : _send,
                         ),
                       ],

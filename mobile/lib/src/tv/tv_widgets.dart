@@ -1,6 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../models/models.dart';
 import '../palette.dart';
@@ -8,127 +7,118 @@ import '../theme.dart';
 import '../widgets/category_icon.dart';
 import '../widgets/common.dart';
 import 'glass.dart';
+import '../widgets/app_icon.dart';
 
-/// Cinematic full-bleed hero for a featured provider (the design's home hero):
-/// cover image → gradient fade to background, category chip, big name, a mono
-/// rating/price meta line, a View-profile pill + glass heart, and carousel dots.
-class CinematicHero extends StatelessWidget {
-  const CinematicHero({
+/// The web homepage hero, ported to mobile: a blueprint-grid panel with a
+/// `001 / FIND` spec marker, the two-part headline (second half in brand), the
+/// subtitle, and a tech-corners search box — the same "technical drawing" look
+/// as `src/app/page.tsx`, instead of a featured-provider photo.
+class BlueprintHero extends StatelessWidget {
+  const BlueprintHero({
     super.key,
-    required this.provider,
-    required this.onOpen,
-    required this.onFavorite,
-    this.favorited = false,
-    this.dots = 4,
-    this.activeDot = 0,
+    required this.markerLabel,
+    required this.title1,
+    required this.title2,
+    required this.subtitle,
+    required this.searchHint,
+    required this.onSearch,
   });
 
-  final ProviderSummary provider;
-  final VoidCallback onOpen;
-  final VoidCallback onFavorite;
-  final bool favorited;
-  final int dots;
-  final int activeDot;
+  final String markerLabel;
+  final String title1;
+  final String title2;
+  final String subtitle;
+  final String searchHint;
+  final VoidCallback onSearch;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final bg = p.ink.c50;
-    return SizedBox(
-      height: 472,
+    final topInset = MediaQuery.paddingOf(context).top;
+    return Container(
+      color: p.surface,
       child: Stack(
-        fit: StackFit.expand,
         children: [
-          if (provider.imageUrl != null)
-            CachedNetworkImage(
-              imageUrl: resolveMediaUrl(provider.imageUrl!),
-              fit: BoxFit.cover,
-              errorWidget: (_, _, _) => ColoredBox(color: p.ink.c100),
-            )
-          else
-            ColoredBox(color: p.ink.c100),
-          // Fade to page background so the shelves sit on solid colour.
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                stops: const [0, 0.30, 0.68, 1],
-                colors: [
-                  Colors.black.withValues(alpha: 0.35),
-                  Colors.transparent,
-                  bg.withValues(alpha: 0.55),
-                  bg,
-                ],
+          // Blueprint grid, faded so text stays legible.
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _BlueprintGridPainter(
+                minor: p.ink.c400.withValues(alpha: 0.12),
+                major: p.ink.c400.withValues(alpha: 0.22),
               ),
             ),
           ),
-          Positioned(
-            left: 20,
-            right: 20,
-            bottom: 24,
+          Padding(
+            // Clear the frosted header that floats over the hero.
+            padding: EdgeInsets.fromLTRB(20, topInset + 76, 20, 28),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _chip(p, '${provider.category.toUpperCase()} · '
-                    '${provider.district.toUpperCase()}'),
-                const SizedBox(height: 10),
-                Text(
-                  provider.name,
-                  style: const TextStyle(
+                _Marker(code: '001', label: markerLabel, p: p),
+                const SizedBox(height: 18),
+                Text.rich(
+                  TextSpan(children: [
+                    TextSpan(text: title1),
+                    TextSpan(
+                        text: title2, style: TextStyle(color: p.brand.c700)),
+                  ]),
+                  style: TextStyle(
                     fontFamily: kFontSans,
-                    fontSize: 32,
+                    fontSize: 34,
                     height: 1.08,
                     fontWeight: FontWeight.w700,
-                    letterSpacing: -0.5,
-                    color: Colors.white,
-                    shadows: [
-                      Shadow(blurRadius: 16, color: Color(0x73000000)),
-                    ],
+                    letterSpacing: -0.6,
+                    color: p.ink.c900,
                   ),
                 ),
-                const SizedBox(height: 10),
-                _metaLine(context, p),
                 const SizedBox(height: 14),
-                Row(
-                  children: [
-                    GestureDetector(
-                      onTap: onOpen,
-                      child: Container(
-                        height: 44,
-                        padding: const EdgeInsets.symmetric(horizontal: 22),
-                        decoration: BoxDecoration(
-                          color: p.brand.c700,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Row(children: [
-                          FaIcon(FontAwesomeIcons.paperPlane,
-                              size: 13, color: p.onBrand),
-                          const SizedBox(width: 8),
-                          Text('View profile',
-                              style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                  color: p.onBrand)),
-                        ]),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    GlassIconButton(
-                      size: 44,
-                      onTap: onFavorite,
-                      child: FaIcon(
-                        favorited
-                            ? FontAwesomeIcons.solidHeart
-                            : FontAwesomeIcons.heart,
-                        size: 17,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontFamily: kFontSans,
+                    fontSize: 14.5,
+                    height: 1.5,
+                    color: p.ink.c500,
+                  ),
                 ),
-                const SizedBox(height: 12),
-                Center(child: _dots(p)),
+                const SizedBox(height: 20),
+                // tech-corners search box.
+                _TechCornerBox(
+                  color: p.brand.c700,
+                  child: GestureDetector(
+                    onTap: onSearch,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 15),
+                      decoration: BoxDecoration(
+                        color: p.surface,
+                        border: Border.all(color: p.ink.c300),
+                      ),
+                      child: Row(children: [
+                        AppIcon(AppIcons.magnifyingGlass,
+                            size: 15, color: p.ink.c400),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(searchHint,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 15, color: p.ink.c400)),
+                        ),
+                        Container(
+                          height: 34,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: p.brand.c700,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: AppIcon(AppIcons.arrowRight,
+                              size: 13, color: p.onBrand),
+                        ),
+                      ]),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -136,72 +126,126 @@ class CinematicHero extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _chip(Palette p, String text) => Align(
-        alignment: Alignment.centerLeft,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+/// The `001 / FIND` spec marker from the web hero: a brand code chip, an
+/// uppercase mono label, and a trailing hairline.
+class _Marker extends StatelessWidget {
+  const _Marker({required this.code, required this.label, required this.p});
+
+  final String code;
+  final String label;
+  final Palette p;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           decoration: BoxDecoration(
             color: p.brand.c700,
             borderRadius: BorderRadius.circular(3),
           ),
-          child: Text(text,
+          child: Text(code,
               style: TextStyle(
                 fontFamily: kFontMono,
-                fontSize: 10,
+                fontSize: 11,
                 fontWeight: FontWeight.w600,
-                letterSpacing: 1.4,
+                letterSpacing: 1.5,
                 color: p.onBrand,
               )),
         ),
-      );
-
-  Widget _metaLine(BuildContext context, Palette p) {
-    final parts = <String>[
-      if (provider.rating != null) provider.rating!.toStringAsFixed(1),
-      '${provider.reviewCount} REVIEWS',
-    ];
-    return Row(
-      children: [
-        FaIcon(FontAwesomeIcons.solidStar, size: 11, color: p.amber),
-        const SizedBox(width: 6),
-        Flexible(
-          child: Text(
-            [
-              parts.join(' · '),
-              if (provider.fromPrice != null) 'FROM RS. ${provider.fromPrice}',
-            ].join('   |   '),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
+        const SizedBox(width: 10),
+        Text(label.toUpperCase(),
+            style: TextStyle(
               fontFamily: kFontMono,
               fontSize: 11,
-              letterSpacing: 1.2,
-              color: Color(0xFFC2C6CB),
-            ),
-          ),
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.5,
+              color: p.ink.c500,
+            )),
+        const SizedBox(width: 10),
+        Expanded(child: Container(height: 1, color: p.ink.c300)),
+      ],
+    );
+  }
+}
+
+/// Wraps a child in the web's `tech-corners` brackets: a brand L at the
+/// top-left and bottom-right.
+class _TechCornerBox extends StatelessWidget {
+  const _TechCornerBox({required this.child, required this.color});
+
+  final Widget child;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        child,
+        Positioned(
+          top: -3,
+          left: -3,
+          child: _bracket(top: true, left: true),
+        ),
+        Positioned(
+          bottom: -3,
+          right: -3,
+          child: _bracket(top: false, left: false),
         ),
       ],
     );
   }
 
-  Widget _dots(Palette p) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (var i = 0; i < dots; i++)
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 3),
-              width: i == activeDot ? 16 : 5,
-              height: 5,
-              decoration: BoxDecoration(
-                color: i == activeDot
-                    ? p.brand.c700
-                    : Colors.white.withValues(alpha: 0.35),
-                borderRadius: BorderRadius.circular(99),
-              ),
-            ),
-        ],
-      );
+  Widget _bracket({required bool top, required bool left}) {
+    const side = BorderSide(width: 2);
+    return SizedBox(
+      width: 14,
+      height: 14,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(
+            top: top ? side.copyWith(color: color) : BorderSide.none,
+            bottom: !top ? side.copyWith(color: color) : BorderSide.none,
+            left: left ? side.copyWith(color: color) : BorderSide.none,
+            right: !left ? side.copyWith(color: color) : BorderSide.none,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Paints the blueprint grid: 24px minor lines + 120px major lines.
+class _BlueprintGridPainter extends CustomPainter {
+  _BlueprintGridPainter({required this.minor, required this.major});
+
+  final Color minor;
+  final Color major;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    void grid(double step, Color color) {
+      final paint = Paint()
+        ..color = color
+        ..strokeWidth = 1;
+      for (double x = 0; x <= size.width; x += step) {
+        canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+      }
+      for (double y = 0; y <= size.height; y += step) {
+        canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+      }
+    }
+
+    grid(24, minor);
+    grid(120, major);
+  }
+
+  @override
+  bool shouldRepaint(_BlueprintGridPainter old) =>
+      old.minor != minor || old.major != major;
 }
 
 /// A "Browse by trade" tile — 132×176, cover image → gradient, mono code +
@@ -393,14 +437,14 @@ class ProCard extends StatelessWidget {
                       )),
                 ),
                 if (provider.verificationStatus == 'APPROVED')
-                  FaIcon(FontAwesomeIcons.solidCircleCheck,
+                  AppIcon(AppIcons.circleCheck,
                       size: 13, color: p.emerald),
               ],
             ),
             const SizedBox(height: 3),
             Row(
               children: [
-                FaIcon(FontAwesomeIcons.solidStar, size: 10, color: p.amber),
+                AppIcon(AppIcons.star, size: 10, color: p.amber),
                 const SizedBox(width: 5),
                 Flexible(
                   child: Text(

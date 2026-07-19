@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:baas_mobile/l10n/gen/app_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../models/models.dart';
 import '../../palette.dart';
 import '../../state/providers.dart';
+import '../../widgets/app_icon.dart';
 
 class AccountScreen extends ConsumerWidget {
   const AccountScreen({super.key});
@@ -96,24 +96,24 @@ class _SignedIn extends ConsumerWidget {
           ),
         const Divider(),
         ListTile(
-          leading: const FaIcon(FontAwesomeIcons.comments, size: 18),
+          leading: const AppIcon(AppIcons.commentDots, size: 18),
           title: Text(l10n.myInquiries),
           onTap: () => context.push('/inquiries'),
         ),
         ListTile(
-          leading: const FaIcon(FontAwesomeIcons.heart, size: 18),
+          leading: const AppIcon(AppIcons.regHeart, size: 18),
           title: Text(l10n.favorites),
           onTap: () => context.push('/favorites'),
         ),
         ListTile(
-          leading: const FaIcon(FontAwesomeIcons.idCard, size: 18),
+          leading: const AppIcon(AppIcons.idCard, size: 18),
           title: Text(l10n.profile),
           onTap: () => _openProfileSheet(context, ref),
         ),
         const _LanguageTile(),
         const Divider(),
         ListTile(
-          leading: const FaIcon(FontAwesomeIcons.arrowRightFromBracket, size: 18),
+          leading: const AppIcon(AppIcons.logOut, size: 18),
           title: Text(l10n.signOut),
           onTap: () => ref.read(authControllerProvider.notifier).logout(),
         ),
@@ -138,7 +138,7 @@ class _LanguageTile extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final locale = ref.watch(localeControllerProvider);
     return ListTile(
-      leading: const FaIcon(FontAwesomeIcons.globe, size: 18),
+      leading: const AppIcon(AppIcons.globe, size: 18),
       title: Text(l10n.language),
       trailing: SegmentedButton<String>(
         segments: [
