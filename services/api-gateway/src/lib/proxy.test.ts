@@ -151,6 +151,78 @@ describe("buildUpstreamHeaders — trusted-header choke point", () => {
     expect(h["x-internal-secret"]).toBe(EXPECTED_SECRET);
   });
 
+  // Mobile API clients (#797): the same identity JWT arrives as
+  // `Authorization: Bearer` instead of the sh_session cookie.
+  it("forwards identity headers for a valid Bearer access token (no cookie)", async () => {
+    vi.mocked(verifySessionToken).mockResolvedValue({
+      userId: "user_42",
+      role: "CUSTOMER",
+      name: "Nuwan Perera",
+      sv: 3,
+    });
+    vi.mocked(sessionVersionOk).mockResolvedValue(true);
+    const h = await upstreamHeadersFor({ authorization: "Bearer good-jwt" });
+    expect(vi.mocked(verifySessionToken)).toHaveBeenCalledWith("good-jwt");
+    expect(h["x-user-id"]).toBe("user_42");
+    expect(h["x-user-role"]).toBe("CUSTOMER");
+    expect(h["x-user-name"]).toBe(encodeURIComponent("Nuwan Perera"));
+    // The Authorization header itself still passes through upstream untouched.
+    expect(h["authorization"]).toBe("Bearer good-jwt");
+  });
+
+  it("forwards NO identity headers for an invalid Bearer token", async () => {
+    vi.mocked(verifySessionToken).mockResolvedValue(null);
+    const h = await upstreamHeadersFor({ authorization: "Bearer garbage" });
+    expect(h["x-user-id"]).toBeUndefined();
+    expect(h["x-user-role"]).toBeUndefined();
+    // Anonymous but still trusted transport — the secret is always attached.
+    expect(h["x-internal-secret"]).toBe(EXPECTED_SECRET);
+  });
+
+  it("forwards NO identity headers when the Bearer session is revoked (stale sv)", async () => {
+    vi.mocked(verifySessionToken).mockResolvedValue({
+      userId: "user_42",
+      role: "CUSTOMER",
+      name: "Nuwan",
+      sv: 1,
+    });
+    vi.mocked(sessionVersionOk).mockResolvedValue(false);
+    const h = await upstreamHeadersFor({ authorization: "Bearer stale" });
+    expect(h["x-user-id"]).toBeUndefined();
+  });
+
+  it("gives a valid session cookie precedence over the Bearer header", async () => {
+    // Distinct identities per token so the winner is observable.
+    vi.mocked(verifySessionToken).mockImplementation(async (token) =>
+      token === "cookie-jwt"
+        ? { userId: "cookie_user", role: "CUSTOMER", name: "Cookie", sv: 0 }
+        : { userId: "bearer_user", role: "CUSTOMER", name: "Bearer", sv: 0 }
+    );
+    vi.mocked(sessionVersionOk).mockResolvedValue(true);
+    const h = await upstreamHeadersFor({
+      cookie: `${SESSION_COOKIE}=cookie-jwt`,
+      authorization: "Bearer bearer-jwt",
+    });
+    expect(h["x-user-id"]).toBe("cookie_user");
+    // The Bearer token was never even verified — the cookie won outright.
+    expect(vi.mocked(verifySessionToken)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(verifySessionToken)).toHaveBeenCalledWith("cookie-jwt");
+  });
+
+  it("falls back to the Bearer token when the cookie session is invalid", async () => {
+    vi.mocked(verifySessionToken).mockImplementation(async (token) =>
+      token === "bearer-jwt"
+        ? { userId: "bearer_user", role: "CUSTOMER", name: "Bearer", sv: 0 }
+        : null
+    );
+    vi.mocked(sessionVersionOk).mockResolvedValue(true);
+    const h = await upstreamHeadersFor({
+      cookie: `${SESSION_COOKIE}=expired-jwt`,
+      authorization: "Bearer bearer-jwt",
+    });
+    expect(h["x-user-id"]).toBe("bearer_user");
+  });
+
   it("does not use a revoked impersonation cookie (falls back to the admin's own session)", async () => {
     vi.mocked(verifySessionToken).mockResolvedValue({
       userId: "admin_1",

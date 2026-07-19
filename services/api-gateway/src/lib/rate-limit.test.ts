@@ -150,6 +150,25 @@ describe("LIMITED_ROUTES", () => {
     expect(route?.rule).toBe(RATE_LIMITS.resend);
   });
 
+  // #797: mobile token auth. /token verifies credentials (same guessing
+  // oracle as login) and /revoke takes unauthenticated opaque tokens — both
+  // strict; /refresh is routine ~15-minute per-device churn on its own
+  // wider budget.
+  it.each([
+    ["/api/auth/token", "auth-token"],
+    ["/api/auth/revoke", "auth-revoke"],
+  ])("rate-limits %s on the strict auth budget", (path, name) => {
+    const route = match(path);
+    expect(route?.name).toBe(name);
+    expect(route?.rule).toBe(RATE_LIMITS.authStrict);
+  });
+
+  it("rate-limits /api/auth/refresh on the wider authRefresh budget", () => {
+    const route = match("/api/auth/refresh");
+    expect(route?.name).toBe("auth-refresh");
+    expect(route?.rule).toBe(RATE_LIMITS.authRefresh);
+  });
+
   // #520: the four image-upload POSTs share one CPU-protecting "upload" bucket.
   it.each([
     "/api/account/avatar",
