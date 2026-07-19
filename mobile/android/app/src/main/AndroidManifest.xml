@@ -1,6 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- "Near me" geo search (geolocator); requested at runtime, optional. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <!-- FCM push (fail-soft without Firebase config). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
-        android:label="baas_mobile"
+        android:label="Baas.lk"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
