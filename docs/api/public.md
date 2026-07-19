@@ -212,7 +212,7 @@ resolves back through `/api/files/<namespace>/*`.
 
 | Method + path | Auth | Summary |
 |---|---|---|
-| `POST /agent/chat` | authenticated (web route) | The web app's `src/app/agent/chat/route.ts` proxies to chat-service `POST /internal/chat/marketplace/stream` with the internal secret + forwarded cookie/IP/locale. Streams SSE (`text`/`tool`/`done`/`error`). Returns 503 when the assistant is disabled (`ANTHROPIC_API_KEY` unset). |
+| `POST /agent/chat` | authenticated (web route) | The web app's `src/app/agent/chat/route.ts` proxies to chat-service `POST /internal/chat/marketplace/stream` with the internal secret + forwarded cookie/IP/locale. Streams SSE (`text`/`tool`/`done`/`error`). Returns 503 when the assistant is disabled (`ANTHROPIC_API_KEY` unset). Auth is the `sh_session` cookie, or — for the mobile app, which has no cookie jar — an `Authorization: Bearer <access-jwt>` header (#801); Bearer verification and sessionVersion revocation mirror the cookie path, and impersonation is cookie-only. |
 
 This is the one client-facing path that does **not** traverse the gateway (the
 gateway buffers responses, which would break streaming). See the internal-API
