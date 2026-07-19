@@ -211,6 +211,21 @@ class FrostedHeader extends ConsumerWidget implements PreferredSizeWidget {
                     ),
                   ),
                 ),
+              const SizedBox(width: 8),
+              // Light/dark toggle (dark-first, persisted) — the web has the same
+              // control; without it the app had no way to reach the light theme.
+              GlassIconButton(
+                size: 32,
+                onTap: () =>
+                    ref.read(themeControllerProvider.notifier).toggle(),
+                child: FaIcon(
+                  ref.watch(themeControllerProvider) == ThemeMode.dark
+                      ? FontAwesomeIcons.sun
+                      : FontAwesomeIcons.moon,
+                  size: 14,
+                  color: fg,
+                ),
+              ),
               if (showBell) ...[
                 const SizedBox(width: 8),
                 GlassIconButton(
