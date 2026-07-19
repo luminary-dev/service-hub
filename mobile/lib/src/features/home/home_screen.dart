@@ -1,7 +1,6 @@
 import 'package:baas_mobile/l10n/gen/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../models/models.dart';
@@ -52,9 +51,6 @@ class _HomeBody extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
-    final p = context.palette;
-    final favorites = ref.watch(favoritesControllerProvider).value ?? {};
-    final featured = providers.first;
     final topRated = providers.take(8).toList();
 
     void openProvider(String id) => context.push('/providers/$id');
@@ -68,35 +64,15 @@ class _HomeBody extends ConsumerWidget {
         ListView(
           padding: EdgeInsets.zero,
           children: [
-        CinematicHero(
-          provider: featured,
-          favorited: favorites.contains(featured.id),
-          onOpen: () => openProvider(featured.id),
-          onFavorite: () => ref
-              .read(favoritesControllerProvider.notifier)
-              .toggle(featured.id),
-        ),
-        // Search entry (a pill that opens the results/search screen).
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-          child: GestureDetector(
-            onTap: () => openResults(),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
-              decoration: BoxDecoration(
-                color: p.surface,
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: p.ink.c200),
-              ),
-              child: Row(children: [
-                FaIcon(FontAwesomeIcons.magnifyingGlass,
-                    size: 14, color: p.ink.c400),
-                const SizedBox(width: 10),
-                Text(l10n.searchHint,
-                    style: TextStyle(fontSize: 15, color: p.ink.c400)),
-              ]),
-            ),
-          ),
+        // Web-style blueprint hero (mirrors src/app/page.tsx): grid panel,
+        // 001/FIND marker, two-part headline, subtitle, tech-corners search.
+        BlueprintHero(
+          markerLabel: l10n.navFind,
+          title1: l10n.heroTitle1,
+          title2: l10n.heroTitle2,
+          subtitle: l10n.heroSub,
+          searchHint: l10n.searchHint,
+          onSearch: openResults,
         ),
         // Browse by trade shelf.
         if (categories.isNotEmpty) ...[
