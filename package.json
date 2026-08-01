@@ -24,13 +24,13 @@
     "sync:repos": "./scripts/sync-service-repos.sh"
   },
   "dependencies": {
-    "@sentry/nextjs": "^10.66.0",
-    "jose": "^6.2.3",
+    "@sentry/nextjs": "^10.68.0",
+    "jose": "^6.2.4",
     "leaflet": "^1.9.4",
-    "next": "16.2.10",
-    "react": "19.2.7",
-    "react-dom": "19.2.7",
-    "recharts": "^3.9.2"
+    "next": "16.2.12",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "recharts": "^3.10.1"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.1",
