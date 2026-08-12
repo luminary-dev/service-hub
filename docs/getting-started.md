@@ -22,6 +22,26 @@ Alternatively, run everything in containers:
 docker compose up --build
 ```
 
+## Running in pieces (`scripts/run/`)
+
+For running the stack in parts — or when you want containers that outlive the
+shell — use the Docker-based launchers in `scripts/run/` (see
+[`scripts/run/README.md`](../scripts/run/README.md)):
+
+```bash
+./scripts/run/everything.sh          # full app + observability + all profiles, seeded
+./scripts/run/app.sh                 # all 10 services + web + infra, seeded (no monitoring)
+./scripts/run/frontend.sh            # only the Next.js UI (:3000)
+./scripts/run/backend.sh provider    # only one backend service + its DB
+./scripts/run/observability.sh       # only Grafana/Prometheus/Loki/Tempo
+./scripts/run/stop.sh [--wipe]       # stop everything (--wipe also clears the DB)
+```
+
+`app.sh`/`everything.sh` seed demo data on first run; `./scripts/run/seed.sh`
+reseeds on demand. On **Apple Silicon**, these handle the arm64 Postgres image
+gap automatically (Postgres runs under `linux/amd64` emulation; every other
+image stays native).
+
 ## Ports
 
 | Component | Port | Owns |

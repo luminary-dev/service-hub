@@ -68,3 +68,7 @@ next-env.d.ts
 
 # macOS SwiftPM vendored sources
 mobile/macos/**/xcshareddata/swiftpm/
+
+# Claude Code: keep shared skills under .claude/skills, ignore local state
+.claude/settings.local.json
+.claude/worktrees/
