@@ -5,8 +5,9 @@
 **`src/app/page.tsx`** is the landing surface: a hero with the search console
 (`SearchBar` + popular-query chips) on the left and, on the right, an **animated
 trade slider** (`HeroSlider`, #447). It's a framed technical plate that
-auto-advances through trade photos (mechanic, electrician, plumber, welder,
-carpenter, from `public/images/workers/`) with layered on-theme motion: a slow
+auto-advances through one photo per trade — all 16 categories, mechanic first —
+from `public/images/hero-slides/` (each filename is the category slug) with
+layered on-theme motion: a slow
 `.hero-float` drift on the whole plate, a per-slide cross-fade + push-in zoom
 over the Ken Burns drift, a brand scan-line wipe, rise-in badge/counter/`Fig.0N`
 caption, a breathing active tick and an auto-advance gauge. Controls: prev/next,

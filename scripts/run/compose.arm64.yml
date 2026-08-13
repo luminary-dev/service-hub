@@ -1,0 +1,7 @@
+# Apple Silicon / arm64 overlay, layered in automatically by scripts/run/_common.sh.
+# The pinned postgis/postgis:16-3.5-alpine image has no arm64 manifest, so we run
+# just Postgres under linux/amd64 (Rosetta emulation). Everything else stays native.
+# A no-op on amd64 hosts, so it's safe for the (amd64) deploy servers too.
+services:
+  postgres:
+    platform: linux/amd64

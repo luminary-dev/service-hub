@@ -56,22 +56,22 @@ describe("HeroSlider (motion allowed)", () => {
     expect(region.getAttribute("aria-roledescription")).toBe("carousel");
     // One image per slide, each with a non-empty, localized alt.
     const imgs = screen.getAllByRole("img", { hidden: true });
-    expect(imgs).toHaveLength(5);
+    expect(imgs).toHaveLength(16);
     imgs.forEach((img) => expect(img.getAttribute("alt")).toBeTruthy());
   });
 
   it("advances to the next slide via the next control", () => {
     renderSlider();
     // Live status starts on slide 1.
-    expect(screen.getByText(t.sliderStatus(1, 5, "Mechanic"))).toBeTruthy();
+    expect(screen.getByText(t.sliderStatus(1, 16, "Mechanic"))).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: t.sliderNext }));
-    expect(screen.getByText(t.sliderStatus(2, 5, "Electrician"))).toBeTruthy();
+    expect(screen.getByText(t.sliderStatus(2, 16, "Electrician"))).toBeTruthy();
   });
 
   it("jumps to a slide via the tick selector", () => {
     renderSlider();
     fireEvent.click(screen.getByRole("button", { name: t.sliderGoto(3) }));
-    expect(screen.getByText(t.sliderStatus(3, 5, "Plumber"))).toBeTruthy();
+    expect(screen.getByText(t.sliderStatus(3, 16, "Plumber"))).toBeTruthy();
   });
 
   it("exposes an explicit pause/play toggle (WCAG 2.2.2)", () => {
@@ -94,6 +94,6 @@ describe("HeroSlider (reduced motion)", () => {
     // Manual navigation still works.
     expect(screen.getByRole("button", { name: t.sliderNext })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: t.sliderGoto(2) }));
-    expect(screen.getByText(t.sliderStatus(2, 5, "Electrician"))).toBeTruthy();
+    expect(screen.getByText(t.sliderStatus(2, 16, "Electrician"))).toBeTruthy();
   });
 });

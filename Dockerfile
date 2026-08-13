@@ -10,7 +10,7 @@
 # node_modules in the final image. Base pinned by digest; the `# dependabot:`
 # comment + the tag before the digest let Dependabot bump both together.
 # dependabot: node:24-alpine
-FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS build
+FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS build
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -20,7 +20,7 @@ COPY . .
 RUN AUTH_SECRET=build-time-dummy npm run build
 
 # dependabot: node:24-alpine
-FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS runtime
+FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 # Standalone server reads PORT/HOSTNAME from the env; bind all interfaces.

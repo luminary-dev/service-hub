@@ -18,14 +18,27 @@ import { categoryLabelLoc } from "@/lib/i18n";
 // (hover / focus / explicit toggle) and the progress gauge stay perfectly in
 // sync; auto-advance and motion are disabled under prefers-reduced-motion.
 
-// Trade slides map to a category slug (localized label) + an existing photo in
-// public/images/workers/. Mechanic first — the workshop hero shot.
+// Trade slides map to a category slug (localized label) + its photo in
+// public/images/hero-slides/. Each filename is the category slug, so the label
+// and alt text resolve via categoryLabelLoc. Mechanic first — the workshop hero
+// shot and the LCP slide. Covers all 16 trades in CATEGORIES.
 const SLIDES: { slug: string; src: string }[] = [
-  { slug: "mechanic", src: "/images/workers/mechanic-1.jpg" },
-  { slug: "electrician", src: "/images/workers/electrician-1.jpg" },
-  { slug: "plumber", src: "/images/workers/plumber-1.jpg" },
-  { slug: "welder", src: "/images/workers/welder-1.jpg" },
-  { slug: "carpenter", src: "/images/workers/carpenter-1.jpg" },
+  { slug: "mechanic", src: "/images/hero-slides/mechanic.png" },
+  { slug: "electrician", src: "/images/hero-slides/electrician.png" },
+  { slug: "plumber", src: "/images/hero-slides/plumber.png" },
+  { slug: "carpenter", src: "/images/hero-slides/carpenter.png" },
+  { slug: "welder", src: "/images/hero-slides/welder.png" },
+  { slug: "mason", src: "/images/hero-slides/mason.png" },
+  { slug: "painter", src: "/images/hero-slides/painter.png" },
+  { slug: "roofer", src: "/images/hero-slides/roofer.png" },
+  { slug: "tile-layer", src: "/images/hero-slides/tile-layer.png" },
+  { slug: "ac-repair", src: "/images/hero-slides/ac-repair.png" },
+  { slug: "appliance-repair", src: "/images/hero-slides/appliance-repair.png" },
+  { slug: "cctv-security", src: "/images/hero-slides/cctv-security.png" },
+  { slug: "pest-control", src: "/images/hero-slides/pest-control.png" },
+  { slug: "cleaning", src: "/images/hero-slides/cleaning.png" },
+  { slug: "garden-designer", src: "/images/hero-slides/garden-designer.png" },
+  { slug: "movers", src: "/images/hero-slides/movers.png" },
 ];
 
 const DURATION_MS = 5000;
@@ -120,8 +133,8 @@ export default function HeroSlider() {
         {SLIDES.map((s, i) => (
           <div
             key={s.slug}
-            className={`absolute inset-0 transition-[opacity,transform] duration-700 ease-snap ${
-              i === active ? "opacity-100 scale-100" : "opacity-0 scale-[1.05]"
+            className={`absolute inset-0 transition-[opacity,transform] duration-1000 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+              i === active ? "opacity-100 scale-100" : "opacity-0 scale-[1.03]"
             }`}
             aria-hidden={i !== active}
           >
