@@ -23,6 +23,7 @@ permissions:
 jobs:
   # ── Issues: the board's work items ──────────────────────────────────────
   add-issue-to-board:
+    name: Add issue to board
     if: github.event_name == 'issues'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -88,6 +89,7 @@ jobs:
 
   # ── PRs: not board cards. Assign the author; mirror onto the resolved issue ─
   assign-pr-and-linked-issue:
+    name: Assign PR and mirror onto linked issue
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5

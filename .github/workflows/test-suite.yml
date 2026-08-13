@@ -1,0 +1,512 @@
+name: Test suite
+
+# On-demand test runner (manual `workflow_dispatch` only). The push/PR gate lives
+# in ci.yml and runs the whole per-package matrix on every change; THIS workflow
+# is the knob you turn by hand to run a chosen tier against a chosen scope —
+# e.g. re-run just the browser E2E after a flake (see the Playwright warm-up
+# note in docs/TESTING.md), coverage-only before a ratchet bump, or the full
+# battery from a release branch. It deliberately reuses ci.yml's exact action
+# pins, Node version, per-package matrix and the shared `boot-stack` composite,
+# so a manual run exercises the same paths CI does — no drift between the two.
+#
+# Required inputs (all three must be supplied; `reason` is validated non-blank
+# by the `plan` job below, since the workflow_dispatch API does not enforce
+# non-empty string inputs on its own):
+#   • suite  — which test tier to run
+#   • scope  — which packages the tier applies to
+#   • reason — a short audit-trail note (why this manual run)
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "Test tier to run"
+        type: choice
+        required: true
+        default: standard
+        options:
+          - quick # typecheck + test (fast feedback)
+          - standard # typecheck + lint (web) + test + build
+          - coverage # the coverage ratchet (web + services)
+          - e2e # compose smoke + backup/restore verify
+          - browser # Playwright browser E2E
+          - lighthouse # Lighthouse budgets (LCP/CLS/SEO/a11y)
+          - full # everything above
+      scope:
+        description: "Which packages to test"
+        type: choice
+        required: true
+        default: all
+        options:
+          - all # web + mobile + all 10 backend packages (as the suite applies)
+          - web # the Next.js web app only
+          - mobile # the Flutter customer app only
+          - services # the 10 backend packages only
+      reason:
+        description: "Why are you running this? (audit trail — required)"
+        type: string
+        required: true
+
+# Manual runs must never cancel one another — key the group on the run id so
+# every dispatch gets its own group (mirrors deploy.yml's non-cancelling
+# posture rather than ci.yml's cancel-superseded one).
+concurrency:
+  group: test-suite-${{ github.run_id }}
+  cancel-in-progress: false
+
+# Read-only by default; nothing here writes to the repo. (Codecov upload in the
+# coverage tier uses a token, not GITHUB_TOKEN scope.)
+permissions:
+  contents: read
+
+# Dummy values so module init and `next build` don't need real secrets — the
+# same block ci.yml uses. Nothing connects to a real database or is used at
+# runtime.
+env:
+  DATABASE_URL: "postgresql://user:password@localhost:5432/db?schema=public"
+  AUTH_SECRET: "ci-dummy-secret"
+  GATEWAY_URL: "http://localhost:4000"
+
+jobs:
+  # ── Plan ────────────────────────────────────────────────────────────────
+  # Validates the required inputs and turns (suite × scope) into the concrete
+  # matrices + run-flags the downstream jobs consume via `needs.plan.outputs.*`.
+  # Centralising the fan-out here keeps every tier's `if:` a single boolean and
+  # its matrix a `fromJSON(...)` of a list this job computed.
+  plan:
+    name: Plan the run
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run_web: ${{ steps.plan.outputs.run_web }}
+      web_checks: ${{ steps.plan.outputs.web_checks }}
+      run_services: ${{ steps.plan.outputs.run_services }}
+      service_packages: ${{ steps.plan.outputs.service_packages }}
+      service_checks: ${{ steps.plan.outputs.service_checks }}
+      run_mobile: ${{ steps.plan.outputs.run_mobile }}
+      mobile_checks: ${{ steps.plan.outputs.mobile_checks }}
+      run_coverage: ${{ steps.plan.outputs.run_coverage }}
+      coverage_packages: ${{ steps.plan.outputs.coverage_packages }}
+      run_e2e: ${{ steps.plan.outputs.run_e2e }}
+      run_browser: ${{ steps.plan.outputs.run_browser }}
+      run_lighthouse: ${{ steps.plan.outputs.run_lighthouse }}
+    steps:
+      - name: Resolve suite and scope into matrices
+        id: plan
+        # `suite`/`scope` are `choice` inputs (a fixed option set), so they are
+        # safe to read; `reason` is free-form, so it is passed via the
+        # environment and never interpolated into the script text (matching
+        # release.yml's handling of the attacker-influenceable tag name).
+        env:
+          SUITE: ${{ inputs.suite }}
+          SCOPE: ${{ inputs.scope }}
+          REASON: ${{ inputs.reason }}
+        run: |
+          set -euo pipefail
+
+          # Enforce the "required field": the dispatch API accepts an empty
+          # string for a required input, so gate on it explicitly.
+          if [ -z "${REASON// /}" ]; then
+            echo "::error::'reason' is required and must not be blank."
+            exit 1
+          fi
+
+          # The 10 backend packages (api-gateway has no `-service` suffix) and
+          # the coverage set (web + those 10), mirroring ci.yml's matrices.
+          ALL_SERVICES='["identity-service","provider-service","review-service","job-service","notification-service","media-service","chat-service","search-service","trust-safety-service","api-gateway"]'
+          COVERAGE_ALL='["web","identity-service","provider-service","review-service","job-service","notification-service","media-service","chat-service","search-service","trust-safety-service","api-gateway"]'
+
+          run_web=false;       web_checks='[]'
+          run_services=false;  service_packages='[]'; service_checks='[]'
+          run_mobile=false;    mobile_checks='[]'
+          run_coverage=false;  coverage_packages='[]'
+          run_e2e=false; run_browser=false; run_lighthouse=false
+
+          # Node/Flutter check sets per suite. web carries `lint`; services do
+          # not (only web has a lint script today — see docs/CI_ADDITIONS.md).
+          case "$SUITE" in
+            quick)
+              WEB_CHECKS='["typecheck","test"]'
+              SVC_CHECKS='["typecheck","test"]'
+              MOB_CHECKS='["analyze","test"]' ;;
+            standard|full)
+              WEB_CHECKS='["typecheck","lint","test","build"]'
+              SVC_CHECKS='["typecheck","test","build"]'
+              MOB_CHECKS='["analyze","test","build"]' ;;
+            *) # coverage / e2e / browser / lighthouse — no per-package matrix
+              WEB_CHECKS='[]'; SVC_CHECKS='[]'; MOB_CHECKS='[]' ;;
+          esac
+
+          # scope → which package groups are in play.
+          want_web=false; want_services=false; want_mobile=false
+          case "$SCOPE" in
+            all)      want_web=true; want_services=true; want_mobile=true ;;
+            web)      want_web=true ;;
+            services) want_services=true ;;
+            mobile)   want_mobile=true ;;
+          esac
+
+          # Per-package tiers (quick / standard / full).
+          if [ "$WEB_CHECKS" != '[]' ] && [ "$want_web" = true ]; then
+            run_web=true; web_checks="$WEB_CHECKS"
+          fi
+          if [ "$SVC_CHECKS" != '[]' ] && [ "$want_services" = true ]; then
+            run_services=true; service_packages="$ALL_SERVICES"; service_checks="$SVC_CHECKS"
+          fi
+          if [ "$MOB_CHECKS" != '[]' ] && [ "$want_mobile" = true ]; then
+            run_mobile=true; mobile_checks="$MOB_CHECKS"
+          fi
+
+          # Coverage tier (node-only; the Flutter app is covered by its own
+          # `flutter test`, not this node ratchet, so scope=mobile skips it).
+          if [ "$SUITE" = coverage ] || [ "$SUITE" = full ]; then
+            case "$SCOPE" in
+              all)      run_coverage=true; coverage_packages="$COVERAGE_ALL" ;;
+              web)      run_coverage=true; coverage_packages='["web"]' ;;
+              services) run_coverage=true; coverage_packages="$ALL_SERVICES" ;;
+            esac
+          fi
+
+          # Whole-stack tiers boot the full compose stack, so they only make
+          # sense when the web/stack is in scope (all or web).
+          if [ "$SCOPE" = all ] || [ "$SCOPE" = web ]; then
+            case "$SUITE" in
+              e2e)        run_e2e=true ;;
+              browser)    run_browser=true ;;
+              lighthouse) run_lighthouse=true ;;
+              full)       run_e2e=true; run_browser=true; run_lighthouse=true ;;
+            esac
+          fi
+
+          # Refuse a combination that would launch nothing (e.g. scope=mobile +
+          # suite=lighthouse) rather than burn a green no-op run.
+          if [ "$run_web$run_services$run_mobile$run_coverage$run_e2e$run_browser$run_lighthouse" = "falsefalsefalsefalsefalsefalsefalse" ]; then
+            echo "::error::suite='$SUITE' with scope='$SCOPE' selects no jobs. Pick a compatible pair (e.g. a whole-stack tier needs scope=all or web; coverage needs web/services/all)."
+            exit 1
+          fi
+
+          {
+            echo "run_web=$run_web"
+            echo "web_checks=$web_checks"
+            echo "run_services=$run_services"
+            echo "service_packages=$service_packages"
+            echo "service_checks=$service_checks"
+            echo "run_mobile=$run_mobile"
+            echo "mobile_checks=$mobile_checks"
+            echo "run_coverage=$run_coverage"
+            echo "coverage_packages=$coverage_packages"
+            echo "run_e2e=$run_e2e"
+            echo "run_browser=$run_browser"
+            echo "run_lighthouse=$run_lighthouse"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Test suite plan"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Suite | \`$SUITE\` |"
+            echo "| Scope | \`$SCOPE\` |"
+            echo "| Reason | $REASON |"
+            echo "| Triggered by | @${{ github.actor }} |"
+            echo ""
+            echo "### Tiers selected"
+            echo ""
+            echo "| Tier | Will run |"
+            echo "| --- | --- |"
+            echo "| web ($web_checks) | $run_web |"
+            echo "| services ($service_checks) | $run_services |"
+            echo "| mobile ($mobile_checks) | $run_mobile |"
+            echo "| coverage | $run_coverage |"
+            echo "| e2e smoke | $run_e2e |"
+            echo "| browser (playwright) | $run_browser |"
+            echo "| lighthouse | $run_lighthouse |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── web ─────────────────────────────────────────────────────────────────
+  web:
+    name: web / ${{ matrix.check }}
+    needs: plan
+    if: needs.plan.outputs.run_web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        check: ${{ fromJSON(needs.plan.outputs.web_checks) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run ${{ matrix.check }}
+        run: npm run ${{ matrix.check }}
+
+  # ── mobile ──────────────────────────────────────────────────────────────
+  # Flutter customer app (mobile/, #799). Separate toolchain from the Node
+  # matrices; the debug APK is the smoke artifact (release signing is outside
+  # CI), mirroring ci.yml's mobile job.
+  mobile:
+    name: mobile / ${{ matrix.check }}
+    needs: plan
+    if: needs.plan.outputs.run_mobile == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        check: ${{ fromJSON(needs.plan.outputs.mobile_checks) }}
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: 3.44.6
+          cache: true
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Run flutter analyze
+        if: matrix.check == 'analyze'
+        run: flutter analyze
+      - name: Run flutter test
+        if: matrix.check == 'test'
+        run: flutter test
+      - name: Build debug APK
+        if: matrix.check == 'build'
+        run: flutter build apk --debug
+      - name: Upload debug APK
+        if: matrix.check == 'build'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: mobile-debug-apk
+          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 7
+
+  # ── services ────────────────────────────────────────────────────────────
+  services:
+    name: ${{ matrix.package }} / ${{ matrix.check }}
+    needs: plan
+    if: needs.plan.outputs.run_services == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.plan.outputs.service_packages) }}
+        check: ${{ fromJSON(needs.plan.outputs.service_checks) }}
+    defaults:
+      run:
+        working-directory: services/${{ matrix.package }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/${{ matrix.package }}/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Run ${{ matrix.check }}
+        run: npm run ${{ matrix.check }}
+
+  # ── coverage ────────────────────────────────────────────────────────────
+  # Per-package coverage + the ratchet (each package's vitest config enforces
+  # its floor). Mirrors ci.yml's coverage job, incl. the Codecov upload.
+  coverage:
+    name: ${{ matrix.package }} / coverage
+    needs: plan
+    if: needs.plan.outputs.run_coverage == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.plan.outputs.coverage_packages) }}
+    defaults:
+      run:
+        working-directory: ${{ matrix.package == 'web' && '.' || format('services/{0}', matrix.package) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ${{ matrix.package == 'web' && 'package-lock.json' || format('services/{0}/package-lock.json', matrix.package) }}
+      - name: Install dependencies
+        run: npm ci
+      - name: Collect coverage
+        run: npm run coverage
+      - name: Coverage summary
+        if: always()
+        run: |
+          if [ -f coverage/coverage-summary.json ]; then
+            echo "### Coverage — ${{ matrix.package }}" >> "$GITHUB_STEP_SUMMARY"
+            node -e "const t=require('./coverage/coverage-summary.json').total;for(const k of ['lines','statements','functions','branches'])console.log('- '+k+': '+t[k].pct+'% ('+t[k].covered+'/'+t[k].total+')')" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: coverage-${{ matrix.package }}
+          path: ${{ matrix.package == 'web' && 'coverage' || format('services/{0}/coverage', matrix.package) }}
+          if-no-files-found: ignore
+      - name: Upload to Codecov
+        if: always()
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          flags: ${{ matrix.package }}
+          directory: ${{ matrix.package == 'web' && 'coverage' || format('services/{0}/coverage', matrix.package) }}
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  # ── e2e smoke ───────────────────────────────────────────────────────────
+  # Boots the whole compose stack and runs the cross-service smoke + the
+  # backup/restore-verify path, exactly like ci.yml's e2e job.
+  e2e:
+    name: e2e
+    needs: plan
+    if: needs.plan.outputs.run_e2e == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Boot the compose stack
+        uses: ./.github/actions/boot-stack
+      - name: Run e2e smoke
+        env:
+          INTERNAL_API_SECRET: dev-internal-secret
+        run: ./scripts/e2e-smoke.sh
+      - name: Back up and restore-verify
+        run: |
+          COMPOSE_FILE=docker-compose.yml ./scripts/backup-dbs.sh
+          ./scripts/verify-backup.sh
+      - name: Dump service logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail=120
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  # ── browser E2E (Playwright) ────────────────────────────────────────────
+  browser:
+    name: playwright
+    needs: plan
+    if: needs.plan.outputs.run_browser == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+      - name: Boot the compose stack
+        uses: ./.github/actions/boot-stack
+      - name: Run Playwright specs
+        env:
+          E2E_BASE_URL: http://localhost:3000
+        run: npx playwright test
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+      - name: Dump service logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail=120
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  # ── Lighthouse budgets ──────────────────────────────────────────────────
+  lighthouse:
+    name: lighthouse
+    needs: plan
+    if: needs.plan.outputs.run_lighthouse == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version: 24
+      - name: Boot the compose stack
+        uses: ./.github/actions/boot-stack
+      - name: Run Lighthouse CI
+        run: npx --yes @lhci/cli@0.15.1 autorun
+      - name: Upload Lighthouse results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: lighthouse-results
+          path: .lighthouseci/
+          if-no-files-found: ignore
+      - name: Dump service logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail=120
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  # ── Summary ─────────────────────────────────────────────────────────────
+  # Aggregates every tier's result into one table and fails the run if any tier
+  # that actually executed did not pass (skipped tiers are ignored). This is the
+  # single job to watch for a red/green verdict on a manual run.
+  summary:
+    name: Test suite summary
+    needs: [plan, web, mobile, services, coverage, e2e, browser, lighthouse]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Summarise tier results
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## Test suite results"
+            echo ""
+            echo "| Tier | Result |"
+            echo "| --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          fail=0
+          while IFS=$'\t' read -r job result; do
+            echo "| $job | $result |" >> "$GITHUB_STEP_SUMMARY"
+            case "$result" in
+              failure|cancelled) fail=1 ;;
+            esac
+          done < <(printf '%s' "$RESULTS" | jq -r 'to_entries[] | [.key, .value.result] | @tsv')
+
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::One or more executed test-suite tiers failed — see the table above."
+            exit 1
+          fi
+          echo "All executed tiers passed."

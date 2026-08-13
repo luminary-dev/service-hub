@@ -229,6 +229,41 @@ change.
 
 See [TESTING.md](TESTING.md) for the test layers behind these jobs.
 
+## On-demand test suite (`test-suite.yml`)
+
+`ci.yml` is the automatic push/PR gate; **`test-suite.yml` is the manual knob**
+— a `workflow_dispatch`-only workflow you trigger by hand (Actions → **Test
+suite** → **Run workflow**) to run a chosen tier against a chosen scope. It
+reuses `ci.yml`'s exact action pins, Node version, per-package matrices and the
+shared **`boot-stack`** composite, so a manual run exercises the same paths CI
+does — no second copy to drift. Use it to re-run just the browser E2E after a
+warm-up flake (see [TESTING.md](TESTING.md)), run coverage-only before a ratchet
+bump, or fire the full battery from a release branch.
+
+It takes **three required inputs** (all enforced — `reason` is a free-form
+string the `plan` job rejects if blank, since the dispatch API does not enforce
+non-empty strings on its own):
+
+- **`suite`** — the tier: `quick` (typecheck + test), `standard` (typecheck +
+  lint on web + test + build), `coverage` (the ratchet), `e2e` (compose smoke +
+  backup/restore-verify), `browser` (Playwright), `lighthouse` (budgets), or
+  `full` (everything).
+- **`scope`** — the packages: `all`, `web`, `mobile`, or `services`.
+- **`reason`** — a short audit-trail note recorded in the run summary.
+
+A **`plan`** job resolves `suite × scope` into the concrete matrices + run-flags
+every tier consumes via `needs.plan.outputs.*`, writes a plan table to the run
+summary, and **fails fast on an empty combination** (e.g. `scope=mobile` with a
+whole-stack tier) rather than burning a green no-op. A final **`summary`** job
+(`if: always()`) tabulates each tier's result and fails the run if any tier that
+actually executed did not pass (skipped tiers are ignored) — so it's the single
+job to watch for the verdict.
+
+Read-only top-level `permissions` (`contents: read`), a `timeout-minutes` cap on
+every job, and a non-cancelling `concurrency` group keyed on the run id (parallel
+manual runs never cancel one another). Because it is manual-only it is **not** a
+required status check in the `dev`/`prod` rulesets and cannot block a merge.
+
 ## Security scanning (`security-scan.yml`)
 
 Runs on push + PR to `dev`/`prod`, plus a weekly Monday 06:00 UTC schedule (to
