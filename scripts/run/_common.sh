@@ -61,3 +61,33 @@ require_docker() {
 service_running() {
   [ -n "$(dc ps -q "$1" 2>/dev/null)" ]
 }
+
+# --- First-run seeding toggle -------------------------------------------------
+# app.sh / everything.sh seed demo data on first run by default. Disable with
+# the `--no-seed` flag or `SEED=0` (schema-only stack — migrations still apply).
+SEED="${SEED:-1}"
+
+# Scan a launcher's args for the seed flags. Call as: parse_seed_flag "$@"
+parse_seed_flag() {
+  for a in "$@"; do
+    case "$a" in
+      --no-seed) SEED=0 ;;
+      --seed)    SEED=1 ;;
+    esac
+  done
+}
+
+# Seed the running stack unless seeding is disabled. Never fails the launch —
+# a seed error (e.g. services still booting) is a warning, not fatal.
+maybe_seed() {
+  if [ "$SEED" = "0" ]; then
+    echo "==> Skipping seed (--no-seed / SEED=0) — schema only."
+    echo "    Seed later with: ./scripts/run/seed.sh"
+    return 0
+  fi
+  echo "==> Seeding demo data if the DB is empty"
+  "$(dirname "${BASH_SOURCE[0]}")/seed.sh" || {
+    echo "WARN: seeding failed — services may still be starting. Retry with:" >&2
+    echo "      ./scripts/run/seed.sh" >&2
+  }
+}
