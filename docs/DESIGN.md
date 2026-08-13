@@ -86,6 +86,13 @@ Three font stacks, all defined as `@theme` tokens:
 - `--font-mono` — `--font-plex-mono`, then `ui-monospace` / SF Mono. Used for
   spec labels, eyebrows and the "instrument" stat readouts.
 
+IBM Plex Sans, IBM Plex Mono and Noto Sans Sinhala are **self-hosted** — the
+`.woff2` files live in `src/app/fonts/` and load via `next/font/local` (weights
+400/500/600/700, `display: swap`). This keeps `next build` (and the Docker image
+build) hermetic with no `fonts.gstatic.com` fetch (#860); it also matches the
+no-third-party-origin CSP posture. To change weights/families, update the
+vendored files and the `localFont` config in `src/app/layout.tsx`.
+
 **Sinhala:** the app is bilingual (EN/සිං). An optional `@font-face` picks up
 `public/fonts/FMBindumathi.woff2` for Sinhala text (scoped to the Sinhala
 Unicode range `U+0D80–0DFF`); if the file is missing it falls back to Noto Sans
