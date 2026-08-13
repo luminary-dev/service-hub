@@ -2,6 +2,7 @@ import 'package:baas_mobile/l10n/gen/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:go_router/go_router.dart';
 
 import '../palette.dart';
 import '../state/providers.dart';
@@ -35,7 +36,16 @@ class SocialLogin extends ConsumerWidget {
     Future<void> run(String provider) async {
       final error =
           await ref.read(authControllerProvider.notifier).socialSignIn(provider);
-      if (error != null && error != 'cancelled' && context.mounted) {
+      if (!context.mounted) return;
+      // Success: leave the login screen just like password sign-in does
+      // (login_screen.dart) — otherwise the web-auth sheet closes, the app is
+      // signed in, but the login form stays up and it looks like nothing
+      // happened.
+      if (error == null) {
+        if (context.canPop()) context.pop();
+        return;
+      }
+      if (error != 'cancelled') {
         final msg = error == 'oauth_unavailable'
             ? l10n.oauthUnavailable
             : l10n.genericError;

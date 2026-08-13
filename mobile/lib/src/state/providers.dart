@@ -108,16 +108,18 @@ class LocaleController extends Notifier<Locale> {
 
   @override
   Locale build() {
+    // Keychain can be unavailable (e.g. an unsigned macOS debug build →
+    // -34018); persistence is best-effort, the in-memory state still works.
     _storage.read(key: _key).then((v) {
       if (v == 'si') state = const Locale('si');
-    });
+    }).catchError((_) {});
     return const Locale('en');
   }
 
   void set(Locale locale) {
     state = locale;
     ref.read(apiClientProvider).locale = locale.languageCode;
-    _storage.write(key: _key, value: locale.languageCode);
+    _storage.write(key: _key, value: locale.languageCode).catchError((_) {});
   }
 }
 
@@ -132,17 +134,21 @@ class ThemeController extends Notifier<ThemeMode> {
 
   @override
   ThemeMode build() {
+    // Best-effort persistence — see LocaleController; a keychain failure must
+    // not throw or the toggle would log an unhandled exception on every flip.
     _storage.read(key: _key).then((v) {
       if (v == 'dark') state = ThemeMode.dark;
       if (v == 'light') state = ThemeMode.light;
-    });
+    }).catchError((_) {});
     return ThemeMode.dark;
   }
 
   void toggle() {
     final next = state == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
     state = next;
-    _storage.write(key: _key, value: next == ThemeMode.dark ? 'dark' : 'light');
+    _storage
+        .write(key: _key, value: next == ThemeMode.dark ? 'dark' : 'light')
+        .catchError((_) {});
   }
 }
 

@@ -1,6 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:baas_mobile/l10n/gen/app_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,6 +11,7 @@ import '../../theme.dart';
 import '../../tv/glass.dart';
 import '../../widgets/brand_loader.dart';
 import '../../widgets/common.dart';
+import '../../widgets/app_icon.dart';
 
 final providerDetailProvider = FutureProvider.autoDispose
     .family<ProviderDetail?, String>(
@@ -48,7 +48,7 @@ class ProviderDetailScreen extends ConsumerWidget {
               children: [
                 GlassIconButton(
                   onTap: () => context.pop(),
-                  child: const FaIcon(FontAwesomeIcons.arrowLeft,
+                  child: const AppIcon(AppIcons.arrowLeft,
                       size: 15, color: Colors.white),
                 ),
                 const Spacer(),
@@ -57,10 +57,10 @@ class ProviderDetailScreen extends ConsumerWidget {
                     onTap: () => ref
                         .read(favoritesControllerProvider.notifier)
                         .toggle(providerId),
-                    child: FaIcon(
+                    child: AppIcon(
                       favorited
-                          ? FontAwesomeIcons.solidHeart
-                          : FontAwesomeIcons.heart,
+                          ? AppIcons.heart
+                          : AppIcons.regHeart,
                       size: 16,
                       color: context.palette.red,
                     ),
@@ -164,7 +164,7 @@ class _DetailBody extends ConsumerWidget {
                         if (p.verificationStatus == 'APPROVED')
                           Padding(
                             padding: const EdgeInsets.only(left: 8),
-                            child: FaIcon(FontAwesomeIcons.solidCircleCheck,
+                            child: AppIcon(AppIcons.circleCheck,
                                 size: 18, color: cp.emerald),
                           ),
                       ],
@@ -172,7 +172,7 @@ class _DetailBody extends ConsumerWidget {
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        FaIcon(FontAwesomeIcons.solidStar,
+                        AppIcon(AppIcons.star,
                             size: 11, color: cp.amber),
                         const SizedBox(width: 6),
                         Flexible(
@@ -207,7 +207,7 @@ class _DetailBody extends ConsumerWidget {
             children: [
               Expanded(
                 child: FilledButton.icon(
-                  icon: const FaIcon(FontAwesomeIcons.paperPlane, size: 13),
+                  icon: const AppIcon(AppIcons.paperPlane, size: 13),
                   label: Text(l10n.sendInquiry),
                   onPressed: () => _openInquirySheet(context, ref),
                 ),
@@ -215,7 +215,7 @@ class _DetailBody extends ConsumerWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: OutlinedButton.icon(
-                  icon: const FaIcon(FontAwesomeIcons.phone, size: 13),
+                  icon: const AppIcon(AppIcons.phone, size: 13),
                   label: Text(l10n.call),
                   onPressed: () => _revealContact(context, ref),
                 ),
@@ -309,7 +309,7 @@ class _DetailBody extends ConsumerWidget {
             child: Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
-                icon: const FaIcon(FontAwesomeIcons.penToSquare, size: 13),
+                icon: const AppIcon(AppIcons.squarePen, size: 13),
                 label: Text(l10n.writeReview),
                 onPressed: () => _openReviewSheet(context, ref),
               ),
@@ -350,22 +350,22 @@ class _DetailBody extends ConsumerWidget {
           children: [
             if (contact.phone != null)
               ListTile(
-                leading: const Icon(Icons.call),
+                leading: const AppIcon(AppIcons.phone),
                 title: Text(contact.phone!),
               ),
             if (contact.phone2 != null)
               ListTile(
-                leading: const Icon(Icons.call),
+                leading: const AppIcon(AppIcons.phone),
                 title: Text(contact.phone2!),
               ),
             if (contact.whatsapp != null)
               ListTile(
-                leading: const Icon(Icons.chat),
+                leading: const AppIcon(AppIcons.commentDots),
                 title: Text('${l10n.whatsapp}: ${contact.whatsapp!}'),
               ),
             if (contact.email != null)
               ListTile(
-                leading: const Icon(Icons.email_outlined),
+                leading: const AppIcon(AppIcons.envelope),
                 title: Text(contact.email!),
               ),
           ],

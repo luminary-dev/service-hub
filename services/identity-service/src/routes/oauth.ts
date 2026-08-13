@@ -6,6 +6,7 @@ import { db } from "../db";
 import { getOrigin } from "../lib/http";
 import { log } from "../lib/log";
 import { createSession } from "../lib/session";
+import { issueTokenPair } from "../lib/issue-tokens";
 import { getAdapter } from "../lib/oauth";
 import { isLockedOut } from "../lib/lockout";
 
@@ -14,11 +15,15 @@ export const oauthRoutes = new Hono();
 const STATE_COOKIE = "oauth_state";
 const VERIFIER_COOKIE = "oauth_verifier";
 const NEXT_COOKIE = "oauth_next";
+// Remembers a mobile flow so the callback returns tokens to the app's deep
+// link (#398 mobile) instead of setting a cookie + web redirect.
+const MOBILE_COOKIE = "oauth_mobile";
 const TEN_MINUTES = 60 * 10;
 
-function isProd(): boolean {
-  return process.env.NODE_ENV === "production";
-}
+// The mobile app's registered custom scheme (see mobile/, OAuthFlow). Only this
+// exact scheme may receive tokens — never an arbitrary redirect, which would
+// leak the session to any app that intercepts it.
+const MOBILE_SCHEME = "baaslk://";
 
 // Only same-origin relative paths survive as a post-login destination — never a
 // scheme/host (open-redirect) or a protocol-relative "//evil.com".
@@ -28,18 +33,36 @@ function sanitizeNext(next: string | undefined): string | null {
   return next;
 }
 
-function transientCookie(c: Parameters<typeof setCookie>[0], name: string, value: string) {
+// A mobile deep-link redirect is accepted only when it is exactly the app's
+// registered scheme — token handoff must never target an arbitrary URL.
+function sanitizeMobileRedirect(redirect: string | undefined): string | null {
+  if (!redirect || !redirect.startsWith(MOBILE_SCHEME)) return null;
+  return redirect;
+}
+
+// `Secure` is keyed to the actual serving protocol, not NODE_ENV: over https
+// (prod) the transient cookies must be Secure, but a Secure cookie set over
+// plain http (local dev, and the mobile app's `http://localhost` web-auth
+// session) is dropped by strict clients — which broke mobile social login
+// because the callback then never saw the state/verifier/mobile cookies. The
+// origin already carries the protocol (getOrigin → x-origin / WEB_ORIGIN).
+function transientCookie(
+  c: Parameters<typeof setCookie>[0],
+  name: string,
+  value: string,
+  secure: boolean,
+) {
   setCookie(c, name, value, {
     httpOnly: true,
     sameSite: "Lax", // Lax so the cookie rides the top-level GET redirect back from the provider.
-    secure: isProd(),
+    secure,
     path: "/",
     maxAge: TEN_MINUTES,
   });
 }
 
 function clearTransientCookies(c: Parameters<typeof deleteCookie>[0]) {
-  for (const name of [STATE_COOKIE, VERIFIER_COOKIE, NEXT_COOKIE]) {
+  for (const name of [STATE_COOKIE, VERIFIER_COOKIE, NEXT_COOKIE, MOBILE_COOKIE]) {
     deleteCookie(c, name, { path: "/" });
   }
 }
@@ -60,10 +83,18 @@ oauthRoutes.get("/oauth/:provider/start", (c) => {
   // (Facebook) ignore it.
   const codeVerifier = generateCodeVerifier();
   const next = sanitizeNext(c.req.query("next"));
+  // Mobile clients pass `client=mobile` + a `redirect` deep link; remember it so
+  // the callback hands back tokens instead of a cookie.
+  const mobileRedirect =
+    c.req.query("client") === "mobile"
+      ? sanitizeMobileRedirect(c.req.query("redirect"))
+      : null;
 
-  transientCookie(c, STATE_COOKIE, state);
-  transientCookie(c, VERIFIER_COOKIE, codeVerifier);
-  if (next) transientCookie(c, NEXT_COOKIE, next);
+  const secure = origin.startsWith("https:");
+  transientCookie(c, STATE_COOKIE, state, secure);
+  transientCookie(c, VERIFIER_COOKIE, codeVerifier, secure);
+  if (next) transientCookie(c, NEXT_COOKIE, next, secure);
+  if (mobileRedirect) transientCookie(c, MOBILE_COOKIE, mobileRedirect, secure);
 
   const url = adapter.createAuthorizationURL(origin, state, codeVerifier);
   return c.redirect(url.toString());
@@ -74,9 +105,16 @@ oauthRoutes.get("/oauth/:provider/start", (c) => {
 // ---------------------------------------------------------------------------
 oauthRoutes.get("/oauth/:provider/callback", async (c) => {
   const origin = getOrigin(c);
+  // A mobile flow (start stored the app's deep link) returns to the app; the
+  // web flow returns to /login. Read it before any clearTransientCookies call.
+  const mobileRedirect = sanitizeMobileRedirect(getCookie(c, MOBILE_COOKIE));
   const fail = (reason: string) => {
     clearTransientCookies(c);
-    return c.redirect(`${origin}/login?error=${reason}`);
+    return c.redirect(
+      mobileRedirect
+        ? `${mobileRedirect}?error=${reason}`
+        : `${origin}/login?error=${reason}`
+    );
   };
 
   const provider = c.req.param("provider");
@@ -87,10 +125,12 @@ oauthRoutes.get("/oauth/:provider/callback", async (c) => {
 
   // The user declined consent (or the provider bounced them back): Google sends
   // ?error=access_denied and no code. That's a cancel, not a failure — return
-  // to /login quietly with no error banner (#431).
+  // quietly with no error banner (#431).
   if (c.req.query("error")) {
     clearTransientCookies(c);
-    return c.redirect(`${origin}/login`);
+    return c.redirect(
+      mobileRedirect ? `${mobileRedirect}?error=cancelled` : `${origin}/login`
+    );
   }
 
   const code = c.req.query("code");
@@ -219,7 +259,27 @@ oauthRoutes.get("/oauth/:provider/callback", async (c) => {
   // no path can slip past the gate. A brand-new signup is never locked.
   if (isLockedOut(user.lockedUntil)) {
     clearTransientCookies(c);
-    return c.redirect(`${origin}/login?error=oauth_locked`);
+    return c.redirect(
+      mobileRedirect
+        ? `${mobileRedirect}?error=oauth_locked`
+        : `${origin}/login?error=oauth_locked`
+    );
+  }
+
+  // Mobile: hand the app a Bearer session (access + refresh) via the deep link
+  // — no cookie. The token pair is identical to POST /api/auth/token.
+  if (mobileRedirect) {
+    const { accessToken, refreshToken, expiresIn } = await issueTokenPair(
+      user,
+      "mobile"
+    );
+    clearTransientCookies(c);
+    const params = new URLSearchParams({
+      accessToken,
+      refreshToken,
+      expiresIn: String(expiresIn),
+    });
+    return c.redirect(`${mobileRedirect}?${params.toString()}`);
   }
 
   await createSession(c, {

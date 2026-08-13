@@ -2,7 +2,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:baas_mobile/l10n/gen/app_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:go_router/go_router.dart';
 
 import '../config.dart';
@@ -10,6 +9,7 @@ import '../models/models.dart';
 import '../palette.dart';
 import '../state/providers.dart';
 import 'category_icon.dart';
+import 'app_icon.dart';
 
 /// Resolves a media URL from the API to something loadable.
 ///
@@ -93,8 +93,8 @@ class RatingStars extends StatelessWidget {
         for (var i = 1; i <= 5; i++)
           Padding(
             padding: const EdgeInsets.only(right: 1.5),
-            child: FaIcon(
-              FontAwesomeIcons.solidStar,
+            child: AppIcon(
+              AppIcons.star,
               size: size,
               color: i <= rating.round() ? p.amber : p.ink.c300,
             ),
@@ -156,16 +156,16 @@ class ProviderCard extends ConsumerWidget {
                       if (provider.verificationStatus == 'APPROVED')
                         Tooltip(
                           message: l10n.verifiedBadge,
-                          child: FaIcon(FontAwesomeIcons.solidCircleCheck,
+                          child: AppIcon(AppIcons.circleCheck,
                               size: 16, color: p.emerald),
                         ),
                       if (signedIn)
                         IconButton(
                           visualDensity: VisualDensity.compact,
-                          icon: FaIcon(
+                          icon: AppIcon(
                             favorites.contains(provider.id)
-                                ? FontAwesomeIcons.solidHeart
-                                : FontAwesomeIcons.heart,
+                                ? AppIcons.heart
+                                : AppIcons.regHeart,
                             size: 18,
                             color: p.red,
                           ),
