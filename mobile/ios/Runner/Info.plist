@@ -68,5 +68,16 @@
 	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Your location is used to find service providers near you.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>lk.baas.mobile</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>baaslk</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

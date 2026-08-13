@@ -7,6 +7,7 @@ import '../../models/models.dart';
 import '../../palette.dart';
 import '../../state/providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/app_icon.dart';
 
 final myJobsProvider = FutureProvider.autoDispose<List<Job>>(
     (ref) => ref.watch(marketplaceApiProvider).myJobs());
@@ -39,7 +40,7 @@ class JobsScreen extends ConsumerWidget {
                 minimumSize: const Size(0, 40),
                 padding: const EdgeInsets.symmetric(horizontal: 16),
               ),
-              icon: const Icon(Icons.add, size: 18),
+              icon: const AppIcon(AppIcons.plus, size: 18),
               label: Text(l10n.postJob),
               onPressed: () => context.push('/jobs/new'),
             ),

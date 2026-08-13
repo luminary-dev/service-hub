@@ -129,7 +129,14 @@ class _NotificationTile extends ConsumerWidget {
         style: item.unread ? const TextStyle(fontWeight: FontWeight.w600) : null,
       ),
       trailing: item.unread
-          ? Icon(Icons.circle, size: 10, color: context.palette.brand.c700)
+          ? Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                color: context.palette.brand.c700,
+                shape: BoxShape.circle,
+              ),
+            )
           : null,
       onTap: () async {
         if (item.unread) {

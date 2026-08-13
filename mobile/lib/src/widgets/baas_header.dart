@@ -1,12 +1,12 @@
 import 'package:baas_mobile/l10n/gen/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../palette.dart';
 import '../state/providers.dart';
 import '../theme.dart';
 import 'wordmark.dart';
+import 'app_icon.dart';
 
 /// The shared top-nav header, mirroring the web's Navbar.tsx: a sticky bar with
 /// a bottom hairline, the wordmark on the left, mono-uppercase nav links, and
@@ -71,10 +71,10 @@ class BaasHeader extends ConsumerWidget implements PreferredSizeWidget {
                 IconButton(
                   tooltip: 'Theme',
                   visualDensity: VisualDensity.compact,
-                  icon: FaIcon(
+                  icon: AppIcon(
                     themeMode == ThemeMode.dark
-                        ? FontAwesomeIcons.sun
-                        : FontAwesomeIcons.moon,
+                        ? AppIcons.sun
+                        : AppIcons.moon,
                     size: 16,
                     color: p.ink.c600,
                   ),
@@ -108,8 +108,8 @@ class BaasHeader extends ConsumerWidget implements PreferredSizeWidget {
                     icon: Badge(
                       isLabelVisible: unread > 0,
                       label: Text('$unread'),
-                      child: FaIcon(
-                        FontAwesomeIcons.bell,
+                      child: AppIcon(
+                        AppIcons.bell,
                         size: 16,
                         color: index == 3 ? p.brand.c700 : p.ink.c600,
                       ),
@@ -119,8 +119,8 @@ class BaasHeader extends ConsumerWidget implements PreferredSizeWidget {
                 IconButton(
                   tooltip: l10n.tabAccount,
                   visualDensity: VisualDensity.compact,
-                  icon: FaIcon(
-                    FontAwesomeIcons.user,
+                  icon: AppIcon(
+                    AppIcons.user,
                     size: 16,
                     color: index == 4 ? p.brand.c700 : p.ink.c600,
                   ),

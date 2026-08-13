@@ -6,6 +6,7 @@ import '../../models/models.dart';
 import '../../palette.dart';
 import '../../state/providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/app_icon.dart';
 
 final threadProvider = FutureProvider.autoDispose
     .family<List<ThreadMessage>, String>(
@@ -87,7 +88,7 @@ class _ThreadScreenState extends ConsumerState<ThreadScreen> {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.send),
+                    icon: const AppIcon(AppIcons.paperPlane),
                     onPressed: _sending ? null : _send,
                   ),
                 ],
