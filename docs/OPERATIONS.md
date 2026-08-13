@@ -227,6 +227,22 @@ checks in both the `dev` and `prod` rulesets** — including the six
 and if you rename one, update the ruleset's required-checks list in the same
 change.
 
+**Workflow authoring convention.** Beyond the required-check names above, every
+workflow follows one house style so runs stay legible:
+
+- **Workflow `name:`** — a human-readable Sentence-case description (proper
+  nouns/acronyms kept: `CI`, `CodeQL`), never the kebab filename.
+- **Every step has a `name:`** — imperative Sentence case (`Check out
+  repository`, `Set up Node.js`, `Install dependencies`, `Run <task>`, `Boot the
+  compose stack`); no bare `- uses:` / `- run:` steps.
+- **Job ids and the required-check job names are load-bearing** — they are
+  referenced by `needs:` and by the `dev`/`prod` ruleset above, so treat them as
+  API and change them only alongside the ruleset. Renaming a workflow's `name:`
+  or a *step* is always safe; renaming a job id/name is not.
+
+`actionlint.yml` (see below) lints the YAML mechanics; this convention covers
+the naming it can't.
+
 See [TESTING.md](TESTING.md) for the test layers behind these jobs.
 
 ## On-demand test suite (`test-suite.yml`)
