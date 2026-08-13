@@ -1,10 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
-import {
-  IBM_Plex_Sans,
-  IBM_Plex_Mono,
-  Noto_Sans_Sinhala,
-} from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -41,28 +37,46 @@ const THEME_SCRIPT = `(function(){try{var d=document.documentElement,dark=/(?:^|
 // overrides the browser's restored scroll no matter when it lands.
 const SPLASH_SCROLL_SCRIPT = `(function(){try{var m=window.matchMedia;if(m&&m("(prefers-reduced-motion: reduce)").matches)return;var active=true;var tick=function(){if(!active)return;window.scrollTo(0,0);requestAnimationFrame(tick)};requestAnimationFrame(tick);var stop=function(){active=false;window.scrollTo(0,0)};var hook=function(){var el=document.querySelector(".splash-screen");if(el)el.addEventListener("animationend",function(e){if(e.target===el)stop()},{once:true})};if(document.body)hook();else document.addEventListener("DOMContentLoaded",hook,{once:true});setTimeout(stop,2000)}catch(e){}})()`;
 
+// Fonts are self-hosted from src/app/fonts/ via next/font/local so `next build`
+// (host and `docker build`) needs no network — next/font/google would fetch
+// from Google's CDN at build time, making the image build non-deterministic
+// (#860). Same families, weights, `swap` and the Sinhala subset as before.
+
 // Body / UI + headings: IBM Plex Sans, the engineering-drawing sans that
 // anchors the blueprint/technical look.
-const plexSans = IBM_Plex_Sans({
+const plexSans = localFont({
   variable: "--font-plex-sans",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
   display: "swap",
+  src: [
+    { path: "./fonts/ibm-plex-sans-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/ibm-plex-sans-latin-500-normal.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/ibm-plex-sans-latin-600-normal.woff2", weight: "600", style: "normal" },
+    { path: "./fonts/ibm-plex-sans-latin-700-normal.woff2", weight: "700", style: "normal" },
+  ],
 });
 
 // IBM Plex Mono for spec labels, part numbers, coordinates and ticks.
-const plexMono = IBM_Plex_Mono({
+const plexMono = localFont({
   variable: "--font-plex-mono",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
   display: "swap",
+  src: [
+    { path: "./fonts/ibm-plex-mono-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/ibm-plex-mono-latin-500-normal.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/ibm-plex-mono-latin-600-normal.woff2", weight: "600", style: "normal" },
+    { path: "./fonts/ibm-plex-mono-latin-700-normal.woff2", weight: "700", style: "normal" },
+  ],
 });
 
-const notoSinhala = Noto_Sans_Sinhala({
+// Noto Sans Sinhala for the Sinhala (/si) locale.
+const notoSinhala = localFont({
   variable: "--font-sinhala",
-  subsets: ["sinhala"],
-  weight: ["400", "500", "600", "700"],
   display: "swap",
+  src: [
+    { path: "./fonts/noto-sans-sinhala-sinhala-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/noto-sans-sinhala-sinhala-500-normal.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/noto-sans-sinhala-sinhala-600-normal.woff2", weight: "600", style: "normal" },
+    { path: "./fonts/noto-sans-sinhala-sinhala-700-normal.woff2", weight: "700", style: "normal" },
+  ],
 });
 
 // Browser UI theme-color (#263). Per the current Next API this lives on the
