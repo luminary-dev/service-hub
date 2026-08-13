@@ -41,7 +41,7 @@ jobs:
       # to attest the run (needed by `publish_results: true`).
       id-token: write
     steps:
-      - name: Checkout
+      - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false

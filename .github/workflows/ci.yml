@@ -33,13 +33,17 @@ jobs:
       matrix:
         check: [typecheck, lint, test, build]
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
-      - run: npm run ${{ matrix.check }}
+      - name: Install dependencies
+        run: npm ci
+      - name: Run ${{ matrix.check }}
+        run: npm run ${{ matrix.check }}
 
   # Flutter customer app (mobile/, #799). Not part of the Node matrices —
   # different toolchain. Builds a debug APK as the smoke artifact; release
@@ -56,20 +60,27 @@ jobs:
       run:
         working-directory: mobile
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
           flutter-version: 3.44.6
           cache: true
-      - run: flutter pub get
-      - if: matrix.check == 'analyze'
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Run flutter analyze
+        if: matrix.check == 'analyze'
         run: flutter analyze
-      - if: matrix.check == 'test'
+      - name: Run flutter test
+        if: matrix.check == 'test'
         run: flutter test
-      - if: matrix.check == 'build'
+      - name: Build debug APK
+        if: matrix.check == 'build'
         run: flutter build apk --debug
-      - if: matrix.check == 'build'
+      - name: Upload debug APK
+        if: matrix.check == 'build'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: mobile-debug-apk
@@ -99,14 +110,18 @@ jobs:
       run:
         working-directory: services/${{ matrix.package }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: services/${{ matrix.package }}/package-lock.json
-      - run: npm ci
-      - run: npm run ${{ matrix.check }}
+      - name: Install dependencies
+        run: npm ci
+      - name: Run ${{ matrix.check }}
+        run: npm run ${{ matrix.check }}
 
   # Dead-code / unused-dependency scan (#673). knip runs across all 11 packages
   # and reports unused files, exports and dependencies. REPORT-ONLY for now
@@ -121,8 +136,10 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
           node-version: 24
           cache: npm
@@ -154,7 +171,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Validate docker-compose.prod.yml
         # Dummies only satisfy interpolation — nothing connects or is pulled.
         # ACME_EMAIL stays deliberately unset to exercise its compose default
@@ -228,13 +246,16 @@ jobs:
       run:
         working-directory: ${{ matrix.package == 'web' && '.' || format('services/{0}', matrix.package) }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: ${{ matrix.package == 'web' && 'package-lock.json' || format('services/{0}/package-lock.json', matrix.package) }}
-      - run: npm ci
+      - name: Install dependencies
+        run: npm ci
       - name: Collect coverage
         run: npm run coverage
       - name: Coverage summary
@@ -277,10 +298,12 @@ jobs:
     timeout-minutes: 30
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # Bake + boot + seed the stack (shared with the playwright/lighthouse
       # jobs via the composite action, so all three boot identically, #671).
-      - uses: ./.github/actions/boot-stack
+      - name: Boot the compose stack
+        uses: ./.github/actions/boot-stack
       - name: Run e2e smoke
         env:
           INTERNAL_API_SECRET: dev-internal-secret
@@ -313,15 +336,19 @@ jobs:
     timeout-minutes: 30
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
+      - name: Install dependencies
+        run: npm ci
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
-      - uses: ./.github/actions/boot-stack
+      - name: Boot the compose stack
+        uses: ./.github/actions/boot-stack
       - name: Run Playwright specs
         env:
           E2E_BASE_URL: http://localhost:3000
@@ -355,11 +382,14 @@ jobs:
     timeout-minutes: 30
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
           node-version: 24
-      - uses: ./.github/actions/boot-stack
+      - name: Boot the compose stack
+        uses: ./.github/actions/boot-stack
       - name: Run Lighthouse CI
         # Version-pinned lhci (no extra pinned action to maintain). collect →
         # assert (budgets) → upload to temporary-public-storage.

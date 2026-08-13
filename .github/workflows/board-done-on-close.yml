@@ -1,4 +1,4 @@
-name: "Project board: close to Done"
+name: Project board — close to Done
 
 # Companion to the "Project board sync" workflow. Keeps the org board honest:
 # when an issue is closed its board card moves to Status=Done. Runs
@@ -20,6 +20,7 @@ env:
 
 jobs:
   mark-done:
+    name: Mark closed issues as Done
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

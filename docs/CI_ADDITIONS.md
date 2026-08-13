@@ -25,6 +25,11 @@ every PR/push to `dev`/`prod` we run:
   **report-only** to the Security tab; weekly + push-to-default (`dev`) +
   `branch_protection_rule` + `workflow_dispatch`.
 - **`actionlint.yml`** — workflow-YAML linting (shipping now, see below).
+- **`test-suite.yml`** — manual (`workflow_dispatch`-only) on-demand test runner
+  with three required inputs (`suite` / `scope` / `reason`); reuses `ci.yml`'s
+  matrices + the `boot-stack` composite to run a chosen tier against a chosen
+  scope. Not a required check (manual-only). See OPERATIONS.md → "On-demand test
+  suite".
 - **CodeQL** — first-party static analysis of our own TS. Already enabled, but
   **not** as a workflow in this repo: it runs through GitHub's code-scanning
   **default setup** (managed by GitHub, `javascript-typescript` + `actions`,
@@ -43,7 +48,7 @@ findings (Security tab, PR comment, or log) without blocking.
 
 | # | Addition | Rationale | Effort | Gate vs report | Priority |
 | - | -------- | --------- | ------ | -------------- | -------- |
-| 1 | **actionlint** ✅ *(shipped)* | Lint the workflow YAML itself (bad `runs-on`, malformed `${{ }}` expressions, deprecated syntax) — we run 8 workflows and nothing linted them. | Low | Gate (fast, deterministic; path-filtered to `.github/workflows/**`) | **Quick win — done** |
+| 1 | **actionlint** ✅ *(shipped)* | Lint the workflow YAML itself (bad `runs-on`, malformed `${{ }}` expressions, deprecated syntax) — we run 11 workflows and nothing linted them. | Low | Gate (fast, deterministic; path-filtered to `.github/workflows/**`) | **Quick win — done** |
 | 2 | **CodeQL query-suite upgrade** | CodeQL is already on via default setup, but with the `default` query suite; bumping default setup to the **extended** suite adds the security-extended queries. This is a repo-settings toggle (Security → Code scanning → default setup), *not* a workflow — an advanced-config workflow would conflict with default setup. | Low (settings, no code) | Report | Quick win |
 | 3 | **Commit / PR-title lint (Conventional Commits)** ✅ *(shipped, local)* | CLAUDE.md already *requires* Conventional-Commit titles; now enforced locally by a **Lefthook `commit-msg` hook running commitlint** (`commitlint.config.mjs`, #673). Local pre-flight, not yet a CI gate — a PR-title CI check remains a candidate. | Low | Gate (local commit-msg) | **Quick win — done (local)** |
 | 3b | **Dead-code / unused-dep scan (knip)** ✅ *(shipped, report-only)* | Flags unused files/exports/deps across all 11 packages (`knip.json`, #673). Landed **report-only** (`continue-on-error`) given the day-one backlog of uniform template exports; promote to a gate once triaged. | Low | Report → gate later | **Quick win — done** |
