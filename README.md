@@ -8,20 +8,33 @@ The customer-facing UI is bilingual — an EN/සිං toggle in the navbar swi
 
 The marketplace is built as **ten Hono services — an API gateway fronting nine backend microservices — with a Next.js 16 web app as a pure frontend**, all backed by Postgres and Redis. The web app never touches a database — it rewrites `/api/*` to the gateway, which verifies the JWT session cookie, enforces CSRF + rate limits, and fans requests out to the backend services over internal HTTP secured by a shared secret. The seven data-owning services (identity, provider, review, job, notification, search, trust-safety) each own their own Postgres database, and Redis backs the gateway's distributed rate limiter and the notification email queue. Full details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Narrative team documentation (onboarding, workflow, operations) is published to GitBook directly from this repo's [docs/](docs/) tree (Git Sync via `.gitbook.yaml` + `docs/SUMMARY.md`).
 
-```
-browser ── same-origin /api/* ──> Next.js web (:3000)
-                                   │  rewrites /api/* ──> api-gateway (:4000)
-                                   gateway routes to:
-                                   ├── identity-service     (:4001)  users, auth, favorites
-                                   ├── provider-service     (:4002)  profiles, services, photos, inquiries
-                                   ├── review-service       (:4003)  reviews + review photos
-                                   ├── job-service          (:4004)  job request board
-                                   ├── notification-service (:4005)  in-app + email notifications
-                                   ├── media-service        (:4006)  image processing + file storage
-                                   ├── chat-service         (:4007)  Claude assistant (holds the LLM key)
-                                   ├── search-service       (:4008)  provider search + geo discovery index
-                                   └── trust-safety-service (:4009)  unified reports + audit store (dark launch)
-                                   gateway ── rate limits ──> Redis (:6379)
+```mermaid
+flowchart TD
+    browser([Browser])
+    browser -->|"same-origin /api/*"| web["Next.js web · :3000<br/>pure frontend — no DB"]
+    web -->|"rewrites /api/* at request time"| gw["api-gateway · :4000<br/>session · CSRF · rate limits"]
+    gw -.->|rate limits| redis[("Redis · :6379")]
+
+    subgraph stateful["Data-owning services — one Postgres DB each"]
+      direction LR
+      identity["identity · :4001<br/>users · auth · favorites"]
+      provider["provider · :4002<br/>profiles · photos · inquiries"]
+      review["review · :4003<br/>reviews"]
+      job["job · :4004<br/>job request board"]
+      notification["notification · :4005<br/>in-app + email"]
+      search["search · :4008<br/>provider search + geo (PostGIS)"]
+      trustsafety["trust-safety · :4009<br/>reports + audit (dark launch)"]
+    end
+
+    subgraph stateless["Stateless services"]
+      direction LR
+      media["media · :4006<br/>image processing → R2 / disk"]
+      chat["chat · :4007<br/>Claude assistant (holds LLM key)"]
+    end
+
+    gw -->|"internal HTTP · shared secret"| stateful
+    gw -->|"internal HTTP · shared secret"| stateless
+    stateful -.->|Prisma| pg[("Postgres · :5433")]
 ```
 
 - The seven data-owning services (identity, provider, review, job, notification, search, trust-safety) each own a Postgres database; media and chat are stateless. search_db is a derived, rebuildable index (PostGIS) over provider data. Cross-service data flows over internal HTTP with a shared secret.
@@ -34,59 +47,43 @@ browser ── same-origin /api/* ──> Next.js web (:3000)
 
 Prereqs: Node 24, Docker.
 
+The Docker launchers in [`scripts/run/`](scripts/run/README.md) bring the stack
+up in one command and **seed + reindex on first run** — no manual `db:seed` loop
+or search-reindex call needed:
+
 ```bash
-npm run setup      # scripts/setup.sh — install all packages, create .env files, start Postgres, run migrations, seed
-npm run dev:all    # scripts/dev-all.sh — run the gateway + all nine backend services + the web app (Ctrl-C stops everything)
+./scripts/run/app.sh          # all 10 services + web + infra, seeded → http://localhost:3000
+./scripts/run/everything.sh   # the above + observability (Grafana :3001, Prometheus, Loki, Tempo, …)
+./scripts/run/frontend.sh     # only the Next.js web UI
+./scripts/run/backend.sh <service>   # one backend service + its DB (e.g. provider, api-gateway)
+./scripts/run/seed.sh         # (re)seed demo data + rebuild the search index (idempotent; --force reseeds)
+./scripts/run/stop.sh         # stop, keep data   (--wipe also deletes the DB volume)
 ```
 
-Open http://localhost:3000. In a separate terminal, once the stack is up,
-rebuild the search index from the providers `setup.sh` just seeded — it's a
-derived index (migrated, not seeded), so it starts empty and the provider
-browse/search page has nothing to show until this runs once:
+Prefer running the app on the host? `npm run setup` installs everything, writes
+the `.env` files, starts Postgres, migrates and seeds; `npm run dev:all` then
+runs the gateway + all nine services + web (Ctrl-C stops everything). The host
+path doesn't auto-reindex, so once the stack is up, populate the derived search
+index once — it starts empty, so provider browse/search shows nothing until then:
 
 ```bash
+npm run setup && npm run dev:all
 curl -sS -X POST -H "x-internal-secret: ${INTERNAL_API_SECRET:-dev-internal-secret}" \
   http://localhost:4008/internal/search/reindex
 ```
 
-Or run the entire stack (Postgres, Redis, all services, web) in containers:
+Open http://localhost:3000. Ports: web `:3000`, gateway `:4000`, backend
+services `:4001`–`:4009`; Postgres on host port **5433** (5432 is often taken by
+a local install), Redis internal to the compose network. Verify a running,
+seeded stack end to end:
 
 ```bash
-docker compose up -d --build
-
-# The container images run as NODE_ENV=production, so the demo seed is an
-# explicit opt-in (unlike `npm run setup` above, which seeds for you). Seed the
-# six stateful services once the stack is up (search_db is a derived index —
-# migrated, not seeded):
-for s in identity-service provider-service review-service job-service notification-service trust-safety-service; do
-  docker compose exec -e SEED_DEMO_DATA=true "$s" npm run db:seed
-done
-
-# search_db is a derived index — migrated, not seeded — so it starts empty.
-# Rebuild it from the providers you just seeded, or the web app's provider
-# browse/search page will show nothing:
-curl -sS -X POST -H "x-internal-secret: ${INTERNAL_API_SECRET:-dev-internal-secret}" \
-  http://localhost:4008/internal/search/reindex
+npm run e2e         # scripts/e2e-smoke.sh — expect "…, 0 failed"
 ```
 
-Two lines you'll see during that seed are expected, not errors: each service
-prints `.env not found. Continuing without it.` (containers read their config
-from Compose, not a `.env` file), and `job-service` prints `no seed data` — the
-job board starts empty by design (jobs are customer-created at runtime).
-
-Ports: web `:3000`, gateway `:4000`, backend services `:4001`–`:4009`. Postgres
-listens on host port **5433** (5432 is often taken by a local install); Redis is
-internal to the compose network. Verify everything with the end-to-end smoke
-suite while the stack is running:
-
-```bash
-npm run e2e         # scripts/e2e-smoke.sh — needs a running, seeded stack
-```
-
-**Local data is disposable.** We don't preserve or migrate data between runs —
-the seeds are dummy data only. To get back to a clean, seeded stack, run
-`scripts/dev-reset.sh`, which tears everything down **including volumes**
-(`docker compose down -v`), rebuilds (`up -d --build`), and reseeds.
+**Local data is disposable** — the seeds are dummy data only, not preserved
+between runs. `./scripts/run/stop.sh --wipe` (or `scripts/dev-reset.sh` on the
+host path) tears down the volumes so the next launch starts clean and reseeds.
 
 ### Seeded accounts (password: `password123`)
 
@@ -145,6 +142,7 @@ services/
   search-service/        provider search + geo discovery (PostGIS)  (search_db)
   trust-safety-service/  unified reports + moderation audit (dark)  (trust_safety_db)
 scripts/                 setup, dev-all, e2e-smoke, sync-service-repos
+scripts/run/             Docker launchers: app, everything, frontend, backend, seed, stop
 docs/ARCHITECTURE.md     service contracts, conventions, env vars
 docker-compose.yml       Postgres + all services + web
 ```
