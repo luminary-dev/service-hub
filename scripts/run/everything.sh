@@ -4,17 +4,15 @@
 # (GlitchTip). This is the whole docker-compose.yml.
 #
 # On first run (empty DB) this also seeds demo data.
+# Pass --no-seed (or SEED=0) for a schema-only stack with no demo data.
 source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
+parse_seed_flag "$@"
 require_docker
 
 echo "==> Building + starting the entire stack (all profiles)"
 dc "${ALL_PROFILES[@]}" up -d --build
 
-echo "==> Seeding demo data if the DB is empty"
-"$(dirname "${BASH_SOURCE[0]}")/seed.sh" || {
-  echo "WARN: seeding failed — services may still be starting. Retry with:" >&2
-  echo "      ./scripts/run/seed.sh" >&2
-}
+maybe_seed
 
 echo
 echo "App:         http://localhost:3000        Gateway:     http://localhost:4000"

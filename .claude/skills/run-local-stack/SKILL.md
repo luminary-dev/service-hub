@@ -22,8 +22,9 @@ tears down every child service).
 ./scripts/run/stop.sh [--wipe]       # stop (│ --wipe also deletes the DB volume)
 ```
 
-`app.sh` and `everything.sh` seed demo data on first run (idempotent). To seed
-manually later: `./scripts/run/seed.sh` (`--force` to reseed).
+`app.sh` and `everything.sh` seed demo data on first run (idempotent). Pass
+`--no-seed` (or `SEED=0`) to bring the stack up schema-only with no demo data.
+To seed manually later: `./scripts/run/seed.sh` (`--force` to reseed).
 
 First `everything.sh` is a big build/pull (10 service images + the observability
 suite) — several minutes. Watch real progress with `docker compose ps`, not the

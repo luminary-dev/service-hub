@@ -4,17 +4,15 @@
 # ./scripts/run/everything.sh for that.
 #
 # On first run (empty DB) this also seeds demo data so the app is usable.
+# Pass --no-seed (or SEED=0) for a schema-only stack with no demo data.
 source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
+parse_seed_flag "$@"
 require_docker
 
 echo "==> Building + starting infra, backend services and web"
 dc up -d --build "${INFRA_SERVICES[@]}" "${BACKEND_SERVICES[@]}" web
 
-echo "==> Seeding demo data if the DB is empty"
-"$(dirname "${BASH_SOURCE[0]}")/seed.sh" || {
-  echo "WARN: seeding failed — services may still be starting. Retry with:" >&2
-  echo "      ./scripts/run/seed.sh" >&2
-}
+maybe_seed
 
 echo
 echo "App:      http://localhost:3000"

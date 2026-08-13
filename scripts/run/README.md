@@ -15,8 +15,8 @@ this sidesteps the arm64 Postgres gotcha below in one place.
 | `frontend.sh` | web only (`--no-deps`) | http://localhost:3000 |
 | `backend.sh <service>` | one backend service + Postgres/pgbouncer/redis | e.g. gateway :4000 |
 | `observability.sh` | Prometheus, Grafana, Loki, Alloy, exporters, Tempo, OTel | Grafana :3001 |
-| `app.sh` | all 10 services + web + infra (+ seed on first run) | app :3000, gateway :4000 |
-| `everything.sh` | the whole compose file, all profiles (+ seed on first run) | see below |
+| `app.sh [--no-seed]` | all 10 services + web + infra (+ seed on first run) | app :3000, gateway :4000 |
+| `everything.sh [--no-seed]` | the whole compose file, all profiles (+ seed on first run) | see below |
 | `seed.sh [--force]` | demo data + search reindex (idempotent) | — |
 | `stop.sh [--wipe]` | stop all (`--wipe` also deletes volumes) | — |
 
@@ -27,13 +27,20 @@ this sidesteps the arm64 Postgres gotcha below in one place.
 
 ```bash
 ./scripts/run/everything.sh          # the full stack + observability, seeded
+./scripts/run/everything.sh --no-seed # full stack, schema only (no demo data)
 ./scripts/run/app.sh                 # just the app (no monitoring), seeded
+./scripts/run/app.sh --no-seed       # just the app, schema only (no demo data)
 ./scripts/run/frontend.sh            # only the Next.js UI
 ./scripts/run/backend.sh provider    # only provider-service (+ its DB)
 ./scripts/run/observability.sh       # only Grafana/Prometheus/Loki/Tempo
 ./scripts/run/stop.sh                # stop, keep data
 ./scripts/run/stop.sh --wipe         # stop and wipe the DB
 ```
+
+Seeding: `app.sh`/`everything.sh` seed demo data on first run (idempotent).
+Pass `--no-seed` (or set `SEED=0`) to bring the stack up **schema-only** — the
+migrations still apply, there's just no demo data. Seed later any time with
+`./scripts/run/seed.sh`.
 
 Everything-at-once URLs: app :3000 · gateway :4000 · Grafana :3001 ·
 Prometheus :9090 · Loki :3100 · Tempo :3200 · Unleash :4242 · GlitchTip :8000 ·
