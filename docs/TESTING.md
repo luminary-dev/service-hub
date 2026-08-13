@@ -105,6 +105,34 @@ these jobs:
   (#673). **Report-only** for now (`continue-on-error`) so it never fails CI on
   day one; see [Dead-code scanning (knip)](#dead-code-scanning-knip) below.
 
+## On-demand test suite (`test-suite.yml`)
+
+`ci.yml` above is the automatic gate; **`test-suite.yml` is the manual runner**
+for the same layers. It is `workflow_dispatch`-only — trigger it from **Actions
+→ Test suite → Run workflow** — and it reuses `ci.yml`'s action pins, Node
+version, per-package matrices and the shared `boot-stack` composite, so a manual
+run exercises the same paths CI does. Reach for it to re-run a single tier after
+a warm-up flake (the browser/e2e flakes above), run coverage-only before a
+ratchet bump, or fire the whole battery from a branch on demand.
+
+It takes **three required inputs**:
+
+- **`suite`** — the tier: `quick` (typecheck + test), `standard` (typecheck +
+  lint on web + test + build), `coverage`, `e2e`, `browser`, `lighthouse`, or
+  `full` (everything).
+- **`scope`** — the packages: `all`, `web`, `mobile`, or `services`.
+- **`reason`** — a short audit-trail note (the `plan` job rejects a blank one,
+  since the dispatch API does not enforce non-empty strings on its own).
+
+A `plan` job resolves `suite × scope` into the concrete matrices, writes a plan
+table to the run summary, and **fails fast on a combination that selects no
+jobs** (e.g. `scope=mobile` with a whole-stack tier). A final `summary` job
+tabulates every tier's result and fails the run if any tier that actually
+executed did not pass — so it is the single job to watch for the verdict. Being
+manual-only, it is **not** a required status check and cannot block a merge. See
+[OPERATIONS.md → On-demand test suite](OPERATIONS.md#on-demand-test-suite-test-suiteyml)
+for the operational detail.
+
 ## Local pre-flight: git hooks (Lefthook + commitlint)
 
 [Lefthook](https://lefthook.dev/) runs a few **fast** checks on your own machine
