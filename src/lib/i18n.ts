@@ -138,6 +138,8 @@ const en = {
     viewAll: "All professionals",
     featuredHeading: "Recently joined",
     featuredSub: "Fresh talent ready to take on your project.",
+    featuredPrev: "Previous professionals",
+    featuredNext: "Next professionals",
     trustHeading: "Hiring a stranger shouldn't feel like a gamble",
     trustBody:
       "Every professional on Baas.lk registers with their real details — experience, location, rates and photos of past work. You see the full picture before you dial, and reviews come only from registered customers.",
@@ -222,7 +224,6 @@ const en = {
     clear: "Clear filters",
     prev: "← Previous",
     next: "Next →",
-    pageOf: (p: number, t: number) => `Page ${p} of ${t}`,
     paginationLabel: "Pagination",
     sortLabel: "Sort by",
     sort: {
@@ -274,6 +275,7 @@ const en = {
   },
   card: {
     available: "Available",
+    unavailable: "Currently unavailable",
     awayUntil: (date: string) => `Away until ${date}`,
     yrs: (n: number) => `${n}+ yrs`,
     noReviews: "No reviews yet",
@@ -543,6 +545,11 @@ const en = {
     weak_password: "Please choose a stronger password.",
     current_password_incorrect: "Your current password is incorrect.",
     server_error: "Something went wrong on our side. Please try again.",
+    // review-service uses its own UPPER_SNAKE code catalog (#919) rather than
+    // this dict's usual lower_snake convention — the key just needs to match
+    // the wire value, whatever casing the sender happens to use.
+    INTERACTION_REQUIRED:
+      "You can only review a provider you've contacted through Baas.lk.",
   } as Record<string, string>,
   // Localized page titles for metadata (#762). The root layout template appends
   // "· Baas.lk", so these carry NO brand suffix (fixes the old double-branding).
@@ -665,6 +672,7 @@ const en = {
     noReviews: "No reviews.",
     noPhotos: "No photos.",
     delete: "Delete",
+    confirmDelete: "Confirm delete",
     restore: "Restore",
     back: "Back to providers",
     categoriesLink: "Categories",
@@ -1001,6 +1009,7 @@ const en = {
     cancel: "Cancel",
     empty: "No reviews yet. Be the first to share your experience.",
     error: "Could not save your review.",
+    interactionCta: "Send them an inquiry first →",
     addPhotos: "Add photos of the work",
     photosHint: (n: number) =>
       n > 0
@@ -1192,7 +1201,6 @@ const en = {
     forCustomers: "For Customers",
     joinPro: "Join as a Professional",
     signIn: "Sign in",
-    dashboard: "Dashboard",
     browse: "Browse Professionals",
     createAccount: "Create an Account",
     terms: "Terms of Service",
@@ -1583,6 +1591,8 @@ const si: Dict = {
     viewAll: "සියලු වෘත්තිකයන්",
     featuredHeading: "අලුතින් එක් වූ අය",
     featuredSub: "ඔබේ වැඩට සූදානම් අලුත් දක්ෂතා.",
+    featuredPrev: "පෙර වෘත්තිකයන්",
+    featuredNext: "ඊළඟ වෘත්තිකයන්",
     trustHeading: "නාඳුනන කෙනෙක් ගැනීම අවදානමක් විය යුතු නැහැ",
     trustBody:
       "Baas.lk හි සෑම වෘත්තිකයෙක්ම ලියාපදිංචි වන්නේ සැබෑ විස්තර සමඟයි — පළපුරුද්ද, ස්ථානය, ගාස්තු සහ පෙර වැඩවල ඡායාරූප. ඇමතීමට පෙර සම්පූර්ණ තොරතුරු ඔබට පෙනෙනවා. සමාලෝචන එන්නේ ලියාපදිංචි පාරිභෝගිකයන්ගෙන් පමණයි.",
@@ -1667,7 +1677,6 @@ const si: Dict = {
     clear: "පෙරහන් ඉවත් කරන්න",
     prev: "← පෙර",
     next: "ඊළඟ →",
-    pageOf: (p: number, t: number) => `පිටුව ${p} / ${t}`,
     paginationLabel: "පිටු සංචාලනය",
     sortLabel: "අනුපිළිවෙල",
     sort: {
@@ -1717,6 +1726,7 @@ const si: Dict = {
   },
   card: {
     available: "සූදානම්",
+    unavailable: "දැනට ලබාගත නොහැක",
     awayUntil: (date: string) => `${date} දක්වා නිවාඩුවේ`,
     yrs: (n: number) => `අවු ${n}+`,
     noReviews: "සමාලෝචන නැත",
@@ -1970,6 +1980,8 @@ const si: Dict = {
     weak_password: "කරුණාකර ශක්තිමත් මුරපදයක් තෝරන්න.",
     current_password_incorrect: "ඔබේ වත්මන් මුරපදය වැරදියි.",
     server_error: "අප පැත්තෙන් යමක් වැරදුණා. නැවත උත්සාහ කරන්න.",
+    INTERACTION_REQUIRED:
+      "ඔබ Baas.lk හරහා සම්බන්ධ වූ වෘත්තිකයෙකුට පමණක් සමාලෝචනයක් ලිවිය හැක.",
   } as Record<string, string>,
   titles: {
     login: "පිවිසෙන්න",
@@ -2088,6 +2100,7 @@ const si: Dict = {
     noReviews: "සමාලෝචන නැත.",
     noPhotos: "ඡායාරූප නැත.",
     delete: "මකන්න",
+    confirmDelete: "මකා දැමීම තහවුරු කරන්න",
     restore: "ප්‍රතිස්ථාපනය කරන්න",
     back: "වෘත්තිකයන් වෙත ආපසු",
     categoriesLink: "ක්ෂේත්‍ර",
@@ -2409,6 +2422,7 @@ const si: Dict = {
     cancel: "අවලංගු කරන්න",
     empty: "තවම සමාලෝචන නැත. පළමු අත්දැකීම බෙදාගන්න.",
     error: "සමාලෝචනය සුරැකීමට නොහැකි විය.",
+    interactionCta: "පළමුව විමසීමක් යවන්න →",
     addPhotos: "වැඩෙහි ඡායාරූප එක් කරන්න",
     photosHint: (n: number) =>
       n > 0
@@ -2596,7 +2610,6 @@ const si: Dict = {
     forCustomers: "පාරිභෝගිකයන්ට",
     joinPro: "වෘත්තිකයෙක් ලෙස එක්වන්න",
     signIn: "පිවිසෙන්න",
-    dashboard: "පාලක පුවරුව",
     browse: "වෘත්තිකයන් බලන්න",
     createAccount: "ගිණුමක් හදන්න",
     terms: "සේවා කොන්දේසි",

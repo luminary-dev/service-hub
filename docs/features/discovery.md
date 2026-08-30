@@ -17,8 +17,11 @@ WCAG 2.2.2 stop mechanism) and pause on hover/focus; the advance is
 `prefers-reduced-motion` (static, manually-navigable) and `preload`s the first
 slide (Next 16's replacement for the deprecated `priority`) for LCP; the frame
 is a fixed `aspect-[4/5]` so there's no layout shift. Localized EN/SI. Below the hero: the trade registry (category grid), a
-trust band, and featured/recent providers. See [DESIGN.md](../DESIGN.md#motion)
-for the motion primitives.
+trust band, and a "Recently joined" carousel (`CardCarousel`, #912 — a
+scroll-snap track with Prev/Next buttons, no autoplay since the cards
+themselves are interactive links) of the newest 4+ star providers (#913,
+`ratingMin=4` on the `GET /api/providers?sort=newest` fetch). See
+[DESIGN.md](../DESIGN.md#motion) for the motion primitives.
 
 ### Provider directory
 
@@ -47,21 +50,29 @@ during the transition (RFC §5.2). Signed-in users also fetch
   most experienced, newest.
 
 Text, category, district, rating and price commit together on submit (the
-Search button); the availability toggle applies on change; sort commits on
-blur. Selects deliberately don't navigate on every `change` — a closed native
-select fires `change` on each arrow keypress, which would make them
-keyboard-hostile (WCAG 3.2.2). Results paginate with prev/next. Ranking,
-rating filters and pagination all run DB-side in search-service's PostGIS
-index (no candidate cap), with pg_trgm + tsvector text matching.
+Search button); the availability toggle applies on change; sort applies on a
+short debounce after the last change (#904), flushed immediately on blur.
+Selects deliberately don't navigate synchronously on every `change` — a closed
+native select fires `change` on each arrow keypress, which would make them
+keyboard-hostile (WCAG 3.2.2) if it triggered navigation directly; debouncing
+lets a keyboard user arrow through freely while a mouse pick still applies in
+well under half a second. A "Clear filters" button (#906) appears next to the
+availability toggle whenever any filter is active, resetting the whole section
+back to `/providers` in one click (sort is left alone). Results paginate with
+numbered pages around the current one plus Previous/Next (#909), which render
+as inert instead of disappearing at the bounds. Ranking, rating filters and
+pagination all run DB-side in search-service's PostGIS index (no candidate
+cap), with pg_trgm + tsvector text matching.
 
 Signed-in customers with at least one primary filter (`q`/`category`/
 `district`) active also get a **"Save this search"** affordance under the
 filter bar — see [Saved searches & alerts](saved-searches.md) (#516).
 
 Provider cards (`ProviderCard`) show a cover image (admin-set category cover
-image (#436) → provider's own cover → placeholder), category, experience,
-availability chip ("Available" or
-"Away until…"), verified tick, location, headline, rating, "from" price, and an
+image (#436) → provider's own cover → placeholder), category, experience, an
+availability chip ("Available" with a pulsing dot, "Away until…", or
+"Currently unavailable" — always one of the three, #893), verified tick,
+location, headline, rating, "from" price, and an
 optional favorite button. The headline (and, on the profile page, the bio)
 render the provider's Sinhala variant under the `si` locale when present,
 falling back to the English original (#515). On geo results the card also

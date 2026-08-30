@@ -101,20 +101,18 @@ export default async function AdminUsersPage({
       ) : (
         <ul className="mt-8 space-y-3">
           {users.map((u) => (
-            <li
-              key={u.id}
-              className="card flex flex-wrap items-center justify-between gap-4 p-4"
-            >
-              <div className="flex items-center gap-3">
+            <li key={u.id}>
+              {/* The whole row navigates to the profile (#914) — there's no
+                  separate "Moderate" action any more, it went to the same
+                  destination as the name link did. */}
+              <Link
+                href={`/admin/users/${u.id}`}
+                className="card flex flex-wrap items-center gap-4 p-4 transition-colors duration-200 ease-snap hover:border-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2"
+              >
                 <Avatar name={u.name} url={null} size={40} />
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Link
-                      href={`/admin/users/${u.id}`}
-                      className="font-semibold text-ink-900 hover:text-brand-700"
-                    >
-                      {u.name}
-                    </Link>
+                    <span className="font-semibold text-ink-900">{u.name}</span>
                     <span className="chip bg-ink-100 text-ink-600">
                       {roleLabel[u.role]}
                     </span>
@@ -128,12 +126,6 @@ export default async function AdminUsersPage({
                     {u.email} · {t.usersJoined} {formatDate(u.createdAt, locale)}
                   </p>
                 </div>
-              </div>
-              <Link
-                href={`/admin/users/${u.id}`}
-                className="text-sm font-medium text-brand-700 hover:text-brand-800"
-              >
-                {t.moderate}
               </Link>
             </li>
           ))}

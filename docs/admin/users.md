@@ -7,8 +7,8 @@ page redirects any non-`ADMIN` session, and identity-service gates its
 destructive writes on `isFullAdmin` (SUPPORT is redirected away).
 
 **List** — `GET /api/admin/users?q=&page=` (page size 20): case-insensitive
-search over email/name, newest first. Rows show role and locked chips and a
-Moderate link.
+search over email/name, newest first. Rows show role and locked chips; the
+whole row links to the user's detail page (no separate Moderate action).
 
 **Detail** — `GET /api/admin/users/{id}`: role, joined date, locked state,
 session version, and the user's favorites. Actions (hidden when viewing your

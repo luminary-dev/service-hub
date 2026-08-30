@@ -66,14 +66,6 @@ export default async function Footer() {
                   {t.footer.signIn}
                 </Link>
               </li>
-              <li>
-                <Link
-                  href={localizedHref("/dashboard", locale)}
-                  className="text-sm text-ink-600 transition-colors duration-200 hover:text-brand-700"
-                >
-                  {t.footer.dashboard}
-                </Link>
-              </li>
             </ul>
           </div>
 
