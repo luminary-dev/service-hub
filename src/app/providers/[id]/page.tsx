@@ -620,7 +620,9 @@ export default async function ProviderProfilePage({
           </InView>
 
           <div className="lg:col-span-1">
-            <div className="sticky top-24">
+            {/* Anchor target (#919) for the "send an inquiry first" review
+                guidance — same fragment id, no route change needed. */}
+            <div id="inquiry-form" className="sticky top-24 scroll-mt-24">
               <InquiryForm
                 providerId={provider.id}
                 providerName={provider.user.name}

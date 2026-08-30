@@ -10,7 +10,7 @@ import Stars from "./Stars";
 import Avatar from "./Avatar";
 import { isSvg } from "@/lib/image";
 import { loginNextHref, localizedHref } from "@/lib/links";
-import { errorMessage } from "@/lib/error-codes";
+import { errorCodeOf, errorMessage } from "@/lib/error-codes";
 import { useLocale, useT } from "./I18nProvider";
 import { useToast } from "./ToastProvider";
 import { formatDate } from "@/lib/format";
@@ -82,6 +82,10 @@ export default function ReviewSection({
   const [dims, setDims] = useState<Record<DimensionKey, number>>(NO_DIMENSIONS);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // Set when the block was specifically "you haven't contacted this provider
+  // yet" (#919), so the error can point the customer at the inquiry form
+  // instead of just failing silently.
+  const [needsInquiry, setNeedsInquiry] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
@@ -107,6 +111,7 @@ export default function ReviewSection({
     }
     setLoading(true);
     setError("");
+    setNeedsInquiry(false);
     const fd = new FormData();
     fd.append("rating", String(rating));
     fd.append("comment", comment);
@@ -129,6 +134,7 @@ export default function ReviewSection({
         router.refresh();
       } else {
         const data = await res.json().catch(() => ({}));
+        setNeedsInquiry(errorCodeOf(data) === "INTERACTION_REQUIRED");
         setError(errorMessage(data, t.reviews.error, t.errorCodes));
       }
     } catch {
@@ -371,6 +377,14 @@ export default function ReviewSection({
           {error && (
             <p role="alert" className="mt-2 text-sm text-red-600">
               {error}
+              {needsInquiry && (
+                <>
+                  {" "}
+                  <a href="#inquiry-form" className="font-semibold underline">
+                    {t.reviews.interactionCta}
+                  </a>
+                </>
+              )}
             </p>
           )}
           <div className="mt-3 flex gap-2">
