@@ -28,7 +28,7 @@
     "@prisma/adapter-pg": "7.10.1",
     "@prisma/client": "7.10.1",
     "@sentry/node": "^10.69.0",
-    "hono": "^4.13.14",
+    "hono": "^4.13.18",
     "pg": "8.23.1",
     "prisma": "7.10.1",
     "prom-client": "^15.1.3",
