@@ -307,6 +307,9 @@ export function getRedis(): RedisCommands | null {
   // Fail fast while disconnected (no offline queue) so a Redis outage drops
   // straight into the in-memory fallback instead of stalling requests.
   redisClient = new Redis(url, {
+    // ioredis 6 defaults to RESP3; pin RESP2 so replies (EVAL arrays, list/zset
+    // results) keep the exact v5 wire shape this code was written against.
+    protocol: 2,
     maxRetriesPerRequest: 1,
     enableOfflineQueue: false,
   });

@@ -4,7 +4,7 @@
 # `# dependabot: <tag>` comment + the tag before the digest let Dependabot's
 # docker ecosystem bump both together.
 # dependabot: node:24-alpine
-FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS build
+FROM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS build
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -14,7 +14,9 @@ COPY . .
 RUN npm run build
 
 # dependabot: node:24-alpine
-FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS runtime
+FROM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS runtime
+# Pull in Alpine security fixes published after the pinned base digest.
+RUN apk upgrade --no-cache
 WORKDIR /app
 ENV NODE_ENV=production
 # Distributed tracing (#668): OTel resource service.name for this service.
