@@ -25,6 +25,9 @@ RUN xcaddy build v2.11.3 \
 # dependabot: caddy:2.11.3-alpine
 FROM caddy:2.11.6-alpine@sha256:d44355d3c2149dc580ce2cac735955d1c08d3d00882c30489c241aa51a5c10d9
 
+# Pull in Alpine security fixes published after the pinned base digest.
+RUN apk upgrade --no-cache
+
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 
 # Prove the plugin linked in — a build that silently dropped it would otherwise
