@@ -97,6 +97,9 @@ function createClient(blocking: boolean): (QueueRedis & Closeable) | null {
   const url = process.env.REDIS_URL;
   if (!url) return null;
   const client = new Redis(url, {
+    // ioredis 6 defaults to RESP3; pin RESP2 so replies (EVAL arrays, list/zset
+    // results) keep the exact v5 wire shape this code was written against.
+    protocol: 2,
     // Enqueue must fail fast into the degraded fallback instead of stalling
     // the ingestion request. The worker's blocking reads need retries left on
     // (a rejected BRPOPLPUSH is just caught and re-issued after a pause).
