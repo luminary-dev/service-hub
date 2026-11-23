@@ -144,24 +144,53 @@ describe("Pagination", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it("hides Previous on the first page and Next on the last", () => {
+  it("disables (rather than removes) Previous on the first page and Next on the last", () => {
     render(
       <Pagination page={1} totalPages={3} hrefFor={hrefFor} locale="en" />
     );
+    // No longer a link at the bounds — an inert, aria-disabled span instead.
     expect(screen.queryByRole("link", { name: "← Previous" })).toBeNull();
+    expect(screen.getByText("← Previous").getAttribute("aria-disabled")).toBe(
+      "true"
+    );
     expect(
       screen.getByRole("link", { name: "Next →" }).getAttribute("href")
     ).toBe("/providers?page=2");
-    expect(screen.getByText("Page 1 of 3")).toBeTruthy();
     cleanup();
 
     render(
       <Pagination page={3} totalPages={3} hrefFor={hrefFor} locale="en" />
     );
     expect(screen.queryByRole("link", { name: "Next →" })).toBeNull();
+    expect(screen.getByText("Next →").getAttribute("aria-disabled")).toBe(
+      "true"
+    );
     expect(
       screen.getByRole("link", { name: "← Previous" }).getAttribute("href")
     ).toBe("/providers?page=2");
+  });
+
+  it("renders numbered pages around the current one, with the current page non-navigable", () => {
+    render(
+      <Pagination page={2} totalPages={3} hrefFor={hrefFor} locale="en" />
+    );
+    expect(screen.queryByRole("link", { name: "2" })).toBeNull();
+    expect(screen.getByText("2").getAttribute("aria-current")).toBe("page");
+    expect(
+      screen.getByRole("link", { name: "1" }).getAttribute("href")
+    ).toBe("/providers?page=1");
+    expect(
+      screen.getByRole("link", { name: "3" }).getAttribute("href")
+    ).toBe("/providers?page=3");
+  });
+
+  it("collapses distant pages into an ellipsis", () => {
+    render(
+      <Pagination page={1} totalPages={10} hrefFor={hrefFor} locale="en" />
+    );
+    expect(screen.getByText("…")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "10" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "5" })).toBeNull();
   });
 
   it("is a labelled nav landmark, localized and overridable", () => {

@@ -15,6 +15,7 @@ import ProvidersView from "@/components/ProvidersView";
 import SaveSearchButton from "@/components/SaveSearchButton";
 import InView from "@/components/InView";
 import Pagination from "@/components/ui/Pagination";
+import CountUp from "@/components/CountUp";
 import { browseFilterParams, type BrowseFilters } from "@/lib/search-params";
 import { DISTRICTS } from "@/lib/constants";
 import Link from "next/link";
@@ -242,7 +243,7 @@ export default async function ProvidersPage({
                 className="tech-corners min-w-[92px] border border-ink-300 bg-surface px-4 py-3"
               >
                 <dd className="font-mono text-2xl font-bold tabular-nums text-ink-900">
-                  {String(n).padStart(2, "0")}
+                  <CountUp value={n} />
                 </dd>
                 <dt className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-400">
                   {label}

@@ -123,7 +123,12 @@ export default function LocationPickerMap({
       ref={containerRef}
       role="application"
       aria-label={mapLabel}
-      className="h-64 w-full rounded-sm border border-ink-300"
+      // isolate (#901): Leaflet's own stylesheet gives its panes/zoom-control
+      // z-indexes up to 1000 with no positioned ancestor of its own, so
+      // without a stacking context here they can escape this small map and
+      // paint over unrelated fixed/sticky UI elsewhere on the page (e.g. the
+      // navbar's account dropdown) that has a lower explicit z-index.
+      className="isolate h-64 w-full rounded-sm border border-ink-300"
       data-testid="location-picker-map"
     />
   );

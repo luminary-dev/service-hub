@@ -55,6 +55,31 @@ describe("ProviderCard bilingual headline (#515)", () => {
   });
 });
 
+describe("ProviderCard availability chip (#893)", () => {
+  it("shows an explicit unavailable chip when neither available nor away", () => {
+    render(<ProviderCard p={{ ...base, available: false }} locale="en" />);
+    expect(screen.getByText(dict.en.card.unavailable)).toBeTruthy();
+    expect(screen.queryByText(dict.en.card.available)).toBeNull();
+  });
+
+  it("still shows the available chip when available", () => {
+    render(<ProviderCard p={{ ...base, available: true }} locale="en" />);
+    expect(screen.getByText(dict.en.card.available)).toBeTruthy();
+    expect(screen.queryByText(dict.en.card.unavailable)).toBeNull();
+  });
+
+  it("prefers the away chip over unavailable when both apply", () => {
+    const future = new Date(Date.now() + 86_400_000).toISOString();
+    render(
+      <ProviderCard
+        p={{ ...base, available: false, awayUntil: future }}
+        locale="en"
+      />
+    );
+    expect(screen.queryByText(dict.en.card.unavailable)).toBeNull();
+  });
+});
+
 describe("ProviderCard verified indicator (#559)", () => {
   it("exposes a localized accessible name for the verified checkmark", () => {
     render(<ProviderCard p={base} locale="en" />);

@@ -133,6 +133,28 @@ describe("ReviewSection", () => {
     expect(refresh).not.toHaveBeenCalled();
   });
 
+  // #919: the interaction gate points the customer at the inquiry form
+  // instead of leaving them with a bare "could not save" error.
+  it("offers a link to the inquiry form when the review is blocked on INTERACTION_REQUIRED", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      json: async () => ({ error: "...", code: "INTERACTION_REQUIRED" }),
+    });
+    const { container } = renderSection();
+    openForm();
+    fireEvent.change(screen.getByLabelText(t.yourReview), {
+      target: { value: "Nice" },
+    });
+    fireEvent.submit(container.querySelector("form")!);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(dict.en.errorCodes.INTERACTION_REQUIRED);
+    const link = within(alert).getByRole("link", {
+      name: t.interactionCta,
+    }) as HTMLAnchorElement;
+    expect(link.getAttribute("href")).toBe("#inquiry-form");
+  });
+
   it("submits the optional per-dimension ratings the user set", async () => {
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
     const { container } = renderSection();

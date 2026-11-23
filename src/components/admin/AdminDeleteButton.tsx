@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { FaTrash } from "@/components/icons";
 import { hasFullAdminAccess } from "@/lib/roles";
+import TwoStepConfirmButton from "@/components/ui/TwoStepConfirmButton";
 import { useT } from "../I18nProvider";
 import { useToast } from "../ToastProvider";
+
+const pillClass =
+  "inline-flex cursor-pointer items-center gap-1.5 rounded-sm border px-2.5 py-1 font-mono text-[11px] font-semibold uppercase tracking-wider transition-[border-color,color,background-color] duration-200 ease-snap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60";
 
 export default function AdminDeleteButton({
   endpoint,
@@ -14,7 +17,6 @@ export default function AdminDeleteButton({
   endpoint: string;
   role: string;
 }) {
-  const [pending, setPending] = useState(false);
   const t = useT();
   const toast = useToast();
   const router = useRouter();
@@ -23,28 +25,31 @@ export default function AdminDeleteButton({
   const allowed = hasFullAdminAccess(role);
 
   async function remove() {
-    if (!allowed) return;
-    setPending(true);
     const res = await fetch(endpoint, { method: "DELETE" }).catch(() => null);
-    setPending(false);
     if (res && res.ok) {
       toast.success(t.toast.adminDeleted);
       router.refresh();
-    } else {
-      toast.error(t.toast.adminDeleteError);
+      return true;
     }
+    toast.error(t.toast.adminDeleteError);
+    return false; // stay in the confirm state so a retry is one click away
   }
 
   return (
-    <button
-      onClick={remove}
-      disabled={pending || !allowed}
-      aria-label={allowed ? t.admin.delete : t.admin.insufficientPermissions}
-      title={allowed ? undefined : t.admin.insufficientPermissions}
-      className="inline-flex cursor-pointer items-center gap-1.5 rounded-sm border border-red-200 bg-surface px-2.5 py-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-red-600 transition-[border-color,color,background-color] duration-200 ease-snap hover:border-red-300 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
-    >
-      <FaTrash className="h-3 w-3" />
-      {t.admin.delete}
-    </button>
+    <TwoStepConfirmButton
+      triggerLabel={t.admin.delete}
+      triggerAriaLabel={allowed ? t.admin.delete : t.admin.insufficientPermissions}
+      triggerTitle={allowed ? undefined : t.admin.insufficientPermissions}
+      icon={<FaTrash className="h-3 w-3" />}
+      confirmLabel={t.admin.confirmDelete}
+      cancelLabel={t.admin.cancel}
+      onConfirm={remove}
+      disabled={!allowed}
+      wrapperClassName=""
+      buttonRowClassName="flex flex-wrap items-center gap-2"
+      triggerClassName={`${pillClass} border-red-200 bg-surface text-red-600 hover:border-red-300 hover:bg-red-50 focus-visible:ring-red-400`}
+      confirmClassName={`${pillClass} border-red-600 bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-400`}
+      cancelClassName={`${pillClass} border-ink-300 bg-surface text-ink-600 hover:bg-ink-100 focus-visible:ring-ink-300`}
+    />
   );
 }

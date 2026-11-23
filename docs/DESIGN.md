@@ -206,13 +206,26 @@ components:
   `.splash-screen` CSS animation (works before hydration / with JS off, so it
   can never get stuck; skipped under reduced motion). It shares `LoadingBrand`
   with `LoadingScreen` and does not replay on client-side navigation.
-- **`Pagination`** — the prev/next pager under paginated listings: a labelled
-  `<nav>` landmark, `.btn-secondary` links around a "Page X of Y" readout,
-  hidden on single-page results. Callers build hrefs (`hrefFor`) so filters
-  and the `/si` locale prefix are preserved; pass `label` when one page hosts
-  two pagers (the jobs board).
+- **`Pagination`** — the pager under paginated listings: a labelled `<nav>`
+  landmark with numbered pages around the current one (collapsing distant runs
+  into an ellipsis) plus Previous/Next, which render as inert `aria-disabled`
+  spans at the bounds instead of disappearing; hidden entirely on single-page
+  results. Callers build hrefs (`hrefFor`) so filters and the `/si` locale
+  prefix are preserved; pass `label` when one page hosts two pagers (the jobs
+  board).
 - **`RouteError`** (client) — the shared error-boundary UI (icon, localized
   message, retry + go-home). Every `error.tsx` re-exports it.
+- **`TwoStepConfirmButton`** (client, `ui/`) — the shared two-step confirmation
+  for critical/destructive actions (#916): the trigger swaps for a
+  Confirm/Cancel pair instead of acting immediately, so one accidental click
+  can't fire the action. It owns just the confirm/cancel/pending state
+  machine — markup (compact inline pill vs. a full danger-zone panel) is left
+  to each caller via class-name props. `onConfirm` may return `false` to stay
+  in the confirming state (e.g. the action failed and the caller wants an
+  immediate retry alongside its own inline error) instead of collapsing back
+  to the trigger. Adopted by `AdminDeleteButton` and `CloseProviderProfile`;
+  `ServicesManager`/`PhotosManager` still have their own bespoke inline
+  version and are candidates for a follow-up.
 
 ## Route states & feedback conventions
 

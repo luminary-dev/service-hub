@@ -123,19 +123,24 @@ export default function ProviderCard({
             {categoryLabelLoc(p.category, locale)}
           </span>
 
-          {/* availability */}
+          {/* availability — always shown (#893): an explicit "Unavailable"
+              chip when neither away nor available, so the card never leaves
+              a gig with no status indication at all. */}
           {away ? (
             <span className="chip absolute bottom-3 right-3 bg-white/95 text-amber-700 dark:bg-ink-50/90">
               <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
               {t.card.awayUntil(formatDate(p.awayUntil!, locale))}
             </span>
+          ) : p.available ? (
+            <span className="chip absolute bottom-3 right-3 bg-white/95 text-emerald-700 dark:bg-ink-50/90">
+              <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              {t.card.available}
+            </span>
           ) : (
-            p.available && (
-              <span className="chip absolute bottom-3 right-3 bg-white/95 text-emerald-700 dark:bg-ink-50/90">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                {t.card.available}
-              </span>
-            )
+            <span className="chip absolute bottom-3 right-3 bg-white/95 text-ink-500 dark:bg-ink-50/90">
+              <span className="h-1.5 w-1.5 rounded-full bg-ink-400" />
+              {t.card.unavailable}
+            </span>
           )}
         </div>
 

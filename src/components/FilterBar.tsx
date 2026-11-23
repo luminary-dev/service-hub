@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DISTRICTS } from "@/lib/constants";
 import {
   categoryOptionLabel,
@@ -51,9 +51,19 @@ export default function FilterBar({
   // value actually changed (#658) — tabbing through the closed select without
   // picking a new option must not navigate.
   const committedSortRef = useRef<SortKey>(initialSort);
+  // Debounces the sort apply (#904) so a keyboard user arrowing through a
+  // closed select doesn't navigate on every keypress, while a mouse pick
+  // still feels near-instant instead of waiting for the control to blur.
+  const sortTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
   const locale = useLocale();
   const t = useT();
+
+  useEffect(() => {
+    return () => {
+      if (sortTimerRef.current) clearTimeout(sortTimerRef.current);
+    };
+  }, []);
 
   function apply(next: {
     q?: string;
@@ -83,6 +93,30 @@ export default function FilterBar({
     if (ns !== "recommended") params.set("sort", ns);
     if (next.keepPage && page > 1) params.set("page", String(page));
     router.push(localizedHref(`/providers?${params.toString()}`, locale));
+  }
+
+  // Whether the clear-all control (#906) has anything to reset. Sort is left
+  // alone on purpose — clearing filters shouldn't also surprise the user by
+  // reordering the results they were looking at.
+  const hasActiveFilters = Boolean(
+    q.trim() ||
+      category ||
+      district ||
+      priceMin.trim() ||
+      priceMax.trim() ||
+      ratingMin ||
+      availableOnly
+  );
+
+  function clearAll() {
+    setQ("");
+    setCategory("");
+    setDistrict("");
+    setPriceMin("");
+    setPriceMax("");
+    setRatingMin("");
+    setAvailableOnly(false);
+    router.push(localizedHref("/providers", locale));
   }
 
   return (
@@ -185,6 +219,15 @@ export default function FilterBar({
             />
             {t.browse.availableOnly}
           </label>
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={clearAll}
+              className="btn-ghost sm:ml-auto"
+            >
+              {t.browse.clear}
+            </button>
+          )}
         </div>
       </form>
 
@@ -201,18 +244,32 @@ export default function FilterBar({
         <select
           id="sort"
           value={sort}
-          onChange={(e) => setSort(e.target.value as SortKey)}
-          // Commit on blur, not on every change: a closed native select
-          // fires `change` on each arrow keypress, so applying there would
+          // Debounced apply (#904, #658): a closed native select fires
+          // `change` on each arrow keypress, so applying synchronously would
           // navigate (and remount, losing focus) mid-browse (WCAG 3.2.2).
-          // Only commit when the value actually changed — blur fires on any
-          // focus loss (e.g. tabbing past), and an unconditional apply would
-          // reset pagination for free (#658). A sort-only change keeps `page`.
-          onBlur={(e) => {
+          // Waiting for a short pause after the last change lets a keyboard
+          // user arrow through freely while a mouse pick still applies almost
+          // immediately, without requiring the control to lose focus.
+          onChange={(e) => {
             const next = e.target.value as SortKey;
-            if (next === committedSortRef.current) return;
-            committedSortRef.current = next;
-            apply({ sort: next, keepPage: true });
+            setSort(next);
+            if (sortTimerRef.current) clearTimeout(sortTimerRef.current);
+            sortTimerRef.current = setTimeout(() => {
+              if (next === committedSortRef.current) return;
+              committedSortRef.current = next;
+              apply({ sort: next, keepPage: true });
+            }, 350);
+          }}
+          // Blur (e.g. tabbing away) flushes immediately instead of waiting
+          // out the debounce.
+          onBlur={() => {
+            if (sortTimerRef.current) {
+              clearTimeout(sortTimerRef.current);
+              sortTimerRef.current = null;
+            }
+            if (sort === committedSortRef.current) return;
+            committedSortRef.current = sort;
+            apply({ sort, keepPage: true });
           }}
           className="input cursor-pointer !w-auto !py-2"
         >

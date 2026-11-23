@@ -16,6 +16,7 @@ import CategoryIcon from "@/components/CategoryIcon";
 import ProviderCard, { ProviderCardDTO } from "@/components/ProviderCard";
 import SearchBar from "@/components/SearchBar";
 import HeroSlider from "@/components/HeroSlider";
+import CardCarousel from "@/components/CardCarousel";
 import InView from "@/components/InView";
 import JsonLd from "@/components/JsonLd";
 
@@ -92,8 +93,9 @@ export default async function HomePage() {
     getSession(),
     // Best-effort (#747): the marketing home degrades to fewer featured cards /
     // zeroed stats on a backend blip rather than erroring the landing page.
+    // 4+ star only (#913) — the homepage showcases proven professionals.
     apiJsonSafe<{ providers: ProviderCardDTO[] }>(
-      "/api/providers?sort=newest&pageSize=6",
+      "/api/providers?sort=newest&pageSize=6&ratingMin=4",
       { revalidate: 300 }
     ),
     apiJsonSafe<{ providerCount: number; reviewCount: number }>("/api/stats", {
@@ -295,16 +297,25 @@ export default async function HomePage() {
               </h2>
               <p className="mt-2 text-ink-600">{t.home.featuredSub}</p>
             </InView>
-            <InView stagger className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {featured.map((p) => (
-                <ProviderCard
-                  key={p.id}
-                  p={p}
-                  locale={locale}
-                  showFavorite={!!session}
-                  favorited={favoriteIds.has(p.id)}
-                />
-              ))}
+            <InView>
+              <CardCarousel
+                prevLabel={t.home.featuredPrev}
+                nextLabel={t.home.featuredNext}
+              >
+                {featured.map((p) => (
+                  <div
+                    key={p.id}
+                    className="w-[280px] shrink-0 snap-start sm:w-[320px]"
+                  >
+                    <ProviderCard
+                      p={p}
+                      locale={locale}
+                      showFavorite={!!session}
+                      favorited={favoriteIds.has(p.id)}
+                    />
+                  </div>
+                ))}
+              </CardCarousel>
             </InView>
           </div>
         </section>

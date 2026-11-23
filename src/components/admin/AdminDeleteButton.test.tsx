@@ -33,10 +33,15 @@ afterEach(() => {
 });
 
 describe("AdminDeleteButton", () => {
-  it("DELETEs the resource and toasts success for a full admin", async () => {
+  it("requires a second confirm click before it DELETEs, then toasts success", async () => {
     fetchMock.mockResolvedValue({ ok: true });
     renderButton("ADMIN");
     fireEvent.click(screen.getByRole("button", { name: t.admin.delete }));
+
+    // Not yet fired — the trigger only reveals the Confirm/Cancel pair (#916).
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: t.admin.confirmDelete }));
 
     expect(fetchMock).toHaveBeenCalledWith("/api/admin/providers/prov_1", {
       method: "DELETE",
@@ -46,10 +51,20 @@ describe("AdminDeleteButton", () => {
     expect(refresh).toHaveBeenCalledOnce();
   });
 
+  it("cancels back to the trigger without calling the endpoint", () => {
+    renderButton("ADMIN");
+    fireEvent.click(screen.getByRole("button", { name: t.admin.delete }));
+    fireEvent.click(screen.getByRole("button", { name: t.admin.cancel }));
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: t.admin.delete })).toBeTruthy();
+  });
+
   it("toasts an error when the request fails", async () => {
     fetchMock.mockResolvedValue({ ok: false });
     renderButton("ADMIN");
     fireEvent.click(screen.getByRole("button", { name: t.admin.delete }));
+    fireEvent.click(screen.getByRole("button", { name: t.admin.confirmDelete }));
 
     const toast = await screen.findByRole("alert");
     expect(toast.textContent).toContain(t.toast.adminDeleteError);
