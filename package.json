@@ -57,6 +57,9 @@
   },
   "overrides": {
     "postcss": "^8.5.10",
-    "@hono/node-server": "^1.19.13"
+    "@hono/node-server": "^2.1.11",
+    "glob": "^14.0.6",
+    "fast-uri": "^3.1.9",
+    "source-map-js": "^1.2.2"
   }
 }
