@@ -32,7 +32,7 @@
     "hono": "^4.13.14",
     "ioredis": "^6.0.0",
     "jose": "^6.2.13",
-    "nodemailer": "^9.0.4",
+    "nodemailer": "^10.1.4",
     "pg": "8.23.1",
     "prisma": "7.10.1",
     "prom-client": "^15.1.3",
